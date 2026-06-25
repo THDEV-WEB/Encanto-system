@@ -4,7 +4,9 @@ export const fmtDate = d => d ? new Date(d).toLocaleString('pt-BR',{dateStyle:'s
    (Monte seu Copo, Batidinhas e qualquer produto futuro que siga o mesmo padrão
    de `tamanhos`). Calcula o menor preço entre os tamanhos em vez de assumir que
    o campo `preco` top-level já está sincronizado, evitando duplicação de regra. */
+// preço de um tamanho, tolerante a legado (preco | price)
+export const precoTamanho = t => Number(t?.preco ?? t?.price) || 0;
 export const precoApartir = prod => (Array.isArray(prod?.tamanhos) && prod.tamanhos.length>0)
-  ? Math.min(...prod.tamanhos.map(t=>Number(t.preco)||0))
+  ? Math.min(...prod.tamanhos.map(precoTamanho))
   : Number(prod?.preco_promo || prod?.preco || 0);
 export const norm = s => (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();

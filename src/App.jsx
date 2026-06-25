@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { ENCANTO_LOGO } from './logo.js';
 import AppShell from './AppShell.jsx';
 import './index.css';
-import { fmt, fmtDate, precoApartir, norm } from './utils/format.js';
+import { fmt, fmtDate, precoApartir, precoTamanho, norm } from './utils/format.js';
 
 /* ============================================================
    ENCANTO DELIVERY — React 18 + Supabase v2
@@ -246,6 +246,7 @@ function getAdicionaisProd(allAds, prod) {
   return allAds.filter(a => {
     const grupo = a.grupo||'acai';
     if (!grupos.includes(grupo)) return false;
+    if (a.aplica_categoria_id && a.aplica_categoria_id !== prod?.categoria_id) return false;
     /* Filtro: grupo marmita aceita somente proteínas e batata frita */
     if (grupo === 'marmita') return marmitaPermitido(a.nome);
     return true;
@@ -259,9 +260,10 @@ function getAdsByGrupo(allAds, prod) {
   grupos.forEach(g => {
     result[g] = allAds.filter(a => {
       if ((a.grupo||'acai') !== g) return false;
+      if (a.aplica_categoria_id && a.aplica_categoria_id !== prod?.categoria_id) return false;
       if (g === 'marmita') return marmitaPermitido(a.nome);
       return true;
-    });
+    }).sort((x,y)=>(x.ordem??0)-(y.ordem??0));
   });
   return result; /* ex: { marmita: [...], acai: [...] } */
 }
@@ -677,7 +679,7 @@ function ProductModalInner({ prod, catNome, adicionais, onClose, onAdd, onSugges
   };
 
   const adTot = sel.reduce((a,ad)=>a+Number(ad.preco),0);
-  const basePreco = temTamanhos ? Number((tamanho||prod.tamanhos[0])?.preco ?? prod.preco) : Number(prod.preco_promo||prod.preco);
+  const basePreco = temTamanhos ? (precoTamanho(tamanho||prod.tamanhos[0]) || Number(prod.preco)) : Number(prod.preco_promo||prod.preco);
   const unit  = basePreco + adTot;
 
   /* Upsell de bebida: usa flag do produto ou fallback por nome */
@@ -687,9 +689,15 @@ function ProductModalInner({ prod, catNome, adicionais, onClose, onAdd, onSugges
 
   /* Rótulos: combo → específico; produto único → genérico "Adicionais" */
   const isCombo = grupos.length > 1;
-  const GRUPO_LABEL = isCombo
-    ? { marmita:'🍱 Adicionais da Marmita', acai:'🍇 Adicionais do Açaí', bebida:'🧃 Adicionais da Bebida' }
-    : { marmita:'Adicionais', acai:'Adicionais', bebida:'Adicionais' };
+  const GRUPO_LABEL = {
+    marmita: isCombo ? '🍱 Adicionais da Marmita' : 'Adicionais',
+    acai:    isCombo ? '🍇 Adicionais do Açaí'    : 'Adicionais',
+    bebida:  isCombo ? '🧃 Adicionais da Bebida'  : 'Adicionais',
+    simples: '🥄 Adicionais Simples',
+    premium: '⭐ Premium',
+    frutas_premium: '🍓 Frutas Premium',
+    chocolates: '🍫 Chocolates',
+  };
 
   return (
     <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
@@ -704,7 +712,7 @@ function ProductModalInner({ prod, catNome, adicionais, onClose, onAdd, onSugges
         <div className="modal-body">
           <div className="modal-title">{prod.nome}</div>
           {prod.descricao && <div className="modal-desc">{prod.descricao}</div>}
-          <div className="modal-price">{fmt(temTamanhos ? (tamanho||prod.tamanhos[0]).preco : (prod.preco_promo||prod.preco))}</div>
+          <div className="modal-price">{fmt(temTamanhos ? precoTamanho(tamanho||prod.tamanhos[0]) : (prod.preco_promo||prod.preco))}</div>
 
           {/* ── Seleção de tamanho (obrigatório) — Monte seu Copo, Batidinhas ── */}
           {temTamanhos && (
@@ -725,7 +733,7 @@ function ProductModalInner({ prod, catNome, adicionais, onClose, onAdd, onSugges
                       fontSize:13,fontWeight:700,fontFamily:'var(--font-body)',
                       transition:'all .15s',
                     }}>
-                    {t.label} • {fmt(t.preco)}
+                    {t.label} • {fmt(precoTamanho(t))}
                   </button>
                 ))}
               </div>
@@ -811,14 +819,15 @@ function ProductModalInner({ prod, catNome, adicionais, onClose, onAdd, onSugges
                   const subgrupos = [];
                   const subgrupoMap = {};
                   pagosList.forEach(ad => {
-                    const sg = ad.subgrupo_label || '⚠️ Adicionais pagos';
-                    if (!subgrupoMap[sg]) { subgrupoMap[sg]=[]; subgrupos.push(sg); }
+                    const sg = ad.subgrupo_label || '';
+                    if (!(sg in subgrupoMap)) { subgrupoMap[sg]=[]; subgrupos.push(sg); }
                     subgrupoMap[sg].push(ad);
                   });
                   return (
                     <>
                       {subgrupos.map(sg => (
-                        <React.Fragment key={sg}>
+                        <React.Fragment key={sg||'_'}>
+                          {sg && (
                           <div style={{fontSize:12,fontWeight:800,color:'#DC2626',
                             textTransform:'uppercase',letterSpacing:'.5px',
                             margin:'14px 0 6px',padding:'6px 10px',
@@ -827,6 +836,7 @@ function ProductModalInner({ prod, catNome, adicionais, onClose, onAdd, onSugges
                             display:'flex',alignItems:'center',gap:5}}>
                             <span style={{fontSize:14}}>⚠️</span> {sg}
                           </div>
+                          )}
                           {subgrupoMap[sg].map(ad=>(
                             <div key={ad.id} className="additional-item" onClick={()=>toggle(ad)}>
                               <div className={`additional-check ${sel.find(a=>a.id===ad.id)?'checked':''}`}>
@@ -905,7 +915,7 @@ function ProductModalInner({ prod, catNome, adicionais, onClose, onAdd, onSugges
                 const tSel = tamanho || prod.tamanhos[0];
                 obsCompleto = `[Tamanho: ${tSel.label}]${obs?' — '+obs:''}`;
                 /* Preço do item refletindo o tamanho escolhido */
-                prodParaCarrinho = {...prod, preco: tSel.preco, preco_promo: null};
+                prodParaCarrinho = {...prod, preco: precoTamanho(tSel), preco_promo: null};
               }
 
               console.log('[ENCANTO] Adicionar clicado. prod.id=', prod.id, 'qty=', qty, 'sel=', sel, 'obs=', obsCompleto);
