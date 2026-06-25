@@ -239,11 +239,23 @@ function marmitaPermitido(nome) {
   return MARMITA_PERMITIDOS.some(p => n.includes(p));
 }
 
+/* Fonte de adicionais por categoria — controle EXPLÍCITO por fase (não automático).
+   c3 (migrada) → tabela real public.adicionais; demais categorias → MOCK_ADS legado. */
+function getFonteAdicionais(prod, dbAds) {
+  if (!prod) return [];
+  const categoriaId = prod.categoria_id;
+  // categoria já migrada para banco
+  if (categoriaId === 'c3') return Array.isArray(dbAds) ? dbAds : [];
+  // categorias ainda não migradas continuam no legado
+  return MOCK_ADS;
+}
+
 function getAdicionaisProd(allAds, prod) {
   /* prod.grupos_ad tem precedência sobre CAT_ADDON_GROUP */
   const grupos = prod?.grupos_ad ?? CAT_ADDON_GROUP[prod?.categoria_id] ?? ['acai'];
   if (grupos.length === 0) return [];
-  return allAds.filter(a => {
+  const fonte = getFonteAdicionais(prod, allAds);
+  return fonte.filter(a => {
     const grupo = a.grupo||'acai';
     if (!grupos.includes(grupo)) return false;
     if (a.aplica_categoria_id && a.aplica_categoria_id !== prod?.categoria_id) return false;
