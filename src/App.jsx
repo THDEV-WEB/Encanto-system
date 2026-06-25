@@ -735,6 +735,16 @@ function ProductModalInner({ prod, catNome, adicionais, onClose, onAdd, onSugges
           {prod.descricao && <div className="modal-desc">{prod.descricao}</div>}
           <div className="modal-price">{fmt(temTamanhos ? precoTamanho(tamanho||prod.tamanhos[0]) : (prod.preco_promo||prod.preco))}</div>
 
+          {/* Composição fixa (ex.: Batidinhas) — só renderiza se houver dado no produto */}
+          {Array.isArray(prod.composicao) && prod.composicao.length > 0 && (
+            <div className="modal-section">
+              <div className="modal-section-title">🥤 Composição</div>
+              <div style={{fontSize:13,color:'var(--gray-600)',lineHeight:1.6}}>
+                {prod.composicao.join(' • ')}
+              </div>
+            </div>
+          )}
+
           {/* ── Seleção de tamanho (obrigatório) — Monte seu Copo, Batidinhas ── */}
           {temTamanhos && (
             <div className="modal-section">
