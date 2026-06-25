@@ -669,28 +669,37 @@ function ProductModalInner({ prod, catNome, adicionais, onClose, onAdd, onSugges
     ? Number((tamanho||prod.tamanhos[0])?.adicionais_gratis ?? prod.adicionais_gratis ?? 0)
     : Number(prod.adicionais_gratis || 0);
 
-  /* Contagem global de grátis selecionados (todos os grupos) */
+  /* Elegível à franquia grátis (simples). Contagem derivada da seleção atual. */
   const allGratis   = adicionais.filter(a=>a.tipo==='gratis'||Number(a.preco)===0);
-  const selGratisN  = sel.filter(a=>allGratis.find(g=>g.id===a.id)).length;
+  const ehGratisAd  = ad => !!allGratis.find(g=>g.id===ad.id);
+  const selGratisN  = sel.filter(ehGratisAd).length;
   const gratisSobrando = Math.max(0, gratis_max - selGratisN);
 
+  /* Patch H — preço efetivo DERIVADO do estado atual (não congela no toggle):
+     os primeiros `gratis_max` simples ficam grátis; os excedentes R$ 2,00.
+     Robusto a marcar/desmarcar em qualquer ordem. Premium/frutas/chocolates: preço cheio. */
+  let _gUsados = 0;
+  const selComPreco = sel.map(ad => {
+    if (ehGratisAd(ad)) {
+      _gUsados++;
+      return { ...ad, preco: _gUsados <= gratis_max ? 0 : (Number(ad.preco)||2.00) };
+    }
+    return { ...ad, preco: Number(ad.preco)||0 };
+  });
+  const precoEfetivo = ad => selComPreco.find(a=>a.id===ad.id)?.preco;
+
   const toggle = ad => {
-    const jaEsta = sel.find(a=>a.id===ad.id);
-    if (jaEsta) { setSel(p=>p.filter(a=>a.id!==ad.id)); return; }
-    const ehGratis = allGratis.find(g=>g.id===ad.id);
-    const preco    = (ehGratis && gratisSobrando > 0) ? 0 : (Number(ad.preco)||2.00);
-    setSel(p=>[...p, {...ad, preco}]);
+    setSel(p => p.find(a=>a.id===ad.id) ? p.filter(a=>a.id!==ad.id) : [...p, ad]);
   };
 
   const itemLabel = ad => {
-    const jaEsta   = sel.find(a=>a.id===ad.id);
-    const ehGratis = allGratis.find(g=>g.id===ad.id);
-    if (jaEsta) return jaEsta.preco===0 ? 'Grátis' : `+${fmt(jaEsta.preco)}`;
-    if (ehGratis && gratisSobrando>0) return 'Grátis';
-    return `+${fmt(ad.preco||2.00)}`;
+    const ef = precoEfetivo(ad);
+    if (ef !== undefined) return ef===0 ? 'Grátis' : `+${fmt(ef)}`;
+    if (ehGratisAd(ad) && gratisSobrando>0) return 'Grátis';
+    return `+${fmt(Number(ad.preco)||2.00)}`;
   };
 
-  const adTot = sel.reduce((a,ad)=>a+Number(ad.preco),0);
+  const adTot = selComPreco.reduce((a,ad)=>a+Number(ad.preco),0);
   const basePreco = temTamanhos ? (precoTamanho(tamanho||prod.tamanhos[0]) || Number(prod.preco)) : Number(prod.preco_promo||prod.preco);
   const unit  = basePreco + adTot;
 
@@ -820,7 +829,7 @@ function ProductModalInner({ prod, catNome, adicionais, onClose, onAdd, onSugges
                       <div className="additional-name">{ad.nome}</div>
                     </div>
                     <span style={{fontSize:12,fontWeight:700,
-                      color:sel.find(a=>a.id===ad.id)?.preco===0?'var(--green)':'var(--gray-400)'}}>
+                      color:precoEfetivo(ad)===0?'var(--green)':'var(--gray-400)'}}>
                       {itemLabel(ad)}
                     </span>
                   </div>
@@ -931,7 +940,7 @@ function ProductModalInner({ prod, catNome, adicionais, onClose, onAdd, onSugges
               }
 
               console.log('[ENCANTO] Adicionar clicado. prod.id=', prod.id, 'qty=', qty, 'sel=', sel, 'obs=', obsCompleto);
-              onAdd(prodParaCarrinho,qty,sel,obsCompleto);
+              onAdd(prodParaCarrinho,qty,selComPreco,obsCompleto);
               console.log('[ENCANTO] onAdd executado.');
               onClose();
             }}>
