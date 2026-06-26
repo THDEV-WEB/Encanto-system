@@ -353,25 +353,19 @@ const DS = {
     const r = await this.run(d=>d.from('adicionais').select('*').order('nome'));
     return r.data ?? null;
   },
-  /* Persistência no schema real: customers (reusa por telefone) → orders → order_items.
-     cliente:{name,phone}  order:{total,status,payment_method,address,observacoes}  itens:[...] */
+  /* HARDEN-ORDERS-02: persistência 100% transacional via RPC create_order (Postgres).
+     1 chamada → customer (reuso por telefone, ON CONFLICT) + order + order_items, atômico
+     (rollback automático em qualquer falha). O frontend não orquestra mais as tabelas de escrita.
+     cliente:{name,phone}  order:{total,status,payment_method,address,observacoes}  itens:[...]
+     Retorna o uuid do pedido (ou null em erro/offline — o erro é logado, nunca escondido). */
   async savePedido(cliente, order, itens) {
-    let customer_id = null;
-    if (cliente?.name && cliente?.phone) {
-      // reutiliza customer existente pelo telefone; cria só se não houver
-      const found = await this.run(d=>d.from('customers').select('id').eq('phone',cliente.phone).limit(1).maybeSingle());
-      if (found.data?.id) customer_id = found.data.id;
-      else {
-        const c = await this.run(d=>d.from('customers').insert({name:cliente.name,phone:cliente.phone}).select('id').single());
-        customer_id = c.data?.id ?? null;
-      }
-    }
-    const r = await this.run(d=>d.from('orders').insert({...order,customer_id}).select().single());
-    if (!r.data) return null;                 // order falhou → não cria itens (evita item órfão)
-    if (itens.length) {
-      await this.run(d=>d.from('order_items').insert(itens.map(i=>({...i,order_id:r.data.id}))));
-    }
-    return r.data;
+    const r = await this.run(d=>d.rpc('create_order', {
+      p_customer: cliente,
+      p_order:    order,
+      p_items:    itens,
+    }));
+    if (r.error) console.error('[ENCANTO] create_order falhou (rollback no banco):', r.error.message || r.error);
+    return r.data ?? null;   // r.data = uuid do pedido criado
   },
   async getPedidos() {
     const r = await this.run(d=>d.from('orders')
