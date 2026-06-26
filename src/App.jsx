@@ -353,19 +353,21 @@ const DS = {
     const r = await this.run(d=>d.from('adicionais').select('*').order('nome'));
     return r.data ?? null;
   },
-  /* HARDEN-ORDERS-03: persistência transacional + idempotente via RPC create_order.
+  /* HARDEN-ORDERS-03/04: persistência transacional + idempotente via RPC create_order.
      1 chamada → customer (reuso por telefone normalizado) + order + order_items, atômico.
      requestId (idempotency key): mesma key → devolve o pedido já criado (sem duplicar).
+     HARDEN-04: timeout defensivo (não congela o checkout) + 1 retry idempotente em falha de rede.
      Retorna o uuid do pedido, ou null em erro/offline (o erro é logado, nunca escondido).
      A RPC responde jsonb {ok, order_id|error, sqlstate, idempotent}. */
   async savePedido(cliente, order, itens, requestId) {
-    const r = await this.run(d=>d.rpc('create_order', {
-      p_customer:   cliente,
-      p_order:      order,
-      p_items:      itens,
-      p_request_id: requestId ?? null,
+    const call = () => this.run(d=>d.rpc('create_order', {
+      p_customer: cliente, p_order: order, p_items: itens, p_request_id: requestId ?? null,
     }));
-    if (r.error) { console.error('[ENCANTO] create_order RPC erro:', r.error.message || r.error); return null; }
+    const withTimeout = p => Promise.race([p,
+      new Promise(res => setTimeout(() => res({ data:null, error:{ message:'timeout' } }), 12000))]);
+    let r = await withTimeout(call());
+    if (r.error && requestId) r = await withTimeout(call());   // 1 retry seguro (mesma idempotency key)
+    if (r.error) { console.error('[ENCANTO] create_order erro de rede/timeout:', r.error.message || r.error); return null; }
     const res = r.data;   // {ok, order_id|error, sqlstate, idempotent}
     if (res && res.ok === false) {
       console.error('[ENCANTO] create_order falhou (rollback no banco):', res.error, '['+res.sqlstate+']');
