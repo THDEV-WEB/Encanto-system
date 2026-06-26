@@ -296,8 +296,24 @@ const CATEGORIAS_DESCONTINUADAS = [
 ];
 const isCategoriaDescontinuada = cat => CATEGORIAS_DESCONTINUADAS.includes(norm(cat?.nome));
 
+/* ── FIX truncamento PostgREST (teto ~1000 linhas) ───────────────────────────
+   products.select(...) direto retorna no máximo ~1000 linhas (limite padrão do
+   PostgREST) e trunca o catálogo em silêncio acima disso. fetchAllProductsSafe
+   pagina com .range() até a página vir incompleta, montando a lista COMPLETA.
+   Rollback em 1 linha: trocar PRODUCTS_PAGINATE para false → volta ao select direto. */
+const PRODUCTS_PAGE_SIZE = 1000;   /* tamanho de página do .range() (≤ teto do PostgREST) */
+const PRODUCTS_PAGINATE  = true;   /* ⇐ ROLLBACK: false restaura o select direto (1 página) */
+const PRODUCTS_CACHE_TTL = 5 * 60 * 1000;  /* 5 min — cache global da lista COMPLETA (sem busca) */
+
 /* ── DataService ─────────────────────────────────────────────── */
 const DS = {
+  /* HARDENING — cache global leve da lista COMPLETA de produtos (só quando NÃO há
+     `search`): reduz fetchAllProductsSafe duplicado ao navegar entre categorias (o
+     filtro de categoria é client-side, então a mesma lista serve todas). Invisível ao
+     frontend; TTL = PRODUCTS_CACHE_TTL; invalidado em qualquer escrita de produto. */
+  _globalProductsCache: null,
+  _globalProductsCacheTime: 0,
+  _invalidateProductsCache() { this._globalProductsCache = null; this._globalProductsCacheTime = 0; },
   async run(fn, { throwOnError = false } = {}) {
     if (!db) {
       if (throwOnError) throw new Error('Supabase indisponível (offline).');
@@ -315,6 +331,27 @@ const DS = {
       return {data:null,error:e};
     }
   },
+  /* Busca TODOS os produtos contornando o teto de ~1000 linhas do PostgREST.
+     makeQuery(d) devolve a query base (select+filtros+order) já pronta; aqui só
+     aplicamos .range() e acumulamos. Retorna {data,error} no MESMO formato de run(),
+     para getProds/getAllProds tratarem erro/offline exatamente como antes.
+     Requer ordenação TOTAL (order primário + desempate por id) p/ o range não pular
+     nem repetir linhas entre páginas — por isso getProds/getAllProds acrescentam
+     .order('id'). Com PRODUCTS_PAGINATE=false, faz 1 chamada (comportamento legado). */
+  async fetchAllProductsSafe(makeQuery) {
+    if (!PRODUCTS_PAGINATE) return this.run(d => makeQuery(d));   /* rollback: select direto */
+    const acc = [];
+    for (let from = 0; ; from += PRODUCTS_PAGE_SIZE) {
+      const to = from + PRODUCTS_PAGE_SIZE - 1;
+      const r = await this.run(d => makeQuery(d).range(from, to));
+      if (r.error) return { data: null, error: r.error };        /* propaga erro/offline → fallback MOCK */
+      const page = r.data ?? [];
+      acc.push(...page);
+      if (page.length < PRODUCTS_PAGE_SIZE) break;               /* página incompleta → fim */
+      console.warn('[DS] Página retornou pageSize completo — possível continuação');  /* guardrail */
+    }
+    return { data: acc, error: null };
+  },
   async getCats() {
     /* Retorna array (vazio ou com dados) quando banco responde; null quando offline/erro */
     const r = await this.run(d=>d.from('categories').select('*').eq('ativo',true).order('ordem'));
@@ -329,21 +366,31 @@ const DS = {
     /* Faz join com categorias para trazer o nome da categoria junto com o produto.
        Sempre busca todos os produtos disponíveis e filtra no cliente para suportar
        o campo categoria_ids (array de múltiplas categorias) sem alterar o schema. */
-    const r = await this.run(d=>{
-      let q = d.from('products')
-        .select('*, categories(id, nome, icone, cor)')
-        .eq('disponivel', true);
-      if (search) q = q.ilike('nome', `%${search}%`);
-      return q.order('ordem', { ascending: true });
-    });
-    if (r.error && r.error.message !== 'offline') console.warn('[DS] getProds error:', r.error.message);
-    if (r.error) return null;
-    const data = r.data ?? [];
+    /* Cache global: como a busca por categoria é client-side, a lista COMPLETA (sem
+       `search`) serve qualquer catId — servimos do cache e só aplicamos prodInCat.
+       Busca server-side (search) nunca usa cache (sempre fresca). Invisível ao front. */
+    const cacheavel = !search;
+    let data;
+    if (cacheavel && this._globalProductsCache && (Date.now() - this._globalProductsCacheTime) < PRODUCTS_CACHE_TTL) {
+      data = this._globalProductsCache;
+    } else {
+      const r = await this.fetchAllProductsSafe(d=>{
+        let q = d.from('products')
+          .select('*, categories(id, nome, icone, cor)')
+          .eq('disponivel', true);
+        if (search) q = q.ilike('nome', `%${search}%`);
+        return q.order('ordem', { ascending: true }).order('id', { ascending: true });
+      });
+      if (r.error && r.error.message !== 'offline') console.warn('[DS] getProds error:', r.error.message);
+      if (r.error) return null;
+      data = r.data ?? [];
+      if (cacheavel) { this._globalProductsCache = data; this._globalProductsCacheTime = Date.now(); }
+    }
     /* Filtro de categoria no cliente — suporta categoria_id (legado) e categoria_ids (novo) */
     return catId ? data.filter(p => prodInCat(p, catId)) : data;
   },
   async getAllProds() {
-    const r = await this.run(d=>d.from('products').select('*, categories(id, nome, icone, cor)').order('nome'));
+    const r = await this.fetchAllProductsSafe(d=>d.from('products').select('*, categories(id, nome, icone, cor)').order('nome').order('id', { ascending: true }));
     return r.error ? null : (r.data ?? []);
   },
   async getAds() {
@@ -443,9 +490,10 @@ const DS = {
       payload.imagem_url = this._sanitizeImageUrl(payload.imagem_url);
       await this.run(d => d.from('products').insert(payload), { throwOnError: true });
     }
+    this._invalidateProductsCache();
   },
-  async toggleProd(id,disponivel) { await this.run(d=>d.from('products').update({disponivel}).eq('id',id)); },
-  async delProd(id) { await this.run(d=>d.from('products').delete().eq('id',id)); },
+  async toggleProd(id,disponivel) { await this.run(d=>d.from('products').update({disponivel}).eq('id',id)); this._invalidateProductsCache(); },
+  async delProd(id) { await this.run(d=>d.from('products').delete().eq('id',id)); this._invalidateProductsCache(); },
   async upsertAd(data,id) {
     if (id) await this.run(d=>d.from('adicionais').update(data).eq('id',id));
     else    await this.run(d=>d.from('adicionais').insert({...data,ativo:true}));
