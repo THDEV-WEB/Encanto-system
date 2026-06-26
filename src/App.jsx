@@ -385,6 +385,21 @@ const DS = {
   async setStatus(id,status) {
     await this.run(d=>d.from('orders').update({status}).eq('id',id));
   },
+  /* HARDEN-06: snapshot de saúde (orders_health) p/ o painel admin. */
+  async getHealth() {
+    const r = await this.run(d=>d.rpc('orders_health'));
+    return r.data ?? null;
+  },
+  /* HARDEN-06: log genérico em application_logs — reutilizável por qualquer módulo (best-effort, sem PII). */
+  async logEvent(module, operation, level, message, payload) {
+    try {
+      await this.run(d=>d.from('application_logs').insert({
+        module, operation, level: level||'info',
+        message: String(message||'').slice(0,500), payload: payload||null,
+        version: 'harden-06', origin: 'web',
+      }));
+    } catch (e) { /* nunca quebrar o fluxo por causa de log */ }
+  },
   async upsertCat(data,id) {
     if (id) await this.run(d=>d.from('categories').update(data).eq('id',id));
     else    await this.run(d=>d.from('categories').insert({...data,ativo:true}));
@@ -559,6 +574,7 @@ function useProducts(catId, search) {
         /* null = offline/erro — usar fallback local (mock) */
         setProds(filterMock(catId, search));
         console.warn('[Encanto] ⚠️ Supabase offline — products usando fallback local');
+        DS.logEvent('catalog','getProds','warn','Supabase offline — fallback local de products', { catId: catId||null, has_search: !!search });
       }
       setLoading(false);
     });
@@ -1111,7 +1127,10 @@ function CheckoutPage({ cart, onBack, onSuccess }) {
     if (cart.items.length === 0) { console.warn('[ENCANTO] Carrinho vazio ao finalizar!'); }
     submittingRef.current = true;
     setLoading(true);
-    if (!requestIdRef.current) requestIdRef.current = newRequestId();   // idempotency key estável p/ retries
+    if (!requestIdRef.current) {   // HARDEN-06: idempotency key durável (cobre retry/remontagem) via localStorage
+      requestIdRef.current = localStorage.getItem('encanto_req_id') || newRequestId();
+      try { localStorage.setItem('encanto_req_id', requestIdRef.current); } catch (e) {}
+    }
     /* preço unitário = base do item (já reflete o tamanho) + adicionais por unidade.
        Σ(price*quantity) reconcilia com orders.total. */
     const puComAdic = i => Number(i.preco_promo||i.preco)
@@ -1162,6 +1181,7 @@ function CheckoutPage({ cart, onBack, onSuccess }) {
     setLoading(false);
     submittingRef.current = false;
     requestIdRef.current = null;   // próximo pedido recebe nova idempotency key
+    try { localStorage.removeItem('encanto_req_id'); } catch (e) {}
     cart.clear();
     onSuccess(msg);
   };
@@ -1440,7 +1460,7 @@ function ImageUploader({ currentUrl, onUpload }) {
         const { error: upErr } = await db.storage.from('products').upload(name, file, {
           cacheControl:'3600', upsert:false, contentType:file.type,
         });
-        if (upErr) throw new Error(upErr.message);
+        if (upErr) { DS.logEvent('upload','image','error', upErr.message, { ext }); throw new Error(upErr.message); }
         setProgress(80);
         const { data: urlData } = db.storage.from('products').getPublicUrl(name);
         publicUrl = urlData?.publicUrl || null;
@@ -2404,6 +2424,46 @@ function AdminFidelidade() {
   );
 }
 
+/* HARDEN-06: painel de Saúde/Observabilidade — consome orders_health() (só agregados, sem PII). */
+function AdminHealth() {
+  const [h, setH]             = useState(null);
+  const [loading, setLoading] = useState(true);
+  const load = useCallback(async()=>{ setLoading(true); setH(await DS.getHealth()); setLoading(false); },[]);
+  useEffect(()=>{ load(); },[load]);
+  const Card = ({icon,val,label,color}) => (
+    <div className="stat-card" style={{borderTop:`3px solid ${color}`}}>
+      <div className="stat-icon">{icon}</div>
+      <div className="stat-val">{val}</div>
+      <div className="stat-label">{label}</div>
+    </div>
+  );
+  return (
+    <div>
+      <div className="admin-card-header" style={{marginBottom:12}}>
+        <h3>🩺 Saúde do Sistema</h3>
+        <button className="btn-secondary" onClick={load}>🔄 Atualizar</button>
+      </div>
+      {loading ? <Spinner/> : !h ? (
+        <div className="empty-state"><div className="icon">🩺</div><p>Sem dados de saúde</p></div>
+      ) : (
+        <>
+          <div className="stat-cards" style={{gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))'}}>
+            <Card icon="🌅" val={h.pedidos_hoje}           label="Pedidos hoje"     color="var(--grape)"/>
+            <Card icon="💰" val={fmt(h.faturamento_hoje)}  label="Faturamento hoje" color="#16A34A"/>
+            <Card icon="📊" val={fmt(h.ticket_medio_hoje)} label="Ticket médio"     color="#0891B2"/>
+            <Card icon="📦" val={h.pedidos_total}          label="Total geral"      color="var(--gray-300)"/>
+            <Card icon="⚠️" val={h.erros_24h}              label="Erros 24h"        color="var(--orange)"/>
+            <Card icon="🧮" val={h.divergencias}           label="Divergências"     color={h.divergencias>0?'#DC2626':'#16A34A'}/>
+          </div>
+          <div style={{marginTop:16,fontSize:12,color:'var(--gray-500)'}}>
+            Pedidos 7d: {h.pedidos_7d} · Logs: {h.logs_total} · Atualizado: {fmtDate(h.gerado_em)}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function AdminPanel({ onExit }) {
   const [tab, setTab] = useState('dashboard');
   const tabs = [
@@ -2414,8 +2474,9 @@ function AdminPanel({ onExit }) {
     {id:'adicionais',icon:'➕', label:'Adicionais'},
     {id:'status',    icon:'🏪', label:'Status'},
     {id:'fidelidade',icon:'🎁', label:'Fidelidade'},
+    {id:'saude',     icon:'🩺', label:'Saúde'},
   ];
-  const titles = {dashboard:'Dashboard',pedidos:'Pedidos',products:'Products',categorias:'Categorias',adicionais:'Adicionais',status:'Status da Loja',fidelidade:'Fidelidade'};
+  const titles = {dashboard:'Dashboard',pedidos:'Pedidos',products:'Products',categorias:'Categorias',adicionais:'Adicionais',status:'Status da Loja',fidelidade:'Fidelidade',saude:'Saúde do Sistema'};
   return (
     <div className="admin-layout">
       <div className="admin-sidebar">
@@ -2447,6 +2508,7 @@ function AdminPanel({ onExit }) {
           {tab==='adicionais' && <AdminAdicionais/>}
           {tab==='status'     && <AdminStatus/>}
           {tab==='fidelidade' && <AdminFidelidade/>}
+          {tab==='saude'      && <AdminHealth/>}
         </div>
       </div>
     </div>
