@@ -607,7 +607,18 @@ function useOrders() {
 }
 
 function useCart() {
-  const [items, setItems] = useState([]);
+  /* HARDEN-07: carrinho persistente em localStorage (sobrevive a refresh → destrava idempotência durável).
+     Wrapper {v,ts,items}: TTL 12h (evita preço/estado obsoleto), versão (descarta shape antigo) e
+     sanitização (filtra itens válidos, coage qty) — defensivo contra storage adulterado/legado. */
+  const [items, setItems] = useState(()=>{
+    try {
+      const raw = JSON.parse(localStorage.getItem('encanto_cart')||'null');
+      if (!raw || raw.v!==1 || !Array.isArray(raw.items)) return [];
+      if (Date.now() - (raw.ts||0) > 12*60*60*1000) return [];
+      return raw.items.filter(i=>i&&typeof i==='object'&&i._key&&Number(i.qty)>=1).map(i=>({...i, qty:Number(i.qty)}));
+    } catch (e) { return []; }
+  });
+  useEffect(()=>{ try { localStorage.setItem('encanto_cart', JSON.stringify({v:1, ts:Date.now(), items})); } catch (e) {} }, [items]);
   const count = items.reduce((a,i)=>a+i.qty, 0);
   const total = items.reduce((a,i)=>{
     const adTot = (i.adicionais||[]).reduce((s,ad)=>s+Number(ad.preco),0);
@@ -2455,8 +2466,25 @@ function AdminHealth() {
             <Card icon="⚠️" val={h.erros_24h}              label="Erros 24h"        color="var(--orange)"/>
             <Card icon="🧮" val={h.divergencias}           label="Divergências"     color={h.divergencias>0?'#DC2626':'#16A34A'}/>
           </div>
+          {Array.isArray(h.serie_7d) && h.serie_7d.length>0 && (
+            <div style={{marginTop:20}}>
+              <div className="stat-label" style={{marginBottom:8}}>
+                Pedidos/dia (7 dias) · Taxa de erro 24h: <b>{h.taxa_erro_pct}%</b>
+              </div>
+              <div style={{display:'flex',alignItems:'flex-end',gap:6,height:90}}>
+                {(()=>{ const max=Math.max(1,...h.serie_7d.map(x=>Number(x.n)||0));
+                  return h.serie_7d.map((d,i)=>(
+                    <div key={i} style={{flex:1,textAlign:'center'}}>
+                      <div style={{height:`${((Number(d.n)||0)/max)*60}px`,minHeight:2,background:'var(--grape)',borderRadius:4,marginBottom:4}} title={String(d.n)}/>
+                      <div style={{fontSize:11,fontWeight:700}}>{Number(d.n)||0}</div>
+                      <div style={{fontSize:10,color:'var(--gray-500)'}}>{d.dia}</div>
+                    </div>
+                  )); })()}
+              </div>
+            </div>
+          )}
           <div style={{marginTop:16,fontSize:12,color:'var(--gray-500)'}}>
-            Pedidos 7d: {h.pedidos_7d} · Logs: {h.logs_total} · Atualizado: {fmtDate(h.gerado_em)}
+            Pedidos 7d: {h.pedidos_7d} · 24h: {h.pedidos_24h} · Logs: {h.logs_total} · Atualizado: {fmtDate(h.gerado_em)}
           </div>
         </>
       )}
