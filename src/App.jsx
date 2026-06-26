@@ -353,20 +353,34 @@ const DS = {
     const r = await this.run(d=>d.from('adicionais').select('*').order('nome'));
     return r.data ?? null;
   },
-  async savePedido(pedido, itens) {
-    const r = await this.run(d=>d.from('pedidos').insert(pedido).select().single());
-    if (!r.data) return null;
+  /* Persistência no schema real: customers (reusa por telefone) → orders → order_items.
+     cliente:{name,phone}  order:{total,status,payment_method,address,observacoes}  itens:[...] */
+  async savePedido(cliente, order, itens) {
+    let customer_id = null;
+    if (cliente?.name && cliente?.phone) {
+      // reutiliza customer existente pelo telefone; cria só se não houver
+      const found = await this.run(d=>d.from('customers').select('id').eq('phone',cliente.phone).limit(1).maybeSingle());
+      if (found.data?.id) customer_id = found.data.id;
+      else {
+        const c = await this.run(d=>d.from('customers').insert({name:cliente.name,phone:cliente.phone}).select('id').single());
+        customer_id = c.data?.id ?? null;
+      }
+    }
+    const r = await this.run(d=>d.from('orders').insert({...order,customer_id}).select().single());
+    if (!r.data) return null;                 // order falhou → não cria itens (evita item órfão)
     if (itens.length) {
-      await this.run(d=>d.from('itens_pedido').insert(itens.map(i=>({...i,pedido_id:r.data.id}))));
+      await this.run(d=>d.from('order_items').insert(itens.map(i=>({...i,order_id:r.data.id}))));
     }
     return r.data;
   },
   async getPedidos() {
-    const r = await this.run(d=>d.from('pedidos').select('*,itens_pedido(*)').order('created_at',{ascending:false}).limit(100));
+    const r = await this.run(d=>d.from('orders')
+      .select('*, customers(name,phone), order_items(*)')
+      .order('created_at',{ascending:false}).limit(100));
     return r.data ?? [];
   },
   async setStatus(id,status) {
-    await this.run(d=>d.from('pedidos').update({status}).eq('id',id));
+    await this.run(d=>d.from('orders').update({status}).eq('id',id));
   },
   async upsertCat(data,id) {
     if (id) await this.run(d=>d.from('categories').update(data).eq('id',id));
@@ -487,6 +501,11 @@ function getProdCatIds(prod) {
   }
   return [prod.categoria_id].filter(Boolean);
 }
+
+/* ids de produtos do banco são uuid; ids de mock ('pmc1','pb1') não são.
+   order_items.product_id é uuid → enviar só quando for uuid, senão null. */
+const isUuid = v => typeof v==='string' &&
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 
 function useProducts(catId, search) {
   const cacheKey = `${catId||'*'}::${search||''}`;
@@ -1063,6 +1082,7 @@ function CartSidebar({ cart, catMap, onClose, onCheckout }) {
 function CheckoutPage({ cart, onBack, onSuccess }) {
   const [form, setForm] = useState({nome:'',telefone:'',endereco:'',pagamento:'dinheiro',troco:'',obs:''});
   const [loading, setLoading] = useState(false);
+  const submittingRef = useRef(false);   // trava reentrância (duplo clique / envio simultâneo)
   const upd = (k,v) => setForm(f=>({...f,[k]:v}));
   const pays = [
     {id:'dinheiro',label:'Dinheiro',icon:'💵'},
@@ -1071,16 +1091,32 @@ function CheckoutPage({ cart, onBack, onSuccess }) {
     {id:'cartao_credito',label:'Crédito',icon:'💳'},
   ];
   const submit = async () => {
+    if (submittingRef.current || loading) return;   // impede envio simultâneo
     console.log('[ENCANTO] Finalizar Pedido clicado. cart.items=', cart.items, 'total=', cart.total);
     if (!form.nome||!form.telefone||!form.endereco) { alert('Preencha nome, telefone e endereço!'); return; }
     if (cart.items.length === 0) { console.warn('[ENCANTO] Carrinho vazio ao finalizar!'); }
+    submittingRef.current = true;
     setLoading(true);
+    /* preço unitário = base do item (já reflete o tamanho) + adicionais por unidade.
+       Σ(price*quantity) reconcilia com orders.total. */
+    const puComAdic = i => Number(i.preco_promo||i.preco)
+      + (i.adicionais||[]).reduce((s,ad)=>s+Number(ad.preco),0);
     await DS.savePedido(
-      {cliente_nome:form.nome,cliente_telefone:form.telefone,cliente_endereco:form.endereco,
-       pagamento:form.pagamento,observacoes:form.obs||null,total:cart.total,status:'recebido'},
-      cart.items.map(i=>({produto_id:i.id,produto_nome:i.nome,
-        preco_unit:Number(i.preco_promo||i.preco),quantidade:i.qty,
-        adicionais:i.adicionais||[],observacoes:i.obs||null}))
+      { name: form.nome, phone: form.telefone },                                  // customers
+      { total: cart.total, status: 'recebido', payment_method: form.pagamento,    // orders
+        address: form.endereco, observacoes: form.obs || null },
+      cart.items.map(i=>{                                                          // order_items (A-fiel)
+        const pu = puComAdic(i);
+        return {
+          product_id:     isUuid(i.id) ? i.id : null,   // ids de mock (offline) não são uuid → null
+          nome_produto:   i.nome,
+          quantity:       i.qty,
+          price:          pu,
+          preco_unitario: pu,
+          adicionais:     i.adicionais || [],
+          observacoes:    i.obs || null,
+        };
+      })
     );
     /* Incrementar contador de fidelidade (somente após pedido finalizado) */
     if (localStorage.getItem('encanto_loyalty_enabled') !== 'false') {
@@ -1108,6 +1144,7 @@ function CheckoutPage({ cart, onBack, onSuccess }) {
     if(form.troco) msg+=` (troco p/ ${form.troco})`;
     if(form.obs)   msg+=`\n*Obs:* ${form.obs}`;
     setLoading(false);
+    submittingRef.current = false;
     cart.clear();
     onSuccess(msg);
   };
@@ -1899,9 +1936,9 @@ function AdminPedidos() {
                 <tr key={o.id}>
                   <td style={{fontWeight:700,color:'var(--amarelo)'}}>#{orders.length-i}</td>
                   <td>
-                    <div style={{fontWeight:700}}>{o.cliente_nome}</div>
-                    <div style={{fontSize:12,color:'var(--gray-500)'}}>{o.cliente_telefone}</div>
-                    <div style={{fontSize:12,color:'var(--gray-500)'}}>{(o.cliente_endereco||'').slice(0,35)}</div>
+                    <div style={{fontWeight:700}}>{o.customers?.name || '—'}</div>
+                    <div style={{fontSize:12,color:'var(--gray-500)'}}>{o.customers?.phone || ''}</div>
+                    <div style={{fontSize:12,color:'var(--gray-500)'}}>{(o.address||'').slice(0,35)}</div>
                   </td>
                   <td style={{fontWeight:700}}>{fmt(o.total)}</td>
                   <td><span className={`badge ${SM[o.status]?.cls||'badge-gray'}`}>{SM[o.status]?.label||o.status}</span></td>
