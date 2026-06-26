@@ -38,6 +38,11 @@ const CAT_EMOJI = {
 };
 const catEmoji = (nome='') => CAT_EMOJI[(nome||'').toLowerCase()] || '🍽️';
 
+/* Preço do adicional simples EXCEDENTE (após esgotar a cota grátis do tamanho). */
+const ADICIONAL_SIMPLES_PRECO = 2.00;
+/* URL http(s) válida — string começando com http:// ou https://. */
+const isHttpUrl = (url) => typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://'));
+
 /* ── Mock Data ───────────────────────────────────────────────── */
 const MOCK_CATS = [
   /* Ordem fixa solicitada (8 categorias):
@@ -220,15 +225,6 @@ const CAT_ADDON_GROUP = {
   'c7': [],                 /* Bebidas — sem adicionais */
   'c10':['marmita'],        /* Pedido Fitness */
 };
-
-/* Grátis por tamanho do açaí — 300ml=3, 500ml=4, 700ml=5 */
-function getGratisAcai(prod) {
-  const n = (prod?.nome||'').toLowerCase();
-  if (n.includes('700')) return 5;
-  if (n.includes('500')) return 4;
-  if (n.includes('300')) return 3;
-  return prod?.adicionais_gratis ?? 3;
-}
 
 /* Filtra adicionais pelo grupo do produto (grupos_ad) ou da categoria */
 /* Nomes permitidos no grupo marmita — apenas proteínas e batata frita */
@@ -710,9 +706,7 @@ const ProductCard = React.memo(function ProductCard({ prod, catNome, onOpen }) {
   const badge = prod.badge ? BADGE_MAP[prod.badge] : null;
   const temTamanhos = Array.isArray(prod.tamanhos) && prod.tamanhos.length>0;
   // Valida URL: aceita apenas http/https, nunca base64 ou string vazia
-  const hasValidImg = prod.imagem_url
-    && typeof prod.imagem_url === 'string'
-    && (prod.imagem_url.startsWith('http://') || prod.imagem_url.startsWith('https://'));
+  const hasValidImg = isHttpUrl(prod.imagem_url);
   return (
     <div className="product-card" onClick={()=>{console.log('[ENCANTO] Card clicado:', prod.id, prod.nome); onOpen(prod);}}>
       <div className="product-img">
@@ -789,7 +783,7 @@ function ProductModalInner({ prod, catNome, adicionais, onClose, onAdd, onSugges
   const selComPreco = sel.map(ad => {
     if (ehGratisAd(ad)) {
       _gUsados++;
-      return { ...ad, preco: _gUsados <= gratis_max ? 0 : (Number(ad.preco)||2.00) };
+      return { ...ad, preco: _gUsados <= gratis_max ? 0 : (Number(ad.preco)||ADICIONAL_SIMPLES_PRECO) };
     }
     return { ...ad, preco: Number(ad.preco)||0 };
   });
@@ -803,7 +797,7 @@ function ProductModalInner({ prod, catNome, adicionais, onClose, onAdd, onSugges
     const ef = precoEfetivo(ad);
     if (ef !== undefined) return ef===0 ? 'Grátis' : `+${fmt(ef)}`;
     if (ehGratisAd(ad) && gratisSobrando>0) return 'Grátis';
-    return `+${fmt(Number(ad.preco)||2.00)}`;
+    return `+${fmt(Number(ad.preco)||ADICIONAL_SIMPLES_PRECO)}`;
   };
 
   const adTot = selComPreco.reduce((a,ad)=>a+Number(ad.preco),0);
@@ -982,7 +976,7 @@ function ProductModalInner({ prod, catNome, adicionais, onClose, onAdd, onSugges
                               </div>
                               <div className="additional-info">
                                 <div className="additional-name">{ad.nome}</div>
-                                <div className="additional-price">+{fmt(ad.preco||2.00)}</div>
+                                <div className="additional-price">+{fmt(ad.preco||ADICIONAL_SIMPLES_PRECO)}</div>
                               </div>
                             </div>
                           ))}
@@ -1124,7 +1118,7 @@ function CartSidebar({ cart, catMap, onClose, onCheckout }) {
               return (
                 <div key={item._key} className="cart-item">
                   <div className="cart-item-img">
-                    {item.imagem_url && (item.imagem_url.startsWith('http://') || item.imagem_url.startsWith('https://'))
+                    {isHttpUrl(item.imagem_url)
                       ? <img loading="lazy" src={item.imagem_url} alt={item.nome}
                           style={{width:'100%',height:'100%',objectFit:'cover'}}
                           onError={e=>{ e.target.style.display='none'; }}/>
@@ -1496,7 +1490,7 @@ function ImageUploader({ currentUrl, onUpload }) {
 
   useEffect(()=>{ setPreview(currentUrl||null); setUploadErr(''); }, [currentUrl]);
 
-  const isValidUrl = u => u && typeof u==='string' && (u.startsWith('http://') || u.startsWith('https://'));
+  const isValidUrl = isHttpUrl;
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
