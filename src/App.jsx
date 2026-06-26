@@ -14,6 +14,7 @@ import { fmt, fmtDate, precoApartir, precoTamanho, norm } from './utils/format.j
 const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPA_KEY = import.meta.env.VITE_SUPABASE_KEY;
 const WHATSAPP = import.meta.env.VITE_WHATSAPP || '5538992203620';
+const RPC_TIMEOUT = Number(import.meta.env.VITE_RPC_TIMEOUT) || 12000; /* ms; configurável, fallback seguro */
 const LOGO     = ENCANTO_LOGO || '';
 
 /* -- Cliente Supabase -- */
@@ -364,7 +365,7 @@ const DS = {
       p_customer: cliente, p_order: order, p_items: itens, p_request_id: requestId ?? null,
     }));
     const withTimeout = p => Promise.race([p,
-      new Promise(res => setTimeout(() => res({ data:null, error:{ message:'timeout' } }), 12000))]);
+      new Promise(res => setTimeout(() => res({ data:null, error:{ message:'timeout' } }), RPC_TIMEOUT))]);
     let r = await withTimeout(call());
     if (r.error && requestId) r = await withTimeout(call());   // 1 retry seguro (mesma idempotency key)
     if (r.error) { console.error('[ENCANTO] create_order erro de rede/timeout:', r.error.message || r.error); return null; }
