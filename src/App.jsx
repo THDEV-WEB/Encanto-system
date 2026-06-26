@@ -353,19 +353,25 @@ const DS = {
     const r = await this.run(d=>d.from('adicionais').select('*').order('nome'));
     return r.data ?? null;
   },
-  /* HARDEN-ORDERS-02: persistência 100% transacional via RPC create_order (Postgres).
-     1 chamada → customer (reuso por telefone, ON CONFLICT) + order + order_items, atômico
-     (rollback automático em qualquer falha). O frontend não orquestra mais as tabelas de escrita.
-     cliente:{name,phone}  order:{total,status,payment_method,address,observacoes}  itens:[...]
-     Retorna o uuid do pedido (ou null em erro/offline — o erro é logado, nunca escondido). */
-  async savePedido(cliente, order, itens) {
+  /* HARDEN-ORDERS-03: persistência transacional + idempotente via RPC create_order.
+     1 chamada → customer (reuso por telefone normalizado) + order + order_items, atômico.
+     requestId (idempotency key): mesma key → devolve o pedido já criado (sem duplicar).
+     Retorna o uuid do pedido, ou null em erro/offline (o erro é logado, nunca escondido).
+     A RPC responde jsonb {ok, order_id|error, sqlstate, idempotent}. */
+  async savePedido(cliente, order, itens, requestId) {
     const r = await this.run(d=>d.rpc('create_order', {
-      p_customer: cliente,
-      p_order:    order,
-      p_items:    itens,
+      p_customer:   cliente,
+      p_order:      order,
+      p_items:      itens,
+      p_request_id: requestId ?? null,
     }));
-    if (r.error) console.error('[ENCANTO] create_order falhou (rollback no banco):', r.error.message || r.error);
-    return r.data ?? null;   // r.data = uuid do pedido criado
+    if (r.error) { console.error('[ENCANTO] create_order RPC erro:', r.error.message || r.error); return null; }
+    const res = r.data;   // {ok, order_id|error, sqlstate, idempotent}
+    if (res && res.ok === false) {
+      console.error('[ENCANTO] create_order falhou (rollback no banco):', res.error, '['+res.sqlstate+']');
+      return null;
+    }
+    return res?.order_id ?? null;
   },
   async getPedidos() {
     const r = await this.run(d=>d.from('orders')
@@ -500,6 +506,16 @@ function getProdCatIds(prod) {
    order_items.product_id é uuid → enviar só quando for uuid, senão null. */
 const isUuid = v => typeof v==='string' &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+
+/* Idempotency key (estilo Stripe): UUID estável por tentativa de checkout, enviado à RPC
+   create_order. Retries/duplo-clique reusam a MESMA key → o banco devolve o pedido existente. */
+const newRequestId = () => {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random()*16|0, v = c==='x' ? r : (r&0x3|0x8);
+    return v.toString(16);
+  });
+};
 
 function useProducts(catId, search) {
   const cacheKey = `${catId||'*'}::${search||''}`;
@@ -1077,6 +1093,7 @@ function CheckoutPage({ cart, onBack, onSuccess }) {
   const [form, setForm] = useState({nome:'',telefone:'',endereco:'',pagamento:'dinheiro',troco:'',obs:''});
   const [loading, setLoading] = useState(false);
   const submittingRef = useRef(false);   // trava reentrância (duplo clique / envio simultâneo)
+  const requestIdRef  = useRef(null);    // idempotency key (estável por tentativa de checkout)
   const upd = (k,v) => setForm(f=>({...f,[k]:v}));
   const pays = [
     {id:'dinheiro',label:'Dinheiro',icon:'💵'},
@@ -1091,6 +1108,7 @@ function CheckoutPage({ cart, onBack, onSuccess }) {
     if (cart.items.length === 0) { console.warn('[ENCANTO] Carrinho vazio ao finalizar!'); }
     submittingRef.current = true;
     setLoading(true);
+    if (!requestIdRef.current) requestIdRef.current = newRequestId();   // idempotency key estável p/ retries
     /* preço unitário = base do item (já reflete o tamanho) + adicionais por unidade.
        Σ(price*quantity) reconcilia com orders.total. */
     const puComAdic = i => Number(i.preco_promo||i.preco)
@@ -1110,7 +1128,8 @@ function CheckoutPage({ cart, onBack, onSuccess }) {
           adicionais:     i.adicionais || [],
           observacoes:    i.obs || null,
         };
-      })
+      }),
+      requestIdRef.current                                                        // idempotency key
     );
     /* Incrementar contador de fidelidade (somente após pedido finalizado) */
     if (localStorage.getItem('encanto_loyalty_enabled') !== 'false') {
@@ -1139,6 +1158,7 @@ function CheckoutPage({ cart, onBack, onSuccess }) {
     if(form.obs)   msg+=`\n*Obs:* ${form.obs}`;
     setLoading(false);
     submittingRef.current = false;
+    requestIdRef.current = null;   // próximo pedido recebe nova idempotency key
     cart.clear();
     onSuccess(msg);
   };
