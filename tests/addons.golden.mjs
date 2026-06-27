@@ -165,6 +165,20 @@ check('E2 API pública congelada (add/remove/rename de export exige revisão)', 
   assert.deepStrictEqual(Object.keys(addonsNS).sort(), [...expected].sort());
 });
 
+/* ── (E3) GUARDS DE CONTRATO PÓS-NORM-05 (anti-regressão de fonte única) ──── */
+check('E3 sem dupla-fonte / sem seam c3 / sem dependência de banco (no CÓDIGO, ignorando comentários)', ()=>{
+  const raw = readFileSync(new URL('../src/utils/addons.js', import.meta.url), 'utf8');
+  const code = raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');   // strip /* */ e //  (o header cita esses termos de propósito)
+  // (2) MOCK_ADS não pode voltar como FONTE (fallback ?? / || ou parâmetro mockAds)
+  assert.ok(!/(\?\?|\|\|)\s*MOCK_ADS/.test(code), 'regressão: MOCK_ADS voltou como fonte (?? / || MOCK_ADS)');
+  assert.ok(!/\bmockAds\b/.test(code), 'regressão: parâmetro/var mockAds reintroduzido (dupla fonte)');
+  // (3) seam c3 ELIMINADO — sem literal de categoria (lógica por-categoria) no resolver
+  assert.ok(!/['"]c\d+['"]/.test(code), 'regressão: literal de categoria (ex. "c3") = lógica por-categoria proibida');
+  // (4) DOMÍNIO PURO — sem banco/IO (Supabase/DataService/fetch/.from()/.rpc())
+  assert.ok(!/\b(supabase|createClient|DataService)\b/i.test(code), 'regressão: domínio conhece Supabase/DataService');
+  assert.ok(!/\.(from|rpc)\s*\(|\bfetch\s*\(/.test(code), 'regressão: domínio faz IO (.from()/.rpc()/fetch())');
+});
+
 /* ── (F) PIN CRUZADO addons×pricing (sem NaN na fronteira) ───────────────── */
 check('F resolverPrecoAdicionais alimenta somaAdicionais sem NaN', ()=>{
   const sels = [

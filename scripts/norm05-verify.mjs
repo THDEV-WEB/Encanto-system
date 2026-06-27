@@ -8,7 +8,8 @@
    Diferente dos golden (puros), este NÃO entra no test:addons — é o guard de schema/equivalência do banco. */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { MOCK_ADS, resolverAdicionais } from '../src/utils/addons.js';
+import { performance } from 'node:perf_hooks';
+import { MOCK_ADS, CAT_ADDON_GROUP, resolverAdicionais } from '../src/utils/addons.js';
 /* pg vive no runner local (.encanto/node_modules), não nas deps do frontend — resolve de lá. */
 const pg = createRequire('C:\\Users\\00thi\\.encanto\\package.json')('pg');
 
@@ -27,9 +28,18 @@ const { cfg, secret } = loadConn();
 const redact = s => { let r = String(s); if (secret) r = r.split(secret).join('[REDACTED]'); return r; };
 const client = new pg.Client({ ...cfg, ssl:{rejectUnauthorized:false}, statement_timeout:60000, connectionTimeoutMillis:15000 });
 
+const t0 = performance.now();
+const pad = k => (k + ' ').padEnd(22, '.');
 try {
   await client.connect();
   const rows = (await client.query('select id,nome,grupo,tipo,preco::float8 preco,ativo,ordem,aplica_categoria_id,subgrupo_label from public.adicionais')).rows;
+  console.error('— RELATÓRIO REPRODUZÍVEL');
+  console.error('  ' + pad('Node') + ' ' + process.version);
+  console.error('  ' + pad('Platform') + ' ' + process.platform);
+  console.error('  ' + pad('Architecture') + ' ' + process.arch);
+  console.error('  ' + pad('Generated') + ' ' + new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC');
+  console.error('  ' + pad('Linhas analisadas') + ' ' + rows.length);
+  console.error('  ' + pad('Categorias (resolver)') + ' ' + Object.keys(CAT_ADDON_GROUP).length);
   const cols = (await client.query("select column_name from information_schema.columns where table_schema='public' and table_name='adicionais'")).rows.map(r=>r.column_name);
   const checkDef = (await client.query("select pg_get_constraintdef(oid) def from pg_constraint where conname='adicionais_grupo_check'")).rows[0]?.def || '';
 
@@ -69,6 +79,7 @@ try {
   writeFileSync(new URL('../docs/norm05-db-snapshot.md', import.meta.url), snap, 'utf8');
   check('snapshot SQL escrito', ()=>assert(rows.length === 35, `esperava 35 registros, achou ${rows.length}`));
 
+  console.error('  ' + pad('Tempo total') + ' ' + (performance.now() - t0).toFixed(2) + ' ms');
   console.log(fail===0 ? '\n✅ verify:norm05 OK — schema + equivalência banco×legado + resolver + snapshot' : `\n❌ ${fail} falha(s)`);
 } catch (e) { console.error('VERIFY ERROR: ' + redact(e?.message ?? e)); fail++; }
 finally { await client.end().catch(()=>{}); }
