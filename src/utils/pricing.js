@@ -1,3 +1,25 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   DOMÍNIO FINANCEIRO  (NORM-03.1)
+
+   Este módulo pertence ao DOMÍNIO FINANCEIRO do sistema. É consumido por:
+   Checkout · Carrinho · Resumo do pedido · mensagem WhatsApp · persistência
+   (order_items.price / orders.total) · total financeiro exibido.
+
+   Qualquer alteração neste arquivo exige OBRIGATORIAMENTE:
+     • npm run test:pricing
+     • npm run build
+     • revisão manual
+     • commit DEDICADO (isolado)
+
+   NUNCA alterar este módulo no mesmo commit que:
+     - refactors visuais · CSS · componentes React · layout · UI · UX
+
+   Mudanças financeiras devem permanecer ISOLADAS — para auditoria, revisão,
+   rollback e rastreabilidade. Evita o clássico "já que eu estava aqui, aproveitei
+   e mudei uma fórmula". Baseline de performance: scripts/bench/pricing.bench.mjs
+   (npm run bench:pricing).
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 /* ════════════════════════════════════════════════════════════════════════════
    pricing.js — CENTRO FINANCEIRO DO ENCANTO  (NORM-03)
    Fonte ÚNICA do cálculo de preço do catálogo/carrinho. Toda quantia exibida ou
