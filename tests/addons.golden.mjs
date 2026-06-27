@@ -16,6 +16,7 @@ import {
   gruposDoProduto, selecionarFonteAdicionais, resolverAdicionais, agruparPorGrupo,
   ehAdicionalGratis, cotaGratis, resolverPrecoAdicionais, marmitaPermitido,
 } from '../src/utils/addons.js';
+import * as addonsNS from '../src/utils/addons.js';
 import { somaAdicionais } from '../src/utils/pricing.js';
 
 let fail = 0;
@@ -121,6 +122,12 @@ check('E addons.js não importa do app (react/pricing/supabase/format/DataServic
   const proibido = /react|\.\/components|\.\.?\/pricing|pricing\.js|format\.js|supabase|DataService/i;
   assert.ok(!importLines.some(l => proibido.test(l)), `import proibido em addons.js: ${importLines.join(' | ')}`);
   assert.strictEqual(importLines.length, 0, `addons.js deve ser folha sem imports; achou: ${importLines.join(' | ')}`);
+});
+
+/* ── (E2) GUARD DE EXPORTAÇÕES — congela a API pública do domínio ────────── */
+check('E2 API pública congelada (add/remove/rename de export exige revisão)', ()=>{
+  const expected = ['ADICIONAL_SIMPLES_PRECO','GRUPOS','CAT_ADDON_GROUP','MOCK_ADS','marmitaPermitido','gruposDoProduto','selecionarFonteAdicionais','resolverAdicionais','agruparPorGrupo','ehAdicionalGratis','cotaGratis','resolverPrecoAdicionais'];
+  assert.deepStrictEqual(Object.keys(addonsNS).sort(), [...expected].sort());
 });
 
 /* ── (F) PIN CRUZADO addons×pricing (sem NaN na fronteira) ───────────────── */

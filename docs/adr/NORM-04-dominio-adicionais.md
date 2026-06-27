@@ -123,6 +123,31 @@ silenciosa. Não otimiza — apenas congela referência (espelha `pricing.bench.
   commit dedicado. Nunca alterar junto com CSS/layout/componentes React/mudanças visuais/refactors de UI.
 - **Política de snapshots.** Todo bug de produção corrigido no domínio gera **obrigatoriamente** um novo
   snapshot em `tests/addons.golden.mjs`. A suíte cresce com o sistema.
+- **Guard de exportações (NORM-04.1).** O golden congela a API pública: `Object.keys(módulo).sort()` deve
+  bater com a lista esperada. Adicionar, remover ou renomear export **falha o teste** — obriga revisão explícita.
+- **Benchmark reproduzível (NORM-04.1).** `bench:addons` imprime Node/plataforma/arquitetura/dataset/iterações/
+  warmup/data, para que a baseline seja comparável entre máquinas e ao longo do tempo.
+
+## 6.2 Política de evolução da suíte Golden
+
+A suíte Golden do domínio é **cumulativa** e os snapshots representam **comportamento congelado**:
+
+- **Nunca** remover snapshots antigos só porque um bug foi corrigido — eles documentam o comportamento que deve permanecer válido.
+- Toda regressão descoberta gera um **novo** snapshot (não a edição de um existente).
+- Snapshots existentes só mudam mediante mudança de comportamento **intencional e revisada** (com justificativa no commit/ADR).
+- Fluxo oficial:
+
+```
+Bug encontrado
+      ↓
+Novo snapshot (reproduz o bug)
+      ↓
+Correção
+      ↓
+Snapshot permanece permanentemente (vira regressão guard)
+```
+
+Mesmo conceito de suítes de compiladores, bancos de dados e runtimes: a malha de testes só cresce.
 
 ## 7. Alternativas rejeitadas
 

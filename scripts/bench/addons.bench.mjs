@@ -33,7 +33,18 @@ const r2 = bench(() => agruparPorGrupo(FONTE, PROD));
 const r3 = bench(() => resolverPrecoAdicionais(SEL, 2, ehAdicionalGratis));
 
 const bloco = (label, ms) => `${label}:\n${N} execuções\nTempo: ${ms.toFixed(2)} ms`;
+const MOCK_N = MOCK_ADS.length, REAIS_N = FONTE.length - MOCK_N;
+const pad = k => (k + ' ').padEnd(18, '.');
 console.log('Benchmark Addons\n');
+/* Cabeçalho reproduzível (NORM-04.1) — apenas documenta o ambiente; não altera a lógica. */
+console.log(pad('Node') + ' ' + process.version);
+console.log(pad('Platform') + ' ' + process.platform);
+console.log(pad('Architecture') + ' ' + process.arch);
+console.log(pad('Dataset') + ` ${REAIS_N} adicionais (sintéticos c3) + ${MOCK_N} MOCK_ADS = ${FONTE.length}`);
+console.log(pad('Iterations') + ' ' + N);
+console.log(pad('Warmup') + ' yes (5000)');
+console.log(pad('Generated') + ' ' + new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC');
+console.log('');
 console.log(bloco('resolverAdicionais', r1) + '\n');
 console.log(bloco('agruparPorGrupo', r2) + '\n');
 console.log(bloco('resolverPrecoAdicionais', r3));
