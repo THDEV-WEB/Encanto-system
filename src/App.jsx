@@ -4,6 +4,7 @@ import { ENCANTO_LOGO } from './logo.js';
 import AppShell from './AppShell.jsx';
 import './index.css';
 import { fmt, fmtDate, precoApartir, precoTamanho, norm } from './utils/format.js';
+import { precoUnitario, precoLinha, totalCarrinho, emPromocao, precoVitrine } from './utils/pricing.js';
 
 /* ============================================================
    ENCANTO DELIVERY — React 18 + Supabase v2
@@ -664,10 +665,7 @@ function useCart() {
   });
   useEffect(()=>{ try { localStorage.setItem('encanto_cart', JSON.stringify({v:1, ts:Date.now(), items})); } catch (e) {} }, [items]);
   const count = items.reduce((a,i)=>a+i.qty, 0);
-  const total = items.reduce((a,i)=>{
-    const adTot = (i.adicionais||[]).reduce((s,ad)=>s+Number(ad.preco),0);
-    return a + (Number(i.preco_promo||i.preco) + adTot) * i.qty;
-  },0);
+  const total = totalCarrinho(items);
   const add = (prod, qty, adicionais, obs)=>{
     console.log('[ENCANTO] cart.add chamado. prod.id=', prod?.id, 'tipo:', typeof prod?.id, 'qty=', qty);
     setItems(prev=>{
@@ -702,7 +700,7 @@ const BADGE_MAP = {
 };
 
 const ProductCard = React.memo(function ProductCard({ prod, catNome, onOpen }) {
-  const promo = prod.preco_promo && Number(prod.preco_promo) < Number(prod.preco);
+  const promo = emPromocao(prod);
   const badge = prod.badge ? BADGE_MAP[prod.badge] : null;
   const temTamanhos = Array.isArray(prod.tamanhos) && prod.tamanhos.length>0;
   // Valida URL: aceita apenas http/https, nunca base64 ou string vazia
@@ -737,7 +735,7 @@ const ProductCard = React.memo(function ProductCard({ prod, catNome, onOpen }) {
             ) : (
               <>
                 {promo && <span className="old-price">{fmt(prod.preco)}</span>}
-                {fmt(prod.preco_promo||prod.preco)}
+                {fmt(precoVitrine(prod))}
               </>
             )}
           </div>
@@ -1112,8 +1110,7 @@ function CartSidebar({ cart, catMap, onClose, onCheckout }) {
         ) : (
           <div className="cart-items">
             {items.map(item=>{
-              const adTot = (item.adicionais||[]).reduce((a,ad)=>a+Number(ad.preco),0);
-              const unit  = Number(item.preco_promo||item.preco) + adTot;
+              const unit  = precoUnitario(item);
               const cNome = catMap[item.categoria_id]?.nome||'';
               return (
                 <div key={item._key} className="cart-item">
@@ -1186,8 +1183,7 @@ function CheckoutPage({ cart, onBack, onSuccess }) {
     }
     /* preço unitário = base do item (já reflete o tamanho) + adicionais por unidade.
        Σ(price*quantity) reconcilia com orders.total. */
-    const puComAdic = i => Number(i.preco_promo||i.preco)
-      + (i.adicionais||[]).reduce((s,ad)=>s+Number(ad.preco),0);
+    const puComAdic = precoUnitario;
     await DS.savePedido(
       { name: form.nome, phone: form.telefone },                                  // customers
       { total: cart.total, status: 'recebido', payment_method: form.pagamento,    // orders
@@ -1223,8 +1219,7 @@ function CheckoutPage({ cart, onBack, onSuccess }) {
     let msg = `*🛍️ Novo Pedido - Encanto*\n\n`;
     msg += `*Cliente:* ${form.nome}\n*Telefone:* ${form.telefone}\n*Endereço:* ${form.endereco}\n\n*📋 Itens:*\n`;
     cart.items.forEach(i=>{
-      const adTot=(i.adicionais||[]).reduce((a,ad)=>a+Number(ad.preco),0);
-      msg+=`• ${i.nome} x${i.qty} — ${fmt((Number(i.preco_promo||i.preco)+adTot)*i.qty)}\n`;
+      msg+=`• ${i.nome} x${i.qty} — ${fmt(precoLinha(i))}\n`;
       if(i.adicionais?.length) msg+=`  ↳ ${i.adicionais.map(a=>a.nome).join(', ')}\n`;
       if(i.obs) msg+=`  ↳ Obs: ${i.obs}\n`;
     });
@@ -1246,13 +1241,12 @@ function CheckoutPage({ cart, onBack, onSuccess }) {
       <h2>Finalizar Pedido</h2>
       <div className="order-summary">
         <h3>Resumo</h3>
-        {cart.items.map(i=>{
-          const adTot=(i.adicionais||[]).reduce((a,ad)=>a+Number(ad.preco),0);
-          return <div key={i._key} className="summary-item">
+        {cart.items.map(i=>(
+          <div key={i._key} className="summary-item">
             <span>{i.nome} x{i.qty}</span>
-            <span>{fmt((Number(i.preco_promo||i.preco)+adTot)*i.qty)}</span>
-          </div>;
-        })}
+            <span>{fmt(precoLinha(i))}</span>
+          </div>
+        ))}
         <div className="summary-total"><span>Total</span><span>{fmt(cart.total)}</span></div>
       </div>
       <div className="form-group">
@@ -1775,7 +1769,7 @@ function AdminProducts() {
                     </span>
                   </td>
                   <td>
-                    <div style={{fontWeight:700,color:'var(--amarelo)'}}>{fmt(p.preco_promo||p.preco)}</div>
+                    <div style={{fontWeight:700,color:'var(--amarelo)'}}>{fmt(precoVitrine(p))}</div>
                     {p.preco_promo && (
                       <div style={{fontSize:11,color:'var(--gray-400)',textDecoration:'line-through'}}>{fmt(p.preco)}</div>
                     )}
