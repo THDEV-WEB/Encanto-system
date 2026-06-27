@@ -50,10 +50,15 @@
    • Não adicionar novos loops aninhados sem benchmark (scripts/bench/addons.bench.mjs) e
      revisão arquitetural. Congelar a complexidade atual (evitar filter→map→filter→reduce→sort→O(n²)).
 
+   ── FONTE OFICIAL = BANCO (NORM-05) ────────────────────────────────────────
+   • A TABELA public.adicionais é a fonte ÚNICA e oficial. O seam c3 foi REMOVIDO.
+   • MOCK_ADS NÃO é mais fonte oficial: existe só como (a) fallback offline (DS.getAds() ?? MOCK_ADS),
+     (b) fixture de teste, (c) referência de rollback. Qualquer mudança em adicionais ocorre PRIMEIRO no banco.
+
    ── DÍVIDAS EXPLÍCITAS (não esconder) ──────────────────────────────────────
-   • SEAM NORM-05: selecionarFonteAdicionais hardcoda c3→tabela, resto→MOCK_ADS (seleção de FONTE, não filtro). NORM-05 unifica.
-   • MODELO DUAL: c3 real usa grupo 'simples' (gratis, preco 2.00); MOCK/offline usa 'acai' (preco 0).
-     CAT_ADDON_GROUP['c3']=['acai'] está desalinhado dos dados reais — bug de DADOS, congelado em teste (P6), não reconciliado aqui.
+   • MODELO DUAL (agora no BANCO): c3 usa grupo 'simples' (gratis, preco 2.00); não-c3 usa 'acai' (preco 0,
+     migrado com aplica_categoria_id=NULL). CAT_ADDON_GROUP['c3']=['acai'] segue desalinhado dos dados reais
+     de c3 — bug de DADOS congelado em teste (P6); reconciliação = NORM futuro (decisão de produto).
    • Defaults herdados: grupo||ACAI e ordem??0 — congelados no golden ('acai'-default é dívida, não invariante).
    • MARMITA_PERMITIDOS: whitelist textual por substring no nome (frágil a rename). Futuro: flag ad.aplica_marmita.
 
@@ -132,10 +137,13 @@ export const marmitaPermitido = nome => {
 /* Grupos aplicáveis a um produto: grupos_ad > CAT_ADDON_GROUP > [ACAI]. */
 export const gruposDoProduto = prod => prod?.grupos_ad ?? CAT_ADDON_GROUP[prod?.categoria_id] ?? [GRUPOS.ACAI];
 
-/* SEAM NORM-05 — seleção de FONTE (não de filtro): c3 usa a tabela; resto usa MOCK_ADS.
-   Isolado de propósito; data-in puro. NORM-05 remove este hardcode. */
-export const selecionarFonteAdicionais = (prod, dbAds, mockAds = MOCK_ADS) =>
-  !prod ? [] : (prod.categoria_id === 'c3' ? (Array.isArray(dbAds) ? dbAds : []) : mockAds);
+/* Seleção de FONTE: devolve o pool já carregado (tabela online / MOCK_ADS offline via DS).
+   NORM-05: hardcode c3 REMOVIDO — a tabela é fonte ÚNICA. Para dbAds não-array devolve []
+   (idêntico ao ramo c3 do código anterior). O parâmetro mockAds foi removido (redundante:
+   o caller já faz DS.getAds() ?? MOCK_ADS) — ÚNICA exceção deliberada ao freeze de API do
+   NORM-04.1, registrada no ADR NORM-05. */
+export const selecionarFonteAdicionais = (prod, dbAds) =>
+  !prod ? [] : (Array.isArray(dbAds) ? dbAds : []);
 
 /* Predicado base compartilhado: ad pertence ao grupo g E aplica-se ao produto? */
 const aplicaNoGrupo = (ad, prod, g) =>

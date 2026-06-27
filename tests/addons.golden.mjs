@@ -58,9 +58,10 @@ check('2 P1 agrupado', ()=>{
   assert.deepStrictEqual(ids(g.frutas_premium), ['f1','f2','f3']);
   assert.deepStrictEqual(ids(g.chocolates), ['c1','c2']);
 });
-// 3. P2 c1 grupos_ad=null → CAT_ADDON_GROUP['c1']=['acai','marmita'] sobre MOCK_ADS → 20 ids (dbAds c3 descartado pela fonte)
-check('3 P2 c1 → MOCK 20', ()=>assert.deepStrictEqual(
-  ids(resolverAdicionais(selecionarFonteAdicionais({categoria_id:'c1'}, DB_C3_15), {categoria_id:'c1', grupos_ad:null})),
+// 3. P2 c1 grupos_ad=null → CAT_ADDON_GROUP['c1']=['acai','marmita']. NORM-05: resolver sobre a fixture MOCK
+//    (pós-seam o pool real conteria estes; aqui testamos o resolver direto sobre MOCK_ADS, inalterado) → 20 ids
+check('3 P2 c1 sobre MOCK (fixture) → 20', ()=>assert.deepStrictEqual(
+  ids(resolverAdicionais(MOCK_ADS, {categoria_id:'c1', grupos_ad:null})),
   ['ag1','ag2','ag3','ag4','ag5','ag6','ap1','ap2','ap3','ap4','af1','af2','af3','ac1','ac2','amp1','amp2','amp3','amp4','amp5']));
 // 4. P3 c9 grupos_ad=[] (vazio explícito) → [] (a borda sutil: ?? não pula [])
 check('4 P3 c9 [] curto-circuita', ()=>assert.deepStrictEqual(resolverAdicionais(DB_C3_15, {categoria_id:'c9', grupos_ad:[]}), []));
@@ -95,9 +96,43 @@ check('10 resolverPreco mix', ()=>assert.deepStrictEqual(
 check('11a cota por tamanho', ()=>assert.strictEqual(cotaGratis(P1, null), 2));
 check('11b cota sem tamanhos', ()=>assert.strictEqual(cotaGratis({categoria_id:'c4', tamanhos:[], adicionais_gratis:1}, null), 1));
 check('11c cota zero', ()=>assert.strictEqual(cotaGratis({categoria_id:'c4'}, null), 0));
-// extra: selecionarFonteAdicionais (seam) — c3+null → [] (sem fallback p/ MOCK); ≠c3 → MOCK identidade
-check('fonte c3+null=[]', ()=>assert.deepStrictEqual(selecionarFonteAdicionais({categoria_id:'c3'}, null), []));
-check('fonte ≠c3 = MOCK', ()=>assert.strictEqual(selecionarFonteAdicionais({categoria_id:'c1'}, DB_C3_15), MOCK_ADS));
+// selecionarFonteAdicionais — NORM-05: fonte única, SEM seam c3 (snapshot ATUALIZADO: mudança de contrato intencional/revisada)
+check('fonte: devolve dbAds p/ qualquer categoria (sem seam c3)', ()=>assert.strictEqual(selecionarFonteAdicionais({categoria_id:'c1'}, DB_C3_15), DB_C3_15));
+check('fonte: c3 também devolve dbAds', ()=>assert.strictEqual(selecionarFonteAdicionais({categoria_id:'c3'}, DB_C3_15), DB_C3_15));
+check('fonte: dbAds não-array → [] (idêntico ao ramo c3 antigo)', ()=>assert.deepStrictEqual(selecionarFonteAdicionais({categoria_id:'c3'}, null), []));
+check('fonte: prod=null → []', ()=>assert.deepStrictEqual(selecionarFonteAdicionais(null, DB_C3_15), []));
+
+// NORM-05 — pool UNIFICADO (15 c3 + 20 migrados): grupo+aplica separam c3 (simples/...) de não-c3 (acai/marmita)
+const MIGRATED_20 = [
+  {id:'ma1',nome:'Banana',grupo:'acai',tipo:'gratis',preco:0,ordem:1,aplica_categoria_id:null,subgrupo_label:null},
+  {id:'ma2',nome:'Granola',grupo:'acai',tipo:'gratis',preco:0,ordem:2,aplica_categoria_id:null,subgrupo_label:null},
+  {id:'ma3',nome:'Paçoca',grupo:'acai',tipo:'gratis',preco:0,ordem:3,aplica_categoria_id:null,subgrupo_label:null},
+  {id:'ma4',nome:'Amendoim',grupo:'acai',tipo:'gratis',preco:0,ordem:4,aplica_categoria_id:null,subgrupo_label:null},
+  {id:'ma5',nome:'Leite Condensado',grupo:'acai',tipo:'gratis',preco:0,ordem:5,aplica_categoria_id:null,subgrupo_label:null},
+  {id:'ma6',nome:'Leite em Pó',grupo:'acai',tipo:'gratis',preco:0,ordem:6,aplica_categoria_id:null,subgrupo_label:null},
+  {id:'ma7',nome:'Nutella',grupo:'acai',tipo:'pago',preco:8,ordem:7,aplica_categoria_id:null,subgrupo_label:'Adicionais Premium'},
+  {id:'ma8',nome:'Creme de Avelã',grupo:'acai',tipo:'pago',preco:6,ordem:8,aplica_categoria_id:null,subgrupo_label:'Adicionais Premium'},
+  {id:'ma9',nome:'Creme de Leitinho',grupo:'acai',tipo:'pago',preco:6,ordem:9,aplica_categoria_id:null,subgrupo_label:'Adicionais Premium'},
+  {id:'ma10',nome:'Doce de Leite',grupo:'acai',tipo:'pago',preco:5,ordem:10,aplica_categoria_id:null,subgrupo_label:'Adicionais Premium'},
+  {id:'ma11',nome:'Morango',grupo:'acai',tipo:'pago',preco:6,ordem:11,aplica_categoria_id:null,subgrupo_label:'Frutas Premium'},
+  {id:'ma12',nome:'Kiwi',grupo:'acai',tipo:'pago',preco:6,ordem:12,aplica_categoria_id:null,subgrupo_label:'Frutas Premium'},
+  {id:'ma13',nome:'Uva Verde',grupo:'acai',tipo:'pago',preco:6,ordem:13,aplica_categoria_id:null,subgrupo_label:'Frutas Premium'},
+  {id:'ma14',nome:'Coloretti',grupo:'acai',tipo:'pago',preco:4,ordem:14,aplica_categoria_id:null,subgrupo_label:'Chocolates'},
+  {id:'ma15',nome:'Ovomaltine',grupo:'acai',tipo:'pago',preco:4,ordem:15,aplica_categoria_id:null,subgrupo_label:'Chocolates'},
+  {id:'mm1',nome:'Carne Extra',grupo:'marmita',tipo:'pago',preco:5,ordem:1,aplica_categoria_id:null,subgrupo_label:null},
+  {id:'mm2',nome:'Frango Extra',grupo:'marmita',tipo:'pago',preco:5,ordem:2,aplica_categoria_id:null,subgrupo_label:null},
+  {id:'mm3',nome:'Linguiça Extra',grupo:'marmita',tipo:'pago',preco:4,ordem:3,aplica_categoria_id:null,subgrupo_label:null},
+  {id:'mm4',nome:'Ovo',grupo:'marmita',tipo:'pago',preco:2,ordem:4,aplica_categoria_id:null,subgrupo_label:null},
+  {id:'mm5',nome:'Batata Frita',grupo:'marmita',tipo:'pago',preco:3,ordem:5,aplica_categoria_id:null,subgrupo_label:null},
+];
+const POOL35 = [...DB_C3_15, ...MIGRATED_20];
+check('NORM-05 pool: c3 → só as 15 c3 (migrados excluídos por grupo)', ()=>assert.deepStrictEqual(
+  ids(resolverAdicionais(POOL35, P1)), ['s1','s2','s3','s4','s5','s6','p1','p2','p3','p4','f1','f2','f3','c1','c2']));
+check('NORM-05 pool: não-c3 açaí → só as 15 migradas (c3 excluídos por grupo)', ()=>assert.deepStrictEqual(
+  ids(resolverAdicionais(POOL35, {categoria_id:'c4', grupos_ad:null})),
+  ['ma1','ma2','ma3','ma4','ma5','ma6','ma7','ma8','ma9','ma10','ma11','ma12','ma13','ma14','ma15']));
+check('NORM-05 pool: marmita → só as 5 migradas', ()=>assert.deepStrictEqual(
+  ids(resolverAdicionais(POOL35, {categoria_id:'c5', grupos_ad:null})), ['mm1','mm2','mm3','mm4','mm5']));
 
 /* ── (B) PUREZA via deepFreeze (mutação THROW na hora) ───────────────────── */
 check('B pureza resolverAdicionais (input congelado)', ()=>{ const f = deepFreeze(structuredClone(DB_C3_15)), p = deepFreeze(structuredClone(P1)); resolverAdicionais(f, p); });

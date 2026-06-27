@@ -125,6 +125,9 @@ silenciosa. Não otimiza — apenas congela referência (espelha `pricing.bench.
   snapshot em `tests/addons.golden.mjs`. A suíte cresce com o sistema.
 - **Guard de exportações (NORM-04.1).** O golden congela a API pública: `Object.keys(módulo).sort()` deve
   bater com a lista esperada. Adicionar, remover ou renomear export **falha o teste** — obriga revisão explícita.
+  - **Exceção controlada (NORM-05):** `selecionarFonteAdicionais(prod, dbAds, mockAds)` → `(prod, dbAds)`
+    — primeira e única exceção deliberada ao freeze de assinatura, justificada e registrada no ADR NORM-05 §4
+    (a fonte única torna `mockAds` redundante). Não estabelece precedente; a API volta a ficar congelada.
 - **Benchmark reproduzível (NORM-04.1).** `bench:addons` imprime Node/plataforma/arquitetura/dataset/iterações/
   warmup/data, para que a baseline seja comparável entre máquinas e ao longo do tempo.
 
