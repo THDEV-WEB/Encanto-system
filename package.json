@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "test:pricing": "node tests/pricing.golden.mjs",
     "test:addons": "node tests/addons.golden.mjs",
+    "test:deps": "node tests/deps.audit.mjs",
     "verify:norm05": "node scripts/norm05-verify.mjs",
     "bench:pricing": "node scripts/bench/pricing.bench.mjs",
     "bench:addons": "node scripts/bench/addons.bench.mjs"
