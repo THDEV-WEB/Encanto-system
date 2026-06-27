@@ -9,7 +9,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "test:pricing": "node tests/pricing.golden.mjs",
-    "bench:pricing": "node scripts/bench/pricing.bench.mjs"
+    "test:addons": "node tests/addons.golden.mjs",
+    "bench:pricing": "node scripts/bench/pricing.bench.mjs",
+    "bench:addons": "node scripts/bench/addons.bench.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.39.3",

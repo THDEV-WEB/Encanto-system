@@ -5,6 +5,7 @@ import AppShell from './AppShell.jsx';
 import './index.css';
 import { fmt, fmtDate, precoApartir, precoTamanho, norm } from './utils/format.js';
 import { precoUnitario, precoLinha, totalCarrinho, emPromocao, precoVitrine } from './utils/pricing.js';
+import { MOCK_ADS, ADICIONAL_SIMPLES_PRECO, resolverAdicionais, agruparPorGrupo, selecionarFonteAdicionais, cotaGratis, ehAdicionalGratis, resolverPrecoAdicionais } from './utils/addons.js';
 
 /* ============================================================
    ENCANTO DELIVERY — React 18 + Supabase v2
@@ -39,8 +40,6 @@ const CAT_EMOJI = {
 };
 const catEmoji = (nome='') => CAT_EMOJI[(nome||'').toLowerCase()] || '🍽️';
 
-/* Preço do adicional simples EXCEDENTE (após esgotar a cota grátis do tamanho). */
-const ADICIONAL_SIMPLES_PRECO = 2.00;
 /* URL http(s) válida — string começando com http:// ou https://. */
 const isHttpUrl = (url) => typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://'));
 
@@ -186,97 +185,11 @@ const MOCK_PRODS = [
     imagem_url:'https://images.unsplash.com/photo-1625772452859-1c03d884dcd7?w=400&q=80&auto=format&fm=webp&fit=crop',
     disponivel:true,adicionais_gratis:0},
 ];
-/* ── Adicionais separados por grupo de categoria ── */
-const MOCK_ADS = [
-  /* ── GRÁTIS — inclusos no açaí (cota por tamanho) ── */
-  {id:'ag1', nome:'Banana',            preco:0,    ativo:true, tipo:'gratis', grupo:'acai'},
-  {id:'ag2', nome:'Granola',           preco:0,    ativo:true, tipo:'gratis', grupo:'acai'},
-  {id:'ag3', nome:'Paçoca',            preco:0,    ativo:true, tipo:'gratis', grupo:'acai'},
-  {id:'ag4', nome:'Amendoim',          preco:0,    ativo:true, tipo:'gratis', grupo:'acai'},
-  {id:'ag5', nome:'Leite Condensado',  preco:0,    ativo:true, tipo:'gratis', grupo:'acai'},
-  {id:'ag6', nome:'Leite em Pó',       preco:0,    ativo:true, tipo:'gratis', grupo:'acai'},
-  /* ── ADICIONAIS PREMIUM — pagos ── */
-  {id:'ap1', nome:'Nutella',           preco:8.00, ativo:true, tipo:'pago', grupo:'acai', subgrupo_label:'Adicionais Premium'},
-  {id:'ap2', nome:'Creme de Avelã',    preco:6.00, ativo:true, tipo:'pago', grupo:'acai', subgrupo_label:'Adicionais Premium'},
-  {id:'ap3', nome:'Creme de Leitinho', preco:6.00, ativo:true, tipo:'pago', grupo:'acai', subgrupo_label:'Adicionais Premium'},
-  {id:'ap4', nome:'Doce de Leite',     preco:5.00, ativo:true, tipo:'pago', grupo:'acai', subgrupo_label:'Adicionais Premium'},
-  /* ── FRUTAS PREMIUM — pagas ── */
-  {id:'af1', nome:'Morango',           preco:6.00, ativo:true, tipo:'pago', grupo:'acai', subgrupo_label:'Frutas Premium'},
-  {id:'af2', nome:'Kiwi',              preco:6.00, ativo:true, tipo:'pago', grupo:'acai', subgrupo_label:'Frutas Premium'},
-  {id:'af3', nome:'Uva Verde',         preco:6.00, ativo:true, tipo:'pago', grupo:'acai', subgrupo_label:'Frutas Premium'},
-  /* ── CHOCOLATES — pagos ── */
-  {id:'ac1', nome:'Coloretti',         preco:4.00, ativo:true, tipo:'pago', grupo:'acai', subgrupo_label:'Chocolates'},
-  {id:'ac2', nome:'Ovomaltine',        preco:4.00, ativo:true, tipo:'pago', grupo:'acai', subgrupo_label:'Chocolates'},
-  /* ── Grupo: Marmita — TODOS PAGOS (regra global) ── */
-  {id:'amp1',nome:'Carne Extra',       preco:5.00, ativo:true, tipo:'pago',   grupo:'marmita'},
-  {id:'amp2',nome:'Frango Extra',      preco:5.00, ativo:true, tipo:'pago',   grupo:'marmita'},
-  {id:'amp3',nome:'Linguiça Extra',    preco:4.00, ativo:true, tipo:'pago',   grupo:'marmita'},
-  {id:'amp4',nome:'Ovo',               preco:2.00, ativo:true, tipo:'pago',   grupo:'marmita'},
-  {id:'amp5',nome:'Batata Frita',      preco:3.00, ativo:true, tipo:'pago',   grupo:'marmita'},
-];
-
-/* Mapa: categoria_id → grupo de adicionais */
-const CAT_ADDON_GROUP = {
-  'c1': ['acai','marmita'], /* Combos */
-  'c8': ['acai','marmita'], /* Destaques */
-  'c4': ['acai'],           /* Copos Prontos */
-  'c3':['acai'],           /* Monte seu Copo */
-  'c9':['acai'],           /* Batidinhas */
-  'c5': ['marmita'],        /* Cardápio de Marmitas */
-  'c7': [],                 /* Bebidas — sem adicionais */
-  'c10':['marmita'],        /* Pedido Fitness */
-};
-
-/* Filtra adicionais pelo grupo do produto (grupos_ad) ou da categoria */
-/* Nomes permitidos no grupo marmita — apenas proteínas e batata frita */
-const MARMITA_PERMITIDOS = [
-  'carne','frango','linguiça','linguica','ovo','batata','batatinha','proteína','proteina','filé','file','calabresa',
-];
-function marmitaPermitido(nome) {
-  const n = (nome||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
-  return MARMITA_PERMITIDOS.some(p => n.includes(p));
-}
-
-/* Fonte de adicionais por categoria — controle EXPLÍCITO por fase (não automático).
-   c3 (migrada) → tabela real public.adicionais; demais categorias → MOCK_ADS legado. */
-function getFonteAdicionais(prod, dbAds) {
-  if (!prod) return [];
-  const categoriaId = prod.categoria_id;
-  // categoria já migrada para banco
-  if (categoriaId === 'c3') return Array.isArray(dbAds) ? dbAds : [];
-  // categorias ainda não migradas continuam no legado
-  return MOCK_ADS;
-}
-
-function getAdicionaisProd(allAds, prod) {
-  /* prod.grupos_ad tem precedência sobre CAT_ADDON_GROUP */
-  const grupos = prod?.grupos_ad ?? CAT_ADDON_GROUP[prod?.categoria_id] ?? ['acai'];
-  if (grupos.length === 0) return [];
-  const fonte = getFonteAdicionais(prod, allAds);
-  return fonte.filter(a => {
-    const grupo = a.grupo||'acai';
-    if (!grupos.includes(grupo)) return false;
-    if (a.aplica_categoria_id && a.aplica_categoria_id !== prod?.categoria_id) return false;
-    /* Filtro: grupo marmita aceita somente proteínas e batata frita */
-    if (grupo === 'marmita') return marmitaPermitido(a.nome);
-    return true;
-  });
-}
-
-/* Adicionais separados por grupo para o modal dual (marmita+açaí) */
-function getAdsByGrupo(allAds, prod) {
-  const grupos = prod?.grupos_ad ?? CAT_ADDON_GROUP[prod?.categoria_id] ?? ['acai'];
-  const result = {};
-  grupos.forEach(g => {
-    result[g] = allAds.filter(a => {
-      if ((a.grupo||'acai') !== g) return false;
-      if (a.aplica_categoria_id && a.aplica_categoria_id !== prod?.categoria_id) return false;
-      if (g === 'marmita') return marmitaPermitido(a.nome);
-      return true;
-    }).sort((x,y)=>(x.ordem??0)-(y.ordem??0));
-  });
-  return result; /* ex: { marmita: [...], acai: [...] } */
-}
+/* ── Domínio de adicionais → src/utils/addons.js (NORM-04) ──────────────────
+   MOCK_ADS, CAT_ADDON_GROUP, marmitaPermitido, gruposDoProduto,
+   selecionarFonteAdicionais (seam NORM-05), resolverAdicionais (ex-getAdicionaisProd),
+   agruparPorGrupo (ex-getAdsByGrupo), ehAdicionalGratis, cotaGratis,
+   resolverPrecoAdicionais e ADICIONAL_SIMPLES_PRECO vivem agora em ./utils/addons.js. */
 
 
 /* ── Categorias descontinuadas ──────────────────────────────────
@@ -761,30 +674,19 @@ function ProductModalInner({ prod, catNome, adicionais, onClose, onAdd, onSugges
   if (!prod) return null;
 
   /* ── Grupos de adicionais separados por tipo ── */
-  const adsByGrupo  = getAdsByGrupo(adicionais, prod);
+  const adsByGrupo  = agruparPorGrupo(adicionais, prod);
   const grupos      = Object.keys(adsByGrupo);
   const temTamanhos = Array.isArray(prod.tamanhos) && prod.tamanhos.length>0;
-  const gratis_max  = temTamanhos
-    ? Number((tamanho||prod.tamanhos[0])?.adicionais_gratis ?? prod.adicionais_gratis ?? 0)
-    : Number(prod.adicionais_gratis || 0);
+  const gratis_max  = cotaGratis(prod, tamanho);
 
   /* Elegível à franquia grátis (simples). Contagem derivada da seleção atual. */
-  const allGratis   = adicionais.filter(a=>a.tipo==='gratis'||Number(a.preco)===0);
+  const allGratis   = adicionais.filter(ehAdicionalGratis);
   const ehGratisAd  = ad => !!allGratis.find(g=>g.id===ad.id);
   const selGratisN  = sel.filter(ehGratisAd).length;
   const gratisSobrando = Math.max(0, gratis_max - selGratisN);
 
-  /* Patch H — preço efetivo DERIVADO do estado atual (não congela no toggle):
-     os primeiros `gratis_max` simples ficam grátis; os excedentes R$ 2,00.
-     Robusto a marcar/desmarcar em qualquer ordem. Premium/frutas/chocolates: preço cheio. */
-  let _gUsados = 0;
-  const selComPreco = sel.map(ad => {
-    if (ehGratisAd(ad)) {
-      _gUsados++;
-      return { ...ad, preco: _gUsados <= gratis_max ? 0 : (Number(ad.preco)||ADICIONAL_SIMPLES_PRECO) };
-    }
-    return { ...ad, preco: Number(ad.preco)||0 };
-  });
+  /* Preço efetivo da seleção pela franquia grátis (engine única em addons.js). */
+  const selComPreco = resolverPrecoAdicionais(sel, gratis_max, ehGratisAd);
   const precoEfetivo = ad => selComPreco.find(a=>a.id===ad.id)?.preco;
 
   const toggle = ad => {
@@ -911,7 +813,7 @@ function ProductModalInner({ prod, catNome, adicionais, onClose, onAdd, onSugges
           {/* ── Adicionais por grupo (Marmita / Açaí / etc.) ── */}
           {grupos.map(grupo => {
             const adsGrupo   = adsByGrupo[grupo] || [];
-            const gratisList = adsGrupo.filter(a=>a.tipo==='gratis'||Number(a.preco)===0);
+            const gratisList = adsGrupo.filter(ehAdicionalGratis);
             const pagosList  = adsGrupo.filter(a=>a.tipo==='pago'&&Number(a.preco)>0);
             if (adsGrupo.length===0) return null;
             return (
@@ -3872,7 +3774,7 @@ function StoreApp({ onAdmin }) {
         <ProductModal
           prod={modal}
           catNome={(modal._catNome)||''}
-          adicionais={getAdicionaisProd(adicionais, modal)}
+          adicionais={resolverAdicionais(selecionarFonteAdicionais(modal, adicionais), modal)}
           onClose={()=>setModal(null)}
           onAdd={(p,q,a,o)=>{ cart.add(p,q,a,o); }}
           onSuggest={()=>{
