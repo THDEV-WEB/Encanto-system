@@ -183,7 +183,7 @@ Caso **qualquer** etapa termine em **FAILED** ou **ABORTED**:
 | 4. Constraints | **SUCCESS** | 2026-06-28T16:51:46–48 | pré-val 9/9 = 0 violações; 8 constraints + slug NOT NULL (todas convalidated); 2078 ms; exit 0; sem dado corrigido (evidência abaixo) |
 | 5. Validação de schema | **SUCCESS** | 2026-06-28T16:58 | auditoria final: schema == ADR, 0 divergências (0 faltando / 0 excedente); 10/10 constraints VALID; 6/6 índices válidos; 0 triggers; 0 funções/views/seq novas; 7674 ms (evidência abaixo) |
 | 6. Build | **SUCCESS** | 2026-06-28T17:04:46–52 | `npm run build` exit 0; 0 erros; 1 warning (chunk>500kB, pré-existente); 3 assets; banco inalterado; código limpo; 5375 ms (evidência abaixo) |
-| 7. Testes da fase | PENDING | — | — |
+| 7. Testes da fase | **SUCCESS** | 2026-06-28T~17:07 | test:deps/pricing/addons todos exit 0 (0 falhas); banco idêntico (pc rows=0); código/árvore limpos (evidência abaixo) |
 | 8. Validação funcional (tel 44) | PENDING | — | — |
 | 9. Evidências | PENDING | — | — |
 | 10. Commit | PENDING | — | hash = ? |
@@ -420,6 +420,29 @@ Codigo                : git status limpo antes e depois (0 modificacao automatic
 Schema da F1A         : build no HEAD 40ec231, working tree limpo, sem ajuste manual intermediario;
                         F1A nao tocou src/ (so docs/migrations/scripts/package.json).
 Fingerprint: commit 40ec231 · branch feature/norm-06-f1a · Node v24.17.0 · win32 x64 · UTC 2026-06-28T17:04:46Z
+```
+
+### Evidência — Etapa 7 (Testes da fase) — STATE: SUCCESS
+
+3 suítes (os guards dos domínios), todas exit 0; banco intocado; código intocado; árvore limpa.
+
+```text
+test:deps    -> node tests/deps.audit.mjs     -> exit 0 · 800 ms · 10 checks (10 OK, 0 fail, 0 skip)
+test:pricing -> node tests/pricing.golden.mjs -> exit 0 · 750 ms · 6 grupos (equivalencia, absoluto, real,
+                pureza, idempotencia, bordas) — todos OK, 0 fail, 0 skip
+test:addons  -> node tests/addons.golden.mjs  -> exit 0 · 769 ms · 6 grupos (snapshot, pureza, idempotencia,
+                taxonomia, guard-imports, pin-cruzado) — todos OK, 0 fail, 0 skip
+(golden suites agregam multiplas assercoes por grupo e emitem 1 linha de sucesso; exit 0 = todas passaram)
+
+Validacao cruzada:
+  Schema do banco pos-testes : cat_cols=16, pc_cols=6, constraints=10, indices=6, pc_policies=1, triggers=0,
+                               product_collections rows=0 -> IDENTICO ao pos-Etapa-6 (banco inalterado).
+  Escrita pelos testes       : NENHUMA (suites nao conectam ao banco: deps=analise estatica de src/;
+                               pricing/addons=modulos puros). Sem INSERT/UPDATE/DELETE/ALTER/DROP/CREATE.
+  src/ modificado            : NENHUM (git status limpo)
+  Working tree               : limpo · nenhum teste novo criado
+Fingerprint: commit 0bb7677 · branch feature/norm-06-f1a · Node v24.17.0 · win32 x64 · UTC 2026-06-28 (~17:07Z)
+RESUMO: test:deps=PASS · test:pricing=PASS · test:addons=PASS · STATE: SUCCESS
 ```
 
 ---
