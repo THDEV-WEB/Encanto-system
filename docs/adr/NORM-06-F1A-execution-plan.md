@@ -182,7 +182,7 @@ Caso **qualquer** etapa termine em **FAILED** ou **ABORTED**:
 | 3. Índices | **SUCCESS** | 2026-06-28T16:35:48–49 | 2 índices criados (pc_collection_idx, pc_product_idx) válidos+ready; 1678 ms; exit 0; nada além de índices alterado (evidência abaixo) |
 | 4. Constraints | **SUCCESS** | 2026-06-28T16:51:46–48 | pré-val 9/9 = 0 violações; 8 constraints + slug NOT NULL (todas convalidated); 2078 ms; exit 0; sem dado corrigido (evidência abaixo) |
 | 5. Validação de schema | **SUCCESS** | 2026-06-28T16:58 | auditoria final: schema == ADR, 0 divergências (0 faltando / 0 excedente); 10/10 constraints VALID; 6/6 índices válidos; 0 triggers; 0 funções/views/seq novas; 7674 ms (evidência abaixo) |
-| 6. Build | PENDING | — | — |
+| 6. Build | **SUCCESS** | 2026-06-28T17:04:46–52 | `npm run build` exit 0; 0 erros; 1 warning (chunk>500kB, pré-existente); 3 assets; banco inalterado; código limpo; 5375 ms (evidência abaixo) |
 | 7. Testes da fase | PENDING | — | — |
 | 8. Validação funcional (tel 44) | PENDING | — | — |
 | 9. Evidências | PENDING | — | — |
@@ -397,6 +397,29 @@ Fingerprint: project hvbcdxsagkjtfjwvnslo · db postgres · schema public · UTC
   · commit aed72fc · branch feature/norm-06-f1a · node v24.17.0 · win32 x64
 Duracao da auditoria: 7674 ms
 STATE: SUCCESS — zero divergencias
+```
+
+### Evidência — Etapa 6 (Build) — STATE: SUCCESS
+
+Comando: `npm run build` (vite v5.4.21) · exit 0 · 107 módulos · duração 5375 ms (vite: built in 2.77s).
+
+```text
+Assets gerados (tamanho final):
+  dist/index.html                  1211 B  (1.21 kB · gzip 0.69 kB)
+  dist/assets/index-CV8UexFo.css 523821 B  (523.82 kB · gzip 372.04 kB)
+  dist/assets/index-BkmThAW9.js  540132 B  (539.17 kB · gzip 171.19 kB)
+
+Erros   : 0
+Warnings: 1 -> "Some chunks are larger than 500 kB after minification" (limite de chunk do Vite)
+          classificacao: PRE-EXISTENTE (F1A nao alterou nenhum arquivo de src/; bundle identico ao de antes da F1A)
+
+Banco durante o build : NENHUMA escrita/DDL/migracao (vite build nao acessa o banco).
+  Read-only pos-build  : cat_cols=16, pc_cols=6, constraints=10, indices=6, pc_policies=1, triggers=0
+                         -> IDENTICO ao pos-Etapa-5 (schema inalterado).
+Codigo                : git status limpo antes e depois (0 modificacao automatica; dist/ e gitignored).
+Schema da F1A         : build no HEAD 40ec231, working tree limpo, sem ajuste manual intermediario;
+                        F1A nao tocou src/ (so docs/migrations/scripts/package.json).
+Fingerprint: commit 40ec231 · branch feature/norm-06-f1a · Node v24.17.0 · win32 x64 · UTC 2026-06-28T17:04:46Z
 ```
 
 ---
