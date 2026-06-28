@@ -215,6 +215,7 @@ Fluxo: **Categorias → slug gerado → existe colisão? → SIM → ABORTAR.**
 
 ### F1A — DDL estrutural (schema · tabelas · índices · constraints · guard de slug) `[backup: NORM-06-F1A]`
 **Escopo:** **exclusivamente estrutura de banco.** **Sem triggers de invariante (F1B). Sem qualquer redesenho de RLS (F1C).** A F1A não contém decisão de segurança — a única configuração de permissão necessária para a tabela nova aparece **destacada abaixo como medida temporária de compatibilidade**, fora do desenho estrutural.
+**Execução:** seguir **obrigatoriamente** o checklist operacional [F1A — Execution Plan](NORM-06-F1A-execution-plan.md) — procedimento institucional (pré-condições → 11 etapas em ordem imutável → abort imediato em qualquer falha). É o roteiro oficial desta fase.
 
 **1) Estrutura (DDL) — o desenho de fato:**
 - **Colunas (`ALTER TABLE categories ADD COLUMN IF NOT EXISTS`)** → `slug, descricao, imagem, banner, tipo (NOT NULL DEFAULT 'business')`, `estrategia, definicao(jsonb), starts_at, ends_at`. (`tipo … DEFAULT` é metadata-only/instantâneo no PG11+.)
@@ -493,3 +494,5 @@ A partir deste ponto:
 **Objetivo:** garantir que a implementação siga **exatamente** o desenho aprovado, evitando expansão de escopo durante o desenvolvimento.
 
 > A partir do congelamento, este ADR é referência de implementação. As próximas interações sobre o NORM-06 são de **execução** (rito: backup → F1A → validações → commit → rollback documentado), não de arquitetura.
+
+> **Checklist oficial de execução:** a F1A é executada **exclusivamente** segundo o runbook [F1A — Execution Plan](NORM-06-F1A-execution-plan.md) (procedimento institucional, sem pular/reordenar etapas). O runbook é operacional (anotado com evidências na execução) e **não altera** a arquitetura congelada deste ADR.

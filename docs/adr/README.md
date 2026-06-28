@@ -38,6 +38,8 @@ Decisões de produto/arquitetura registradas como design, ainda **não implement
 | NORM-06.1 / HARDEN-RLS | RLS de coluna local (anon=só disponíveis · authenticated=todos) — **extraído do NORM-06** | Reservado (fase própria) | — |
 | HARDEN-LEGACY | Remoção de legado (`DROP image_url`, `DROP destaque`) após estabilização — **extraído do NORM-06** | Reservado (fase própria) | — |
 
+**Runbooks de execução:** [NORM-06 · F1A — Execution Plan](NORM-06-F1A-execution-plan.md) — checklist operacional **obrigatório** da F1A (procedimento institucional: pré-condições → 11 etapas em ordem imutável → abort em qualquer falha; não altera arquitetura).
+
 ## Sequência da evolução arquitetural
 
 ```
