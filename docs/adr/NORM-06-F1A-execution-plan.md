@@ -181,7 +181,7 @@ Caso **qualquer** etapa termine em **FAILED** ou **ABORTED**:
 | 2. DDL | **SUCCESS** | 2026-06-28T16:25:49–51 | 5 instruções · `categories` +9 cols · `product_collections` criada (6 cols) · RLS+policy provisória · slug 9/9 · 1802 ms · exit 0 · sem warnings (evidência abaixo) |
 | 3. Índices | **SUCCESS** | 2026-06-28T16:35:48–49 | 2 índices criados (pc_collection_idx, pc_product_idx) válidos+ready; 1678 ms; exit 0; nada além de índices alterado (evidência abaixo) |
 | 4. Constraints | **SUCCESS** | 2026-06-28T16:51:46–48 | pré-val 9/9 = 0 violações; 8 constraints + slug NOT NULL (todas convalidated); 2078 ms; exit 0; sem dado corrigido (evidência abaixo) |
-| 5. Validação de schema | PENDING | — | — |
+| 5. Validação de schema | **SUCCESS** | 2026-06-28T16:58 | auditoria final: schema == ADR, 0 divergências (0 faltando / 0 excedente); 10/10 constraints VALID; 6/6 índices válidos; 0 triggers; 0 funções/views/seq novas; 7674 ms (evidência abaixo) |
 | 6. Build | PENDING | — | — |
 | 7. Testes da fase | PENDING | — | — |
 | 8. Validação funcional (tel 44) | PENDING | — | — |
@@ -359,6 +359,44 @@ Inalterado nesta etapa: categories 16 cols / pc 6 cols (nenhuma coluna add/remov
   product_collections_uk) — sao o proprio mecanismo das constraints; nenhum indice standalone criado/alterado.
 Fingerprint: project hvbcdxsagkjtfjwvnslo · db postgres · schema public · UTC 2026-06-28T16:52:41Z
   · commit 73a07b2 · branch feature/norm-06-f1a · node v24.17.0 · win32 x64.
+```
+
+### Evidência — Etapa 5 (Validação de Schema / Auditoria Final) — STATE: SUCCESS
+
+Auditoria read-only (introspecção). **Schema atual == schema previsto** (ADR NORM-06A §2.1/§2.3 + Errata-01). **Zero divergências.**
+
+```text
+Inventario F1A (criado) — tudo conferido vs ADR:
+  Tabela     : product_collections (1)
+  Colunas    : categories +9 (slug[NOT NULL], descricao, imagem, banner, tipo[NOT NULL DEFAULT 'business'],
+               estrategia, definicao[jsonb], starts_at[tstz], ends_at[tstz]) · product_collections 6
+               (id uuid PK gen_random_uuid, product_id uuid, collection_id text, ordem int DEFAULT 0,
+               fixado bool DEFAULT false, created_at tstz DEFAULT now())
+  Indices    : pc_collection_idx (collection_id, fixado DESC, ordem), pc_product_idx (product_id),
+               product_collections_pkey (id), product_collections_uk (product_id, collection_id),
+               categories_slug_uk (slug) — todos indisvalid=true / indisready=true
+  Constraints: slug NOT NULL; categories_slug_uk UNIQUE; categories_tipo_chk; categories_estrategia_chk;
+               categories_sti_coll_chk; categories_sti_biz_chk; product_collections_pkey PK;
+               product_collections_uk UNIQUE; product_collections_product_fk FK; product_collections_collection_fk FK
+               — todas convalidated=true (VALID)
+  Policies   : pc_public_read (product_collections) — provisoria (Etapa 2)
+
+Conferencias:
+  Objetos faltando         : 0
+  Objetos excedentes (F1A) : 0
+  Nomes conforme previsto  : OK (todos)
+  Tipos/defaults/nulabilidade/definicoes vs ADR : OK (todos)
+  Constraints VALID        : 10/10 convalidated=true
+  Indices validos          : 6/6 indisvalid=true
+  Triggers criadas na F1A  : 0
+  Funcoes/views/RPC novas  : 0 (resolve_collection/list_products ausentes — sao F3)
+  Sequencias novas         : 0
+  Inalterado               : categories 7 cols originais intactas; 1 policy pre-existente (categories); products intocada
+
+Fingerprint: project hvbcdxsagkjtfjwvnslo · db postgres · schema public · UTC 2026-06-28T16:58:37Z
+  · commit aed72fc · branch feature/norm-06-f1a · node v24.17.0 · win32 x64
+Duracao da auditoria: 7674 ms
+STATE: SUCCESS — zero divergencias
 ```
 
 ---
