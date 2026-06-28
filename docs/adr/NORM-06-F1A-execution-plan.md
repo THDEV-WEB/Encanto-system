@@ -185,7 +185,7 @@ Caso **qualquer** etapa termine em **FAILED** ou **ABORTED**:
 | 6. Build | **SUCCESS** | 2026-06-28T17:04:46–52 | `npm run build` exit 0; 0 erros; 1 warning (chunk>500kB, pré-existente); 3 assets; banco inalterado; código limpo; 5375 ms (evidência abaixo) |
 | 7. Testes da fase | **SUCCESS** | 2026-06-28T~17:07 | test:deps/pricing/addons todos exit 0 (0 falhas); banco idêntico (pc rows=0); código/árvore limpos (evidência abaixo) |
 | 8. Validação funcional (tel 44) | **SUCCESS** | 2026-06-28T~17:14 | pedido real preservado (só artefatos de serialização); src/ diff vazio; product_collections vazia; 0 regressão (evidência abaixo) |
-| 9. Evidências | PENDING | — | — |
+| 9. Evidências | **SUCCESS** | 2026-06-28T~17:20 | consolidação formal do ledger (Etapas 0–8) — só documentação (ledger abaixo) |
 | 10. Commit | PENDING | — | hash = ? |
 | 11. Atualização documental | PENDING | — | — |
 
@@ -478,6 +478,37 @@ Regressao funcional:
 Resumo executivo:
   Estrutura: PASS · Pedido real: PASS · Checkout: PASS · Compatibilidade: PASS · Regressao funcional: PASS
 Fingerprint: commit 0155be9 · branch feature/norm-06-f1a · Node v24.17.0 · win32 x64 · UTC 2026-06-28 (~17:14Z)
+STATE: SUCCESS
+```
+
+### Consolidação de Evidências — Etapa 9 — STATE: SUCCESS
+
+Fechamento formal do registro de evidências da F1A. **Ledger completo** (branch `feature/norm-06-f1a`):
+
+| Etapa | Estado | Commit | Evidência-chave |
+|---|---|---|---|
+| 0 Execution Gate | SUCCESS | c1e6850→ce16ff6 | backup `snapshot-NORM-06-F1A-2026-06-28T15-47-11-130Z.json`; 10/10 gate |
+| 1 Guard de slug | SUCCESS | `ce16ff6` | report SHA-256 `3d57903148ed…1cfa`; 0 colisões; casos conhecidos OK; read-only |
+| 2 DDL | SUCCESS | `ef8508d` | `step2.sql`; categories +9 cols; product_collections; RLS provisória; 1802 ms |
+| 3 Índices | SUCCESS | `73a07b2` | `step3.sql`; pc_collection_idx, pc_product_idx (indisvalid=true); 1678 ms |
+| 4 Constraints | SUCCESS | `aed72fc` | `step4.sql`; 8 constraints + slug NOT NULL (convalidated); pré-val 0 viol.; 2078 ms |
+| 5 Validação de schema | SUCCESS | `40ec231` | auditoria final: 0 divergências; 7674 ms |
+| 6 Build | SUCCESS | `0bb7677` | `npm run build` exit 0; 0 erros; 1 warning pré-existente; 5375 ms |
+| 7 Testes da fase | SUCCESS | `0155be9` | test:deps/pricing/addons = PASS |
+| 8 Validação funcional | SUCCESS | `c95ff0d` | pedido tel 44 preservado; src/ diff vazio; product_collections vazia |
+| 9 Registro de evidências | SUCCESS | (este commit) | consolidação documental |
+
+```text
+Artefatos versionados (feature/norm-06-f1a):
+  migrations/ : NORM-06-F1A-step2.sql (+rollback), step3.sql (+rollback), step4.sql (+rollback)
+  docs/adr/   : NORM-06-F1A-errata-01-slug.md, NORM-06-F1A-execution-plan.md (este runbook), README.md
+  scripts/    : norm06-f1a-slug-guard.mjs (npm run guard:slug)
+Backup/restore point: snapshot-NORM-06-F1A-2026-06-28T15-47-11-130Z.json (fora do git, em .encanto/backups)
+
+Rollback global da F1A (ordem inversa): step4-rollback.sql -> step3-rollback.sql -> step2-rollback.sql
+  (+ restore do snapshot se necessario). Cada etapa tem rollback dedicado e commit revertivel.
+
+Etapa 9 NAO alterou codigo, banco, migracoes nem comportamento — apenas consolidou esta secao.
 STATE: SUCCESS
 ```
 
