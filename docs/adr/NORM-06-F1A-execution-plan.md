@@ -3,7 +3,7 @@
 - **Tipo:** runbook de execução controlada (procedimento institucional) — **não é arquitetura.**
 - **Pertence a:** [ADR NORM-06 (congelado)](NORM-06-collections.md) §7 F1A. Este documento **não altera** arquitetura, escopo, SQL, código nem fases — apenas formaliza **como** a F1A é executada.
 - **Natureza:** trate a F1A como uma **implantação de banco em produção**. Cada etapa tem resultado esperado e condição de abort. **Nenhuma etapa é pulada; nenhuma muda de ordem.**
-- **Aplica a SQL desta fase:** **exclusivamente** o DDL/guard já desenhados no ADR (§6 guard de slug, §7 F1A "1) Estrutura (DDL)" + "2) medida temporária de compatibilidade"). Este runbook **não introduz SQL novo**.
+- **Aplica a SQL desta fase:** **exclusivamente** o DDL/guard já desenhados no ADR (§6 guard de slug, §7 F1A "1) Estrutura (DDL)" + "2) medida temporária de compatibilidade"). Este runbook **não introduz SQL novo** — **exceção:** a **expressão de slug** segue a forma **corrigida** da [Errata-01](NORM-06-F1A-errata-01-slug.md) (bugfix de implementação; o ADR permanece congelado).
 
 > **Regra-mãe:** se **qualquer** verificação falhar — no Execution Gate ou em qualquer etapa — **PARAR IMEDIATAMENTE** (estado FAILED/ABORTED). Nunca "seguir para testar depois". Sem improviso, sem auto-correção.
 
@@ -80,16 +80,20 @@ Caso **qualquer** etapa termine em **FAILED** ou **ABORTED**:
 > Cada etapa começa em PENDING → RUNNING e deve terminar em **SUCCESS** para liberar o **Gate entre etapas**. Qualquer término em **FAILED/ABORTED** dispara a **Regra de rollback** e encerra a execução.
 
 ### Etapa 1 — Guard de Slug
-- **Ação:** executar **primeiro** a verificação de colisões (ADR §6), com a **mesma expressão** do backfill.
-- **Resultado esperado:** **0 colisões** (relatório vazio).
-- **Se houver QUALQUER colisão:**
+- **Ação:** executar `npm run guard:slug` ([`scripts/norm06-f1a-slug-guard.mjs`](../../scripts/norm06-f1a-slug-guard.mjs), read-only). Usa a **expressão CORRIGIDA da [Errata-01](NORM-06-F1A-errata-01-slug.md)** (não a do ADR §6/§7, cujo bug está documentado na errata) — a **mesma** que o backfill da Etapa 2 usará.
+- **Resultado esperado (todos):**
+  - **0 colisões**;
+  - **casos conhecidos exatos** (Cardápio de Marmitas→`cardapio-de-marmitas`, Destaques→`destaques`, Monte seu Copo→`monte-seu-copo`, Promoção do Dia→`promocao-do-dia`);
+  - **nenhum slug vazio ou com hífen nas pontas**;
+  - script encerra em **SUCCESS** (exit 0).
+- **Se houver QUALQUER colisão OU divergência de caso conhecido:**
   - **NÃO** corrigir automaticamente;
   - **NÃO** gerar slug alternativo / sufixo / número;
   - **NÃO** continuar.
   - → **ABORTAR MIGRAÇÃO** (estado **ABORTED**). Resolução é **humana**; depois reinicia-se do **Execution Gate (§0)**.
 
 ### Etapa 2 — Aplicação do DDL
-- **Ação:** aplicar **exclusivamente** o DDL previsto na F1A (ADR §7 F1A "1) Estrutura"): colunas novas em `categories`, backfill de `slug`, `CREATE TABLE product_collections`. *(A "2) medida temporária de compatibilidade" — `ENABLE RLS` + `pc_public_read` — é parte da F1A e entra aqui, destacada como provisória.)*
+- **Ação:** aplicar **exclusivamente** o DDL previsto na F1A (ADR §7 F1A "1) Estrutura"): colunas novas em `categories`, backfill de `slug`, `CREATE TABLE product_collections`. **O `UPDATE categories SET slug = …` usa byte-a-byte a expressão corrigida da [Errata-01](NORM-06-F1A-errata-01-slug.md)** (mesma do guard da Etapa 1). *(A "2) medida temporária de compatibilidade" — `ENABLE RLS` + `pc_public_read` — é parte da F1A e entra aqui, destacada como provisória.)*
 - **Resultado esperado:** tabela criada; colunas corretas; **sem warnings**; **nenhuma alteração fora do escopo**.
 - **Abort:** qualquer erro/warning inesperado ou objeto fora do desenho → parar.
 

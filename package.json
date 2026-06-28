@@ -12,6 +12,7 @@
     "test:addons": "node tests/addons.golden.mjs",
     "test:deps": "node tests/deps.audit.mjs",
     "verify:norm05": "node scripts/norm05-verify.mjs",
+    "guard:slug": "node scripts/norm06-f1a-slug-guard.mjs",
     "bench:pricing": "node scripts/bench/pricing.bench.mjs",
     "bench:addons": "node scripts/bench/addons.bench.mjs"
   },

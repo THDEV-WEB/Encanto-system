@@ -40,6 +40,8 @@ Decisões de produto/arquitetura registradas como design, ainda **não implement
 
 **Runbooks de execução:** [NORM-06 · F1A — Execution Plan](NORM-06-F1A-execution-plan.md) — checklist operacional **obrigatório** da F1A (procedimento institucional: pré-condições → 11 etapas em ordem imutável → abort em qualquer falha; não altera arquitetura).
 
+**Erratas:** [NORM-06 · F1A — Errata-01 (slug)](NORM-06-F1A-errata-01-slug.md) — correção da expressão SQL de slug (bugfix de implementação descoberto na execução; **não** altera arquitetura/escopo/decisões; ADR permanece congelado).
+
 ## Sequência da evolução arquitetural
 
 ```
