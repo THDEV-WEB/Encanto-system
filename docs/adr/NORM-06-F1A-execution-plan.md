@@ -180,7 +180,7 @@ Caso **qualquer** etapa termine em **FAILED** ou **ABORTED**:
 | 1. Guard de slug | **SUCCESS** | 2026-06-28T16:09:10 | 9 cat · 0 colisões · 9 critérios OK · read-only · 1739 ms · SHA-256 `3d579031…` (relatório integral abaixo) |
 | 2. DDL | **SUCCESS** | 2026-06-28T16:25:49–51 | 5 instruções · `categories` +9 cols · `product_collections` criada (6 cols) · RLS+policy provisória · slug 9/9 · 1802 ms · exit 0 · sem warnings (evidência abaixo) |
 | 3. Índices | **SUCCESS** | 2026-06-28T16:35:48–49 | 2 índices criados (pc_collection_idx, pc_product_idx) válidos+ready; 1678 ms; exit 0; nada além de índices alterado (evidência abaixo) |
-| 4. Constraints | PENDING | — | — |
+| 4. Constraints | **SUCCESS** | 2026-06-28T16:51:46–48 | pré-val 9/9 = 0 violações; 8 constraints + slug NOT NULL (todas convalidated); 2078 ms; exit 0; sem dado corrigido (evidência abaixo) |
 | 5. Validação de schema | PENDING | — | — |
 | 6. Build | PENDING | — | — |
 | 7. Testes da fase | PENDING | — | — |
@@ -324,6 +324,41 @@ Inalterado nesta etapa: categories 16 cols · product_collections 6 cols · 1 po
   · 0 triggers · constraints = product_collections_pkey (sem CHECK/UNIQUE/FK novos) · products: indices inalterados (2).
 Fingerprint: project hvbcdxsagkjtfjwvnslo · db postgres · schema public · UTC 2026-06-28T16:36:27Z
   · commit ef8508d · branch feature/norm-06-f1a · node v24.17.0 · win32 x64.
+```
+
+### Evidência — Etapa 4 (Constraints) — STATE: SUCCESS
+
+Arquivo aplicado: `migrations/NORM-06-F1A-step4.sql` (atômico) · rollback: `migrations/NORM-06-F1A-step4-rollback.sql`.
+
+```text
+Pre-validacoes (read-only, ANTES de aplicar): 9/9 verificacoes = 0 violacoes
+  (slug null, slug dup, tipo, estrategia, sti_coll, sti_biz, pc dup, fk product, fk collection)
+
+SQL executado (mensagens do banco):
+  BEGIN / ALTER x9 / COMMIT / DONE
+  exit code: 0 — sem warnings — sem erros
+Started: 2026-06-28T16:51:46Z   Finished: 2026-06-28T16:51:48Z   Duration: 2078 ms
+
+Constraints aplicadas (todas convalidated=true):
+  categories.slug                   -> NOT NULL (column-level)
+  categories_slug_uk    UNIQUE      -> UNIQUE (slug)
+  categories_tipo_chk   CHECK       -> CHECK (tipo = ANY (ARRAY['business','collection']))
+  categories_estrategia_chk CHECK   -> CHECK (estrategia = ANY (ARRAY['manual','rule','smart']))
+  categories_sti_coll_chk CHECK     -> CHECK (tipo='collection' OR (estrategia IS NULL AND definicao IS NULL AND starts_at IS NULL AND ends_at IS NULL))
+  categories_sti_biz_chk CHECK      -> CHECK (tipo='business' OR estrategia IS NOT NULL)
+  product_collections_uk UNIQUE     -> UNIQUE (product_id, collection_id)
+  product_collections_product_fk FK -> FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+  product_collections_collection_fk FK -> FOREIGN KEY (collection_id) REFERENCES categories(id) ON DELETE CASCADE
+
+Catalogo: 8 constraints novas (5 categories + 3 product_collections) + slug NOT NULL; NENHUMA adicional.
+Dados: todos os registros satisfazem (convalidated=true, sem NOT VALID); pre-validacao 0 violacoes;
+  NENHUM dado corrigido (migracao so tem ALTER, zero DML).
+Inalterado nesta etapa: categories 16 cols / pc 6 cols (nenhuma coluna add/remove/retipo; unica mudanca de
+  coluna = slug -> NOT NULL, que e a propria constraint de nulidade); 2 policies (pre-existente categories +
+  pc_public_read) inalteradas; 0 triggers. Indices: +2 IMPLICITOS das UNIQUE (categories_slug_uk,
+  product_collections_uk) — sao o proprio mecanismo das constraints; nenhum indice standalone criado/alterado.
+Fingerprint: project hvbcdxsagkjtfjwvnslo · db postgres · schema public · UTC 2026-06-28T16:52:41Z
+  · commit 73a07b2 · branch feature/norm-06-f1a · node v24.17.0 · win32 x64.
 ```
 
 ---
