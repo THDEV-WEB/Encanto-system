@@ -82,7 +82,13 @@ Caso **qualquer** etapa termine em **FAILED** ou **ABORTED**:
 ### Etapa 1 — Guard de Slug `[READ-ONLY]`
 - **Ação:** executar `npm run guard:slug` ([`scripts/norm06-f1a-slug-guard.mjs`](../../scripts/norm06-f1a-slug-guard.mjs)). Usa a **expressão CORRIGIDA da [Errata-01](NORM-06-F1A-errata-01-slug.md)** (não a do ADR §6/§7, cujo bug está documentado na errata) — a **mesma** que o backfill da Etapa 2 usará.
 - **Declaração de read-only (impressa no relatório):** *esta etapa executa apenas consultas — nenhum INSERT / UPDATE / DELETE / ALTER TABLE / migração / escrita no banco.*
-- **Relatório reproduzível obrigatório:** expressão SQL usada · fingerprint do banco (Project ID · Schema · Timestamp UTC · nº de categorias) · contagens (categorias analisadas, slugs gerados, colisões) · lista completa `| Categoria | Slug |` · saída efetiva dos casos conhecidos · rodapé `Slug collisions: N` + `Status: SUCCESS|FAILED`.
+- **Relatório reproduzível + autoauditável obrigatório (nesta ordem):**
+  1. declaração read-only · expressão SQL usada · fingerprint do banco (Project ID · Database · Schema · Timestamp UTC · nº de categorias) · contagens (categorias, slugs, `Slug collisions: N`) · lista completa `| Categoria | Slug |` · saída efetiva dos casos conhecidos · bloco de critério de aceite;
+  2. **Execution Fingerprint:** Commit SHA · Branch · Node Version · Plataforma · Arquitetura · Project ID · Database · Schema · Timestamp UTC · Script (`guard:slug`) · Working tree (clean/dirty);
+  3. **Duration:** Started · Finished · Duration (ms) — rastreabilidade, não benchmark;
+  4. **Database immutability:** `Database writes detected: 0` · `DDL executed: 0` · `Migration executed: 0` · `Status: READ ONLY CONFIRMED`;
+  5. **Execution Report SHA256:** hash do corpo do relatório (tamper-evidence);
+  6. **Encerramento formal:** bloco `ETAPA 1 / STATE: SUCCESS|FAILED / NEXT STEP / NO DATABASE WRITES DETECTED`.
 - **Critério de aceite — SUCCESS exige TODOS simultaneamente:**
   1. **0 colisões**;
   2. **casos conhecidos aprovados** (Cardápio de Marmitas→`cardapio-de-marmitas` · Destaques→`destaques` · Monte seu Copo→`monte-seu-copo` · Promoção do Dia→`promocao-do-dia`);
