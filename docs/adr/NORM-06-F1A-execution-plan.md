@@ -184,7 +184,7 @@ Caso **qualquer** etapa termine em **FAILED** ou **ABORTED**:
 | 5. Validação de schema | **SUCCESS** | 2026-06-28T16:58 | auditoria final: schema == ADR, 0 divergências (0 faltando / 0 excedente); 10/10 constraints VALID; 6/6 índices válidos; 0 triggers; 0 funções/views/seq novas; 7674 ms (evidência abaixo) |
 | 6. Build | **SUCCESS** | 2026-06-28T17:04:46–52 | `npm run build` exit 0; 0 erros; 1 warning (chunk>500kB, pré-existente); 3 assets; banco inalterado; código limpo; 5375 ms (evidência abaixo) |
 | 7. Testes da fase | **SUCCESS** | 2026-06-28T~17:07 | test:deps/pricing/addons todos exit 0 (0 falhas); banco idêntico (pc rows=0); código/árvore limpos (evidência abaixo) |
-| 8. Validação funcional (tel 44) | PENDING | — | — |
+| 8. Validação funcional (tel 44) | **SUCCESS** | 2026-06-28T~17:14 | pedido real preservado (só artefatos de serialização); src/ diff vazio; product_collections vazia; 0 regressão (evidência abaixo) |
 | 9. Evidências | PENDING | — | — |
 | 10. Commit | PENDING | — | hash = ? |
 | 11. Atualização documental | PENDING | — | — |
@@ -443,6 +443,42 @@ Validacao cruzada:
   Working tree               : limpo · nenhum teste novo criado
 Fingerprint: commit 0bb7677 · branch feature/norm-06-f1a · Node v24.17.0 · win32 x64 · UTC 2026-06-28 (~17:07Z)
 RESUMO: test:deps=PASS · test:pricing=PASS · test:addons=PASS · STATE: SUCCESS
+```
+
+### Evidência — Etapa 8 (Validação funcional / pedido real tel 44) — STATE: SUCCESS
+
+Pedido de referência (snapshot Etapa 0 == atual): customer `6873df96` "4ee" tel "44"; order `05821c13` total 43.989999999999995 status recebido/dinheiro/"ff"; 1 item "Bife Acebolado" qty 1 price 43.989999999999995 + 3 adicionais (Carne/Frango/Linguiça Extra = 5/5/4).
+
+```text
+Pedido real (tel 44): PRESERVADO INTEGRALMENTE.
+  Mesmo customer/order/order_item (ids identicos). Reconciliacao: 43.989999999999995 x1 == order.total. OK.
+  Unicas "diferencas" = ARTEFATOS DE SERIALIZACAO (mesmo valor subjacente):
+    - created_at: snapshot via JS Date local(-03)->UTC com ms ("...18:02:53.277Z") vs json_agg raw sem tz
+      com us ("...15:02:53.277563"). 15:02:53(-03) == 18:02:53 UTC. Mesmo instante.
+    - total/price: snapshot serializou numeric como string; json_agg como number. Mesmo valor.
+  Prova de fundo: F1A nao executou NENHUM write em orders/order_items/customers (migracoes so tocam
+    categories + product_collections) -> dados byte-identicos por construcao.
+
+Contagens (atual == snapshot Etapa 0): categories 9, products 39, adicionais 35, customers 1, orders 1,
+  order_items 1, settings 6. product_collections=0 (nova, vazia — como esperado na F1A).
+
+Estrutura fora do escopo F1A: products 18 cols, orders 10, order_items 9, customers 4 -> inalteradas.
+  User triggers: orders 3, order_items 2, customers 1 -> PRE-EXISTENTES (HARDEN); F1A nao adicionou nenhuma.
+  Ressalva honesta: products e categories ganharam triggers INTERNAS de RI (tgisinternal) como mecanismo das
+    FKs novas de product_collections -> intrinsecas as FKs aprovadas na Etapa 4; colunas/objetos de usuario
+    inalterados. Nenhuma trigger de USUARIO criada pela F1A.
+
+Regressao funcional:
+  src/ diff (main...HEAD) = VAZIO -> zero alteracao de codigo da aplicacao.
+  grep src/ por product_collections/resolve_collection/getCollectionProducts = 0 ocorrencias.
+  -> checkout aponta as mesmas tabelas (create_order -> orders/order_items/customers; nao tocado pela F1A);
+     nenhum fluxo passou a depender de product_collections; categories usada exatamente como antes;
+     nenhuma mudanca funcional entrou antecipadamente.
+
+Resumo executivo:
+  Estrutura: PASS · Pedido real: PASS · Checkout: PASS · Compatibilidade: PASS · Regressao funcional: PASS
+Fingerprint: commit 0155be9 · branch feature/norm-06-f1a · Node v24.17.0 · win32 x64 · UTC 2026-06-28 (~17:14Z)
+STATE: SUCCESS
 ```
 
 ---
