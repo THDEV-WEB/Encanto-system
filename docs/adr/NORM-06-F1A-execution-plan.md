@@ -157,28 +157,28 @@ Caso **qualquer** etapa termine em **FAILED** ou **ABORTED**:
 
 ---
 
-## Tabela de Evidências (preencher na execução)
+## Tabela de Evidências (registro oficial da execução)
 
 **Cabeçalho da execução:**
 
 | Campo | Valor |
 |---|---|
-| Data/hora (início) | — |
-| Ambiente | — |
-| Banco (project ref) | — |
-| Branch | — |
-| Commit base | — |
-| Operador | — |
-| Snapshot/backup | — |
-| Autorização ("GO F1A") | — (quem / quando) |
+| Data/hora (início) | 2026-06-28T15:47Z (Etapa 0 / backup) |
+| Ambiente | Produção (Supabase) |
+| Banco (project ref) | `hvbcdxsagkjtfjwvnslo` · database `postgres` · schema `public` |
+| Branch | `feature/norm-06-f1a` |
+| Commit base | `ce16ff6` (estado de código no momento da aplicação) |
+| Operador | Claude Code (execução assistida, sob autorização explícita do usuário) |
+| Snapshot/backup | `snapshot-NORM-06-F1A-2026-06-28T15-47-11-130Z.json` |
+| Autorização ("GO F1A") | usuário — "pode executar" (Etapa 1) · "Aprovo a passagem para a Etapa 2" (Etapa 2) |
 
 **Resultado por etapa** (Estado ∈ PENDING · RUNNING · SUCCESS · FAILED · ABORTED):
 
-| Etapa | Estado | Horário | Evidência |
+| Etapa | Estado | Horário (UTC) | Evidência |
 |---|---|---|---|
-| 0. Execution Gate | PENDING | — | — |
-| 1. Guard de slug | PENDING | — | colisões = ? |
-| 2. DDL | PENDING | — | warnings = ? |
+| 0. Execution Gate | **SUCCESS** | 2026-06-28T15:47 | 10/10 itens verdes; backup gravado |
+| 1. Guard de slug | **SUCCESS** | 2026-06-28T16:09:10 | 9 cat · 0 colisões · 9 critérios OK · read-only · 1739 ms · SHA-256 `3d579031…` (relatório integral abaixo) |
+| 2. DDL | **SUCCESS** | 2026-06-28T16:25:49–51 | 5 instruções · `categories` +9 cols · `product_collections` criada (6 cols) · RLS+policy provisória · slug 9/9 · 1802 ms · exit 0 · sem warnings (evidência abaixo) |
 | 3. Índices | PENDING | — | — |
 | 4. Constraints | PENDING | — | — |
 | 5. Validação de schema | PENDING | — | — |
@@ -190,6 +190,117 @@ Caso **qualquer** etapa termine em **FAILED** ou **ABORTED**:
 | 11. Atualização documental | PENDING | — | — |
 
 > Em término **FAILED/ABORTED**, registrar nesta tabela o **motivo da interrupção** (Gate entre etapas) e aplicar a **Regra de rollback**.
+
+### Evidência integral — Etapa 1 (Guard de Slug) — STATE: SUCCESS
+
+```text
+==================================================================
+ GUARD DE SLUG — F1A / NORM-06 — RELATORIO
+==================================================================
+Esta etapa executa apenas consultas.
+  Nenhum INSERT / UPDATE / DELETE / ALTER TABLE / migracao / escrita no banco
+
+— Fingerprint do banco —
+  Project ID  : hvbcdxsagkjtfjwvnslo
+  Database    : postgres
+  Schema      : public (current_schema=public)
+  Timestamp   : 2026-06-28T16:09:10Z (UTC, relogio do servidor)
+  Categorias analisadas: 9
+
+— Expressao SQL utilizada (Errata-01, corrigida) —
+  trim(both '-' from regexp_replace(lower(unaccent(nome)), '[^a-z0-9]+', '-', 'g'))
+
+— Contagens —
+  Categorias analisadas : 9
+  Slugs gerados         : 9
+  Colisoes encontradas  : 0
+  Slug collisions: 0
+
+— Lista completa —
+  | Categoria                | Slug                  |
+  |--------------------------|-----------------------|
+  | Cardápio de Marmitas     | cardapio-de-marmitas  |
+  | Destaques                | destaques             |
+  | Copos Prontos            | copos-prontos         |
+  | Monte seu Copo           | monte-seu-copo        |
+  | Batidinhas               | batidinhas            |
+  | Combos                   | combos                |
+  | Pedido Fitness           | pedido-fitness        |
+  | Bebidas                  | bebidas               |
+  | Promoção do Dia          | promocao-do-dia       |
+
+— Casos conhecidos (saida efetiva) —
+  Cardápio de Marmitas
+  -> cardapio-de-marmitas
+  Destaques
+  -> destaques
+  Monte seu Copo
+  -> monte-seu-copo
+  Promoção do Dia
+  -> promocao-do-dia
+
+— Criterio de aceite —
+  [OK] 0 colisoes
+  [OK] nenhum slug vazio
+  [OK] nenhum slug inicia com hifen
+  [OK] nenhum slug termina com hifen
+  [OK] nenhum caractere invalido (somente [a-z0-9-])
+  [OK] relatorio completo gerado
+  [OK] banco confirmado (fingerprint acima)
+  [OK] execucao read-only confirmada
+
+— Execution Fingerprint —
+  Commit SHA   : ce16ff65272fcbb88835fe807bedfdc80176e561
+  Branch       : feature/norm-06-f1a
+  Node Version : v24.17.0
+  Plataforma   : win32
+  Arquitetura  : x64
+  Project ID   : hvbcdxsagkjtfjwvnslo
+  Database     : postgres
+  Schema       : public
+  Timestamp UTC: 2026-06-28T16:09:10Z
+  Script       : guard:slug
+  Working tree : clean
+
+— Duration —
+  Started : 2026-06-28T16:09:09Z
+  Finished: 2026-06-28T16:09:10Z
+  Duration: 1739 ms
+
+— Database immutability —
+  Database writes detected: 0
+  DDL executed: 0
+  Migration executed: 0
+  Status: READ ONLY CONFIRMED
+
+— Execution Report SHA256 —
+  3d57903148ed48c8c031f4325334edac4dabbfbbf9658044ae97e86298541cfa
+
+ETAPA 1 — STATE: SUCCESS — NO DATABASE WRITES DETECTED
+```
+
+### Evidência — Etapa 2 (DDL) — STATE: SUCCESS
+
+Arquivo aplicado: `migrations/NORM-06-F1A-step2.sql` (atômico, `BEGIN/COMMIT`) · rollback: `migrations/NORM-06-F1A-step2-rollback.sql`.
+
+```text
+DDL executado (mensagens do banco):
+  BEGIN / ALTER / UPDATE (9 rows) / CREATE / ALTER / CREATE / COMMIT / DONE
+  exit code: 0 — sem warnings — sem erros
+Started:  2026-06-28T16:25:49Z   Finished: 2026-06-28T16:25:51Z   Duration: 1802 ms
+
+Validação do schema:
+  categories            : 16 colunas (7 originais + 9 novas: slug, descricao, imagem,
+                          banner, tipo[NOT NULL DEFAULT 'business'], estrategia,
+                          definicao[jsonb], starts_at, ends_at)
+  product_collections   : criada — 6 colunas (id uuid PK, product_id uuid NOT NULL,
+                          collection_id text NOT NULL, ordem int NOT NULL DEFAULT 0,
+                          fixado bool NOT NULL DEFAULT false, created_at timestamptz DEFAULT now())
+  RLS product_collections: enabled=true · 1 policy: pc_public_read / SELECT / {public} / true (provisória)
+  slug (backfill)       : 9/9 corretos (expressão Errata-01); 0 slugs nulos; tipo='business' em 9/9
+  fora de escopo (próximas): slug NOT NULL + UNIQUE + CHECK STI + UNIQUE/FK product_collections -> Etapa 4; índices pc -> Etapa 3
+  order tables          : não tocadas (pedido real preservado)
+```
 
 ---
 
