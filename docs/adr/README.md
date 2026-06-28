@@ -31,9 +31,12 @@ Decisões de produto/arquitetura registradas como design, ainda **não implement
 |---|---|---|---|
 | [NORM-01A](NORM-01A-modelo-canonico-catalogo.md) | Modelo canônico do catálogo | Desenho | — |
 | [NORM-06A](NORM-06A-modelo-grupos-catalogo.md) | Modelo categories × collections (v4) | Desenho (congelado) | — |
-| [NORM-07](NORM-07-collection-engine.md) | Collection Engine | Reservado | — |
+| [NORM-06](NORM-06-collections.md) | Implementação do catálogo: Collections (só Collections; RLS e legado extraídos) | 🔒 Congelado para implementação — D-DEST aprovada; pronto para F1A | — |
+| [NORM-07](NORM-07-collection-engine.md) | Collection Engine (resolver members-only; hidratação na camada superior) | Reservado | — |
 | [NORM-08](NORM-08-search-engine.md) | Search Engine | Reservado | — |
 | [NORM-09](NORM-09-event-engine.md) | Event Engine | Reservado | — |
+| NORM-06.1 / HARDEN-RLS | RLS de coluna local (anon=só disponíveis · authenticated=todos) — **extraído do NORM-06** | Reservado (fase própria) | — |
+| HARDEN-LEGACY | Remoção de legado (`DROP image_url`, `DROP destaque`) após estabilização — **extraído do NORM-06** | Reservado (fase própria) | — |
 
 ## Sequência da evolução arquitetural
 

@@ -1,5 +1,7 @@
 # ADR NORM-07 — Collection Engine
 
+> **Amendment (revisão NORM-06, 2026-06-27):** o resolver `resolve_collection` é **members-only** — retorna apenas pertença, os **4 campos** `(product_id, posicao, origem, fixado)` do §2 (`ordem` é chave **interna** de ordenação, não retornada), **nunca** o produto hidratado. A **hidratação** (§4) é responsabilidade da **camada superior** (`DS.getCollectionProducts`), por id (guard G1) — não do resolver. Onde o §4 abaixo fala em "devolver a linha completa do produto", entenda-se a *companion* de hidratação da camada superior, **não** o resolver. Contrato congelado em [NORM-06 §4](NORM-06-collections.md). *(Nota: o NORM-06 **não** dropa `image_url`/`destaque` — isso foi adiado para HARDEN-LEGACY; ver NORM-06 §14.)*
+
 - **Status:** CONGELADO (contrato definitivo; só o ramo `manual` é implementado junto do NORM-06; `rule`/`smart` reservados).
 - **Origem:** revisão v4 (workflow design+crítica adversarial). Refina o resolver `resolve_collection()` congelado em [NORM-06A v4](NORM-06A-modelo-grupos-catalogo.md) §2.5.
 - **Princípio:** o "Collection Engine" **não** é máquina de plugins em runtime nem camada OO no DataService. É **UMA function SQL dispatcher** que despacha por `categories.estrategia` lendo `definicao jsonb`. Open/Closed obtido por **DADO** (novo valor de `estrategia` + ramo isolado), não por framework.
@@ -28,9 +30,9 @@ LANGUAGE plpgsql STABLE;   -- read-only; SECURITY INVOKER + RLS de catálogo
 - **Tipos futuros** (recommendation/campaign/ai/external): cada um = novo valor de `estrategia` + ramo isolado/function-satélite. Adicionar **não toca** os ramos existentes (Open/Closed).
 
 ## 4. Hidratação (CORRIGIDO)
-A hidratação client-side via "cache que o DS já mantém" é **ficção** (`_prodCache` é por-query, não por-id). O resolver/companion **devolve a linha completa do produto** (mesma projeção de `getProds`: `*, categories(...)`) via `WHERE id = ANY(ids)` no banco, **nunca** `getAllProds` + filtro no cliente (senão G1 volta). 
+A hidratação client-side via "cache que o DS já mantém" é **ficção** (`_prodCache` é por-query, não por-id). **O resolver NÃO hidrata** (members-only, §2) — quem **devolve a linha completa do produto** (mesma projeção de `getProds`: `*, categories(...)`) é a **companion de hidratação da camada superior** (`DS.getCollectionProducts`), via `WHERE id = ANY(ids)` no banco (query server-side **separada do resolver**), **nunca** `getAllProds` + filtro no cliente (senão G1 volta).
 - `DS.resolveCollection(id, {limit, after})` → `[{product_id, posicao, origem, fixado}]` | `null` (offline).
-- `DS.getCollectionProducts(id)` → produtos hidratados server-side, preservando `posicao`/`fixado`.
+- `DS.getCollectionProducts(id)` → produtos hidratados por id, orquestrado pela camada superior, preservando `posicao`/`fixado`.
 - **Offline:** `null` → a UI cai para "produtos da categoria business" ou esconde a vitrine (decisão de UX antes da F5).
 
 ## 5. Definition DSL (`definicao jsonb`, ramo `rule` — RESERVA)
@@ -44,7 +46,7 @@ Formato **declarativo, versionado, fechado por whitelist** — **nunca SQL armaz
 - **Ressalvas da crítica (obrigatórias):**
   - **Preço × `tamanhos`:** `preco`/`preco_promo`/`em_promocao` filtram o **preço-base escalar** e **mentem para produtos com `tamanhos`** (Monte c3, Batidinhas c9 — preço real vive em `tamanhos[].preco`). v1: ou **excluir** produtos com `tamanhos IS NOT NULL` dos filtros de preço, ou expor derivados `preco_min`/`preco_max` (COALESCE com `tamanhos`). Documentar.
   - **`em_promocao`** = **uma única expressão SQL compartilhada** com a engine de preço ([NORM-01A](NORM-01A-modelo-canonico-catalogo.md) §1.3) — não duplicar a fórmula no tradutor.
-  - **Drift whitelist×schema:** teste de CI **bloqueante** cruzando whitelist com `information_schema`; **revalidação** de todas as `definicao` após migração de coluna (ex.: NORM-06 dropa `image_url`/deprecia `destaque`).
+  - **Drift whitelist×schema:** teste de CI **bloqueante** cruzando whitelist com `information_schema`; **revalidação** de todas as `definicao` após migração de coluna (ex.: HARDEN-LEGACY dropa `image_url`/`destaque` — o NORM-06 **não** dropa; ver NORM-06 §14).
 
 ## 6. Compatibilidade
 `resolve_collection` é **STABLE/read-only**, sem FK nova; não referencia `create_order`, não escreve `products`/`order_items`. → **Checkout, HARDEN-01..07, idempotência, reconciliação, Monte, Batidinhas, Pricing Engine e Addons Resolver imunes** (coleção é leitura de vitrine). DS ganha só wrappers irmãos de `getHealth`. Reusa pg_cron/unaccent/padrão de RPC.
