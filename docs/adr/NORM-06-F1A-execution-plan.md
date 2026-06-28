@@ -5,29 +5,79 @@
 - **Natureza:** trate a F1A como uma **implantação de banco em produção**. Cada etapa tem resultado esperado e condição de abort. **Nenhuma etapa é pulada; nenhuma muda de ordem.**
 - **Aplica a SQL desta fase:** **exclusivamente** o DDL/guard já desenhados no ADR (§6 guard de slug, §7 F1A "1) Estrutura (DDL)" + "2) medida temporária de compatibilidade"). Este runbook **não introduz SQL novo**.
 
-> **Regra-mãe:** se **qualquer** verificação falhar — em pré-condição ou em etapa — **PARAR IMEDIATAMENTE**. Nunca "seguir para testar depois". Sem improviso, sem auto-correção.
+> **Regra-mãe:** se **qualquer** verificação falhar — no Execution Gate ou em qualquer etapa — **PARAR IMEDIATAMENTE** (estado FAILED/ABORTED). Nunca "seguir para testar depois". Sem improviso, sem auto-correção.
 
 ---
 
-## 0. Pré-condições (gate de entrada — ABORTAR se qualquer item falhar)
+## 0. Execution Gate (gate de execução)
 
-Antes de **qualquer** SQL ser executado:
+A implementação da F1A **somente pode começar quando TODOS os itens abaixo estiverem simultaneamente verdadeiros**:
 
-| # | Pré-condição | Como validar | OK? |
+| # | Condição do gate | Como validar | OK? |
 |---|---|---|---|
-| 0.1 | **Working tree limpo** | `git status --short` retorna vazio | ☐ |
-| 0.2 | **Branch correta** | `git rev-parse --abbrev-ref HEAD` = branch acordada para a F1A | ☐ |
-| 0.3 | **Banco correto (ambiente esperado)** | confirmar project ref `hvbcdxsagkjtfjwvnslo` no `db.env` (credenciais **nunca** no chat) | ☐ |
-| 0.4 | **Backup realizado** | dump/backup do ambiente antes do DDL | ☐ |
-| 0.5 | **Snapshot salvo** | `snapshot.mjs NORM-06-F1A` gravado e localizável | ☐ |
-| 0.6 | **ADR congelado** (sem mudança de escopo) | NORM-06 com Status = 🔒 Congelado; nenhum diff de escopo pendente | ☐ |
-| 0.7 | **Nenhuma migração pendente não relacionada ao NORM-06** | não há DDL/migração de outra frente aguardando aplicação no mesmo ambiente | ☐ |
+| 1 | **ADR NORM-06 congelado** | NORM-06 com Status = 🔒 Congelado; nenhum diff de escopo pendente | ☐ |
+| 2 | **Execution Plan aprovado** | este runbook revisado e aprovado pelo usuário | ☐ |
+| 3 | **Backup realizado** | dump/backup do ambiente antes do DDL | ☐ |
+| 4 | **Snapshot validado** | `snapshot.mjs NORM-06-F1A` gravado, localizável e verificado | ☐ |
+| 5 | **Working tree limpo** | `git status --short` retorna vazio (modificados) | ☐ |
+| 6 | **Branch correta** | `git rev-parse --abbrev-ref HEAD` = branch acordada para a F1A | ☐ |
+| 7 | **Banco correto** | project ref `hvbcdxsagkjtfjwvnslo` no `db.env` (credenciais **nunca** no chat) | ☐ |
+| 8 | **Nenhuma migração paralela em andamento** | nenhuma DDL/migração de outra frente sendo aplicada no mesmo ambiente | ☐ |
+| 9 | **Nenhuma alteração local não versionada** | `git status --short` sem arquivos não rastreados (`??`) | ☐ |
+| 10 | **Autorização explícita do usuário ("GO F1A")** | o usuário disse, de forma inequívoca, "GO F1A" | ☐ |
 
-**Se qualquer item falhar → ABORTAR EXECUÇÃO.** Não prosseguir para a Etapa 1.
+**Se qualquer condição NÃO estiver satisfeita → A IMPLEMENTAÇÃO NÃO INICIA.**
+
+### Regra institucional — a autorização nunca é presumida
+
+> **A autorização para implementar a F1A nunca pode ser presumida.**
+
+- ADR aprovado **≠** autorização;
+- Execution Plan pronto **≠** autorização;
+- Backup realizado **≠** autorização;
+- Banco preparado **≠** autorização.
+
+A execução **só começa após uma autorização explícita do usuário ("GO F1A")**. Nenhum dos itens 1–9 do gate, isolada ou conjuntamente, dispensa o item 10.
+
+---
+
+## Estados oficiais da execução
+
+Cada etapa só pode terminar em **um** destes estados — **nenhum estado intermediário diferente é permitido**:
+
+| Estado | Significado |
+|---|---|
+| **PENDING** | ainda não iniciada |
+| **RUNNING** | em execução |
+| **SUCCESS** | concluída com o resultado esperado |
+| **FAILED** | terminou com erro/divergência |
+| **ABORTED** | interrompida por decisão de gate (Execution Gate, colisão de slug ou falha de etapa anterior) |
+
+---
+
+## Gate entre etapas
+
+Antes de avançar para a etapa seguinte, é **obrigatório** confirmar que a etapa anterior terminou em **✅ SUCCESS**.
+
+Caso a etapa anterior **não** esteja em SUCCESS (isto é, FAILED ou ABORTED):
+- **interromper imediatamente**;
+- **não continuar** a execução;
+- **não tentar corrigir** durante a mesma execução;
+- **registrar o motivo** da interrupção (na Tabela de Evidências).
+
+---
+
+## Regra de rollback
+
+Caso **qualquer** etapa termine em **FAILED** ou **ABORTED**:
+- o rollback deve seguir **exclusivamente** o procedimento **previamente documentado** (rollback da F1A = [ADR §8](NORM-06-collections.md): `DROP TABLE product_collections` + `ALTER TABLE categories DROP CONSTRAINT/COLUMN …` + `DROP INDEX …` + restore do snapshot da Etapa 0);
+- **nunca** criar um rollback improvisado durante a execução.
 
 ---
 
 ## Sequência de execução (ordem imutável — 11 etapas)
+
+> Cada etapa começa em PENDING → RUNNING e deve terminar em **SUCCESS** para liberar o **Gate entre etapas**. Qualquer término em **FAILED/ABORTED** dispara a **Regra de rollback** e encerra a execução.
 
 ### Etapa 1 — Guard de Slug
 - **Ação:** executar **primeiro** a verificação de colisões (ADR §6), com a **mesma expressão** do backfill.
@@ -36,7 +86,7 @@ Antes de **qualquer** SQL ser executado:
   - **NÃO** corrigir automaticamente;
   - **NÃO** gerar slug alternativo / sufixo / número;
   - **NÃO** continuar.
-  - → **ABORTAR MIGRAÇÃO.** Resolução é **humana**; depois reinicia-se do gate de pré-condições.
+  - → **ABORTAR MIGRAÇÃO** (estado **ABORTED**). Resolução é **humana**; depois reinicia-se do **Execution Gate (§0)**.
 
 ### Etapa 2 — Aplicação do DDL
 - **Ação:** aplicar **exclusivamente** o DDL previsto na F1A (ADR §7 F1A "1) Estrutura"): colunas novas em `categories`, backfill de `slug`, `CREATE TABLE product_collections`. *(A "2) medida temporária de compatibilidade" — `ENABLE RLS` + `pc_public_read` — é parte da F1A e entra aqui, destacada como provisória.)*
@@ -106,23 +156,26 @@ Antes de **qualquer** SQL ser executado:
 | Commit base | — |
 | Operador | — |
 | Snapshot/backup | — |
+| Autorização ("GO F1A") | — (quem / quando) |
 
-**Resultado por etapa:**
+**Resultado por etapa** (Estado ∈ PENDING · RUNNING · SUCCESS · FAILED · ABORTED):
 
-| Etapa | Início | Fim | Duração | Resultado | Observações |
-|---|---|---|---|---|---|
-| 0. Pré-condições | — | — | — | ☐ | — |
-| 1. Guard de slug | — | — | — | ☐ | colisões = ? |
-| 2. DDL | — | — | — | ☐ | warnings = ? |
-| 3. Índices | — | — | — | ☐ | — |
-| 4. Constraints | — | — | — | ☐ | — |
-| 5. Validação de schema | — | — | — | ☐ | — |
-| 6. Build | — | — | — | ☐ | — |
-| 7. Testes da fase | — | — | — | ☐ | — |
-| 8. Validação funcional (tel 44) | — | — | — | ☐ | — |
-| 9. Evidências | — | — | — | ☐ | — |
-| 10. Commit | — | — | — | ☐ | hash = ? |
-| 11. Atualização documental | — | — | — | ☐ | — |
+| Etapa | Estado | Horário | Evidência |
+|---|---|---|---|
+| 0. Execution Gate | PENDING | — | — |
+| 1. Guard de slug | PENDING | — | colisões = ? |
+| 2. DDL | PENDING | — | warnings = ? |
+| 3. Índices | PENDING | — | — |
+| 4. Constraints | PENDING | — | — |
+| 5. Validação de schema | PENDING | — | — |
+| 6. Build | PENDING | — | — |
+| 7. Testes da fase | PENDING | — | — |
+| 8. Validação funcional (tel 44) | PENDING | — | — |
+| 9. Evidências | PENDING | — | — |
+| 10. Commit | PENDING | — | hash = ? |
+| 11. Atualização documental | PENDING | — | — |
+
+> Em término **FAILED/ABORTED**, registrar nesta tabela o **motivo da interrupção** (Gate entre etapas) e aplicar a **Regra de rollback**.
 
 ---
 
@@ -133,13 +186,16 @@ Antes de **qualquer** SQL ser executado:
 3. **Se uma etapa falhar, interromper imediatamente.**
 4. **Nunca continuar "para testar depois".**
 5. **Toda implementação futura da F1A deve seguir exatamente este roteiro** (é o checklist oficial da fase).
-6. Em qualquer abort, o estado volta ao snapshot/backup (Etapa 0.4/0.5) e a execução recomeça do **gate de pré-condições**.
+6. Em qualquer abort, o estado volta ao snapshot/backup (Execution Gate itens 3/4) e a execução recomeça do **Execution Gate (§0)**.
+7. **A autorização nunca é presumida** — a execução só inicia com "GO F1A" explícito (Execution Gate item 10 / Regra institucional §0).
+8. **Avanço entre etapas exige SUCCESS** da etapa anterior (Gate entre etapas); FAILED/ABORTED dispara a **Regra de rollback** (procedimento documentado, nunca improvisado).
+9. **Estados oficiais apenas:** PENDING · RUNNING · SUCCESS · FAILED · ABORTED.
 
 ---
 
 ## Critério de conclusão da F1A
 
-A F1A só é considerada **concluída** quando: pré-condições ✅ + Etapas 1–8 ✅ + evidências registradas + commit único com rollback documentado + working tree limpo + documentação atualizada. Qualquer pendência mantém a F1A **não concluída**.
+A F1A só é considerada **concluída** quando: **Execution Gate ✅ (incluindo "GO F1A")** + Etapas 1–8 em **SUCCESS** + evidências registradas + commit único com rollback documentado + working tree limpo + documentação atualizada. Qualquer etapa fora de SUCCESS mantém a F1A **não concluída**.
 
 ---
 
