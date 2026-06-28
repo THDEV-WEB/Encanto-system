@@ -79,18 +79,22 @@ Caso **qualquer** etapa termine em **FAILED** ou **ABORTED**:
 
 > Cada etapa começa em PENDING → RUNNING e deve terminar em **SUCCESS** para liberar o **Gate entre etapas**. Qualquer término em **FAILED/ABORTED** dispara a **Regra de rollback** e encerra a execução.
 
-### Etapa 1 — Guard de Slug
-- **Ação:** executar `npm run guard:slug` ([`scripts/norm06-f1a-slug-guard.mjs`](../../scripts/norm06-f1a-slug-guard.mjs), read-only). Usa a **expressão CORRIGIDA da [Errata-01](NORM-06-F1A-errata-01-slug.md)** (não a do ADR §6/§7, cujo bug está documentado na errata) — a **mesma** que o backfill da Etapa 2 usará.
-- **Resultado esperado (todos):**
-  - **0 colisões**;
-  - **casos conhecidos exatos** (Cardápio de Marmitas→`cardapio-de-marmitas`, Destaques→`destaques`, Monte seu Copo→`monte-seu-copo`, Promoção do Dia→`promocao-do-dia`);
-  - **nenhum slug vazio ou com hífen nas pontas**;
-  - script encerra em **SUCCESS** (exit 0).
-- **Se houver QUALQUER colisão OU divergência de caso conhecido:**
-  - **NÃO** corrigir automaticamente;
-  - **NÃO** gerar slug alternativo / sufixo / número;
-  - **NÃO** continuar.
-  - → **ABORTAR MIGRAÇÃO** (estado **ABORTED**). Resolução é **humana**; depois reinicia-se do **Execution Gate (§0)**.
+### Etapa 1 — Guard de Slug `[READ-ONLY]`
+- **Ação:** executar `npm run guard:slug` ([`scripts/norm06-f1a-slug-guard.mjs`](../../scripts/norm06-f1a-slug-guard.mjs)). Usa a **expressão CORRIGIDA da [Errata-01](NORM-06-F1A-errata-01-slug.md)** (não a do ADR §6/§7, cujo bug está documentado na errata) — a **mesma** que o backfill da Etapa 2 usará.
+- **Declaração de read-only (impressa no relatório):** *esta etapa executa apenas consultas — nenhum INSERT / UPDATE / DELETE / ALTER TABLE / migração / escrita no banco.*
+- **Relatório reproduzível obrigatório:** expressão SQL usada · fingerprint do banco (Project ID · Schema · Timestamp UTC · nº de categorias) · contagens (categorias analisadas, slugs gerados, colisões) · lista completa `| Categoria | Slug |` · saída efetiva dos casos conhecidos · rodapé `Slug collisions: N` + `Status: SUCCESS|FAILED`.
+- **Critério de aceite — SUCCESS exige TODOS simultaneamente:**
+  1. **0 colisões**;
+  2. **casos conhecidos aprovados** (Cardápio de Marmitas→`cardapio-de-marmitas` · Destaques→`destaques` · Monte seu Copo→`monte-seu-copo` · Promoção do Dia→`promocao-do-dia`);
+  3. **nenhum slug vazio**;
+  4. **nenhum slug iniciando com hífen**;
+  5. **nenhum slug terminando com hífen**;
+  6. **nenhum caractere inválido** (somente `[a-z0-9-]`);
+  7. **relatório completo gerado**;
+  8. **banco confirmado** (fingerprint);
+  9. **execução read-only confirmada**.
+- **Se QUALQUER item falhar:** estado = **FAILED** → **interromper imediatamente**; **não** corrigir durante a mesma execução; **não** gerar slug alternativo/sufixo/número; **não** continuar. (Colisão/divergência → também **ABORTED**; resolução humana; reinicia do **Execution Gate §0**.)
+- **🚦 Gate após SUCCESS (não automático):** mesmo com tudo verde, **PARAR**. Apresentar o relatório completo + evidências + estado oficial + confirmação de que **nenhuma escrita ocorreu**. **Aguardar autorização explícita** para a Etapa 2 (DDL). **Nunca** iniciar a Etapa 2 automaticamente.
 
 ### Etapa 2 — Aplicação do DDL
 - **Ação:** aplicar **exclusivamente** o DDL previsto na F1A (ADR §7 F1A "1) Estrutura"): colunas novas em `categories`, backfill de `slug`, `CREATE TABLE product_collections`. **O `UPDATE categories SET slug = …` usa byte-a-byte a expressão corrigida da [Errata-01](NORM-06-F1A-errata-01-slug.md)** (mesma do guard da Etapa 1). *(A "2) medida temporária de compatibilidade" — `ENABLE RLS` + `pc_public_read` — é parte da F1A e entra aqui, destacada como provisória.)*
