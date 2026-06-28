@@ -186,7 +186,7 @@ Caso **qualquer** etapa termine em **FAILED** ou **ABORTED**:
 | 7. Testes da fase | **SUCCESS** | 2026-06-28T~17:07 | test:deps/pricing/addons todos exit 0 (0 falhas); banco idêntico (pc rows=0); código/árvore limpos (evidência abaixo) |
 | 8. Validação funcional (tel 44) | **SUCCESS** | 2026-06-28T~17:14 | pedido real preservado (só artefatos de serialização); src/ diff vazio; product_collections vazia; 0 regressão (evidência abaixo) |
 | 9. Evidências | **SUCCESS** | 2026-06-28T~17:20 | consolidação formal do ledger (Etapas 0–8) — só documentação (ledger abaixo) |
-| 10. Commit | PENDING | — | hash = ? |
+| 10. Commit | **SUCCESS** | 2026-06-28T~17:25 | encerramento administrativo: tag `norm-06-f1a-complete`; sem alteração técnica (bloco abaixo) |
 | 11. Atualização documental | PENDING | — | — |
 
 > Em término **FAILED/ABORTED**, registrar nesta tabela o **motivo da interrupção** (Gate entre etapas) e aplicar a **Regra de rollback**.
@@ -509,6 +509,41 @@ Rollback global da F1A (ordem inversa): step4-rollback.sql -> step3-rollback.sql
   (+ restore do snapshot se necessario). Cada etapa tem rollback dedicado e commit revertivel.
 
 Etapa 9 NAO alterou codigo, banco, migracoes nem comportamento — apenas consolidou esta secao.
+STATE: SUCCESS
+```
+
+### Encerramento administrativo — Etapa 10 — STATE: SUCCESS
+
+Fechamento da **F1A (estrutura)**. **Sem qualquer alteração técnica** (código, banco, migrações, testes, comportamento) — apenas marco administrativo + tag.
+
+```text
+Verificacao final de consistencia (aprovada):
+  branch       : feature/norm-06-f1a
+  HEAD (pre-10): 38c54f49cde838fea7b102700ef9e93c24365ec3
+  working tree : LIMPO
+  commits F1A  : 11 (c1e6850 … 38c54f4), cronologicos
+  Etapas 0-9   : todas STATE: SUCCESS (sem etapa parcial/pendente dentro da F1A)
+  Etapa 10     : este encerramento · Etapa 11 (atualizacao documental): NAO iniciada
+
+DoD da F1A (escopo ESTRUTURA) — atendido:
+  [x] Execution Gate 10/10 + backup/snapshot
+  [x] Guard de slug VERDE (0 colisoes + casos conhecidos), expressao Errata-01
+  [x] DDL aplicado (categories +9 cols; product_collections; RLS provisoria)
+  [x] Indices criados e validos (indisvalid=true)
+  [x] Constraints aplicadas e VALID (convalidated); pre-validacao 0 violacoes; 0 dado corrigido
+  [x] Schema auditado == ADR (0 divergencias)
+  [x] Build verde (0 erros) + testes da fase verdes (deps/pricing/addons)
+  [x] Pedido real (tel 44) preservado; src/ intocado; product_collections vazia
+  [x] Nenhum DROP COLUMN; nenhuma policy de tabela EXISTENTE alterada
+  [x] Evidencias consolidadas (Etapa 9)
+
+FORA DO ESCOPO — NAO concluidas, NAO marcadas como completas:
+  [ ] F1B — triggers de invariante STI (I1-I4 cross-table)           -> fase separada
+  [ ] F1C / NORM-06.1 — hardening de RLS (substitui pc_public_read)  -> fase separada
+  [ ] F2+ — backfill (Destaques), DataService, Admin, UI             -> fases seguintes
+
+Marco      : tag anotada `norm-06-f1a-complete` -> aponta para o commit deste encerramento.
+Integracao : branch feature/norm-06-f1a NAO integrada a main (merge pendente de autorizacao; Etapa 11).
 STATE: SUCCESS
 ```
 
