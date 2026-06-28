@@ -187,7 +187,7 @@ Caso **qualquer** etapa termine em **FAILED** ou **ABORTED**:
 | 8. Validação funcional (tel 44) | **SUCCESS** | 2026-06-28T~17:14 | pedido real preservado (só artefatos de serialização); src/ diff vazio; product_collections vazia; 0 regressão (evidência abaixo) |
 | 9. Evidências | **SUCCESS** | 2026-06-28T~17:20 | consolidação formal do ledger (Etapas 0–8) — só documentação (ledger abaixo) |
 | 10. Commit | **SUCCESS** | 2026-06-28T~17:25 | encerramento administrativo: tag `norm-06-f1a-complete`; sem alteração técnica (bloco abaixo) |
-| 11. Atualização documental | PENDING | — | — |
+| 11. Atualização documental | **SUCCESS** | 2026-06-28T~17:30 | fechamento documental: README + status ADR + este runbook; F1A oficialmente concluída (bloco abaixo) |
 
 > Em término **FAILED/ABORTED**, registrar nesta tabela o **motivo da interrupção** (Gate entre etapas) e aplicar a **Regra de rollback**.
 
@@ -544,6 +544,32 @@ FORA DO ESCOPO — NAO concluidas, NAO marcadas como completas:
 
 Marco      : tag anotada `norm-06-f1a-complete` -> aponta para o commit deste encerramento.
 Integracao : branch feature/norm-06-f1a NAO integrada a main (merge pendente de autorizacao; Etapa 11).
+STATE: SUCCESS
+```
+
+### Fechamento documental — Etapa 11 — STATE: SUCCESS · 🔒 RUNBOOK ENCERRADO
+
+F1A **oficialmente concluida**. So documentacao — nenhum codigo/SQL/migracao/teste/banco/merge.
+
+```text
+Documentos atualizados nesta etapa:
+  - docs/adr/README.md                     : status do NORM-06 (F1A aplicada; F1B/F1C/F2 pendentes) + nota "Fases do NORM-06"
+  - docs/adr/NORM-06-collections.md        : linha "Status de implementacao" (F1A aplicada; arquitetura inalterada)
+  - docs/adr/NORM-06-F1A-execution-plan.md : Etapa 11 = SUCCESS + este fechamento (runbook encerrado)
+
+ESTADO FINAL OFICIAL DA F1A:
+  F1A (estrutura do catalogo Collections) = CONCLUIDA e validada.
+  Branch : feature/norm-06-f1a (NAO integrada a main)
+  Tag    : norm-06-f1a-complete -> 4177a45306f9fc77cd41ea854615613aadd20910 (Etapa 10)
+  Etapas : 0-11 todas STATE: SUCCESS
+  Commit final (Etapa 11): vide hash deste commit de fechamento (apos a tag)
+
+PENDENTE (fases proprias, NAO iniciadas):
+  F1B            -> triggers de invariante STI (I1-I4 cross-table)
+  F1C/NORM-06.1  -> hardening de RLS (substitui a policy provisoria pc_public_read)
+  F2+            -> backfill (Destaques), DataService, Admin, UI
+
+>>> RUNBOOK DA F1A ENCERRADO — nenhuma nova etapa neste runbook. <<<
 STATE: SUCCESS
 ```
 

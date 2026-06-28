@@ -1,6 +1,7 @@
 # ADR NORM-06 — Implementação do Catálogo: Collections (Categorias de Negócio × Coleções)
 
-- **Status:** 🔒 **CONGELADO PARA IMPLEMENTAÇÃO** (fase de arquitetura encerrada — ver §Status de Governança) — **D-DEST aprovada (A)**; pronto para a F1A. **Nada aplicado** (sem `src/`, SQL, migrations, testes ou banco).
+- **Status:** 🔒 **ARQUITETURA CONGELADA** (ver §Status de Governança) · **D-DEST aprovada (A)**.
+- **Status de implementação:** **F1A (estrutura) APLICADA** em 2026-06-28 na branch `feature/norm-06-f1a` (tag `norm-06-f1a-complete` → `4177a45`); **F1B (invariantes STI), F1C/NORM-06.1 (RLS) e F2+ (backfill/DataService/Admin/UI) pendentes**; **não** integrada à `main`. Evidências e ledger no [F1A — Execution Plan](NORM-06-F1A-execution-plan.md). *(A arquitetura deste ADR permanece imutável — apenas o status de implementação foi anotado.)*
 - **Base congelada:** [NORM-06A v4](NORM-06A-modelo-grupos-catalogo.md) (modelo) + [NORM-07](NORM-07-collection-engine.md) (Collection Engine, ramo `manual`). Referência: [NORM-01A](NORM-01A-modelo-canonico-catalogo.md).
 - **Revisão:** incorpora a **"Revisão Arquitetural Final (Hardening do Plano)"** + uma **revisão adversarial** (12 revisores) sobre este ADR + a **rodada de hardening final** (5 pontos: D-DEST aprovada, reforço da policy temporária, F1A só-estrutura, ordem de retorno congelada, escopo fechado) — tudo em 2026-06-27. Não muda o objetivo (Collections) — endurece contratos, reduz risco e **fecha as inconsistências** que a revisão encontrou.
 - **Escopo:** **EXCLUSIVAMENTE Collections.** RLS e remoção de legado são **explicitamente extraídos** (ver §1.2 e §15).
