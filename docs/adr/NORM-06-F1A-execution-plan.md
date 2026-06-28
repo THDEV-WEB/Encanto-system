@@ -179,7 +179,7 @@ Caso **qualquer** etapa termine em **FAILED** ou **ABORTED**:
 | 0. Execution Gate | **SUCCESS** | 2026-06-28T15:47 | 10/10 itens verdes; backup gravado |
 | 1. Guard de slug | **SUCCESS** | 2026-06-28T16:09:10 | 9 cat · 0 colisões · 9 critérios OK · read-only · 1739 ms · SHA-256 `3d579031…` (relatório integral abaixo) |
 | 2. DDL | **SUCCESS** | 2026-06-28T16:25:49–51 | 5 instruções · `categories` +9 cols · `product_collections` criada (6 cols) · RLS+policy provisória · slug 9/9 · 1802 ms · exit 0 · sem warnings (evidência abaixo) |
-| 3. Índices | PENDING | — | — |
+| 3. Índices | **SUCCESS** | 2026-06-28T16:35:48–49 | 2 índices criados (pc_collection_idx, pc_product_idx) válidos+ready; 1678 ms; exit 0; nada além de índices alterado (evidência abaixo) |
 | 4. Constraints | PENDING | — | — |
 | 5. Validação de schema | PENDING | — | — |
 | 6. Build | PENDING | — | — |
@@ -300,6 +300,30 @@ Validação do schema:
   slug (backfill)       : 9/9 corretos (expressão Errata-01); 0 slugs nulos; tipo='business' em 9/9
   fora de escopo (próximas): slug NOT NULL + UNIQUE + CHECK STI + UNIQUE/FK product_collections -> Etapa 4; índices pc -> Etapa 3
   order tables          : não tocadas (pedido real preservado)
+```
+
+### Evidência — Etapa 3 (Índices) — STATE: SUCCESS
+
+Arquivo aplicado: `migrations/NORM-06-F1A-step3.sql` (atômico) · rollback: `migrations/NORM-06-F1A-step3-rollback.sql`.
+
+```text
+SQL executado (mensagens do banco):
+  BEGIN / CREATE / CREATE / COMMIT / DONE
+  exit code: 0 — sem warnings — sem erros
+Started: 2026-06-28T16:35:48Z   Finished: 2026-06-28T16:35:49Z   Duration: 1678 ms
+
+Indices criados (pg_get_indexdef + validade):
+  pc_collection_idx : CREATE INDEX pc_collection_idx ON public.product_collections USING btree (collection_id, fixado DESC, ordem)
+                      indisvalid=true · indisready=true · unique=false
+  pc_product_idx    : CREATE INDEX pc_product_idx    ON public.product_collections USING btree (product_id)
+                      indisvalid=true · indisready=true · unique=false
+  (pre-existente)   : product_collections_pkey UNIQUE btree (id)
+
+Catalogo: product_collections tem 3 indices (pkey + os 2 novos) — nenhum indice adicional.
+Inalterado nesta etapa: categories 16 cols · product_collections 6 cols · 1 policy (pc_public_read)
+  · 0 triggers · constraints = product_collections_pkey (sem CHECK/UNIQUE/FK novos) · products: indices inalterados (2).
+Fingerprint: project hvbcdxsagkjtfjwvnslo · db postgres · schema public · UTC 2026-06-28T16:36:27Z
+  · commit ef8508d · branch feature/norm-06-f1a · node v24.17.0 · win32 x64.
 ```
 
 ---
