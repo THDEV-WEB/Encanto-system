@@ -31,18 +31,18 @@ Decisões de produto/arquitetura registradas como design, ainda **não implement
 |---|---|---|---|
 | [NORM-01A](NORM-01A-modelo-canonico-catalogo.md) | Modelo canônico do catálogo | Desenho | — |
 | [NORM-06A](NORM-06A-modelo-grupos-catalogo.md) | Modelo categories × collections (v4) | Desenho (congelado) | — |
-| [NORM-06](NORM-06-collections.md) | Implementação do catálogo: Collections (só Collections; RLS e legado extraídos) | **F1A (estrutura) APLICADA** na branch `feature/norm-06-f1a` (tag `norm-06-f1a-complete`); **F1B/F1C/F2 pendentes**; não mergeada na `main` | F1A: `c1e6850`…`4177a45` (branch) |
+| [NORM-06](NORM-06-collections.md) | Implementação do catálogo: Collections (só Collections; RLS e legado extraídos) | **F1A (estrutura) + F1B (invariantes STI I1–I4) APLICADAS** na branch `feature/norm-06-f1a` (tag F1A `norm-06-f1a-complete`); **F1C/F2 pendentes**; não mergeada na `main` | F1A: `c1e6850`…`4177a45`; F1B: ver git log (branch) |
 | [NORM-07](NORM-07-collection-engine.md) | Collection Engine (resolver members-only; hidratação na camada superior) | Reservado | — |
 | [NORM-08](NORM-08-search-engine.md) | Search Engine | Reservado | — |
 | [NORM-09](NORM-09-event-engine.md) | Event Engine | Reservado | — |
 | NORM-06.1 / HARDEN-RLS | RLS de coluna local (anon=só disponíveis · authenticated=todos) — **extraído do NORM-06** | Reservado (fase própria) | — |
 | HARDEN-LEGACY | Remoção de legado (`DROP image_url`, `DROP destaque`) após estabilização — **extraído do NORM-06** | Reservado (fase própria) | — |
 
-**Runbooks de execução:** [NORM-06 · F1A — Execution Plan](NORM-06-F1A-execution-plan.md) — checklist operacional **obrigatório** da F1A (procedimento institucional: pré-condições → 11 etapas em ordem imutável → abort em qualquer falha; não altera arquitetura).
+**Runbooks de execução:** [NORM-06 · F1A — Execution Plan](NORM-06-F1A-execution-plan.md) (estrutura; 11 etapas) · [NORM-06 · F1B — Execution Plan](NORM-06-F1B-execution-plan.md) (invariantes STI I1–I4; revisão adversarial, D-I4-ADIC, ledger de evidências, achado de colisão do F2). Procedimentos institucionais: pré-condições → etapas em ordem imutável → abort em qualquer falha; não alteram arquitetura.
 
 **Erratas:** [NORM-06 · F1A — Errata-01 (slug)](NORM-06-F1A-errata-01-slug.md) — correção da expressão SQL de slug (bugfix de implementação descoberto na execução; **não** altera arquitetura/escopo/decisões; ADR permanece congelado).
 
-**Fases do NORM-06:** ✅ **F1A (estrutura)** — colunas STI em `categories`, tabela `product_collections`, índices, constraints (UNIQUE/CHECK/FK), `slug` (Errata-01) e RLS provisória — **CONCLUÍDA** (2026-06-28; tag `norm-06-f1a-complete`; evidências no runbook). ⏳ **F1B** (triggers de invariante STI I1–I4) · ⏳ **F1C / NORM-06.1** (hardening de RLS, substitui `pc_public_read`) · ⏳ **F2+** (backfill Destaques, DataService, Admin, UI) — **pendentes**, em fases próprias. Branch `feature/norm-06-f1a` ainda **não integrada à `main`**.
+**Fases do NORM-06:** ✅ **F1A (estrutura)** — colunas STI em `categories`, tabela `product_collections`, índices, constraints (UNIQUE/CHECK/FK), `slug` (Errata-01) e RLS provisória — **CONCLUÍDA** (2026-06-28; tag `norm-06-f1a-complete`). ✅ **F1B (invariantes STI I1–I4)** — 4 triggers `BEFORE` (`trg_sti_*`) com `FOR SHARE` anti-TOCTOU + D-I4-ADIC; `test:f1b` PASS=18 (negativos + positivos + concorrência) — **CONCLUÍDA** (2026-06-29; evidências no runbook F1B). ⏳ **F1C / NORM-06.1** (hardening de RLS, substitui `pc_public_read`) · ⏳ **F2+** (backfill Destaques — **resolver antes as 2 colisões de `unique_nome_categoria`** —, DataService, Admin, UI) — **pendentes**, em fases próprias. Branch `feature/norm-06-f1a` ainda **não integrada à `main`**.
 
 ## Sequência da evolução arquitetural
 

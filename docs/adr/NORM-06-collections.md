@@ -1,7 +1,7 @@
 # ADR NORM-06 — Implementação do Catálogo: Collections (Categorias de Negócio × Coleções)
 
 - **Status:** 🔒 **ARQUITETURA CONGELADA** (ver §Status de Governança) · **D-DEST aprovada (A)**.
-- **Status de implementação:** **F1A (estrutura) APLICADA** em 2026-06-28 na branch `feature/norm-06-f1a` (tag `norm-06-f1a-complete` → `4177a45`); **F1B (invariantes STI), F1C/NORM-06.1 (RLS) e F2+ (backfill/DataService/Admin/UI) pendentes**; **não** integrada à `main`. Evidências e ledger no [F1A — Execution Plan](NORM-06-F1A-execution-plan.md). *(A arquitetura deste ADR permanece imutável — apenas o status de implementação foi anotado.)*
+- **Status de implementação:** **F1A (estrutura) APLICADA** em 2026-06-28 e **F1B (invariantes STI I1–I4) APLICADA** em 2026-06-29 — ambas na branch `feature/norm-06-f1a` (tag F1A `norm-06-f1a-complete` → `4177a45`); **F1C/NORM-06.1 (RLS) e F2+ (backfill/DataService/Admin/UI) pendentes**; **não** integrada à `main` (merge único planejado no fim do F1C). Evidências e ledger no [F1A — Execution Plan](NORM-06-F1A-execution-plan.md) e [F1B — Execution Plan](NORM-06-F1B-execution-plan.md). A F1B ratificou **D-I4-ADIC** (I4 também bloqueia `business→collection` com adicionais referenciando) e endureceu o TOCTOU com `FOR SHARE`. **⚠️ Pré-condição descoberta para o F2:** o backfill colide em `unique_nome_categoria` (dois "Encanto Mineiro" em c4+c8; duas "Marmita G 2 Proteínas…" em c1+c2) — resolução humana obrigatória antes do F2 (ver F1B Execution Plan). *(A arquitetura deste ADR permanece imutável — apenas o status de implementação foi anotado.)*
 - **Base congelada:** [NORM-06A v4](NORM-06A-modelo-grupos-catalogo.md) (modelo) + [NORM-07](NORM-07-collection-engine.md) (Collection Engine, ramo `manual`). Referência: [NORM-01A](NORM-01A-modelo-canonico-catalogo.md).
 - **Revisão:** incorpora a **"Revisão Arquitetural Final (Hardening do Plano)"** + uma **revisão adversarial** (12 revisores) sobre este ADR + a **rodada de hardening final** (5 pontos: D-DEST aprovada, reforço da policy temporária, F1A só-estrutura, ordem de retorno congelada, escopo fechado) — tudo em 2026-06-27. Não muda o objetivo (Collections) — endurece contratos, reduz risco e **fecha as inconsistências** que a revisão encontrou.
 - **Escopo:** **EXCLUSIVAMENTE Collections.** RLS e remoção de legado são **explicitamente extraídos** (ver §1.2 e §15).
@@ -249,6 +249,9 @@ Esta linha **não** altera nenhuma policy de tabela existente; é só a postura 
 **Nenhuma policy de tabela existente é criada ou alterada no NORM-06.** As policies `USING(true)` atuais de `products`/`categories` permanecem **exatamente como estão**. A fase existe na numeração só para **registrar a extração deliberada**: RLS (redesenho anon/authenticated) é preocupação independente, fase própria, **não** parte de Collections. *(A postura da tabela nova `product_collections` é F1A/D-RLS, não esta hardening.)*
 
 ### F2 — Backfill (só coleções) `[backup: NORM-06-F2]` — **assume D-DEST (A) preservar**
+
+> **⚠️ Pré-condição descoberta na F1B (resolução humana obrigatória ANTES do F2):** os realojamentos abaixo **colidem** em `unique_nome_categoria UNIQUE(nome, categoria_id)` contra a base real: (1) **Encanto Mineiro** já existe em **c4** (`cb7d5883…`) — mover o de c8 (`45e97133…`) para c4 falha; (2) **Marmita G 2 Proteínas com Açaí 500 ml** já existe em **c1** — mover o de c2 (`94da9683…`) para c1 falha. **Proibido auto-corrigir** (postura do guard de slug). Decidir destino sem colisão / renomear / fundir duplicata antes de executar o F2. Detalhe no [F1B — Execution Plan](NORM-06-F1B-execution-plan.md).
+
 **Sequência obrigatória** (ditada pelos invariantes I1/I4 — §5):
 ```sql
 BEGIN;
@@ -315,7 +318,7 @@ COMMIT;
 - [x] **D-DEST decidida = A** (preservar; ver [Decisões de Produto](#decisões-de-produto)).
 - [ ] **F0 ratificada** (R1, D-RLS, D1, D3, G4, §3.3) antes de qualquer DDL — D-DEST já fechada.
 - [ ] **GUARD de slug (§6) executado e VERDE** (zero colisões) antes do `UNIQUE`; **backfill usa a mesma expressão do guard**. Colisão ⇒ migração abortada, **sem** auto-rename.
-- [ ] Invariante STI (I1–I4) com **testes negativos e positivos** verdes.
+- [x] Invariante STI (I1–I4) com **testes negativos e positivos** verdes — **F1B aplicada** (`test:f1b` PASS=18; inclui concorrência/TOCTOU).
 - [ ] `resolve_collection` respeita o contrato **4 campos** (§4); hidratação **só por id** (guard G1).
 - [ ] **Nenhuma policy de tabela existente** (`products`/`categories`) criada/alterada. A policy de `product_collections` (tabela nova) **espelha o regime público atual** (não é a hardening anon/authenticated).
 - [ ] **Nenhum `DROP COLUMN`** no NORM-06.
