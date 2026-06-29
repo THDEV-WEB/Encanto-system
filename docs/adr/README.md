@@ -35,7 +35,8 @@ Decisões de produto/arquitetura registradas como design, ainda **não implement
 | [NORM-07](NORM-07-collection-engine.md) | Collection Engine (resolver members-only; hidratação na camada superior) | Reservado | — |
 | [NORM-08](NORM-08-search-engine.md) | Search Engine | Reservado | — |
 | [NORM-09](NORM-09-event-engine.md) | Event Engine | Reservado | — |
-| NORM-06.1 / HARDEN-RLS | RLS de coluna local (anon=só disponíveis · authenticated=todos) — **extraído do NORM-06** | Reservado (fase própria) | — |
+| [NORM-06.1](NORM-06.1-harden-rls.md) / HARDEN-RLS | RLS do catálogo: escrita `authenticated` em categories/adicionais/product_collections + substitui `pc_public_read`; **preserva leitura pública** (D1, diverge da §3.2) | **CONGELADO (2026-06-29)** · ⛔ execução **BLOQUEADA** (signups habilitados — pré-req de segurança não satisfeito) | — |
+| HARDEN-ORDERS-RLS | Fechar `orders`/`customers`/`order_items` (anon lê/edita todos os pedidos) — **extraído do NORM-06.1 (D2)** | Reservado (fase própria; toca checkout) | — |
 | HARDEN-LEGACY | Remoção de legado (`DROP image_url`, `DROP destaque`) após estabilização — **extraído do NORM-06** | Reservado (fase própria) | — |
 
 **Runbooks de execução:** [NORM-06 · F1A — Execution Plan](NORM-06-F1A-execution-plan.md) (estrutura; 11 etapas) · [NORM-06 · F1B — Execution Plan](NORM-06-F1B-execution-plan.md) (invariantes STI I1–I4; revisão adversarial, D-I4-ADIC, ledger de evidências, achado de colisão do F2). Procedimentos institucionais: pré-condições → etapas em ordem imutável → abort em qualquer falha; não alteram arquitetura.
