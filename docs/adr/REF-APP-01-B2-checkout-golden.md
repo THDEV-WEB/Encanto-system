@@ -1,0 +1,93 @@
+# REF-APP-01 · B2 — Golden de payload do checkout (PROPOSTA)
+
+- **Status:** 🟦 **PROPOSTA — NÃO APLICADA.** Pré-requisito do congelamento da **fase de execução** da REF-APP-01 (achado B2). Nada foi implementado; nenhuma extração iniciada.
+- **Pertence a:** [REF-APP-01 (DESENHO congelado)](REF-APP-01-modularizacao-appjsx.md) · achado **B2** (validação do checkout era 100% manual).
+- **Objetivo:** trocar a única garantia anti-regressão do fluxo sagrado (`create_order` + idempotência + mensagem WhatsApp) — hoje "1 pedido real" manual, não reproduzível — por um **teste automatizado sem dependência de banco real**.
+
+---
+
+## 1. De onde vem o payload (fonte verificada)
+
+O `CheckoutPage.submit` ([App.jsx:1075-1137](../../src/App.jsx#L1075-L1137)) monta **4 argumentos** e chama `DS.savePedido(cliente, order, itens, requestId)` ([App.jsx:1089-1106](../../src/App.jsx#L1089-L1106)), que repassa para a RPC `create_order(p_customer, p_order, p_items, p_request_id)` ([App.jsx:320-323](../../src/App.jsx#L320-L323)). A montagem é **pura** em função de `(cart, form, requestId)` — as partes impuras (`newRequestId`, `localStorage` do `encanto_req_id` e da fidelidade, `cart.clear()`, `onSuccess`) **não entram no payload** e ficam fora do golden.
+
+| Arg | Forma | Fonte |
+|---|---|---|
+| `p_customer` | `{ name, phone }` | `form.nome`, `form.telefone` |
+| `p_order` | `{ total, status:'recebido', payment_method, address, observacoes }` | `cart.total`, `form.pagamento`, `form.endereco`, `form.obs\|\|null` |
+| `p_items[]` | `{ product_id, nome_produto, quantity, price, preco_unitario, adicionais, observacoes }` | `cart.items` + `precoUnitario(i)` (domínio); `product_id = isUuid(i.id) ? i.id : null` |
+| `p_request_id` | uuid (idempotency key) | injetado (mock no golden; `newRequestId`/localStorage em produção) |
+
+---
+
+## 2. Payload mínimo proposto (números REAIS — gerados pelo PoC, domínio real)
+
+Fixtures determinísticas: 1 item **uuid** com 2 adicionais pagos (qty 2) + 1 item **mock não-uuid** (qty 1).
+
+```json
+{
+  "p_customer": { "name": "Maria Teste", "phone": "38999990000" },
+  "p_order": { "total": 56, "status": "recebido", "payment_method": "pix",
+               "address": "Rua A, 100, Centro", "observacoes": "sem cebola" },
+  "p_items": [
+    { "product_id": "11111111-1111-4111-8111-111111111111", "nome_produto": "Açaí 500ml",
+      "quantity": 2, "price": 22, "preco_unitario": 22,
+      "adicionais": [{ "nome": "Leite Ninho", "preco": 2 }, { "nome": "Granola", "preco": 2 }],
+      "observacoes": "sem cebola" },
+    { "product_id": null, "nome_produto": "Batidinha Morango",
+      "quantity": 1, "price": 12, "preco_unitario": 12, "adicionais": [], "observacoes": null }
+  ],
+  "p_request_id": "00000000-0000-4000-8000-000000000001"
+}
+```
+
+`price` = `precoUnitario` (18 base + 2 + 2 adicionais = 22). `total` = `totalCarrinho` (44 + 12 = 56). Mensagem WhatsApp correspondente também é congelada (string multilinha determinística).
+
+---
+
+## 3. Critério de validação automatizado (sem banco)
+
+### 3.1 Habilitador (extração mínima e fiel — gated na fase de execução, **não agora**)
+Extrair do corpo do `submit`, **sem reescrever a lógica** (move puro das expressões), duas funções puras:
+
+```js
+// src/services/orderPayload.js  (ou utils/checkout.js)
+export function buildOrderArgs(cart, form, requestId) { /* monta p_customer/p_order/p_items/p_request_id */ }
+export function buildWhatsAppMessage(cart, form) { /* monta a string do WhatsApp */ }
+```
+
+O `submit` passa a **chamar** essas funções (em vez de montar inline) — então, por construção, o que vai para `DS.savePedido` é exatamente o que o golden congela. `buildOrderArgs` recebe `requestId` por parâmetro (não chama `newRequestId`), permanecendo determinística.
+
+### 3.2 Golden — `tests/checkout.golden.mjs` (`npm run test:checkout`)
+ESM `node` autocontido, no padrão dos goldens existentes (`pricing.golden.mjs`/`addons.golden.mjs`): importa o domínio real (`pricing.js`) e os builders; **não toca banco, rede, React nem localStorage**. Asserções:
+
+1. **Snapshot do payload** — `deepStrictEqual(buildOrderArgs(cart, form, REQ), GOLDEN_PAYLOAD)` (byte-a-byte).
+2. **Snapshot da mensagem** — `strictEqual(buildWhatsAppMessage(cart, form), GOLDEN_MSG)`.
+3. **Reconciliação** — `Σ(p_items.price × quantity) === p_order.total` (invariante do comentário [App.jsx:1087](../../src/App.jsx#L1087)).
+4. **`product_id`** — uuid preservado; id de mock (não-uuid) → `null`.
+5. **Idempotência (passthrough)** — `p_request_id === REQ` injetado (zero aleatoriedade no builder).
+6. **Pureza/idempotência** — 2ª montagem `deepStrictEqual` à 1ª.
+7. **Contratos null** — `adicionais || []`, `observacoes || null` preservados.
+
+Adicionar fixtures de borda na suíte cumulativa: item com adicionais grátis (cota), `troco` preenchido, `obs` vazio, carrinho vazio (se aplicável).
+
+### 3.3 Evidência (PoC já executado, read-only)
+O PoC importou `pricing.js`/`format.js` reais e a montagem fiel → produziu o payload da §2 e **passou as 7 asserções** sem nenhuma dependência de banco. Confirma a viabilidade.
+
+---
+
+## 4. O que o golden NÃO cobre (e como é tratado)
+
+- **Aleatoriedade do `newRequestId`** e **durabilidade do `encanto_req_id` no localStorage** — fora do payload puro; o builder recebe `requestId` pronto. A persistência/retry é comportamento do `submit`, validado na extração do checkout (Onda 5) e/ou por um teste de stub.
+- **"O `submit` realmente chama `savePedido` com esses args"** — garantido por construção (o `submit` passa a chamar `buildOrderArgs`); opcionalmente reforçado por um teste que **stuba `DS.savePedido`** e captura o argumento, comparando ao golden (sem banco). Esse stub-test é leve e pode entrar junto na Onda 5.
+- **Incremento de fidelidade, `cart.clear()`, `onSuccess`** — efeitos colaterais do `submit`, fora do escopo do payload; preservados como move puro.
+
+---
+
+## 5. Como o B2 entra na fase de execução
+
+- O golden (`test:checkout`) é **congelado ANTES** de extrair o `CheckoutPage` (passo da Onda 5).
+- A extração do checkout (e qualquer passo que toque a montagem do pedido) deve manter `test:checkout` **verde**.
+- O golden vira parte da suíte cumulativa (`test:pricing`/`addons`/`deps`/**`checkout`**), rodada a cada commit da fase.
+- **Nenhuma mudança de comportamento:** o golden trava o payload atual; a extração só pode mover, nunca alterar.
+
+> 🟦 **B2 — PROPOSTA.** Payload mínimo + critério automatizado sem banco definidos e validados por PoC. **Nenhuma extração iniciada (Onda 1 não começou).** Aguardando sua reavaliação do congelamento da fase de execução.
