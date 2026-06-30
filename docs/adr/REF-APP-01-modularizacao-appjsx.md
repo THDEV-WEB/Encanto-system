@@ -14,7 +14,7 @@
 2. **Domínio é sagrado:** `utils/pricing.js`, `utils/addons.js`, `utils/format.js` permanecem **folhas puras intocadas** (contratos NORM-03/04/05; guardas `test:pricing`/`test:addons`/`test:deps`).
 3. **Checkout é sagrado:** `create_order` (RPC), `request_id`, idempotência e o payload `{p_customer,p_order,p_items,p_request_id}` são copiados **sem edição**. A **ausência de try/catch** no submit é comportamento existente — fica como está.
 4. **Preservar bugs e código morto deliberadamente** (refatorá-los = mudança funcional proibida nesta fase): ver §8.2.
-5. **Validação por passo:** `build` (vite) + `test:pricing` + `test:addons` + `test:deps` verdes + (nos passos de I/O) **1 pedido real** preservado vs baseline. Mais os **gates de resíduo e equivalência** da §6.1.
+5. **Validação por passo:** `build` (vite) + `test:pricing` + `test:addons` + `test:deps` verdes + (a partir da Onda 4) **`test:render`** + (no checkout) **`test:checkout`** + (nos passos de I/O) **1 pedido real** preservado vs baseline. Mais os **gates de resíduo e equivalência** da §6.1.
 6. **Invariante estrutural do domínio de checkout (INV-CK):** regra rígida do refactor — ver §1-bis. Submit = orquestração; cálculo/formatação/derivação do pedido = exclusivamente nos builders; DataService = persistência. **Sem duplicação de domínio** entre os três.
 
 ---
@@ -139,7 +139,7 @@ Hoje a única garantia anti-regressão do fluxo sagrado é "1 pedido real" manua
 `import './index.css'` ([App.jsx:5](../../src/App.jsx#L5)) é side-effect global; `AppShell.jsx`/`BackgroundLayer.jsx` envolvem tudo. ⇒ Plano fixa: **`import './index.css'` permanece em `App.jsx` (ou migra para `main.jsx`) como import único**; nenhum componente extraído importa CSS; o wrapping `AppShell`→`BackgroundLayer` é preservado. Grep de resíduo de cada onda visual confirma CSS importado exatamente 1×.
 
 ### B4 — Quatro "moves" são na verdade REFATORAÇÕES (consolidam N cópias) 🟠
-`ProductGrid` (generaliza 3 grids ~idênticos), `StatCard` (card repetido em Dashboard/Health), `utils/sections.js` (deriva `sec-id` por substring em 3 sítios, 1 deles morto), `services/geocoding.js` (separa I/O de setState + unifica reverse-geocode duplicado) **não são recorte-e-cola** — deduplicam cópias possivelmente não-idênticas e mudam a árvore JSX. ⇒ **Recomendação:** nesta fase fazer **apenas moves puros**; **adiar todas as consolidações para uma fase seguinte (REF-APP-02)**. Se alguma for feita aqui, exige prova de **equivalência textual das N cópias** (diff par-a-par) + diff de markup renderizado — `build` verde **não** detecta divergência de saída. Quando não-idênticas: mover cada cópia como está, preservando seu próprio dead-code.
+`ProductGrid` (generaliza 3 grids ~idênticos), `StatCard` (card repetido em Dashboard/Health), `utils/sections.js` (deriva `sec-id` por substring em 3 sítios, 1 deles morto), `services/geocoding.js` (separa I/O de setState + unifica reverse-geocode duplicado) **não são recorte-e-cola** — deduplicam cópias possivelmente não-idênticas e mudam a árvore JSX. ⇒ **✅ RATIFICADO (2026-06-30): adiado para REF-APP-02** (§10-bis). Nesta fase, **apenas moves puros**; as 4 consolidações **não** são feitas aqui. Os containers são extraídos preservando a duplicação/dead-code interno (mover cada cópia como está). Na REF-APP-02, consolidar exigirá prova de **equivalência textual das N cópias** (diff par-a-par) + diff de markup — `build` verde **não** detecta divergência de saída.
 
 ---
 
@@ -205,15 +205,19 @@ Candidatos a Context **futuros** (REF-APP-02+, não aqui): `CartContext`, `Store
 
 **Aceite (ao fim da REF-APP-01):** `App.jsx` reduzido a AppRouter mínimo (< ~120 linhas); suíte completa verde; pedido real ponta-a-ponta idêntico ao baseline; nenhuma regressão visual/funcional; cada módulo rastreável a 1 commit.
 
-**Sequência de governança definida pelo usuário (2026-06-30):**
-1. **Este desenho está CONGELADO** (sem execução). ✅
-2. **Onda 0 isolada PRIMEIRO** — reestruturar a regra D do `test:deps` para um modelo compatível com modularização incremental (allowlist ou contrato por domínio). Proposta dedicada em **[REF-APP-01 · Onda 0 — deps.audit](REF-APP-01-onda-0-deps-audit.md)** (proposta; **não aplicada**).
-3. **Só após** a Onda 0 ser aplicada, o usuário autoriza o **congelamento da fase de execução**.
+**Sequência de governança (2026-06-30):**
+1. **Desenho CONGELADO** (sem execução). ✅
+2. **Onda 0** (regra D evolutiva do `test:deps`) — **APLICADA** (`1b55379`). ✅
+3. **B2** (golden de checkout) — **ESPECIFICADO** (`8f6d618`). ✅
+4. **INV-CK** (invariante do order-domain) — **ACEITO + risco eliminado por regra** (G-CK1/G-CK2/G-CK3, `937b6e6`). ✅
+5. **B4 / R9 / index.css** — **RATIFICADOS** (ver §10-bis). ✅
+6. **Pendente:** congelamento da **fase de execução** pelo usuário → depois, Execution Plan por ondas. ⏳
 
-**Decisões adicionais a ratificar no congelamento da execução (depois da Onda 0):**
-- **Adiamento das consolidações (B4)** para REF-APP-02, mantendo REF-APP-01 100% move-puro. *(Recomendado.)*
-- **Golden de payload do checkout (B2)** e **smoke render test (R9)** como redes de segurança.
-- Destino do `import './index.css'` (manter em `App.jsx` vs mover para `main.jsx`).
+## 10-bis. Decisões ratificadas pré-execução (2026-06-30)
+
+- **B4 — consolidações ADIADAS para REF-APP-02.** REF-APP-01 é **100% move-puro**. **Não** se criam `ProductGrid`, `StatCard`, `utils/sections.js` nem `services/geocoding.js` nesta fase (módulos ~48 → **~44**). Os containers são extraídos **preservando a duplicação/dead-code interno**: `StoreApp` mantém os 3 grids inline e as 3 derivações `sec-id` por substring; `AdminDashboard`/`AdminHealth` mantêm o stat-card repetido; `AddressModal` mantém o geocoding (I/O + setState) acoplado e o reverse-geocode duplicado. Consolidar/deduplicar = **REF-APP-02** (com prova de equivalência das N cópias).
+- **R9 — render net automatizado ADOTADO.** Novo `tests/render.smoke.mjs` (`npm run test:render`): para cada **componente-folha apresentacional** (Spinner, ProductCard, CartSidebar, BADGE, etc.), renderiza com **props fixas** via `react-dom/server` (`renderToStaticMarkup`) e **congela o snapshot de markup**. JSX compilado por **esbuild** (já presente; sem nova dependência). O snapshot é congelado **no momento da extração** (que, sendo move-puro, iguala o markup original) e guarda contra drift futuro. Orquestrador (`StoreApp`) e componentes browser-heavy (`AddressModal`, `LazySection`) seguem em **smoke manual** por onda. Entra na suíte cumulativa antes da Onda 4. Viabilidade comprovada por PoC (`renderToStaticMarkup` OK, react 18.2.0).
+- **`import './index.css'` → MOVER para `main.jsx`.** Passo contido e antecipado (early): o side-effect global de CSS passa do `App.jsx` para o entry `main.jsx`; `App.jsx` vira router puro; **nenhum componente extraído importa CSS**. Guard de resíduo por onda: CSS importado **exatamente 1×** (em `main.jsx`). Zero mudança funcional (Vite empacota o mesmo stylesheet).
 
 ---
 
