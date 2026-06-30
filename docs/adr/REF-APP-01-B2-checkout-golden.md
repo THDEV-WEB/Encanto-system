@@ -50,12 +50,14 @@ Fixtures determinísticas: 1 item **uuid** com 2 adicionais pagos (qty 2) + 1 it
 Extrair do corpo do `submit`, **sem reescrever a lógica** (move puro das expressões), duas funções puras:
 
 ```js
-// src/services/orderPayload.js  (ou utils/checkout.js)
+// src/utils/orderPayload.js  — camada de DOMÍNIO (NÃO services/; ver INV-CK e regra D2 da Onda 0)
 export function buildOrderArgs(cart, form, requestId) { /* monta p_customer/p_order/p_items/p_request_id */ }
 export function buildWhatsAppMessage(cart, form) { /* monta a string do WhatsApp */ }
 ```
 
-O `submit` passa a **chamar** essas funções (em vez de montar inline) — então, por construção, o que vai para `DS.savePedido` é exatamente o que o golden congela. `buildOrderArgs` recebe `requestId` por parâmetro (não chama `newRequestId`), permanecendo determinística.
+⚠️ **Localização: `utils/`, não `services/`.** O builder **compõe** `pricing/addons/format`; a **regra D2 (Onda 0)** proíbe `services/lib/data/constants` de importar lógica pura/domínio → sob `services/` o `test:deps` reprovaria. Em `utils/` (folha de domínio) a composição é válida; o módulo entra na allowlist **D1** ao ser criado. Este order-domain é a **fonte única de verdade** do pedido — ver **[INV-CK](REF-APP-01-modularizacao-appjsx.md#1-bis-inv-ck--invariante-estrutural-do-domínio-de-checkout-regra-rígida-não-convenção)**.
+
+O `submit` passa a **chamar** essas funções (em vez de montar inline) — então, por construção, o que vai para `DS.savePedido` é exatamente o que o golden congela. Pelo **INV-CK**, o `submit` é **só orquestração** (sem cálculo/formatação) e o `DataService` **não reimplementa** o domínio (já barrado pela D2). `buildOrderArgs` recebe `requestId` por parâmetro (não chama `newRequestId`), permanecendo determinística.
 
 ### 3.2 Golden — `tests/checkout.golden.mjs` (`npm run test:checkout`)
 ESM `node` autocontido, no padrão dos goldens existentes (`pricing.golden.mjs`/`addons.golden.mjs`): importa o domínio real (`pricing.js`) e os builders; **não toca banco, rede, React nem localStorage**. Asserções:

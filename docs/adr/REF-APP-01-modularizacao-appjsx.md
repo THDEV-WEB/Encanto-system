@@ -15,6 +15,35 @@
 3. **Checkout é sagrado:** `create_order` (RPC), `request_id`, idempotência e o payload `{p_customer,p_order,p_items,p_request_id}` são copiados **sem edição**. A **ausência de try/catch** no submit é comportamento existente — fica como está.
 4. **Preservar bugs e código morto deliberadamente** (refatorá-los = mudança funcional proibida nesta fase): ver §8.2.
 5. **Validação por passo:** `build` (vite) + `test:pricing` + `test:addons` + `test:deps` verdes + (nos passos de I/O) **1 pedido real** preservado vs baseline. Mais os **gates de resíduo e equivalência** da §6.1.
+6. **Invariante estrutural do domínio de checkout (INV-CK):** regra rígida do refactor — ver §1-bis. Submit = orquestração; cálculo/formatação/derivação do pedido = exclusivamente nos builders; DataService = persistência. **Sem duplicação de domínio** entre os três.
+
+---
+
+## 1-bis. INV-CK — Invariante estrutural do domínio de checkout (regra rígida, não convenção)
+
+A extração de `buildOrderArgs` e `buildWhatsAppMessage` (B2) **formaliza o core de domínio do pedido fora do React** — passa a ser a **fonte única de verdade** do domínio de checkout. Isso é tratado como **invariante da REF-APP-01**, com separação obrigatória de responsabilidades:
+
+| ID | Regra |
+|---|---|
+| **I-CK1** | O **order-domain** (`buildOrderArgs`, `buildWhatsAppMessage`) é a **fonte única de verdade**: todo **cálculo, formatação e derivação** de dados de pedido reside nele. Módulo **puro** (sem React/IO), compõe `pricing`/`addons`/`format`. |
+| **I-CK2** | O **`submit` é exclusivamente orquestração** (`input → builder → RPC`). **Proibido conter lógica de negócio**: não calcula preço, não formata, não deriva — só coleta `form`/`cart`, injeta `requestId` e chama o builder e a RPC. |
+| **I-CK3** | O **`DataService` é só persistência**: recebe os args montados e chama `create_order`. **Proibido reimplementar/derivar** lógica de pedido. |
+| **I-CK4** | **Anti-duplicação:** nenhuma lógica de derivação de pedido pode coexistir em mais de um dos três (builders/submit/DataService). Vive **só** nos builders. |
+
+### Localização obrigatória (correção exposta pelo INV-CK + Onda 0)
+O order-domain **deve morar na camada de domínio `utils/`** (ex.: `utils/orderPayload.js`) — **NÃO** em `services/`. Motivo: a **regra D2 (Onda 0)** proíbe `services/lib/data/constants` de importar `pricing/addons/format`; como o builder **compõe** esses domínios, sob `services/` ele seria **bloqueado pelo próprio `test:deps`**. Em `utils/` (folha de domínio compartilhada) a composição é válida (e o módulo entra na allowlist D1 ao ser criado).
+
+### Enforcement mecânico (por regra, não por convenção)
+| Guard | Garante | Estado |
+|---|---|---|
+| **G-CK1** = **D2 da Onda 0** | `DataService`/`services/lib/data/constants` **não importam** `pricing/addons/format` → não podem reimplementar o domínio (I-CK3) | ✅ **JÁ ATIVO** (`test:deps`, commit `1b55379`) |
+| **G-CK2** (novo, a aplicar na execução) | `components/checkout/**` (o submit) **não importa** `pricing/addons/format` diretamente — só o order-domain builder (+ `DS`) → submit sem lógica de negócio (I-CK2). Recomenda-se o builder/view-model fornecer também as strings de exibição do resumo, para o guard ser file-level limpo. | ⏳ regra definida; aplicar no passo do checkout |
+| **G-CK3** (novo) | order-domain é **puro** (sem React/IO) — check estilo regra C do `deps.audit` | ⏳ regra definida |
+| **B2 golden + revisão** | I-CK4 residual: uma re-soma inline que **não** importe domínio (não pega por D2/G-CK2) faz o **payload divergir do golden** → barrada | ✅ golden especificado (B2) |
+
+I-CK3 já é **mecanicamente verdadeiro hoje** (D2). I-CK2/I-CK1 passam a ser mecânicos quando o checkout for extraído (G-CK2/G-CK3, gated). I-CK4 é coberto pela combinação D2 + G-CK2 + golden + revisão.
+
+> **INV-CK é pré-condição de aceite de qualquer passo que toque o checkout.** Violá-lo (lógica de negócio no submit, derivação no DataService, ou duplicação) **reprova a fase**, independentemente de a UI continuar funcionando.
 
 ---
 
