@@ -3,7 +3,7 @@
 - **Tipo:** runbook de execução controlada (procedimento institucional) — **não é arquitetura.**
 - **Pertence a:** [ADR NORM-06 (congelado)](NORM-06-collections.md) §7 F1A. Este documento **não altera** arquitetura, escopo, SQL, código nem fases — apenas formaliza **como** a F1A é executada.
 - **Natureza:** trate a F1A como uma **implantação de banco em produção**. Cada etapa tem resultado esperado e condição de abort. **Nenhuma etapa é pulada; nenhuma muda de ordem.**
-- **Aplica a SQL desta fase:** **exclusivamente** o DDL/guard já desenhados no ADR (§6 guard de slug, §7 F1A "1) Estrutura (DDL)" + "2) medida temporária de compatibilidade"). Este runbook **não introduz SQL novo**.
+- **Aplica a SQL desta fase:** **exclusivamente** o DDL/guard já desenhados no ADR (§6 guard de slug, §7 F1A "1) Estrutura (DDL)" + "2) medida temporária de compatibilidade"). Este runbook **não introduz SQL novo** — **exceção:** a **expressão de slug** segue a forma **corrigida** da [Errata-01](NORM-06-F1A-errata-01-slug.md) (bugfix de implementação; o ADR permanece congelado).
 
 > **Regra-mãe:** se **qualquer** verificação falhar — no Execution Gate ou em qualquer etapa — **PARAR IMEDIATAMENTE** (estado FAILED/ABORTED). Nunca "seguir para testar depois". Sem improviso, sem auto-correção.
 
@@ -79,17 +79,31 @@ Caso **qualquer** etapa termine em **FAILED** ou **ABORTED**:
 
 > Cada etapa começa em PENDING → RUNNING e deve terminar em **SUCCESS** para liberar o **Gate entre etapas**. Qualquer término em **FAILED/ABORTED** dispara a **Regra de rollback** e encerra a execução.
 
-### Etapa 1 — Guard de Slug
-- **Ação:** executar **primeiro** a verificação de colisões (ADR §6), com a **mesma expressão** do backfill.
-- **Resultado esperado:** **0 colisões** (relatório vazio).
-- **Se houver QUALQUER colisão:**
-  - **NÃO** corrigir automaticamente;
-  - **NÃO** gerar slug alternativo / sufixo / número;
-  - **NÃO** continuar.
-  - → **ABORTAR MIGRAÇÃO** (estado **ABORTED**). Resolução é **humana**; depois reinicia-se do **Execution Gate (§0)**.
+### Etapa 1 — Guard de Slug `[READ-ONLY]`
+- **Ação:** executar `npm run guard:slug` ([`scripts/norm06-f1a-slug-guard.mjs`](../../scripts/norm06-f1a-slug-guard.mjs)). Usa a **expressão CORRIGIDA da [Errata-01](NORM-06-F1A-errata-01-slug.md)** (não a do ADR §6/§7, cujo bug está documentado na errata) — a **mesma** que o backfill da Etapa 2 usará.
+- **Declaração de read-only (impressa no relatório):** *esta etapa executa apenas consultas — nenhum INSERT / UPDATE / DELETE / ALTER TABLE / migração / escrita no banco.*
+- **Relatório reproduzível + autoauditável obrigatório (nesta ordem):**
+  1. declaração read-only · expressão SQL usada · fingerprint do banco (Project ID · Database · Schema · Timestamp UTC · nº de categorias) · contagens (categorias, slugs, `Slug collisions: N`) · lista completa `| Categoria | Slug |` · saída efetiva dos casos conhecidos · bloco de critério de aceite;
+  2. **Execution Fingerprint:** Commit SHA · Branch · Node Version · Plataforma · Arquitetura · Project ID · Database · Schema · Timestamp UTC · Script (`guard:slug`) · Working tree (clean/dirty);
+  3. **Duration:** Started · Finished · Duration (ms) — rastreabilidade, não benchmark;
+  4. **Database immutability:** `Database writes detected: 0` · `DDL executed: 0` · `Migration executed: 0` · `Status: READ ONLY CONFIRMED`;
+  5. **Execution Report SHA256:** hash do corpo do relatório (tamper-evidence);
+  6. **Encerramento formal:** bloco `ETAPA 1 / STATE: SUCCESS|FAILED / NEXT STEP / NO DATABASE WRITES DETECTED`.
+- **Critério de aceite — SUCCESS exige TODOS simultaneamente:**
+  1. **0 colisões**;
+  2. **casos conhecidos aprovados** (Cardápio de Marmitas→`cardapio-de-marmitas` · Destaques→`destaques` · Monte seu Copo→`monte-seu-copo` · Promoção do Dia→`promocao-do-dia`);
+  3. **nenhum slug vazio**;
+  4. **nenhum slug iniciando com hífen**;
+  5. **nenhum slug terminando com hífen**;
+  6. **nenhum caractere inválido** (somente `[a-z0-9-]`);
+  7. **relatório completo gerado**;
+  8. **banco confirmado** (fingerprint);
+  9. **execução read-only confirmada**.
+- **Se QUALQUER item falhar:** estado = **FAILED** → **interromper imediatamente**; **não** corrigir durante a mesma execução; **não** gerar slug alternativo/sufixo/número; **não** continuar. (Colisão/divergência → também **ABORTED**; resolução humana; reinicia do **Execution Gate §0**.)
+- **🚦 Gate após SUCCESS (não automático):** mesmo com tudo verde, **PARAR**. Apresentar o relatório completo + evidências + estado oficial + confirmação de que **nenhuma escrita ocorreu**. **Aguardar autorização explícita** para a Etapa 2 (DDL). **Nunca** iniciar a Etapa 2 automaticamente.
 
 ### Etapa 2 — Aplicação do DDL
-- **Ação:** aplicar **exclusivamente** o DDL previsto na F1A (ADR §7 F1A "1) Estrutura"): colunas novas em `categories`, backfill de `slug`, `CREATE TABLE product_collections`. *(A "2) medida temporária de compatibilidade" — `ENABLE RLS` + `pc_public_read` — é parte da F1A e entra aqui, destacada como provisória.)*
+- **Ação:** aplicar **exclusivamente** o DDL previsto na F1A (ADR §7 F1A "1) Estrutura"): colunas novas em `categories`, backfill de `slug`, `CREATE TABLE product_collections`. **O `UPDATE categories SET slug = …` usa byte-a-byte a expressão corrigida da [Errata-01](NORM-06-F1A-errata-01-slug.md)** (mesma do guard da Etapa 1). *(A "2) medida temporária de compatibilidade" — `ENABLE RLS` + `pc_public_read` — é parte da F1A e entra aqui, destacada como provisória.)*
 - **Resultado esperado:** tabela criada; colunas corretas; **sem warnings**; **nenhuma alteração fora do escopo**.
 - **Abort:** qualquer erro/warning inesperado ou objeto fora do desenho → parar.
 
@@ -143,39 +157,421 @@ Caso **qualquer** etapa termine em **FAILED** ou **ABORTED**:
 
 ---
 
-## Tabela de Evidências (preencher na execução)
+## Tabela de Evidências (registro oficial da execução)
 
 **Cabeçalho da execução:**
 
 | Campo | Valor |
 |---|---|
-| Data/hora (início) | — |
-| Ambiente | — |
-| Banco (project ref) | — |
-| Branch | — |
-| Commit base | — |
-| Operador | — |
-| Snapshot/backup | — |
-| Autorização ("GO F1A") | — (quem / quando) |
+| Data/hora (início) | 2026-06-28T15:47Z (Etapa 0 / backup) |
+| Ambiente | Produção (Supabase) |
+| Banco (project ref) | `hvbcdxsagkjtfjwvnslo` · database `postgres` · schema `public` |
+| Branch | `feature/norm-06-f1a` |
+| Commit base | `ce16ff6` (estado de código no momento da aplicação) |
+| Operador | Claude Code (execução assistida, sob autorização explícita do usuário) |
+| Snapshot/backup | `snapshot-NORM-06-F1A-2026-06-28T15-47-11-130Z.json` |
+| Autorização ("GO F1A") | usuário — "pode executar" (Etapa 1) · "Aprovo a passagem para a Etapa 2" (Etapa 2) |
 
 **Resultado por etapa** (Estado ∈ PENDING · RUNNING · SUCCESS · FAILED · ABORTED):
 
-| Etapa | Estado | Horário | Evidência |
+| Etapa | Estado | Horário (UTC) | Evidência |
 |---|---|---|---|
-| 0. Execution Gate | PENDING | — | — |
-| 1. Guard de slug | PENDING | — | colisões = ? |
-| 2. DDL | PENDING | — | warnings = ? |
-| 3. Índices | PENDING | — | — |
-| 4. Constraints | PENDING | — | — |
-| 5. Validação de schema | PENDING | — | — |
-| 6. Build | PENDING | — | — |
-| 7. Testes da fase | PENDING | — | — |
-| 8. Validação funcional (tel 44) | PENDING | — | — |
-| 9. Evidências | PENDING | — | — |
-| 10. Commit | PENDING | — | hash = ? |
-| 11. Atualização documental | PENDING | — | — |
+| 0. Execution Gate | **SUCCESS** | 2026-06-28T15:47 | 10/10 itens verdes; backup gravado |
+| 1. Guard de slug | **SUCCESS** | 2026-06-28T16:09:10 | 9 cat · 0 colisões · 9 critérios OK · read-only · 1739 ms · SHA-256 `3d579031…` (relatório integral abaixo) |
+| 2. DDL | **SUCCESS** | 2026-06-28T16:25:49–51 | 5 instruções · `categories` +9 cols · `product_collections` criada (6 cols) · RLS+policy provisória · slug 9/9 · 1802 ms · exit 0 · sem warnings (evidência abaixo) |
+| 3. Índices | **SUCCESS** | 2026-06-28T16:35:48–49 | 2 índices criados (pc_collection_idx, pc_product_idx) válidos+ready; 1678 ms; exit 0; nada além de índices alterado (evidência abaixo) |
+| 4. Constraints | **SUCCESS** | 2026-06-28T16:51:46–48 | pré-val 9/9 = 0 violações; 8 constraints + slug NOT NULL (todas convalidated); 2078 ms; exit 0; sem dado corrigido (evidência abaixo) |
+| 5. Validação de schema | **SUCCESS** | 2026-06-28T16:58 | auditoria final: schema == ADR, 0 divergências (0 faltando / 0 excedente); 10/10 constraints VALID; 6/6 índices válidos; 0 triggers; 0 funções/views/seq novas; 7674 ms (evidência abaixo) |
+| 6. Build | **SUCCESS** | 2026-06-28T17:04:46–52 | `npm run build` exit 0; 0 erros; 1 warning (chunk>500kB, pré-existente); 3 assets; banco inalterado; código limpo; 5375 ms (evidência abaixo) |
+| 7. Testes da fase | **SUCCESS** | 2026-06-28T~17:07 | test:deps/pricing/addons todos exit 0 (0 falhas); banco idêntico (pc rows=0); código/árvore limpos (evidência abaixo) |
+| 8. Validação funcional (tel 44) | **SUCCESS** | 2026-06-28T~17:14 | pedido real preservado (só artefatos de serialização); src/ diff vazio; product_collections vazia; 0 regressão (evidência abaixo) |
+| 9. Evidências | **SUCCESS** | 2026-06-28T~17:20 | consolidação formal do ledger (Etapas 0–8) — só documentação (ledger abaixo) |
+| 10. Commit | **SUCCESS** | 2026-06-28T~17:25 | encerramento administrativo: tag `norm-06-f1a-complete`; sem alteração técnica (bloco abaixo) |
+| 11. Atualização documental | **SUCCESS** | 2026-06-28T~17:30 | fechamento documental: README + status ADR + este runbook; F1A oficialmente concluída (bloco abaixo) |
 
 > Em término **FAILED/ABORTED**, registrar nesta tabela o **motivo da interrupção** (Gate entre etapas) e aplicar a **Regra de rollback**.
+
+### Evidência integral — Etapa 1 (Guard de Slug) — STATE: SUCCESS
+
+```text
+==================================================================
+ GUARD DE SLUG — F1A / NORM-06 — RELATORIO
+==================================================================
+Esta etapa executa apenas consultas.
+  Nenhum INSERT / UPDATE / DELETE / ALTER TABLE / migracao / escrita no banco
+
+— Fingerprint do banco —
+  Project ID  : hvbcdxsagkjtfjwvnslo
+  Database    : postgres
+  Schema      : public (current_schema=public)
+  Timestamp   : 2026-06-28T16:09:10Z (UTC, relogio do servidor)
+  Categorias analisadas: 9
+
+— Expressao SQL utilizada (Errata-01, corrigida) —
+  trim(both '-' from regexp_replace(lower(unaccent(nome)), '[^a-z0-9]+', '-', 'g'))
+
+— Contagens —
+  Categorias analisadas : 9
+  Slugs gerados         : 9
+  Colisoes encontradas  : 0
+  Slug collisions: 0
+
+— Lista completa —
+  | Categoria                | Slug                  |
+  |--------------------------|-----------------------|
+  | Cardápio de Marmitas     | cardapio-de-marmitas  |
+  | Destaques                | destaques             |
+  | Copos Prontos            | copos-prontos         |
+  | Monte seu Copo           | monte-seu-copo        |
+  | Batidinhas               | batidinhas            |
+  | Combos                   | combos                |
+  | Pedido Fitness           | pedido-fitness        |
+  | Bebidas                  | bebidas               |
+  | Promoção do Dia          | promocao-do-dia       |
+
+— Casos conhecidos (saida efetiva) —
+  Cardápio de Marmitas
+  -> cardapio-de-marmitas
+  Destaques
+  -> destaques
+  Monte seu Copo
+  -> monte-seu-copo
+  Promoção do Dia
+  -> promocao-do-dia
+
+— Criterio de aceite —
+  [OK] 0 colisoes
+  [OK] nenhum slug vazio
+  [OK] nenhum slug inicia com hifen
+  [OK] nenhum slug termina com hifen
+  [OK] nenhum caractere invalido (somente [a-z0-9-])
+  [OK] relatorio completo gerado
+  [OK] banco confirmado (fingerprint acima)
+  [OK] execucao read-only confirmada
+
+— Execution Fingerprint —
+  Commit SHA   : ce16ff65272fcbb88835fe807bedfdc80176e561
+  Branch       : feature/norm-06-f1a
+  Node Version : v24.17.0
+  Plataforma   : win32
+  Arquitetura  : x64
+  Project ID   : hvbcdxsagkjtfjwvnslo
+  Database     : postgres
+  Schema       : public
+  Timestamp UTC: 2026-06-28T16:09:10Z
+  Script       : guard:slug
+  Working tree : clean
+
+— Duration —
+  Started : 2026-06-28T16:09:09Z
+  Finished: 2026-06-28T16:09:10Z
+  Duration: 1739 ms
+
+— Database immutability —
+  Database writes detected: 0
+  DDL executed: 0
+  Migration executed: 0
+  Status: READ ONLY CONFIRMED
+
+— Execution Report SHA256 —
+  3d57903148ed48c8c031f4325334edac4dabbfbbf9658044ae97e86298541cfa
+
+ETAPA 1 — STATE: SUCCESS — NO DATABASE WRITES DETECTED
+```
+
+### Evidência — Etapa 2 (DDL) — STATE: SUCCESS
+
+Arquivo aplicado: `migrations/NORM-06-F1A-step2.sql` (atômico, `BEGIN/COMMIT`) · rollback: `migrations/NORM-06-F1A-step2-rollback.sql`.
+
+```text
+DDL executado (mensagens do banco):
+  BEGIN / ALTER / UPDATE (9 rows) / CREATE / ALTER / CREATE / COMMIT / DONE
+  exit code: 0 — sem warnings — sem erros
+Started:  2026-06-28T16:25:49Z   Finished: 2026-06-28T16:25:51Z   Duration: 1802 ms
+
+Validação do schema:
+  categories            : 16 colunas (7 originais + 9 novas: slug, descricao, imagem,
+                          banner, tipo[NOT NULL DEFAULT 'business'], estrategia,
+                          definicao[jsonb], starts_at, ends_at)
+  product_collections   : criada — 6 colunas (id uuid PK, product_id uuid NOT NULL,
+                          collection_id text NOT NULL, ordem int NOT NULL DEFAULT 0,
+                          fixado bool NOT NULL DEFAULT false, created_at timestamptz DEFAULT now())
+  RLS product_collections: enabled=true · 1 policy: pc_public_read / SELECT / {public} / true (provisória)
+  slug (backfill)       : 9/9 corretos (expressão Errata-01); 0 slugs nulos; tipo='business' em 9/9
+  fora de escopo (próximas): slug NOT NULL + UNIQUE + CHECK STI + UNIQUE/FK product_collections -> Etapa 4; índices pc -> Etapa 3
+  order tables          : não tocadas (pedido real preservado)
+```
+
+### Evidência — Etapa 3 (Índices) — STATE: SUCCESS
+
+Arquivo aplicado: `migrations/NORM-06-F1A-step3.sql` (atômico) · rollback: `migrations/NORM-06-F1A-step3-rollback.sql`.
+
+```text
+SQL executado (mensagens do banco):
+  BEGIN / CREATE / CREATE / COMMIT / DONE
+  exit code: 0 — sem warnings — sem erros
+Started: 2026-06-28T16:35:48Z   Finished: 2026-06-28T16:35:49Z   Duration: 1678 ms
+
+Indices criados (pg_get_indexdef + validade):
+  pc_collection_idx : CREATE INDEX pc_collection_idx ON public.product_collections USING btree (collection_id, fixado DESC, ordem)
+                      indisvalid=true · indisready=true · unique=false
+  pc_product_idx    : CREATE INDEX pc_product_idx    ON public.product_collections USING btree (product_id)
+                      indisvalid=true · indisready=true · unique=false
+  (pre-existente)   : product_collections_pkey UNIQUE btree (id)
+
+Catalogo: product_collections tem 3 indices (pkey + os 2 novos) — nenhum indice adicional.
+Inalterado nesta etapa: categories 16 cols · product_collections 6 cols · 1 policy (pc_public_read)
+  · 0 triggers · constraints = product_collections_pkey (sem CHECK/UNIQUE/FK novos) · products: indices inalterados (2).
+Fingerprint: project hvbcdxsagkjtfjwvnslo · db postgres · schema public · UTC 2026-06-28T16:36:27Z
+  · commit ef8508d · branch feature/norm-06-f1a · node v24.17.0 · win32 x64.
+```
+
+### Evidência — Etapa 4 (Constraints) — STATE: SUCCESS
+
+Arquivo aplicado: `migrations/NORM-06-F1A-step4.sql` (atômico) · rollback: `migrations/NORM-06-F1A-step4-rollback.sql`.
+
+```text
+Pre-validacoes (read-only, ANTES de aplicar): 9/9 verificacoes = 0 violacoes
+  (slug null, slug dup, tipo, estrategia, sti_coll, sti_biz, pc dup, fk product, fk collection)
+
+SQL executado (mensagens do banco):
+  BEGIN / ALTER x9 / COMMIT / DONE
+  exit code: 0 — sem warnings — sem erros
+Started: 2026-06-28T16:51:46Z   Finished: 2026-06-28T16:51:48Z   Duration: 2078 ms
+
+Constraints aplicadas (todas convalidated=true):
+  categories.slug                   -> NOT NULL (column-level)
+  categories_slug_uk    UNIQUE      -> UNIQUE (slug)
+  categories_tipo_chk   CHECK       -> CHECK (tipo = ANY (ARRAY['business','collection']))
+  categories_estrategia_chk CHECK   -> CHECK (estrategia = ANY (ARRAY['manual','rule','smart']))
+  categories_sti_coll_chk CHECK     -> CHECK (tipo='collection' OR (estrategia IS NULL AND definicao IS NULL AND starts_at IS NULL AND ends_at IS NULL))
+  categories_sti_biz_chk CHECK      -> CHECK (tipo='business' OR estrategia IS NOT NULL)
+  product_collections_uk UNIQUE     -> UNIQUE (product_id, collection_id)
+  product_collections_product_fk FK -> FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+  product_collections_collection_fk FK -> FOREIGN KEY (collection_id) REFERENCES categories(id) ON DELETE CASCADE
+
+Catalogo: 8 constraints novas (5 categories + 3 product_collections) + slug NOT NULL; NENHUMA adicional.
+Dados: todos os registros satisfazem (convalidated=true, sem NOT VALID); pre-validacao 0 violacoes;
+  NENHUM dado corrigido (migracao so tem ALTER, zero DML).
+Inalterado nesta etapa: categories 16 cols / pc 6 cols (nenhuma coluna add/remove/retipo; unica mudanca de
+  coluna = slug -> NOT NULL, que e a propria constraint de nulidade); 2 policies (pre-existente categories +
+  pc_public_read) inalteradas; 0 triggers. Indices: +2 IMPLICITOS das UNIQUE (categories_slug_uk,
+  product_collections_uk) — sao o proprio mecanismo das constraints; nenhum indice standalone criado/alterado.
+Fingerprint: project hvbcdxsagkjtfjwvnslo · db postgres · schema public · UTC 2026-06-28T16:52:41Z
+  · commit 73a07b2 · branch feature/norm-06-f1a · node v24.17.0 · win32 x64.
+```
+
+### Evidência — Etapa 5 (Validação de Schema / Auditoria Final) — STATE: SUCCESS
+
+Auditoria read-only (introspecção). **Schema atual == schema previsto** (ADR NORM-06A §2.1/§2.3 + Errata-01). **Zero divergências.**
+
+```text
+Inventario F1A (criado) — tudo conferido vs ADR:
+  Tabela     : product_collections (1)
+  Colunas    : categories +9 (slug[NOT NULL], descricao, imagem, banner, tipo[NOT NULL DEFAULT 'business'],
+               estrategia, definicao[jsonb], starts_at[tstz], ends_at[tstz]) · product_collections 6
+               (id uuid PK gen_random_uuid, product_id uuid, collection_id text, ordem int DEFAULT 0,
+               fixado bool DEFAULT false, created_at tstz DEFAULT now())
+  Indices    : pc_collection_idx (collection_id, fixado DESC, ordem), pc_product_idx (product_id),
+               product_collections_pkey (id), product_collections_uk (product_id, collection_id),
+               categories_slug_uk (slug) — todos indisvalid=true / indisready=true
+  Constraints: slug NOT NULL; categories_slug_uk UNIQUE; categories_tipo_chk; categories_estrategia_chk;
+               categories_sti_coll_chk; categories_sti_biz_chk; product_collections_pkey PK;
+               product_collections_uk UNIQUE; product_collections_product_fk FK; product_collections_collection_fk FK
+               — todas convalidated=true (VALID)
+  Policies   : pc_public_read (product_collections) — provisoria (Etapa 2)
+
+Conferencias:
+  Objetos faltando         : 0
+  Objetos excedentes (F1A) : 0
+  Nomes conforme previsto  : OK (todos)
+  Tipos/defaults/nulabilidade/definicoes vs ADR : OK (todos)
+  Constraints VALID        : 10/10 convalidated=true
+  Indices validos          : 6/6 indisvalid=true
+  Triggers criadas na F1A  : 0
+  Funcoes/views/RPC novas  : 0 (resolve_collection/list_products ausentes — sao F3)
+  Sequencias novas         : 0
+  Inalterado               : categories 7 cols originais intactas; 1 policy pre-existente (categories); products intocada
+
+Fingerprint: project hvbcdxsagkjtfjwvnslo · db postgres · schema public · UTC 2026-06-28T16:58:37Z
+  · commit aed72fc · branch feature/norm-06-f1a · node v24.17.0 · win32 x64
+Duracao da auditoria: 7674 ms
+STATE: SUCCESS — zero divergencias
+```
+
+### Evidência — Etapa 6 (Build) — STATE: SUCCESS
+
+Comando: `npm run build` (vite v5.4.21) · exit 0 · 107 módulos · duração 5375 ms (vite: built in 2.77s).
+
+```text
+Assets gerados (tamanho final):
+  dist/index.html                  1211 B  (1.21 kB · gzip 0.69 kB)
+  dist/assets/index-CV8UexFo.css 523821 B  (523.82 kB · gzip 372.04 kB)
+  dist/assets/index-BkmThAW9.js  540132 B  (539.17 kB · gzip 171.19 kB)
+
+Erros   : 0
+Warnings: 1 -> "Some chunks are larger than 500 kB after minification" (limite de chunk do Vite)
+          classificacao: PRE-EXISTENTE (F1A nao alterou nenhum arquivo de src/; bundle identico ao de antes da F1A)
+
+Banco durante o build : NENHUMA escrita/DDL/migracao (vite build nao acessa o banco).
+  Read-only pos-build  : cat_cols=16, pc_cols=6, constraints=10, indices=6, pc_policies=1, triggers=0
+                         -> IDENTICO ao pos-Etapa-5 (schema inalterado).
+Codigo                : git status limpo antes e depois (0 modificacao automatica; dist/ e gitignored).
+Schema da F1A         : build no HEAD 40ec231, working tree limpo, sem ajuste manual intermediario;
+                        F1A nao tocou src/ (so docs/migrations/scripts/package.json).
+Fingerprint: commit 40ec231 · branch feature/norm-06-f1a · Node v24.17.0 · win32 x64 · UTC 2026-06-28T17:04:46Z
+```
+
+### Evidência — Etapa 7 (Testes da fase) — STATE: SUCCESS
+
+3 suítes (os guards dos domínios), todas exit 0; banco intocado; código intocado; árvore limpa.
+
+```text
+test:deps    -> node tests/deps.audit.mjs     -> exit 0 · 800 ms · 10 checks (10 OK, 0 fail, 0 skip)
+test:pricing -> node tests/pricing.golden.mjs -> exit 0 · 750 ms · 6 grupos (equivalencia, absoluto, real,
+                pureza, idempotencia, bordas) — todos OK, 0 fail, 0 skip
+test:addons  -> node tests/addons.golden.mjs  -> exit 0 · 769 ms · 6 grupos (snapshot, pureza, idempotencia,
+                taxonomia, guard-imports, pin-cruzado) — todos OK, 0 fail, 0 skip
+(golden suites agregam multiplas assercoes por grupo e emitem 1 linha de sucesso; exit 0 = todas passaram)
+
+Validacao cruzada:
+  Schema do banco pos-testes : cat_cols=16, pc_cols=6, constraints=10, indices=6, pc_policies=1, triggers=0,
+                               product_collections rows=0 -> IDENTICO ao pos-Etapa-6 (banco inalterado).
+  Escrita pelos testes       : NENHUMA (suites nao conectam ao banco: deps=analise estatica de src/;
+                               pricing/addons=modulos puros). Sem INSERT/UPDATE/DELETE/ALTER/DROP/CREATE.
+  src/ modificado            : NENHUM (git status limpo)
+  Working tree               : limpo · nenhum teste novo criado
+Fingerprint: commit 0bb7677 · branch feature/norm-06-f1a · Node v24.17.0 · win32 x64 · UTC 2026-06-28 (~17:07Z)
+RESUMO: test:deps=PASS · test:pricing=PASS · test:addons=PASS · STATE: SUCCESS
+```
+
+### Evidência — Etapa 8 (Validação funcional / pedido real tel 44) — STATE: SUCCESS
+
+Pedido de referência (snapshot Etapa 0 == atual): customer `6873df96` "4ee" tel "44"; order `05821c13` total 43.989999999999995 status recebido/dinheiro/"ff"; 1 item "Bife Acebolado" qty 1 price 43.989999999999995 + 3 adicionais (Carne/Frango/Linguiça Extra = 5/5/4).
+
+```text
+Pedido real (tel 44): PRESERVADO INTEGRALMENTE.
+  Mesmo customer/order/order_item (ids identicos). Reconciliacao: 43.989999999999995 x1 == order.total. OK.
+  Unicas "diferencas" = ARTEFATOS DE SERIALIZACAO (mesmo valor subjacente):
+    - created_at: snapshot via JS Date local(-03)->UTC com ms ("...18:02:53.277Z") vs json_agg raw sem tz
+      com us ("...15:02:53.277563"). 15:02:53(-03) == 18:02:53 UTC. Mesmo instante.
+    - total/price: snapshot serializou numeric como string; json_agg como number. Mesmo valor.
+  Prova de fundo: F1A nao executou NENHUM write em orders/order_items/customers (migracoes so tocam
+    categories + product_collections) -> dados byte-identicos por construcao.
+
+Contagens (atual == snapshot Etapa 0): categories 9, products 39, adicionais 35, customers 1, orders 1,
+  order_items 1, settings 6. product_collections=0 (nova, vazia — como esperado na F1A).
+
+Estrutura fora do escopo F1A: products 18 cols, orders 10, order_items 9, customers 4 -> inalteradas.
+  User triggers: orders 3, order_items 2, customers 1 -> PRE-EXISTENTES (HARDEN); F1A nao adicionou nenhuma.
+  Ressalva honesta: products e categories ganharam triggers INTERNAS de RI (tgisinternal) como mecanismo das
+    FKs novas de product_collections -> intrinsecas as FKs aprovadas na Etapa 4; colunas/objetos de usuario
+    inalterados. Nenhuma trigger de USUARIO criada pela F1A.
+
+Regressao funcional:
+  src/ diff (main...HEAD) = VAZIO -> zero alteracao de codigo da aplicacao.
+  grep src/ por product_collections/resolve_collection/getCollectionProducts = 0 ocorrencias.
+  -> checkout aponta as mesmas tabelas (create_order -> orders/order_items/customers; nao tocado pela F1A);
+     nenhum fluxo passou a depender de product_collections; categories usada exatamente como antes;
+     nenhuma mudanca funcional entrou antecipadamente.
+
+Resumo executivo:
+  Estrutura: PASS · Pedido real: PASS · Checkout: PASS · Compatibilidade: PASS · Regressao funcional: PASS
+Fingerprint: commit 0155be9 · branch feature/norm-06-f1a · Node v24.17.0 · win32 x64 · UTC 2026-06-28 (~17:14Z)
+STATE: SUCCESS
+```
+
+### Consolidação de Evidências — Etapa 9 — STATE: SUCCESS
+
+Fechamento formal do registro de evidências da F1A. **Ledger completo** (branch `feature/norm-06-f1a`):
+
+| Etapa | Estado | Commit | Evidência-chave |
+|---|---|---|---|
+| 0 Execution Gate | SUCCESS | c1e6850→ce16ff6 | backup `snapshot-NORM-06-F1A-2026-06-28T15-47-11-130Z.json`; 10/10 gate |
+| 1 Guard de slug | SUCCESS | `ce16ff6` | report SHA-256 `3d57903148ed…1cfa`; 0 colisões; casos conhecidos OK; read-only |
+| 2 DDL | SUCCESS | `ef8508d` | `step2.sql`; categories +9 cols; product_collections; RLS provisória; 1802 ms |
+| 3 Índices | SUCCESS | `73a07b2` | `step3.sql`; pc_collection_idx, pc_product_idx (indisvalid=true); 1678 ms |
+| 4 Constraints | SUCCESS | `aed72fc` | `step4.sql`; 8 constraints + slug NOT NULL (convalidated); pré-val 0 viol.; 2078 ms |
+| 5 Validação de schema | SUCCESS | `40ec231` | auditoria final: 0 divergências; 7674 ms |
+| 6 Build | SUCCESS | `0bb7677` | `npm run build` exit 0; 0 erros; 1 warning pré-existente; 5375 ms |
+| 7 Testes da fase | SUCCESS | `0155be9` | test:deps/pricing/addons = PASS |
+| 8 Validação funcional | SUCCESS | `c95ff0d` | pedido tel 44 preservado; src/ diff vazio; product_collections vazia |
+| 9 Registro de evidências | SUCCESS | (este commit) | consolidação documental |
+
+```text
+Artefatos versionados (feature/norm-06-f1a):
+  migrations/ : NORM-06-F1A-step2.sql (+rollback), step3.sql (+rollback), step4.sql (+rollback)
+  docs/adr/   : NORM-06-F1A-errata-01-slug.md, NORM-06-F1A-execution-plan.md (este runbook), README.md
+  scripts/    : norm06-f1a-slug-guard.mjs (npm run guard:slug)
+Backup/restore point: snapshot-NORM-06-F1A-2026-06-28T15-47-11-130Z.json (fora do git, em .encanto/backups)
+
+Rollback global da F1A (ordem inversa): step4-rollback.sql -> step3-rollback.sql -> step2-rollback.sql
+  (+ restore do snapshot se necessario). Cada etapa tem rollback dedicado e commit revertivel.
+
+Etapa 9 NAO alterou codigo, banco, migracoes nem comportamento — apenas consolidou esta secao.
+STATE: SUCCESS
+```
+
+### Encerramento administrativo — Etapa 10 — STATE: SUCCESS
+
+Fechamento da **F1A (estrutura)**. **Sem qualquer alteração técnica** (código, banco, migrações, testes, comportamento) — apenas marco administrativo + tag.
+
+```text
+Verificacao final de consistencia (aprovada):
+  branch       : feature/norm-06-f1a
+  HEAD (pre-10): 38c54f49cde838fea7b102700ef9e93c24365ec3
+  working tree : LIMPO
+  commits F1A  : 11 (c1e6850 … 38c54f4), cronologicos
+  Etapas 0-9   : todas STATE: SUCCESS (sem etapa parcial/pendente dentro da F1A)
+  Etapa 10     : este encerramento · Etapa 11 (atualizacao documental): NAO iniciada
+
+DoD da F1A (escopo ESTRUTURA) — atendido:
+  [x] Execution Gate 10/10 + backup/snapshot
+  [x] Guard de slug VERDE (0 colisoes + casos conhecidos), expressao Errata-01
+  [x] DDL aplicado (categories +9 cols; product_collections; RLS provisoria)
+  [x] Indices criados e validos (indisvalid=true)
+  [x] Constraints aplicadas e VALID (convalidated); pre-validacao 0 violacoes; 0 dado corrigido
+  [x] Schema auditado == ADR (0 divergencias)
+  [x] Build verde (0 erros) + testes da fase verdes (deps/pricing/addons)
+  [x] Pedido real (tel 44) preservado; src/ intocado; product_collections vazia
+  [x] Nenhum DROP COLUMN; nenhuma policy de tabela EXISTENTE alterada
+  [x] Evidencias consolidadas (Etapa 9)
+
+FORA DO ESCOPO — NAO concluidas, NAO marcadas como completas:
+  [ ] F1B — triggers de invariante STI (I1-I4 cross-table)           -> fase separada
+  [ ] F1C / NORM-06.1 — hardening de RLS (substitui pc_public_read)  -> fase separada
+  [ ] F2+ — backfill (Destaques), DataService, Admin, UI             -> fases seguintes
+
+Marco      : tag anotada `norm-06-f1a-complete` -> aponta para o commit deste encerramento.
+Integracao : branch feature/norm-06-f1a NAO integrada a main (merge pendente de autorizacao; Etapa 11).
+STATE: SUCCESS
+```
+
+### Fechamento documental — Etapa 11 — STATE: SUCCESS · 🔒 RUNBOOK ENCERRADO
+
+F1A **oficialmente concluida**. So documentacao — nenhum codigo/SQL/migracao/teste/banco/merge.
+
+```text
+Documentos atualizados nesta etapa:
+  - docs/adr/README.md                     : status do NORM-06 (F1A aplicada; F1B/F1C/F2 pendentes) + nota "Fases do NORM-06"
+  - docs/adr/NORM-06-collections.md        : linha "Status de implementacao" (F1A aplicada; arquitetura inalterada)
+  - docs/adr/NORM-06-F1A-execution-plan.md : Etapa 11 = SUCCESS + este fechamento (runbook encerrado)
+
+ESTADO FINAL OFICIAL DA F1A:
+  F1A (estrutura do catalogo Collections) = CONCLUIDA e validada.
+  Branch : feature/norm-06-f1a (NAO integrada a main)
+  Tag    : norm-06-f1a-complete -> 4177a45306f9fc77cd41ea854615613aadd20910 (Etapa 10)
+  Etapas : 0-11 todas STATE: SUCCESS
+  Commit final (Etapa 11): vide hash deste commit de fechamento (apos a tag)
+
+PENDENTE (fases proprias, NAO iniciadas):
+  F1B            -> triggers de invariante STI (I1-I4 cross-table)
+  F1C/NORM-06.1  -> hardening de RLS (substitui a policy provisoria pc_public_read)
+  F2+            -> backfill (Destaques), DataService, Admin, UI
+
+>>> RUNBOOK DA F1A ENCERRADO — nenhuma nova etapa neste runbook. <<<
+STATE: SUCCESS
+```
 
 ---
 
