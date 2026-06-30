@@ -81,6 +81,26 @@ check('(D3) allowlist de consumidores sem entrada morta', () => {
   assert.deepStrictEqual(mortas, [], `entradas mortas na allowlist: ${JSON.stringify(mortas)}`);
 });
 
+/* ── (INV-CK) invariante estrutural do domínio de checkout (REF-APP-01) — elimina duplicação por REGRA ──
+   order-domain (utils/orderPayload.js) = FONTE ÚNICA de cálculo/formatação/derivação do pedido.
+   Guards estruturais-inertes (vazios até os módulos existirem; ativam na extração do checkout):
+   - G-CK1 (=D2 acima): DataService/services não importam pricing/addons/format → não reimplementam o domínio. JÁ ATIVO.
+   - G-CK2 (I-CK2): components/checkout/** (o submit) NÃO importa pricing/addons/format direto — só o order-domain.
+   - G-CK3 (I-CK1): order-domain é PURO — sem React/IO/DataService/hooks (pode compor pricing/addons/format). */
+const CHECKOUT_LAYER = /^components\/checkout\//;
+const ORDER_DOMAIN   = ['utils/orderPayload.js'];                                   // extensível
+const ORDER_DOMAIN_IO = /react|jsx|\.css|supabase|DataService|services\/|hooks\/|AppShell|BackgroundLayer|App\.jsx|logo/i;
+check('(G-CK2·INV-CK) components/checkout NÃO importa pricing/addons/format direto (usa o order-domain) [vazio até extrair]', () => {
+  const viol = files.filter(f => CHECKOUT_LAYER.test(f))
+    .flatMap(f => importsOf[f].filter(s => isRel(s) && PURE_LOGIC.includes(resolveRel(f, s))).map(s => `${f} → ${resolveRel(f, s)}`));
+  assert.deepStrictEqual(viol, [], `checkout importou lógica pura direto (I-CK2): ${JSON.stringify(viol)}`);
+});
+check('(G-CK3·INV-CK) order-domain (utils/orderPayload) é PURO — sem React/IO/DataService [vazio até existir]', () => {
+  const viol = ORDER_DOMAIN.filter(m => files.includes(m))
+    .flatMap(m => importsOf[m].filter(s => ORDER_DOMAIN_IO.test(s)).map(s => `${m} → ${s}`));
+  assert.deepStrictEqual(viol, [], `order-domain importou React/IO (I-CK1): ${JSON.stringify(viol)}`);
+});
+
 /* ── (E) sem CICLOS (DFS sobre arestas relativas .js/.jsx) ── */
 const edges = {};
 for (const f of files) edges[f] = importsOf[f].filter(isRel).map(s => resolveRel(f, s)).filter(p => /\.(js|jsx)$/.test(p) && files.includes(p));
