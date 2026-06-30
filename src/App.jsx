@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { createClient } from '@supabase/supabase-js';
-import { ENCANTO_LOGO } from './logo.js';
 import AppShell from './AppShell.jsx';
 import './index.css';
+import { db, WHATSAPP, RPC_TIMEOUT, LOGO } from './lib/supabase.js';
 import { fmt, fmtDate, precoApartir, precoTamanho, norm } from './utils/format.js';
 import { precoUnitario, precoLinha, totalCarrinho, emPromocao, precoVitrine } from './utils/pricing.js';
 import { MOCK_ADS, ADICIONAL_SIMPLES_PRECO, resolverAdicionais, agruparPorGrupo, selecionarFonteAdicionais, cotaGratis, ehAdicionalGratis, resolverPrecoAdicionais } from './utils/addons.js';
@@ -12,24 +11,6 @@ import { MOCK_ADS, ADICIONAL_SIMPLES_PRECO, resolverAdicionais, agruparPorGrupo,
    (migrado para Vite: build real, sem Babel no browser)
    ============================================================ */
 
-/* -- Config (via variaveis de ambiente VITE_*) -- */
-const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPA_KEY = import.meta.env.VITE_SUPABASE_KEY;
-const WHATSAPP = import.meta.env.VITE_WHATSAPP || '5538992203620';
-const RPC_TIMEOUT = Number(import.meta.env.VITE_RPC_TIMEOUT) || 12000; /* ms; configurável, fallback seguro */
-const LOGO     = ENCANTO_LOGO || '';
-
-/* -- Cliente Supabase -- */
-let db = null;
-try {
-  db = createClient(SUPA_URL, SUPA_KEY, {
-    auth: { persistSession: true, autoRefreshToken: true },
-  });
-  console.log('[Encanto] Supabase client criado');
-} catch (e) {
-  console.warn('[Encanto] Supabase init erro:', e && e.message);
-  db = null;
-}
 /* ── Helpers ─────────────────────────────────────────────────── */
 const CAT_EMOJI = {
   'combo marmitex + açaí':'🎁','combos':'🎁',
