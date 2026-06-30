@@ -211,7 +211,8 @@ Candidatos a Context **futuros** (REF-APP-02+, não aqui): `CartContext`, `Store
 3. **B2** (golden de checkout) — **ESPECIFICADO** (`8f6d618`). ✅
 4. **INV-CK** (invariante do order-domain) — **ACEITO + risco eliminado por regra** (G-CK1/G-CK2/G-CK3, `937b6e6`). ✅
 5. **B4 / R9 / index.css** — **RATIFICADOS** (ver §10-bis). ✅
-6. **Pendente:** congelamento da **fase de execução** pelo usuário → depois, Execution Plan por ondas. ⏳
+6. **Congelamento da execução + Onda 1 (DOMÍNIO PURO)** — **APLICADA** (`8703394`…`175542a`, 2026-06-30; ledger [Onda 1 — Execution](REF-APP-01-onda-1-execution.md)): 6 módulos (`lib/supabase`, `utils/ids`, `utils/catalog`, `data/mockCatalog`, `constants/catalogConfig`, `constants/storage`); `App.jsx` 3866→3452 linhas; move-puro provado byte-a-byte + auditoria adversarial LIMPO; suíte completa verde; restore `backup/main-pre-onda-1`. `orderStatus.js` (dedup=B4) e `checkout.js` (`pays`/`steps`, Onda 5) diferidos. ✅
+7. **Pendente:** Onda 2 (`services/DataService.js`, objeto literal, **alto risco** — pivô de ~20 consumidores) — aguarda autorização explícita. ⏳
 
 ## 10-bis. Decisões ratificadas pré-execução (2026-06-30)
 
