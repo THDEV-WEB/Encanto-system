@@ -3,7 +3,8 @@
    estão isolados do resto do sistema. Re-deriva o grafo de imports do src/ a cada execução e falha se:
    - um módulo de domínio deixar de ser FOLHA pura (passar a importar algo);
    - um módulo de domínio importar visual/app/React/CSS/Supabase ou o OUTRO domínio;
-   - alguém além do App.jsx passar a importar um domínio (dependência invertida);
+   - um consumidor FORA da allowlist evolutiva importar um domínio (D1), ou uma camada de
+     dados/serviço/infra (services/lib/data/constants) importar lógica pura/domínio (D2 estrutural);
    - surgir um CICLO no grafo.
    Não toca o banco; análise estática pura. Imprime o grafo (quem importa quem). */
 
@@ -41,11 +42,44 @@ const PROIBIDO = /react|jsx|\.css|AppShell|BackgroundLayer|App\.jsx|format|supab
 for (const d of DOMAIN)
   check(`${d} não importa visual/app/React/IO`, () => assert.ok(!importsOf[d].some(s => PROIBIDO.test(s)), `import proibido: ${importsOf[d]}`));
 
-/* ── (D) dependência NÃO invertida: cada domínio é importado SÓ pelo App.jsx ── */
+/* ── (D) governança de consumidores do domínio — compatível com modularização incremental (REF-APP-01 · Onda 0) ──
+   Substitui a igualdade rígida `importers === ['App.jsx']` (que inviabilizava extrair componentes do monólito).
+   D1 (allowlist evolutiva): importers de domínio ⊆ DOMAIN_CONSUMERS — cresce commit-a-commit (cada extração que
+       passe a importar um domínio adiciona a si mesma à lista NO MESMO commit).
+   D2 (estrutural por camada): camadas de dados/serviço/infra (services/lib/data/constants) NÃO importam lógica
+       pura/domínio (pricing/addons/format); só UI/presentation (components/pages/hooks/App) pode consumi-la.
+   D3 (higiene): allowlist sem entrada morta (nenhum consumidor listado que ainda não importe um domínio).
+   A prova de "domínio = folha pura, fora de ciclo, direção correta" permanece em A/B/C/E/F (inalteradas). */
+const DOMAIN_CONSUMERS = [
+  'App.jsx',                 // raiz (regra F) — único consumidor atual
+  // Cada extração que importe pricing/addons adiciona a si mesma AQUI, no MESMO commit. Ex. (REF-APP-01):
+  // 'pages/StoreApp.jsx', 'hooks/useCart.js', 'hooks/useAdicionais.js', 'components/ProductCard.jsx',
+  // 'components/ProductModal/ProductModalInner.jsx', 'components/CartSidebar.jsx',
+  // 'components/checkout/CheckoutPage.jsx', 'components/admin/AdminProducts.jsx', 'components/admin/AdminAdicionais.jsx',
+];
+const PURE_LOGIC = ['utils/pricing.js', 'utils/addons.js', 'utils/format.js']; // núcleo de lógica pura protegido por D2 (extensível)
+const NON_UI_LAYER = /^(services|lib|data|constants)\//;                        // camadas fora de UI/presentation
+
+/* (D1) sem consumidor-surpresa: todo importer de domínio está na allowlist evolutiva */
 for (const d of DOMAIN) {
   const importers = files.filter(f => importsOf[f].some(s => isRel(s) && resolveRel(f, s) === d));
-  check(`${d} importado só por App.jsx (sem dependência invertida)`, () => assert.deepStrictEqual(importers, ['App.jsx'], `importers: ${JSON.stringify(importers)}`));
+  check(`(D1) ${d}: importers ⊆ allowlist (sem consumidor-surpresa)`, () => {
+    const fora = importers.filter(f => !DOMAIN_CONSUMERS.includes(f));
+    assert.deepStrictEqual(fora, [], `consumidores não autorizados: ${JSON.stringify(fora)}`);
+  });
 }
+/* (D2) estrutural: nenhuma camada fora de UI/presentation importa lógica pura/domínio */
+check('(D2) camadas services/lib/data/constants NÃO importam lógica pura (pricing/addons/format)', () => {
+  const violacoes = files.filter(f => NON_UI_LAYER.test(f))
+    .flatMap(f => importsOf[f].filter(s => isRel(s) && PURE_LOGIC.includes(resolveRel(f, s))).map(s => `${f} → ${resolveRel(f, s)}`));
+  assert.deepStrictEqual(violacoes, [], `imports proibidos de lógica pura por camada não-UI: ${JSON.stringify(violacoes)}`);
+});
+/* (D3) higiene: allowlist sem entrada morta */
+check('(D3) allowlist de consumidores sem entrada morta', () => {
+  const todos = new Set(DOMAIN.flatMap(d => files.filter(f => importsOf[f].some(s => isRel(s) && resolveRel(f, s) === d))));
+  const mortas = DOMAIN_CONSUMERS.filter(c => !todos.has(c));
+  assert.deepStrictEqual(mortas, [], `entradas mortas na allowlist: ${JSON.stringify(mortas)}`);
+});
 
 /* ── (E) sem CICLOS (DFS sobre arestas relativas .js/.jsx) ── */
 const edges = {};
