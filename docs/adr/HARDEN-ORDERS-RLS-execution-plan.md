@@ -73,4 +73,8 @@ create_order→DEFINER **aprovado** pela lente dedicada (corpo qualificado, sem 
 - **F2** segue bloqueado; **colisões de backfill** apenas registradas (sem correção automática).
 - Merge do bloco F1 + HARDEN-ORDERS-RLS na `main` — pendente.
 
-> **🔒 RUNBOOK HARDEN-ORDERS-RLS ENCERRADO** — STATE: SUCCESS.
+## 6. Errata-01 (pós-congelamento) — re-baseline do `test:rls` CK1
+
+Descoberta no **baseline pré-merge do bloco F1** (2026-06-30): o `test:rls` (NORM-06.1) acusou **PASS=14 FAIL=1** porque a CK1 ainda exigia que o anon escrevesse `customers` **direto** — comportamento que o **D-GRANTS** desta fase revogou (`9aa9b50`). O `test:rls` nunca fora reexecutado após o HARDEN. A [Errata-01](HARDEN-ORDERS-RLS-errata-01.md) inverte a CK1 (PASS ⇔ `42501`; checkout migra para `test:orders-rls` AC1), restaurando `test:rls` **PASS=15 FAIL=0**. **Não toca produção** — só o teste. Provas de não-regressão do checkout: `test:orders-rls` AC1/AC2/GR1/AUD (PASS=16). Aplicada na `feature/norm-06-f1a` antes do merge.
+
+> **🔒 RUNBOOK HARDEN-ORDERS-RLS ENCERRADO** — STATE: SUCCESS · Errata-01 aplicada (test:rls re-baselinado).

@@ -3,7 +3,7 @@
 // CADA teste roda em BEGIN ... ROLLBACK: nenhuma escrita persiste — mutação líquida = 0 (contagens antes/depois).
 // Cobre: anon LÊ catálogo (incl. indisponíveis — D1) / anon NÃO escreve catálogo (42501) /
 //        authenticated ESCREVE catálogo / authenticated CONTINUA bloqueado pelas triggers STI (F1B) /
-//        checkout (customers) intacto para anon.
+//        anon NÃO escreve customers direto (HARDEN-ORDERS-RLS D-GRANTS; checkout via create_order RPC — ver test:orders-rls AC1).
 // Emite RELATÓRIO REPRODUZÍVEL + AUTOAUDITÁVEL. Exit 0 = SUCCESS; exit 1 = FAILED.
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -177,14 +177,19 @@ try {
     `UPDATE public.categories SET tipo='collection', estrategia='manual' WHERE id='${TBIZ}'`);
   out('');
 
-  // ── CHECKOUT (anon) intacto ──
-  out('— CHECKOUT · anon ainda escreve customers (path do pedido intacto — D2) —');
+  // ── CHECKOUT (anon) — modelo supersedido por HARDEN-ORDERS-RLS (Errata-01) ──
+  // A NORM-06.1 (D2) preservava o checkout escrevendo customers DIRETO pelo anon. O HARDEN-ORDERS-RLS
+  // (D-GRANTS, commit posterior no mesmo branch) REVOGOU esse grant: o anon não escreve mais customers
+  // diretamente — todo o pedido passa pela RPC create_order (SECURITY DEFINER, owner postgres). A garantia
+  // de "checkout preservado" migrou para test:orders-rls (AC1 checkout + AC2 idempotência). Aqui asserimos a
+  // CONTRAPARTIDA endurecida: anon INSERT customers direto DEVE ser negado (42501 = permission denied/grant).
+  out('— CHECKOUT · anon NÃO escreve customers direto (HARDEN-ORDERS-RLS D-GRANTS; checkout via create_order RPC — ver test:orders-rls AC1) —');
   let ckVerdict = 'FAIL', ckDetail = '';
   await tx('anon', async () => {
-    try { const r = await client.query(`INSERT INTO public.customers(name,phone) VALUES('__rls_test','000000000')`); ckVerdict = 'PASS'; ckDetail = `anon INSERT customers OK (${r.rowCount} linha) — checkout intacto`; }
-    catch (e) { ckVerdict = 'FAIL'; ckDetail = (e.code === '42501' ? 'RLS BLOQUEOU o checkout (42501)!' : 'ERRO no checkout: code=' + e.code + ' ' + redact(e.message).split('\n')[0]); }
+    try { const r = await client.query(`INSERT INTO public.customers(name,phone) VALUES('__rls_test','000000000')`); ckVerdict = 'FAIL'; ckDetail = `anon INSERT customers PASSOU (${r.rowCount} linha) — VAZAMENTO: HARDEN-ORDERS-RLS (D-GRANTS) deveria negar`; }
+    catch (e) { ckVerdict = (e.code === '42501') ? 'PASS' : 'FAIL'; ckDetail = (e.code === '42501' ? 'negado (42501): ' + redact(e.message).split('\n')[0] + ' — checkout flui pela RPC create_order (test:orders-rls AC1)' : 'erro INESPERADO (esperava 42501): code=' + e.code + ' ' + redact(e.message).split('\n')[0]); }
   });
-  record('CK1', 'anon', 'allow', 'INSERT customers (checkout)', ckVerdict, ckDetail);
+  record('CK1', 'anon', 'RLS', 'INSERT customers direto NEGADO (pós HARDEN-ORDERS-RLS; checkout via create_order)', ckVerdict, ckDetail);
   out('');
 
   // ── Net-zero ──
