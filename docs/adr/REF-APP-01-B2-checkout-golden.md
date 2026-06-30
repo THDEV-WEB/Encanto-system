@@ -53,6 +53,7 @@ Extrair do corpo do `submit`, **sem reescrever a lógica** (move puro das expres
 // src/utils/orderPayload.js  — camada de DOMÍNIO (NÃO services/; ver INV-CK e regra D2 da Onda 0)
 export function buildOrderArgs(cart, form, requestId) { /* monta p_customer/p_order/p_items/p_request_id */ }
 export function buildWhatsAppMessage(cart, form) { /* monta a string do WhatsApp */ }
+export function buildCheckoutView(cart) { /* INV-CK/I-CK2: linhas formatadas + total p/ o resumo — tira a formatação do componente */ }
 ```
 
 ⚠️ **Localização: `utils/`, não `services/`.** O builder **compõe** `pricing/addons/format`; a **regra D2 (Onda 0)** proíbe `services/lib/data/constants` de importar lógica pura/domínio → sob `services/` o `test:deps` reprovaria. Em `utils/` (folha de domínio) a composição é válida; o módulo entra na allowlist **D1** ao ser criado. Este order-domain é a **fonte única de verdade** do pedido — ver **[INV-CK](REF-APP-01-modularizacao-appjsx.md#1-bis-inv-ck--invariante-estrutural-do-domínio-de-checkout-regra-rígida-não-convenção)**.

@@ -21,7 +21,10 @@
 
 ## 1-bis. INV-CK — Invariante estrutural do domínio de checkout (regra rígida, não convenção)
 
-A extração de `buildOrderArgs` e `buildWhatsAppMessage` (B2) **formaliza o core de domínio do pedido fora do React** — passa a ser a **fonte única de verdade** do domínio de checkout. Isso é tratado como **invariante da REF-APP-01**, com separação obrigatória de responsabilidades:
+- **Status:** ✅ **FORMALMENTE ACEITO E ESTRUTURALMENTE ELIMINADO O RISCO (2026-06-30, commit `937b6e6`).** Invariante crítico da REF-APP-01, ratificado pelo usuário. O risco de duplicação **não depende de convenção** — é barrado por `test:deps` (G-CK1/G-CK2/G-CK3).
+- **Bloqueio de progressão:** **nenhuma Onda 1 inicia** enquanto não estiverem satisfeitos: (1) INV-CK aceito ✅; (2) order-domain validado como fonte única de verdade ✅ (§validação); (3) risco de duplicação estruturalmente eliminado ✅ (guards vivos).
+
+A extração de `buildOrderArgs` e `buildWhatsAppMessage` (B2) **formaliza o core de domínio do pedido fora do React** — passa a ser a **fonte única de verdade** do domínio de checkout. Separação obrigatória de responsabilidades:
 
 | ID | Regra |
 |---|---|
@@ -36,12 +39,15 @@ O order-domain **deve morar na camada de domínio `utils/`** (ex.: `utils/orderP
 ### Enforcement mecânico (por regra, não por convenção)
 | Guard | Garante | Estado |
 |---|---|---|
-| **G-CK1** = **D2 da Onda 0** | `DataService`/`services/lib/data/constants` **não importam** `pricing/addons/format` → não podem reimplementar o domínio (I-CK3) | ✅ **JÁ ATIVO** (`test:deps`, commit `1b55379`) |
-| **G-CK2** (novo, a aplicar na execução) | `components/checkout/**` (o submit) **não importa** `pricing/addons/format` diretamente — só o order-domain builder (+ `DS`) → submit sem lógica de negócio (I-CK2). Recomenda-se o builder/view-model fornecer também as strings de exibição do resumo, para o guard ser file-level limpo. | ⏳ regra definida; aplicar no passo do checkout |
-| **G-CK3** (novo) | order-domain é **puro** (sem React/IO) — check estilo regra C do `deps.audit` | ⏳ regra definida |
+| **G-CK1** = **D2 da Onda 0** | `DataService`/`services/lib/data/constants` **não importam** `pricing/addons/format` → não podem reimplementar o domínio (I-CK3) | ✅ **ATIVO** (`test:deps`, `1b55379`) |
+| **G-CK2** | `components/checkout/**` (o submit) **não importa** `pricing/addons/format` diretamente — só o order-domain (+ `DS`) → submit sem lógica de negócio (I-CK2) | ✅ **ATIVO (inerte-pronto)** (`937b6e6`) — vazio até `components/checkout/` existir; ativa na extração |
+| **G-CK3** | order-domain (`utils/orderPayload.js`) é **puro** — sem React/IO/DataService/hooks (pode compor `pricing/addons/format`) (I-CK1) | ✅ **ATIVO (inerte-pronto)** (`937b6e6`) — vazio até o módulo existir |
 | **B2 golden + revisão** | I-CK4 residual: uma re-soma inline que **não** importe domínio (não pega por D2/G-CK2) faz o **payload divergir do golden** → barrada | ✅ golden especificado (B2) |
 
-I-CK3 já é **mecanicamente verdadeiro hoje** (D2). I-CK2/I-CK1 passam a ser mecânicos quando o checkout for extraído (G-CK2/G-CK3, gated). I-CK4 é coberto pela combinação D2 + G-CK2 + golden + revisão.
+**Validação negativa (PoC):** G-CK2 reprova `components/checkout/CheckoutPage.jsx → pricing/format`; G-CK3 reprova `utils/orderPayload.js → react/DataService`. Logo I-CK1/I-CK2/I-CK3 são **mecânicos**; I-CK4 fica coberto por D2 + G-CK2 + golden + revisão. Os guards são **inertes hoje** (sem `components/checkout/` nem `utils/orderPayload.js`) e **ativam automaticamente** no instante da extração.
+
+### Consequência de design: order-domain também provê o view-model de exibição
+Como I-CK2 proíbe **qualquer formatação de item** no submit/componente, o order-domain (`utils/orderPayload.js`) deve expor, além de `buildOrderArgs`/`buildWhatsAppMessage`, um **view-model de exibição** (ex.: `buildCheckoutView(cart)` → linhas formatadas + total) para o resumo do `CheckoutPage`. Assim `components/checkout/**` importa **só** o order-domain (+ `DS`) — `pricing/addons/format` ficam fora, e o **G-CK2 é um guard file-level limpo**.
 
 > **INV-CK é pré-condição de aceite de qualquer passo que toque o checkout.** Violá-lo (lógica de negócio no submit, derivação no DataService, ou duplicação) **reprova a fase**, independentemente de a UI continuar funcionando.
 
