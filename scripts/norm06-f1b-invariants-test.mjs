@@ -240,6 +240,45 @@ try {
   await concurrencyTest(pidC10);
   out('');
 
+  // ── Role-aware (pos ERRATA-01 SECURITY DEFINER): STI correto sob authenticated; anon negado por RLS ──
+  out('— STI sob role authenticated/anon (pos-errata ERRATA-01 — SECURITY DEFINER) —');
+  async function roleCase(id, role, desc, fn) {
+    let v = 'FAIL', d = '';
+    try { await client.query('BEGIN'); if (role) await client.query(`SET LOCAL ROLE ${role}`); const r = await fn(); v = r.v; d = r.d; }
+    catch (e) { v = 'FAIL'; d = 'erro: ' + redact(e.message).split('\n')[0]; }
+    finally { await client.query('ROLLBACK').catch(() => {}); }
+    if (v === 'PASS') passes++; else failures++;
+    out(`  [${v}] ${id} <${role || 'postgres'}> ${desc}`); out('         -> ' + d);
+  }
+  // RA1: bug-repro — authenticated self-update de categoria_id (antes falhava com (inexistente))
+  await roleCase('RA1·I2', 'authenticated', 'self-update categoria_id (bug-repro corrigido)', async () => {
+    const r = await client.query(`UPDATE public.products SET categoria_id=categoria_id WHERE id='${pid}'`);
+    return r.rowCount === 1 ? { v: 'PASS', d: `UPDATE ${r.rowCount} linha — bug (inexistente) corrigido` } : { v: 'FAIL', d: `UPDATE ${r.rowCount} linhas` };
+  });
+  // RA2: authenticated CRIA produto com categoria business valida (operacao que estava quebrada)
+  await roleCase('RA2·I2', 'authenticated', 'INSERT produto novo com categoria business (c5)', async () => {
+    const r = await client.query(`INSERT INTO public.products(nome, categoria_id) VALUES('__ra_create_test','c5')`);
+    return { v: 'PASS', d: `INSERT ok (${r.rowCount} linha) — criacao de produto funciona sob authenticated` };
+  });
+  // RA3: authenticated -> collection invalido: STI I2 com tipo=collection (NAO inexistente)
+  await roleCase('RA3·I2', null, 'authenticated UPDATE -> collection rejeitado com tipo=collection', async () => {
+    await client.query(mkColl); await client.query('SET LOCAL ROLE authenticated');
+    try { await client.query(`UPDATE public.products SET categoria_id='${TCOLL}' WHERE id='${pid}'`); return { v: 'FAIL', d: 'NAO rejeitou' }; }
+    catch (e) { const m = redact(e.message); return (/STI I2:/.test(m) && /tipo=collection/.test(m)) ? { v: 'PASS', d: m.split('\n')[0] } : { v: 'FAIL', d: 'inesperado: ' + m.split('\n')[0] }; }
+  });
+  // RA4: anon NAO escreve products (RLS -> 0 linhas ou 42501)
+  await roleCase('RA4', 'anon', 'UPDATE products negado por RLS', async () => {
+    try { const r = await client.query(`UPDATE public.products SET disponivel=disponivel WHERE id='${pid}'`); return r.rowCount === 0 ? { v: 'PASS', d: 'RLS filtrou (0 linhas)' } : { v: 'FAIL', d: `afetou ${r.rowCount} linhas` }; }
+    catch (e) { return e.code === '42501' ? { v: 'PASS', d: 'RLS negou (42501)' } : { v: 'FAIL', d: 'erro: ' + redact(e.message).split('\n')[0] }; }
+  });
+  // RA5: anon LE products incl. indisponiveis (D1) — confirma leitura preservada
+  await roleCase('RA5·D1', 'anon', 'le products incl. indisponiveis', async () => {
+    const r = (await client.query("SELECT count(*) AS t, count(*) FILTER (WHERE disponivel=false) AS i FROM public.products")).rows[0];
+    return (Number(r.i) > 0) ? { v: 'PASS', d: `anon le ${r.t} produtos, ${r.i} indisponiveis` } : { v: 'FAIL', d: `indispon=${r.i}` };
+  });
+  out('  (cobertura authenticated de I1/I3/I4 com setup de categoria: ver test:rls pos-NORM-06.1 — CS1..CS4)');
+  out('');
+
   // Verificacao de imutabilidade liquida.
   const after = await counts();
   out('— Mutacao liquida (antes == depois) —');

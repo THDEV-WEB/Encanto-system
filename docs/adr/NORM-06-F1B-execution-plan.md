@@ -93,6 +93,8 @@ A revisão expôs que o **plano de backfill F2 do ADR colide com a base real** p
 
 **Desenho de lock (TOCTOU):** I1/I2/I3 leem a categoria com `FOR SHARE`; o flip de tipo (I4 host) pega `FOR NO KEY UPDATE` na categoria — locks conflitantes serializam "adicionar referrer" vs "flipar tipo". Quem roda por último re-lê o estado commitado e rejeita.
 
+> **⚠️ ERRATA-01 (2026-06-30):** o `FOR SHARE` acima, sob o role `authenticated`+RLS, retornava 0 linhas (categoria sem policy lockável) → quebrava escrita do admin que referencia categoria (`STI I2 (inexistente)`). `test:f1b` não pegou (rodou como `postgres`, que bypassa RLS). **Corrigido** tornando as 4 funções STI `SECURITY DEFINER` (`migrations/NORM-06-F1B-errata-01-securitydefiner.sql`): o `FOR SHARE` passa a rodar como dono e enxerga a categoria sob qualquer role; TOCTOU preservado. `test:f1b` ganhou cobertura role-aware (RA1-5) sob authenticated/anon. Detalhe no [NORM-06.1 Execution Plan §2](NORM-06.1-execution-plan.md).
+
 **Escopo do enforcement:** INSERT/UPDATE das colunas referenciadoras + UPDATE OF tipo. DELETE/TRUNCATE não criam inconsistência (só removem); id-rename é delegado às FKs (`ON UPDATE NO ACTION`); restores sob `session_replication_role='replica'` ou triggers desabilitadas **contornam** o enforcement e exigem revalidação pós-carga.
 
 ---
