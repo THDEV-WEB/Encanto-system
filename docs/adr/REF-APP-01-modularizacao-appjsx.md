@@ -1,0 +1,191 @@
+# REF-APP-01 — Diagnóstico de Modularização do `App.jsx` (DESENHO)
+
+- **Status:** 🔒 **DESENHO CONGELADO (sem execução) — 2026-06-30.** Este é o diagnóstico arquitetural da REF-APP-01, **congelado como desenho**. **A fase de EXECUÇÃO NÃO está autorizada** e não começa sem (a) a aplicação da **Onda 0** (reestruturação da regra D do `test:deps`, ver [REF-APP-01 · Onda 0](REF-APP-01-onda-0-deps-audit.md)) e (b) congelamento explícito da fase de execução pelo usuário. Não altera código, banco, ADRs nem comportamento.
+- **Pré-condição obrigatória (B1):** o achado **B1** (§5) é tratado como **pré-condição bloqueante da fase**. O `test:deps` (regra D) não pode depender de importers rígidos do `App.jsx` — isso inviabiliza refatoração incremental. A Onda 0 deve ser proposta, ratificada e aplicada **antes** de qualquer congelamento de execução.
+- **Baseline:** `main` @ `14f0752` (pós-merge do bloco F1; suíte verde). `src/App.jsx` = **3866 linhas**, ~40 unidades top-level num único componente-arquivo.
+- **Objetivo da fase:** quebrar o monólito `App.jsx` em módulos coesos **com ZERO mudança funcional**, preservando integralmente os ADRs, a arquitetura de domínio (NORM-03/04/05) e a estabilidade.
+- **Método deste recon:** workflow read-only — 10 leitores paralelos mapearam o arquivo, 1 síntese desenhou a decomposição, 2 críticos adversariais (acoplamento; ordem/validação) endureceram o plano. Afirmações-chave verificadas contra o fonte (citadas abaixo).
+
+---
+
+## 1. Princípios invioláveis da fase
+
+1. **Cada extração é um MOVE puro** (recortar-e-colar do corpo, sem reescrever lógica) + ajuste de imports/exports. **1 unidade extraída = 1 commit** (a "onda" agrupa, o commit é por módulo).
+2. **Domínio é sagrado:** `utils/pricing.js`, `utils/addons.js`, `utils/format.js` permanecem **folhas puras intocadas** (contratos NORM-03/04/05; guardas `test:pricing`/`test:addons`/`test:deps`).
+3. **Checkout é sagrado:** `create_order` (RPC), `request_id`, idempotência e o payload `{p_customer,p_order,p_items,p_request_id}` são copiados **sem edição**. A **ausência de try/catch** no submit é comportamento existente — fica como está.
+4. **Preservar bugs e código morto deliberadamente** (refatorá-los = mudança funcional proibida nesta fase): ver §8.2.
+5. **Validação por passo:** `build` (vite) + `test:pricing` + `test:addons` + `test:deps` verdes + (nos passos de I/O) **1 pedido real** preservado vs baseline. Mais os **gates de resíduo e equivalência** da §6.1.
+
+---
+
+## 2. Mapa de responsabilidades atuais (`App.jsx`, 3866 linhas)
+
+| Região | Linhas | Unidades | Responsabilidade | Efeitos / acoplamentos |
+|---|---|---|---|---|
+| **Config + mocks** | 1–216 | imports; `SUPA_URL/KEY/WHATSAPP/RPC_TIMEOUT/LOGO`; `db` (cliente Supabase); `CAT_EMOJI/catEmoji`; `isHttpUrl`; `MOCK_CATS`; `MOCK_PRODS`; `CATEGORIAS_DESCONTINUADAS/isCategoriaDescontinuada`; flags `PRODUCTS_*` | Ambiente, singleton de dados, helpers puros, catálogo-sombra de fallback | `db` tem efeito de import-time (createClient, persistSession→localStorage, autoRefreshToken→timer); `db=null` = modo degradado |
+| **DataService** | 219–414 | objeto `DS` (run/cache/fetchAllProductsSafe/get*/save/upsert/del/logEvent/_sanitizeImageUrl…) | **Único ponto de acesso a dados** (DB/RPC/storage). Pivô de ~20 consumidores | usa `this` em métodos reais; `_globalProductsCache` singleton; contratos de retorno inconsistentes (null/[]/uuid) intencionais |
+| **Hooks + helpers** | 415–599 | `useCategories/useProducts(+_prodCache)/useAdicionais/useOrders/useCart`; `filterMock/prodInCat/getProdCatIds/isUuid/newRequestId` | Mediadores DS↔UI + helpers puros | `_prodCache` (Map) singleton de sessão; `useCart` persiste em `localStorage` (HARDEN-07, TTL 12h) |
+| **Apresentação storefront** | 600–1062 | `Spinner`, `BADGE_MAP`, `ProductCard`(memo), `ProductModalInner`, `ProductModalBoundary`, `ProductModal`, `CartSidebar` | Cards/modal/drawer de produto e carrinho | `ProductCard` é `React.memo` (comparador ignora preço — staleness intencional); `obs` polimórfico no modal |
+| **Checkout** | 1063–1260 | `CheckoutPage`, `SuccessPage` | Submit `create_order`+idempotência+fidelidade+msg WhatsApp; tela de sucesso (barra de status cosmética) | sem try/catch; `SuccessPage.statusIdx`/`cart` = estado morto |
+| **Admin catálogo** | 1261–1890 | `AdminLogin`, `AdminCategorias`, `ImageUploader`, `AdminProducts`, `AdminAdicionais` | Login real (`signInWithPassword`) + CRUD catálogo | `ImageUploader` usa `db.storage` direto; `AdminProducts` grava coluna viva `imagem_url` (sentinel `KEEP`) |
+| **Admin operações** | 1891–2486 | `AdminPedidos`, `AdminDashboard`, `AdminStatus`, `AdminFidelidade`, `AdminHealth`, `AdminPanel` | Pedidos/métricas/status-loja/fidelidade/saúde + hub de abas | `AdminDashboard` auto-refresh 60s; mapa de status triplicado; fidelidade 100% localStorage |
+| **Shell storefront** | 2487–2980 | `LazySection`, `AddressModal`, `SearchBar` | Lazy-render (IntersectionObserver), endereço (ViaCEP/Nominatim/Leaflet CDN), busca | `AddressModal` injeta Leaflet via `window.L`; reverse-geocode duplicado |
+| **StoreApp** | 2981–3841 | `StoreApp` (~15 `useState`, 2 `useMemo`) | **Cérebro do storefront**: estado global, roteamento fake (page), modais, carrinho, gesto admin | maior unidade; prop-drilling massivo; handlers DOM inline (scroll `sec-*`, 5-cliques) |
+| **Raiz** | 3842–3866 | `App` | Roteamento `mode` (store/login/admin), hash `#admin-encanto`, wrapper `AppShell` | `replaceState` no initializer lazy de `useState` (anti-pattern preservado; `main.jsx` **não** usa StrictMode) |
+
+> `src/` já contém `AppShell.jsx` + `BackgroundLayer.jsx` extraídos (casca/fundo global); entry = `main.jsx` (`createRoot(...).render(<App/>)`, sem StrictMode). `import './index.css'` é side-effect em `App.jsx:5`.
+
+---
+
+## 3. Decomposição proposta (~48 módulos)
+
+```
+src/
+├─ lib/supabase.js            ← db + SUPA_URL/KEY + WHATSAPP + RPC_TIMEOUT + LOGO   (singleton I/O)
+├─ services/
+│   ├─ DataService.js         ← objeto DS COMPLETO (preserva `this`; objeto literal)
+│   └─ geocoding.js           ← ViaCEP/Nominatim (ver §5-B4: REFATORAÇÃO, adiar)
+├─ data/mockCatalog.js        ← MOCK_CATS + MOCK_PRODS + filterMock
+├─ utils/
+│   ├─ catalog.js             ← CAT_EMOJI/catEmoji/isHttpUrl/CATEGORIAS_DESCONTINUADAS/isCategoriaDescontinuada/prodInCat/getProdCatIds
+│   ├─ ids.js                 ← isUuid/newRequestId
+│   ├─ whatsapp.js            ← openWhatsApp
+│   ├─ sections.js            ← categoriaToSecId (ver §5-B4: REFATORAÇÃO, adiar)
+│   ├─ pricing.js  ⛔ SAGRADO  (intocado)
+│   ├─ addons.js   ⛔ SAGRADO  (intocado)
+│   └─ format.js   ⛔ SAGRADO  (intocado)
+├─ constants/
+│   ├─ catalogConfig.js       ← PRODUCTS_PAGE_SIZE/PAGINATE/CACHE_TTL
+│   ├─ storage.js             ← STORAGE_KEYS (chaves localStorage — commit próprio, ver §6)
+│   ├─ checkout.js            ← PAYMENT_METHODS/ORDER_STEPS
+│   └─ orderStatus.js         ← ORDER_STATUS_MAP (unifica mapa triplicado)
+├─ hooks/
+│   ├─ useCategories.js  useProducts.js(+_prodCache)  useAdicionais.js  useOrders.js  useCart.js
+├─ components/
+│   ├─ ui/Spinner.jsx   LazySection.jsx
+│   ├─ ProductCard.jsx (+BADGE_MAP)   ProductGrid.jsx(ver §5-B4)
+│   ├─ ProductModal/{ProductModalInner,ProductModalBoundary,index}.jsx
+│   ├─ CartSidebar.jsx   CartStickyBar.jsx(+WhatsAppFab)
+│   ├─ checkout/{CheckoutPage,SuccessPage}.jsx
+│   ├─ admin/{AdminLogin,ImageUploader,AdminCategorias,AdminProducts,AdminAdicionais,
+│   │         AdminPedidos,AdminDashboard,AdminStatus,AdminFidelidade,AdminHealth,
+│   │         AdminPanel,StatCard}.jsx
+│   ├─ icons/CategoryIcon.jsx
+│   ├─ SearchBar.jsx  StoreHeader.jsx  DeliveryBar.jsx  LoyaltyBanner.jsx
+│   ├─ modals/LoyaltyModal.jsx   AddressModal.jsx   CategoryChips.jsx   CatalogSections.jsx
+├─ pages/StoreApp.jsx         ← orquestrador storefront (penúltimo)
+├─ App.jsx                    ← AppRouter mínimo (mantém imports pricing+addons p/ regra F)
+└─ main.jsx / AppShell.jsx / BackgroundLayer.jsx / index.css   (já existem — preservar)
+```
+
+Camadas (sem ciclos): `lib`/`constants`/`utils`(domínio) → `data` → `services` → `hooks` → `components(folha)` → `components(compostos)` → `pages/StoreApp` → `App`.
+
+---
+
+## 4. Grafo de dependências — **ACÍCLICO** (verificado na síntese)
+
+Direção única, sempre de cima→baixo na pilha de camadas acima. Os **barris** (`ProductModal/index`, `admin/AdminPanel`, `App`) importam seus filhos e são extraídos **por último** em cada subárvore. Nenhuma dependência circular foi encontrada pelos dois críticos. O grafo completo (≈90 arestas módulo→módulo) está no anexo de síntese do recon; os pontos sensíveis:
+- `DataService → lib/supabase + utils/catalog(prodInCat) + constants/catalogConfig`
+- `useCart → utils/pricing(⛔) + constants/storage`; `useAdicionais → utils/addons(⛔)`
+- `StoreApp → todos os hooks + todos os componentes de storefront`
+- `App → pages/StoreApp + admin/AdminLogin + admin/AdminPanel + AppShell + utils/pricing(⛔) + utils/addons(⛔)`
+
+---
+
+## 5. ⚠️ Achados bloqueadores (descobertos pela revisão adversarial — verificados no fonte)
+
+### B1 — `tests/deps.audit.mjs` regra D **bloqueia toda extração de componente** 🔴
+[deps.audit.mjs:44-47](../../tests/deps.audit.mjs#L44-L47): `assert.deepStrictEqual(importers, ['App.jsx'])` para cada domínio (`pricing`, `addons`). **Qualquer módulo novo que importe um domínio** (ProductCard, ProductModalInner, CartSidebar, ProductGrid, CheckoutPage, useCart, useAdicionais, AdminProducts, AdminAdicionais, StoreApp) **reprova `test:deps`**. ⇒ **Onda 0 obrigatória** antes de qualquer componente: reescrever a regra D para uma **allowlist FECHADA e explícita** dos consumidores nomeados (não "qualquer arquivo de `src/`", que é vácuo e remove a proteção), asserindo que o conjunto de importers ⊆ allowlist **e** que nenhum importer é ele próprio um domínio. As regras A/B/C/E (folha pura, sem cruzar domínios, sem ciclo) e a regra F permanecem a **prova primária** de isolamento e ficam intactas. Único arquivo de teste alterado na fase; diff revisado por humano.
+
+### B2 — Validação do checkout é 100% manual → falta golden de payload 🔴
+Hoje a única garantia anti-regressão do fluxo sagrado é "1 pedido real" manual, não reproduzível e dependente de Supabase vivo. ⇒ **Antes da Onda 5** (idealmente na Onda 0): criar um **golden de payload** — expor a montagem de `{p_customer,p_order,p_items,p_request_id}` + a string WhatsApp como função pura testável; stubar `DS.savePedido`/`db` para capturar o argumento; congelar snapshot (carrinho fixo → payload byte-idêntico) com `deepStrictEqual` versionado. Converte "mesmo payload" de pedido manual em asserção mecânica.
+
+### B3 — Side-effect de CSS + casca não rastreados 🔴
+`import './index.css'` ([App.jsx:5](../../src/App.jsx#L5)) é side-effect global; `AppShell.jsx`/`BackgroundLayer.jsx` envolvem tudo. ⇒ Plano fixa: **`import './index.css'` permanece em `App.jsx` (ou migra para `main.jsx`) como import único**; nenhum componente extraído importa CSS; o wrapping `AppShell`→`BackgroundLayer` é preservado. Grep de resíduo de cada onda visual confirma CSS importado exatamente 1×.
+
+### B4 — Quatro "moves" são na verdade REFATORAÇÕES (consolidam N cópias) 🟠
+`ProductGrid` (generaliza 3 grids ~idênticos), `StatCard` (card repetido em Dashboard/Health), `utils/sections.js` (deriva `sec-id` por substring em 3 sítios, 1 deles morto), `services/geocoding.js` (separa I/O de setState + unifica reverse-geocode duplicado) **não são recorte-e-cola** — deduplicam cópias possivelmente não-idênticas e mudam a árvore JSX. ⇒ **Recomendação:** nesta fase fazer **apenas moves puros**; **adiar todas as consolidações para uma fase seguinte (REF-APP-02)**. Se alguma for feita aqui, exige prova de **equivalência textual das N cópias** (diff par-a-par) + diff de markup renderizado — `build` verde **não** detecta divergência de saída. Quando não-idênticas: mover cada cópia como está, preservando seu próprio dead-code.
+
+---
+
+## 6. Ordem de extração (ondas)
+
+| Onda | Passos | Módulos | Risco | Validação-chave (além de build+test:deps+test:pricing+test:addons) |
+|---|---|---|---|---|
+| **0** | desbloqueio | regra D do `deps.audit` → allowlist fechada (B1) + golden de payload do checkout (B2) | médio | A/B/C/E/F inalteradas e verdes; golden de payload `deepStrictEqual`; diff só nos testes (humano) |
+| **1** | 1–6 | `lib/supabase`, `utils/catalog`, `utils/ids`, `constants/*`, `data/mockCatalog`; **`storage.js` em commit próprio** | baixo/médio | `createClient` único (grep); **cada `STORAGE_KEYS.X` == literal antigo byte-a-byte** (tabela string-a-string); `db=null` degradado preservado |
+| **2** | 7 | `services/DataService.js` (objeto literal, preserva `this`) | **alto** | pedido real (payload+reconciliação Σ=total); **micro-teste node:** `upsertProd` zera `_globalProductsCache`; DS continua objeto único (sem desestruturar métodos); inventário fechado de consumidores diretos de `db` fora do DS (ImageUploader/AdminLogin/CheckoutPage) reaponta import |
+| **3** | 8–9 | hooks `useCategories/useProducts(+_prodCache)/useAdicionais/useOrders/useCart` | médio | `_prodCache` segue singleton; `useProducts→DS.logEvent` (telemetria offline) continua disparando; carrinho persiste (TTL 12h, dedupe por `_key`) |
+| **4** | 10–11 | folhas visuais: `Spinner/LazySection/StatCard`; `ProductCard(+BADGE_MAP)/ProductModal*/CartSidebar` | baixo/médio | comparador `React.memo` **intocado** (staleness de preço preservada); `prods` continua a MESMA referência de `useMemo` (sem `.map()` novo); `onOpen` recriado por render (não "otimizar" com `useCallback`) |
+| **5** | 12 | `checkout/SuccessPage` → `checkout/CheckoutPage` | **alto** | golden de payload (B2) idêntico; idempotência sob duplo-clique; fidelidade `localStorage` incrementa igual; **sem** introduzir try/catch |
+| **6** | 13 | admin catálogo: `AdminLogin/ImageUploader/AdminCategorias/AdminProducts/AdminAdicionais` | médio | login real (sem bypass); `upsertProd` sentinel `KEEP` grava `imagem_url` (viva), nunca `image_url`; bugs preservados (AdminAdicionais só nome+preco) |
+| **7** | 14–15 | admin ops: `AdminPedidos/Dashboard/Status/Fidelidade/Health` → `AdminPanel` (barril, por último) | médio/alto | auto-refresh 60s com cleanup; mesmas chaves `localStorage` (lado cliente lê igual); abas roteiam o componente certo |
+| **8** | 16–17 | shell: `SearchBar/CategoryIcon/AddressModal`; depois `StoreHeader/DeliveryBar/LoyaltyBanner/LoyaltyModal/CategoryChips/CatalogSections/CartStickyBar` | médio | ids `sec-*` preservados (scroll `onSuggest`→`sec-bebidas`); gesto 5-cliques abre admin; Leaflet via `window.L` injetado igual |
+| **9** | 18–19 | `pages/StoreApp` (penúltimo) → `App.jsx` AppRouter mínimo | **alto** | pedido real ponta-a-ponta == baseline; `#admin-encanto`→login→admin→exit; regra F (App consome pricing+addons); **alvo: `App.jsx` < ~120 linhas** |
+
+### 6.1 Gates padrão obrigatórios em **todo** passo de extração
+1. **Resíduo:** grep do símbolo extraído em `App.jsx` retorna **0 definições** (só `import`, se houver) — sem cópia velha sombreando.
+2. **Equivalência mecânica:** corpo movido == original (diff vazio / hash do corpo normalizado) para moves puros.
+3. **1 módulo = 1 commit** com rollback próprio (`git revert`); ondas que agrupam vários módulos (4/6/7/8) são **vários commits**, não um.
+
+---
+
+## 7. Riscos técnicos globais
+
+- **R1 (gate da fase):** regra D do `deps.audit` (B1) — sem a Onda 0, toda extração com domínio reprova.
+- **R2:** `DataService` usa `this` em métodos reais — converter para funções soltas quebra binding. Manter **objeto literal exportado**. Pivô de ~20 consumidores.
+- **R3:** `db` vaza para fora do DS (`ImageUploader.db.storage`, `AdminLogin.db.auth`, `if(!db)` no checkout). Cada um importa `db` de `lib/supabase` — inventário fechado no passo 7/13.
+- **R4:** singletons mutáveis `_globalProductsCache` (DS) e `_prodCache` (useProducts) **não podem** ser duplicados (cache stale / quebra da invariante "escrita de produto invalida cache"). Validar com build de produção, não HMR.
+- **R5:** 2 colunas de imagem — gravar **`imagem_url`** (viva), nunca `image_url` (legada). Validar payload exato no upsert.
+- **R6:** ids `sec-*` são contrato implícito entre `CatalogSections`/`LazySection` e o scroll programático; manter literais.
+- **R7:** prop-drilling massivo ao quebrar `StoreApp`; **não** introduzir Context nesta fase (muda árvore de re-render). Ver §9.
+- **R8:** volume (~48 módulos / ~19 passos) — disciplina 1-commit-por-módulo é o que dá rollback granular.
+- **R9 (rede de segurança):** só há golden de `pricing`/`addons` + `deps` + RLS de banco; **nenhum render/snapshot test**. Recomendado (opcional, antes da Onda 4): smoke render via `react-dom/server` num `.mjs` (estilo golden existente) montando `StoreApp` com mocks → snapshot de markup como baseline por onda visual.
+
+---
+
+## 8. Estratégia de ZERO mudança funcional
+
+### 8.1 Regras
+- Move puro + ajuste de import/export; nada de reescrita de lógica.
+- Domínio (pricing/addons/format) e checkout (create_order/request_id/idempotência) **intocados na semântica**.
+- Shapes implícitos (`MOCK_*`, objeto `cart` com `items/_key/total`) movidos **sem editar campos**.
+- Chaves `localStorage`/`sessionStorage` centralizadas movendo o **literal idêntico** (validado por grep string-a-string); quem lê/escreve e quando **não muda**.
+- Consolidações (B4) **adiadas** para REF-APP-02.
+
+### 8.2 Bugs e código morto a **preservar** (refatorá-los = mudança funcional proibida aqui)
+`AdminAdicionais.save` que só envia nome+preco · `AdminDashboard` lendo `o.cliente_nome/telefone` (vs join `customers`) · `cor` sem input em `AdminCategorias` · `inRange`/`getCatSecId`/`numero`/status `outrange` mortos · estado morto de `SuccessPage` (`statusIdx`/`tempo`/prop `cart`) · comparador `React.memo` de `ProductCard` que ignora preço · guarda `useRef?...:React.useRef` ([App.jsx:1385]) · `replaceState` no initializer lazy de `useState` (App raiz) — `main.jsx` não usa StrictMode, então não há double-invoke a tratar.
+
+---
+
+## 9. Estado compartilhado / Context (FORA desta fase)
+
+**Não há nenhum React Context** no monólito: todo o estado do storefront vive em `StoreApp` (~15 `useState`) e desce por prop-drilling. Estado compartilhado oculto/perigoso = persistência client-side dispersa (mesmas chaves `localStorage` lidas/escritas em StoreApp, CheckoutPage, AdminFidelidade, AdminStatus, useCart → acoplamento implícito loja↔admin).
+
+Candidatos a Context **futuros** (REF-APP-02+, não aqui): `CartContext`, `StoreContext` (page/selCat/search/modal/storeOpen/delivery), `AuthContext` (App captura o usuário em `setAdmin` mas **descarta** o valor). **Por que não agora:** migrar de prop-drilling para Context altera a árvore de re-render — incompatível com ZERO mudança funcional. Caminho conservador desta fase: (a) sub-componentes recebem o **mesmo** estado via props explícitos; (b) só as **chaves** de storage centralizadas; (c) opcionalmente, em passos próprios e posteriores, encapsular grupos de `localStorage` em hooks (`useDeliveryAddress`/`useLoyalty`/`useStoreStatus`/`useSecretAdminTap`) lendo/escrevendo as MESMAS chaves nos mesmos momentos.
+
+---
+
+## 10. Critérios de aceite da fase e o que falta para congelar
+
+**Aceite (ao fim da REF-APP-01):** `App.jsx` reduzido a AppRouter mínimo (< ~120 linhas); suíte completa verde; pedido real ponta-a-ponta idêntico ao baseline; nenhuma regressão visual/funcional; cada módulo rastreável a 1 commit.
+
+**Sequência de governança definida pelo usuário (2026-06-30):**
+1. **Este desenho está CONGELADO** (sem execução). ✅
+2. **Onda 0 isolada PRIMEIRO** — reestruturar a regra D do `test:deps` para um modelo compatível com modularização incremental (allowlist ou contrato por domínio). Proposta dedicada em **[REF-APP-01 · Onda 0 — deps.audit](REF-APP-01-onda-0-deps-audit.md)** (proposta; **não aplicada**).
+3. **Só após** a Onda 0 ser aplicada, o usuário autoriza o **congelamento da fase de execução**.
+
+**Decisões adicionais a ratificar no congelamento da execução (depois da Onda 0):**
+- **Adiamento das consolidações (B4)** para REF-APP-02, mantendo REF-APP-01 100% move-puro. *(Recomendado.)*
+- **Golden de payload do checkout (B2)** e **smoke render test (R9)** como redes de segurança.
+- Destino do `import './index.css'` (manter em `App.jsx` vs mover para `main.jsx`).
+
+---
+
+## 11. Próximos passos
+
+Este documento é **recon/design CONGELADO**. Nenhuma extração será feita sem: (a) **Onda 0 aplicada** (regra D reestruturada — proposta isolada à parte), (b) congelamento explícito da **fase de execução** pelo usuário, e (c) um Execution Plan por ondas (padrão F1A/F1B: pré-condições → passos imutáveis → gate entre passos → rollback documentado). O **F2 do NORM-06 permanece bloqueado** e independente desta fase.
+
+> 🔒 **REF-APP-01 — DESENHO CONGELADO (sem execução).** Pré-condição da execução: **Onda 0** (regra D do `test:deps`). Execução aguarda Onda 0 aplicada + congelamento explícito.
+
+> 🟡 **REF-APP-01 — DESENHO. Aguardando ratificação das decisões da §10 para congelamento.**
