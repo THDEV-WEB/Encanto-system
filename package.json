@@ -15,6 +15,7 @@
     "guard:slug": "node scripts/norm06-f1a-slug-guard.mjs",
     "test:f1b": "node scripts/norm06-f1b-invariants-test.mjs",
     "test:rls": "node scripts/norm06-1-rls-test.mjs",
+    "test:orders-rls": "node scripts/harden-orders-rls-test.mjs",
     "bench:pricing": "node scripts/bench/pricing.bench.mjs",
     "bench:addons": "node scripts/bench/addons.bench.mjs"
   },
