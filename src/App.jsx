@@ -8,6 +8,7 @@ import { MOCK_ADS, ADICIONAL_SIMPLES_PRECO, resolverAdicionais, agruparPorGrupo,
 import { isUuid, newRequestId } from './utils/ids.js';
 import { catEmoji, isHttpUrl, isCategoriaDescontinuada, prodInCat, getProdCatIds } from './utils/catalog.js';
 import { MOCK_CATS, MOCK_PRODS, filterMock } from './data/mockCatalog.js';
+import { PRODUCTS_PAGE_SIZE, PRODUCTS_PAGINATE, PRODUCTS_CACHE_TTL } from './constants/catalogConfig.js';
 
 /* ============================================================
    ENCANTO DELIVERY — React 18 + Supabase v2
@@ -29,14 +30,7 @@ import { MOCK_CATS, MOCK_PRODS, filterMock } from './data/mockCatalog.js';
 
 /* CATEGORIAS_DESCONTINUADAS / isCategoriaDescontinuada → src/utils/catalog.js (REF-APP-01 · Onda 1) */
 
-/* ── FIX truncamento PostgREST (teto ~1000 linhas) ───────────────────────────
-   products.select(...) direto retorna no máximo ~1000 linhas (limite padrão do
-   PostgREST) e trunca o catálogo em silêncio acima disso. fetchAllProductsSafe
-   pagina com .range() até a página vir incompleta, montando a lista COMPLETA.
-   Rollback em 1 linha: trocar PRODUCTS_PAGINATE para false → volta ao select direto. */
-const PRODUCTS_PAGE_SIZE = 1000;   /* tamanho de página do .range() (≤ teto do PostgREST) */
-const PRODUCTS_PAGINATE  = true;   /* ⇐ ROLLBACK: false restaura o select direto (1 página) */
-const PRODUCTS_CACHE_TTL = 5 * 60 * 1000;  /* 5 min — cache global da lista COMPLETA (sem busca) */
+/* PRODUCTS_PAGE_SIZE / PRODUCTS_PAGINATE / PRODUCTS_CACHE_TTL → src/constants/catalogConfig.js (REF-APP-01 · Onda 1) */
 
 /* ── DataService ─────────────────────────────────────────────── */
 const DS = {
