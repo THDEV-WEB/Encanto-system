@@ -2,7 +2,7 @@
 
 - **Tipo:** runbook de execução controlada. **Pertence a:** [ADR NORM-06.1 (congelado)](NORM-06.1-harden-rls.md). Equivale à fase **F1C** do NORM-06.
 - **Modo:** acelerado, com revisão adversarial e governança plena (padrão F1A/F1B).
-- **Resultado:** ✅ **APLICADA em 2026-06-30** na branch `feature/norm-06-f1a` (não mergeada na `main`).
+- **Resultado:** ✅ **APLICADA em 2026-06-30** e **MERGEADA na `main`** (merge `f25e7cb`, 2026-06-30, baseline oficial — ver [MERGE-F1 ledger](MERGE-F1-execution-plan.md)).
 
 ---
 

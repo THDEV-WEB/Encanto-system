@@ -1,6 +1,6 @@
 # HARDEN-ORDERS-RLS — Execution Plan (runbook + ledger de evidências)
 
-- **Pertence a:** [ADR HARDEN-ORDERS-RLS (congelado)](HARDEN-ORDERS-RLS.md). **Resultado:** ✅ **APLICADA em 2026-06-30** na branch `feature/norm-06-f1a` (não mergeada na `main`).
+- **Pertence a:** [ADR HARDEN-ORDERS-RLS (congelado)](HARDEN-ORDERS-RLS.md). **Resultado:** ✅ **APLICADA em 2026-06-30** e **MERGEADA na `main`** (merge `f25e7cb`, 2026-06-30, baseline oficial — ver [MERGE-F1 ledger](MERGE-F1-execution-plan.md)).
 - **Decisões ratificadas:** D-RPC (create_order→SECURITY DEFINER), D-ANON-READ (anon sem leitura direta), D-GRANTS (revogar grants do anon), D-VIEW (v_order_reconciliation→security_invoker).
 - **Objetivo:** eliminar a exposição pública dos pedidos **preservando 100% o comportamento funcional** (checkout anon + painel admin).
 
