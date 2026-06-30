@@ -5,6 +5,7 @@ import { db, WHATSAPP, RPC_TIMEOUT, LOGO } from './lib/supabase.js';
 import { fmt, fmtDate, precoApartir, precoTamanho, norm } from './utils/format.js';
 import { precoUnitario, precoLinha, totalCarrinho, emPromocao, precoVitrine } from './utils/pricing.js';
 import { MOCK_ADS, ADICIONAL_SIMPLES_PRECO, resolverAdicionais, agruparPorGrupo, selecionarFonteAdicionais, cotaGratis, ehAdicionalGratis, resolverPrecoAdicionais } from './utils/addons.js';
+import { isUuid, newRequestId } from './utils/ids.js';
 
 /* ============================================================
    ENCANTO DELIVERY — React 18 + Supabase v2
@@ -459,20 +460,7 @@ function getProdCatIds(prod) {
   return [prod.categoria_id].filter(Boolean);
 }
 
-/* ids de produtos do banco são uuid; ids de mock ('pmc1','pb1') não são.
-   order_items.product_id é uuid → enviar só quando for uuid, senão null. */
-const isUuid = v => typeof v==='string' &&
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
-
-/* Idempotency key (estilo Stripe): UUID estável por tentativa de checkout, enviado à RPC
-   create_order. Retries/duplo-clique reusam a MESMA key → o banco devolve o pedido existente. */
-const newRequestId = () => {
-  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-    const r = Math.random()*16|0, v = c==='x' ? r : (r&0x3|0x8);
-    return v.toString(16);
-  });
-};
+/* isUuid / newRequestId → src/utils/ids.js (REF-APP-01 · Onda 1) */
 
 function useProducts(catId, search) {
   const cacheKey = `${catId||'*'}::${search||''}`;
