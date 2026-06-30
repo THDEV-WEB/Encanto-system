@@ -9,6 +9,7 @@ import { isUuid, newRequestId } from './utils/ids.js';
 import { catEmoji, isHttpUrl, isCategoriaDescontinuada, prodInCat, getProdCatIds } from './utils/catalog.js';
 import { MOCK_CATS, MOCK_PRODS, filterMock } from './data/mockCatalog.js';
 import { PRODUCTS_PAGE_SIZE, PRODUCTS_PAGINATE, PRODUCTS_CACHE_TTL } from './constants/catalogConfig.js';
+import { STORAGE_KEYS } from './constants/storage.js';
 
 /* ============================================================
    ENCANTO DELIVERY — React 18 + Supabase v2
@@ -345,13 +346,13 @@ function useCart() {
      sanitização (filtra itens válidos, coage qty) — defensivo contra storage adulterado/legado. */
   const [items, setItems] = useState(()=>{
     try {
-      const raw = JSON.parse(localStorage.getItem('encanto_cart')||'null');
+      const raw = JSON.parse(localStorage.getItem(STORAGE_KEYS.CART)||'null');
       if (!raw || raw.v!==1 || !Array.isArray(raw.items)) return [];
       if (Date.now() - (raw.ts||0) > 12*60*60*1000) return [];
       return raw.items.filter(i=>i&&typeof i==='object'&&i._key&&Number(i.qty)>=1).map(i=>({...i, qty:Number(i.qty)}));
     } catch (e) { return []; }
   });
-  useEffect(()=>{ try { localStorage.setItem('encanto_cart', JSON.stringify({v:1, ts:Date.now(), items})); } catch (e) {} }, [items]);
+  useEffect(()=>{ try { localStorage.setItem(STORAGE_KEYS.CART, JSON.stringify({v:1, ts:Date.now(), items})); } catch (e) {} }, [items]);
   const count = items.reduce((a,i)=>a+i.qty, 0);
   const total = totalCarrinho(items);
   const add = (prod, qty, adicionais, obs)=>{
@@ -855,8 +856,8 @@ function CheckoutPage({ cart, onBack, onSuccess }) {
     submittingRef.current = true;
     setLoading(true);
     if (!requestIdRef.current) {   // HARDEN-06: idempotency key durável (cobre retry/remontagem) via localStorage
-      requestIdRef.current = localStorage.getItem('encanto_req_id') || newRequestId();
-      try { localStorage.setItem('encanto_req_id', requestIdRef.current); } catch (e) {}
+      requestIdRef.current = localStorage.getItem(STORAGE_KEYS.REQ_ID) || newRequestId();
+      try { localStorage.setItem(STORAGE_KEYS.REQ_ID, requestIdRef.current); } catch (e) {}
     }
     /* preço unitário = base do item (já reflete o tamanho) + adicionais por unidade.
        Σ(price*quantity) reconcilia com orders.total. */
@@ -880,16 +881,16 @@ function CheckoutPage({ cart, onBack, onSuccess }) {
       requestIdRef.current                                                        // idempotency key
     );
     /* Incrementar contador de fidelidade (somente após pedido finalizado) */
-    if (localStorage.getItem('encanto_loyalty_enabled') !== 'false') {
-      const required = parseInt(localStorage.getItem('encanto_loyalty_required')||'10');
-      const cur      = parseInt(localStorage.getItem('encanto_loyalty_count')||'0');
+    if (localStorage.getItem(STORAGE_KEYS.LOYALTY_ENABLED) !== 'false') {
+      const required = parseInt(localStorage.getItem(STORAGE_KEYS.LOYALTY_REQUIRED)||'10');
+      const cur      = parseInt(localStorage.getItem(STORAGE_KEYS.LOYALTY_COUNT)||'0');
       /* Não ultrapassar o limite — cliente deve resgatar antes de acumular mais */
       if (cur < required) {
         const next = cur + 1;
-        localStorage.setItem('encanto_loyalty_count', String(next));
+        localStorage.setItem(STORAGE_KEYS.LOYALTY_COUNT, String(next));
         /* Se atingiu o limite, marcar reward_available */
         if (next >= required) {
-          localStorage.setItem('encanto_loyalty_reward_available', 'true');
+          localStorage.setItem(STORAGE_KEYS.LOYALTY_REWARD_AVAILABLE, 'true');
         }
       }
     }
@@ -906,7 +907,7 @@ function CheckoutPage({ cart, onBack, onSuccess }) {
     setLoading(false);
     submittingRef.current = false;
     requestIdRef.current = null;   // próximo pedido recebe nova idempotency key
-    try { localStorage.removeItem('encanto_req_id'); } catch (e) {}
+    try { localStorage.removeItem(STORAGE_KEYS.REQ_ID); } catch (e) {}
     cart.clear();
     onSuccess(msg);
   };
@@ -1814,11 +1815,11 @@ function AdminDashboard() {
 /* ── Admin: Status do Estabelecimento ─────────────────────── */
 function AdminStatus() {
   const [status, setStatus] = useState(()=>{
-    return localStorage.getItem('encanto_store_status') || 'open';
+    return localStorage.getItem(STORAGE_KEYS.STORE_STATUS) || 'open';
   });
   const toggle = (val) => {
     setStatus(val);
-    localStorage.setItem('encanto_store_status', val);
+    localStorage.setItem(STORAGE_KEYS.STORE_STATUS, val);
   };
   return (
     <div>
@@ -1909,19 +1910,19 @@ function AdminStatus() {
 
 /* ── Admin: Fidelidade ─────────────────────────────────── */
 function AdminFidelidade() {
-  const [count,    setCount]    = useState(()=>parseInt(localStorage.getItem('encanto_loyalty_count')||'0'));
-  const [required, setRequired] = useState(()=>parseInt(localStorage.getItem('encanto_loyalty_required')||'10'));
-  const [discount, setDiscount] = useState(()=>parseInt(localStorage.getItem('encanto_loyalty_discount')||'50'));
-  const [enabled,  setEnabled]  = useState(()=>localStorage.getItem('encanto_loyalty_enabled')!=='false');
+  const [count,    setCount]    = useState(()=>parseInt(localStorage.getItem(STORAGE_KEYS.LOYALTY_COUNT)||'0'));
+  const [required, setRequired] = useState(()=>parseInt(localStorage.getItem(STORAGE_KEYS.LOYALTY_REQUIRED)||'10'));
+  const [discount, setDiscount] = useState(()=>parseInt(localStorage.getItem(STORAGE_KEYS.LOYALTY_DISCOUNT)||'50'));
+  const [enabled,  setEnabled]  = useState(()=>localStorage.getItem(STORAGE_KEYS.LOYALTY_ENABLED)!=='false');
   const [saved,    setSaved]    = useState(false);
   const [editReq,  setEditReq]  = useState(false);
   const [editDis,  setEditDis]  = useState(false);
   const rewardAvail = count >= required;
 
   const saveConfig = () => {
-    localStorage.setItem('encanto_loyalty_required', String(required));
-    localStorage.setItem('encanto_loyalty_discount',  String(discount));
-    localStorage.setItem('encanto_loyalty_enabled',   String(enabled));
+    localStorage.setItem(STORAGE_KEYS.LOYALTY_REQUIRED, String(required));
+    localStorage.setItem(STORAGE_KEYS.LOYALTY_DISCOUNT,  String(discount));
+    localStorage.setItem(STORAGE_KEYS.LOYALTY_ENABLED,   String(enabled));
     setSaved(true); setEditReq(false); setEditDis(false);
     setTimeout(()=>setSaved(false), 2500);
   };
@@ -1930,15 +1931,15 @@ function AdminFidelidade() {
     if (!window.confirm(
       'Zerar o contador de pedidos?\nEsta ação representa que o cliente usou sua recompensa ou foi feito um ajuste manual.'
     )) return;
-    localStorage.setItem('encanto_loyalty_count', '0');
-    localStorage.setItem('encanto_loyalty_reward_used','true');
+    localStorage.setItem(STORAGE_KEYS.LOYALTY_COUNT, '0');
+    localStorage.setItem(STORAGE_KEYS.LOYALTY_REWARD_USED,'true');
     setCount(0);
   };
 
   const addPedido = () => {
     if (count >= required) { alert('Recompensa já disponível. Peça para o cliente usar o desconto antes de adicionar novos pedidos.'); return; }
     const next = count + 1;
-    localStorage.setItem('encanto_loyalty_count', String(next));
+    localStorage.setItem(STORAGE_KEYS.LOYALTY_COUNT, String(next));
     setCount(next);
   };
 
@@ -1971,7 +1972,7 @@ function AdminFidelidade() {
           <label className="toggle-switch">
             <input type="checkbox" checked={enabled} onChange={e=>{
               setEnabled(e.target.checked);
-              localStorage.setItem('encanto_loyalty_enabled',String(e.target.checked));
+              localStorage.setItem(STORAGE_KEYS.LOYALTY_ENABLED,String(e.target.checked));
             }}/>
             <span className="toggle-slider"/>
           </label>
@@ -2763,20 +2764,20 @@ function StoreApp({ onAdmin }) {
   /* Estado visual do header — não afeta lógica */
   const [deliveryMode,   setDeliveryMode]   = useState('entrega');
   const [deliveryAddress,setDeliveryAddress] = useState(()=>
-    localStorage.getItem('encanto_delivery_address')||'');
+    localStorage.getItem(STORAGE_KEYS.DELIVERY_ADDRESS)||'');
   const [showAddressModal,setShowAddressModal] = useState(false);
   const [showLoyalty,    setShowLoyalty]     = useState(false);
   /* ── Programa de Fidelidade ── armazenado localmente */
   const [loyaltyCount,   setLoyaltyCount]    = useState(()=>
-    parseInt(localStorage.getItem('encanto_loyalty_count')||'0'));
+    parseInt(localStorage.getItem(STORAGE_KEYS.LOYALTY_COUNT)||'0'));
   const [loyaltyConfig]  = useState(()=>({
-    required: parseInt(localStorage.getItem('encanto_loyalty_required')||'10'),
-    discount: parseInt(localStorage.getItem('encanto_loyalty_discount')||'50'),
+    required: parseInt(localStorage.getItem(STORAGE_KEYS.LOYALTY_REQUIRED)||'10'),
+    discount: parseInt(localStorage.getItem(STORAGE_KEYS.LOYALTY_DISCOUNT)||'50'),
   }));
   const loyaltyReward = loyaltyCount >= loyaltyConfig.required;
   const [storeOpen,      setStoreOpen]       = useState(()=>{
     /* Ler do localStorage — Admin pode alterar */
-    const saved = localStorage.getItem('encanto_store_status');
+    const saved = localStorage.getItem(STORAGE_KEYS.STORE_STATUS);
     if (saved) return saved === 'open';
     /* Fallback: horário automático 09h–22h */
     const h = new Date().getHours();
@@ -2810,7 +2811,7 @@ function StoreApp({ onAdmin }) {
             onClick={()=>{
               /* Acesso oculto: 5 cliques rápidos na logo */
               const now = Date.now();
-              const key = 'encanto_logo_clicks';
+              const key = STORAGE_KEYS.LOGO_CLICKS;
               const raw = JSON.parse(sessionStorage.getItem(key)||'[]');
               const recent = [...raw.filter(t=>now-t<3000), now];
               sessionStorage.setItem(key, JSON.stringify(recent));
@@ -3342,9 +3343,9 @@ function StoreApp({ onAdmin }) {
           onClose={()=>setShowAddressModal(false)}
           onSelect={(addr, meta)=>{
             setDeliveryAddress(addr);
-            localStorage.setItem('encanto_delivery_address', addr);
+            localStorage.setItem(STORAGE_KEYS.DELIVERY_ADDRESS, addr);
             if (meta && meta.lat) {
-              localStorage.setItem('encanto_delivery_meta', JSON.stringify(meta));
+              localStorage.setItem(STORAGE_KEYS.DELIVERY_META, JSON.stringify(meta));
             }
             setShowAddressModal(false);
           }}
@@ -3401,8 +3402,8 @@ function StoreApp({ onAdmin }) {
                     onClick={()=>{
                       /* Zerar: order_count=0, reward_available=false, reward_used=true */
                       setLoyaltyCount(0);
-                      localStorage.setItem('encanto_loyalty_count','0');
-                      localStorage.setItem('encanto_loyalty_reward_used','true');
+                      localStorage.setItem(STORAGE_KEYS.LOYALTY_COUNT,'0');
+                      localStorage.setItem(STORAGE_KEYS.LOYALTY_REWARD_USED,'true');
                       setShowLoyalty(false);
                     }}
                     style={{
