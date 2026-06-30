@@ -2,10 +2,11 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import AppShell from './AppShell.jsx';
 import './index.css';
 import { db, WHATSAPP, RPC_TIMEOUT, LOGO } from './lib/supabase.js';
-import { fmt, fmtDate, precoApartir, precoTamanho, norm } from './utils/format.js';
+import { fmt, fmtDate, precoApartir, precoTamanho } from './utils/format.js';
 import { precoUnitario, precoLinha, totalCarrinho, emPromocao, precoVitrine } from './utils/pricing.js';
 import { MOCK_ADS, ADICIONAL_SIMPLES_PRECO, resolverAdicionais, agruparPorGrupo, selecionarFonteAdicionais, cotaGratis, ehAdicionalGratis, resolverPrecoAdicionais } from './utils/addons.js';
 import { isUuid, newRequestId } from './utils/ids.js';
+import { catEmoji, isHttpUrl, isCategoriaDescontinuada, prodInCat, getProdCatIds } from './utils/catalog.js';
 
 /* ============================================================
    ENCANTO DELIVERY — React 18 + Supabase v2
@@ -13,17 +14,8 @@ import { isUuid, newRequestId } from './utils/ids.js';
    ============================================================ */
 
 /* ── Helpers ─────────────────────────────────────────────────── */
-const CAT_EMOJI = {
-  'combo marmitex + açaí':'🎁','combos':'🎁',
-  'cardápio de marmitas':'🍱','marmitas':'🍱',
-  'açaí':'🍧','copos prontos':'🍧',
-  'monte seu copo':'🍧','batidinhas':'🥤',
-  'pedido fitness':'💪','bebidas':'🧃',
-};
-const catEmoji = (nome='') => CAT_EMOJI[(nome||'').toLowerCase()] || '🍽️';
-
-/* URL http(s) válida — string começando com http:// ou https://. */
-const isHttpUrl = (url) => typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://'));
+/* CAT_EMOJI/catEmoji, isHttpUrl, CATEGORIAS_DESCONTINUADAS/isCategoriaDescontinuada,
+   prodInCat, getProdCatIds → src/utils/catalog.js (REF-APP-01 · Onda 1) */
 
 /* ── Mock Data ───────────────────────────────────────────────── */
 const MOCK_CATS = [
@@ -174,19 +166,7 @@ const MOCK_PRODS = [
    resolverPrecoAdicionais e ADICIONAL_SIMPLES_PRECO vivem agora em ./utils/addons.js. */
 
 
-/* ── Categorias descontinuadas ──────────────────────────────────
-   "Promoção do Dia" e "Cardápio Açaí" foram removidas permanentemente
-   da loja. Este filtro garante que elas nunca apareçam para o cliente
-   mesmo que a linha ainda exista no Supabase (ex.: admin ainda não
-   excluiu manualmente) — comparação por nome normalizado, já que os
-   IDs reais do banco não são os mesmos dos mocks ('c2'/'c6').
-   Não afeta o Admin Panel: lá o restaurante continua vendo e podendo
-   excluir essas categorias normalmente via DS.getAllCats(). ────────── */
-const CATEGORIAS_DESCONTINUADAS = [
-  'promocao do dia','promocoes do dia',
-  'cardapio de acai','cardapio acai',
-];
-const isCategoriaDescontinuada = cat => CATEGORIAS_DESCONTINUADAS.includes(norm(cat?.nome));
+/* CATEGORIAS_DESCONTINUADAS / isCategoriaDescontinuada → src/utils/catalog.js (REF-APP-01 · Onda 1) */
 
 /* ── FIX truncamento PostgREST (teto ~1000 linhas) ───────────────────────────
    products.select(...) direto retorna no máximo ~1000 linhas (limite padrão do
@@ -434,31 +414,7 @@ function filterMock(catId, search) {
   return m;
 }
 
-/* ── prodInCat ────────────────────────────────────────────────────────────────
-   Verifica se um produto pertence a uma categoria.
-   Suporta dois formatos (retrocompatível):
-     - LEGADO:   { categoria_id: 'c1' }
-     - NOVO:     { categoria_id: 'c1', categoria_ids: ['c1','c8'] }
-   Um produto com categoria_ids pertence a TODAS as categorias listadas.
-   Um produto sem categoria_ids é tratado como { categoria_ids: [categoria_id] }.
-──────────────────────────────────────────────────────────────────────────── */
-function prodInCat(prod, catId) {
-  if (!catId) return true;
-  if (Array.isArray(prod.categoria_ids) && prod.categoria_ids.length>0) {
-    return prod.categoria_ids.includes(catId);
-  }
-  return prod.categoria_id === catId;
-}
-
-/* ── getProdCatIds ─────────────────────────────────────────────────────────
-   Retorna o array de todas as categorias de um produto.
-──────────────────────────────────────────────────────────────────────────── */
-function getProdCatIds(prod) {
-  if (Array.isArray(prod.categoria_ids) && prod.categoria_ids.length>0) {
-    return prod.categoria_ids;
-  }
-  return [prod.categoria_id].filter(Boolean);
-}
+/* prodInCat / getProdCatIds → src/utils/catalog.js (REF-APP-01 · Onda 1) */
 
 /* isUuid / newRequestId → src/utils/ids.js (REF-APP-01 · Onda 1) */
 
