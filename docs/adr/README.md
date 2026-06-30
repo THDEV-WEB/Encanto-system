@@ -35,7 +35,8 @@ Decisões de produto/arquitetura registradas como design, ainda **não implement
 | [NORM-07](NORM-07-collection-engine.md) | Collection Engine (resolver members-only; hidratação na camada superior) | Reservado | — |
 | [NORM-08](NORM-08-search-engine.md) | Search Engine | Reservado | — |
 | [NORM-09](NORM-09-event-engine.md) | Event Engine | Reservado | — |
-| [NORM-06.1](NORM-06.1-harden-rls.md) / HARDEN-RLS | RLS do catálogo: escrita `authenticated` em categories/adicionais/product_collections + substitui `pc_public_read`; **preserva leitura pública** (D1, diverge da §3.2) | **CONGELADO (2026-06-29)** · ⛔ execução **BLOQUEADA** (signups habilitados — pré-req de segurança não satisfeito) | — |
+| [NORM-06.1](NORM-06.1-harden-rls.md) / HARDEN-RLS | RLS do catálogo: escrita `authenticated` em categories/adicionais/product_collections + substitui `pc_public_read`; **preserva leitura pública** (D1, diverge da §3.2) | **APLICADA (2026-06-30)** na branch `feature/norm-06-f1a` (signups+anon desabilitados; `test:rls` PASS=15) — [ledger](NORM-06.1-execution-plan.md) | ver git log (branch) |
+| NORM-06 · F1B-Errata-01 | Funções STI `SECURITY DEFINER` — corrige escrita `authenticated` sob RLS (FOR SHARE não enxergava categoria); decoupla STI da RLS; EXECUTE mínimo | **APLICADA (2026-06-30)** com a NORM-06.1 | ver git log (branch) |
 | HARDEN-ORDERS-RLS | Fechar `orders`/`customers`/`order_items` (anon lê/edita todos os pedidos) — **extraído do NORM-06.1 (D2)** | Reservado (fase própria; toca checkout) | — |
 | HARDEN-LEGACY | Remoção de legado (`DROP image_url`, `DROP destaque`) após estabilização — **extraído do NORM-06** | Reservado (fase própria) | — |
 

@@ -1,6 +1,6 @@
 # ADR NORM-06.1 — HARDEN-RLS (políticas de acesso do catálogo)
 
-- **Status:** 🔒 **CONGELADO (2026-06-29)** — desenho ratificado pelo usuário. **⛔ EXECUÇÃO BLOQUEADA:** o pré-requisito de segurança (signups públicos desabilitados) **NÃO está satisfeito** — verificação em §3/§7 (signups de email **HABILITADOS** em 2026-06-29). A aplicação do runbook §5 só inicia após o bloqueio de signups ser confirmado. Continuidade direta do [NORM-06 §19](NORM-06-collections.md); equivale à fase **F1C** na numeração do NORM-06.
+- **Status:** 🔒 **CONGELADO (2026-06-29)** · **✅ APLICADA (2026-06-30)** — evidências e ledger no [Execution Plan](NORM-06.1-execution-plan.md). Pré-requisito de segurança satisfeito — signups de email **desabilitados** (`disable_signup=true` via Management API; revalidado `POST /auth/v1/signup` → `422 signup_disabled`) **e** anonymous sign-ins **desabilitados** (`external_anonymous_users_enabled=false`; `POST /auth/v1/signup {}` → `422 anonymous_provider_disabled`); 0 SSO, 1 user (admin) → `authenticated` == só admin (§3/§7). **Depende da [F1B-Errata-01](#) (funções STI `SECURITY DEFINER`)** — sem ela as escritas `authenticated` que referenciam categoria falham sob RLS. Continuidade direta do [NORM-06 §19](NORM-06-collections.md); equivale à fase **F1C** na numeração do NORM-06.
 - **Escopo:** **exclusivamente as tabelas de catálogo** — `products`, `categories`, `adicionais`, `product_collections`. **NÃO** toca `orders`/`customers`/`order_items` (decisão D2 → HARDEN próprio).
 - **Pré-condição (§19) — VERIFICADA ✅:** o admin autentica de verdade (`db.auth.signInWithPassword`, [App.jsx:1271](../../src/App.jsx#L1271); sessão persistida no mesmo client). Storefront = `anon`; admin = `authenticated`. Logo `authenticated = acesso pleno` **não cega o painel**.
 - **Base:** [NORM-06A §3.2 (G9)](NORM-06A-modelo-grupos-catalogo.md) (RLS de coluna local) — **com uma divergência deliberada documentada** (D1, §4).
@@ -52,7 +52,7 @@ Formalizar e endurecer as políticas RLS do **catálogo**, fechando inconsistên
 | `products` | `USING(true)` (**inalterado** — D1) | `authenticated` ins/upd/del (**inalterado**) |
 | `categories` | `USING(true)` (**inalterado**) | **+ `authenticated` ins/upd/del** (D3) |
 | `adicionais` | `USING(true)` (**inalterado**) | **+ `authenticated` ins/upd/del** (D3) |
-| `product_collections` | `pc_public_read` → **`product_collections_public_read`** `USING(true)` (permanente) | **+ `authenticated` ins/upd/del** (F2 backfill via admin + F4 editor) |
+| `product_collections` | `pc_public_read` → **`Leitura pública coleções`** `USING(true)` (permanente) | **+ `authenticated` ins/upd/del** (F2 backfill via admin + F4 editor) |
 
 **SQL desenhado** (a aplicar só após congelamento):
 ```sql
@@ -76,7 +76,9 @@ COMMIT;
 
 **⚠️ Pré-requisito de segurança (BLOQUEANTE — verificar antes de aplicar):** confirmar que **signups públicos estão DESABILITADOS** no Supabase Auth. Como `authenticated` ganha escrita plena no catálogo, se qualquer um puder se auto-registrar, qualquer um escreveria o catálogo. *(Esta exposição já existe hoje para `products`; NORM-06.1 a estende a categories/adicionais/coleções.)*
 
-> **🔴 Verificação 2026-06-29 — REPROVADA (BLOQUEIA a fase):** sonda ao endpoint público `POST /auth/v1/signup` (com a publishable key) **criou um usuário** `authenticated` (HTTP 200) → **signups de email ESTÃO HABILITADOS**. Logo, hoje, qualquer pessoa pode se auto-registrar e obter `authenticated` (já podendo escrever `products`). O usuário-sonda foi imediatamente removido (`auth.users` voltou a 1 = só o admin). Schema `auth`: 0 SSO providers, só identity `email`. **Ação requerida do operador:** Supabase Dashboard → Authentication → Sign In / Providers → **Email → desabilitar "Allow new users to sign up"** (e confirmar que nenhum provider OAuth/SSO concede `authenticated` a externos). Após isso, re-sondar (esperado: `422 signup_disabled`) e então executar o runbook §5.
+> **🔴 Verificação 2026-06-29 — REPROVADA (bloqueou a fase):** sonda a `POST /auth/v1/signup` **criou um usuário** `authenticated` (HTTP 200) → signups de email **estavam HABILITADOS**. Usuário-sonda removido (`auth.users`=1).
+>
+> **✅ Remediação + verificação 2026-06-30 — APROVADA:** signup desabilitado via **Management API** (`PATCH /v1/projects/{ref}/config/auth {disable_signup:true}`; `external_email_enabled` mantido `true` p/ login do admin). **Revalidações empíricas:** (a) `POST /auth/v1/signup` (email válido) → **`422 signup_disabled`** "Signups not allowed for this instance"; (b) `POST /auth/v1/signup {}` (anonymous) → **`422 anonymous_provider_disabled`** "Anonymous sign-ins are disabled". Config: `disable_signup=true`, `external_anonymous_users_enabled=false`, `external_phone_enabled=false`. Banco: `auth.users`=1 (só admin), 0 anônimos, 0 SSO, só identity `email`. **Não há caminho externo para `authenticated`.** Gate satisfeito → runbook §5 liberado.
 
 ---
 
@@ -94,7 +96,7 @@ Se no futuro "esconder indisponíveis do anon" virar requisito, é um ADR própr
 ## 5. Plano de execução (F1C-RLS) — runbook (após congelamento)
 
 Mesmo rigor da F1B (modo acelerado, governança plena):
-0. **Gate + backup** `snapshot.mjs NORM-06.1-RLS`; confirmar signups Supabase desabilitados.
+0. **Gate** confirmar signups+anonymous desabilitados (acima). **Restore point real = o rollback SQL** (`migrations/NORM-06.1-step1-rollback.sql`) — esta fase é 100% policies; o `snapshot.mjs` (que só dumpa linhas de tabela) serve apenas como evidência de net-zero de dados. Capturar `pg_policies` das 4 tabelas de catálogo (pré-aplicação) como evidência do §0.
 1. **Pré-validação (read-only):** mapa de policies atual == §0.
 2. **Aplicar** o SQL §3 (atômico).
 3. **Validação de schema:** policies-alvo presentes; leituras públicas intactas; provisória `pc_public_read` removida.
