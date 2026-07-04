@@ -839,6 +839,7 @@ function CartSidebar({ cart, catMap, onClose, onCheckout }) {
 function CheckoutPage({ cart, onBack, onSuccess }) {
   const [form, setForm] = useState({nome:'',telefone:'',endereco:'',pagamento:'dinheiro',troco:'',obs:''});
   const [loading, setLoading] = useState(false);
+  const [err,     setErr]     = useState('');   // feedback inline (mesmo padrão do AdminLogin)
   const submittingRef = useRef(false);   // trava reentrância (duplo clique / envio simultâneo)
   const requestIdRef  = useRef(null);    // idempotency key (estável por tentativa de checkout)
   const upd = (k,v) => setForm(f=>({...f,[k]:v}));
@@ -851,7 +852,12 @@ function CheckoutPage({ cart, onBack, onSuccess }) {
   const submit = async () => {
     if (submittingRef.current || loading) return;   // impede envio simultâneo
     console.log('[ENCANTO] Finalizar Pedido clicado. cart.items=', cart.items, 'total=', cart.total);
-    if (!form.nome||!form.telefone||!form.endereco) { alert('Preencha nome, telefone e endereço!'); return; }
+    setErr('');
+    if (!form.nome||!form.telefone||!form.endereco) { setErr('Preencha nome, telefone e endereço.'); return; }
+    /* Validação de telefone alinhada ao servidor (normalize_phone): DDD + número = ≥10 dígitos.
+       Impede que telefone inválido chegue à RPC create_order (que rejeitaria com rollback). */
+    const digits = form.telefone.replace(/\D/g, '');
+    if (digits.length < 10) { setErr('Informe um telefone válido com DDD (mínimo 10 dígitos).'); return; }
     if (cart.items.length === 0) { console.warn('[ENCANTO] Carrinho vazio ao finalizar!'); }
     submittingRef.current = true;
     setLoading(true);
@@ -862,7 +868,9 @@ function CheckoutPage({ cart, onBack, onSuccess }) {
     /* preço unitário = base do item (já reflete o tamanho) + adicionais por unidade.
        Σ(price*quantity) reconcilia com orders.total. */
     const puComAdic = precoUnitario;
-    await DS.savePedido(
+    /* GATE (fonte única de verdade): a persistência bem-sucedida é o evento que autoriza TODAS as ações
+       seguintes. savePedido devolve o order_id em sucesso, ou null em falha (validação/rollback/timeout). */
+    const orderId = await DS.savePedido(
       { name: form.nome, phone: form.telefone },                                  // customers
       { total: cart.total, status: 'recebido', payment_method: form.pagamento,    // orders
         address: form.endereco, observacoes: form.obs || null },
@@ -880,7 +888,16 @@ function CheckoutPage({ cart, onBack, onSuccess }) {
       }),
       requestIdRef.current                                                        // idempotency key
     );
-    /* Incrementar contador de fidelidade (somente após pedido finalizado) */
+    if (!orderId) {
+      /* Falha de persistência: interrompe o fluxo. NÃO conta fidelidade, NÃO limpa carrinho,
+         NÃO executa onSuccess, NÃO mostra sucesso. Preserva requestId (retry reusa a MESMA
+         idempotency key) e mantém o formulário intacto para nova tentativa. */
+      setLoading(false);
+      submittingRef.current = false;
+      setErr('Não foi possível registrar seu pedido. Confira o telefone e tente novamente.');
+      return;
+    }
+    /* Incrementar contador de fidelidade (somente após o pedido PERSISTIDO com sucesso) */
     if (localStorage.getItem(STORAGE_KEYS.LOYALTY_ENABLED) !== 'false') {
       const required = parseInt(localStorage.getItem(STORAGE_KEYS.LOYALTY_REQUIRED)||'10');
       const cur      = parseInt(localStorage.getItem(STORAGE_KEYS.LOYALTY_COUNT)||'0');
@@ -962,6 +979,7 @@ function CheckoutPage({ cart, onBack, onSuccess }) {
         <textarea className="form-input obs-textarea" placeholder="Alguma observação..."
           value={form.obs} onChange={e=>upd('obs',e.target.value)}/>
       </div>
+      {err&&<p style={{color:'var(--red)',fontSize:13,marginBottom:8}}>{err}</p>}
       <button className="confirm-btn" onClick={submit} disabled={loading}>
         {loading ? 'Enviando...' : `Confirmar via WhatsApp • ${fmt(cart.total)}`}
       </button>
