@@ -186,7 +186,7 @@ try {
   out('— CHECKOUT · anon NÃO escreve customers direto (HARDEN-ORDERS-RLS D-GRANTS; checkout via create_order RPC — ver test:orders-rls AC1) —');
   let ckVerdict = 'FAIL', ckDetail = '';
   await tx('anon', async () => {
-    try { const r = await client.query(`INSERT INTO public.customers(name,phone) VALUES('__rls_test','000000000')`); ckVerdict = 'FAIL'; ckDetail = `anon INSERT customers PASSOU (${r.rowCount} linha) — VAZAMENTO: HARDEN-ORDERS-RLS (D-GRANTS) deveria negar`; }
+    try { const r = await client.query(`INSERT INTO public.customers(name,phone) VALUES('__rls_test','38900000003')`); ckVerdict = 'FAIL'; ckDetail = `anon INSERT customers PASSOU (${r.rowCount} linha) — VAZAMENTO: HARDEN-ORDERS-RLS (D-GRANTS) deveria negar`; }   // REQ-01: telefone válido (filler; insert é negado)
     catch (e) { ckVerdict = (e.code === '42501') ? 'PASS' : 'FAIL'; ckDetail = (e.code === '42501' ? 'negado (42501): ' + redact(e.message).split('\n')[0] + ' — checkout flui pela RPC create_order (test:orders-rls AC1)' : 'erro INESPERADO (esperava 42501): code=' + e.code + ' ' + redact(e.message).split('\n')[0]); }
   });
   record('CK1', 'anon', 'RLS', 'INSERT customers direto NEGADO (pós HARDEN-ORDERS-RLS; checkout via create_order)', ckVerdict, ckDetail);

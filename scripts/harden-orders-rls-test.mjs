@@ -40,7 +40,7 @@ let passes = 0, failures = 0;
 const startedMs = Date.now(), startedIso = isoUtc();
 
 const REQ = "'1f1f1f1f-2e2e-3d3d-4c4c-5b5b5b5b5b5b'::uuid";
-const P_CUST = `'{"name":"__ord_rls_test","phone":"000111222"}'::jsonb`;
+const P_CUST = `'{"name":"__ord_rls_test","phone":"38900000001"}'::jsonb`;   // REQ-01: telefone válido ≥10 díg. (DDD+número)
 const P_ORDER = `'{"total":"10.00","status":"recebido","payment_method":"dinheiro","address":"rua teste 1"}'::jsonb`;
 const P_ITEMS = `'[{"nome_produto":"__ord_rls_item","quantity":"1","price":"10.00"}]'::jsonb`;
 
@@ -137,7 +137,7 @@ try {
   {
     let v = 'FAIL', d = '';
     await tx('authenticated', async () => {
-      const cid = (await client.query(`INSERT INTO public.customers(name,phone) VALUES('__ord_admin_seed','000999888') RETURNING id`)).rows[0].id;
+      const cid = (await client.query(`INSERT INTO public.customers(name,phone) VALUES('__ord_admin_seed','38900000002') RETURNING id`)).rows[0].id;   // REQ-01: telefone válido
       const oid = (await client.query(`INSERT INTO public.orders(customer_id,total,status,payment_method,address) VALUES('${cid}',10,'recebido','dinheiro','rua seed') RETURNING id`)).rows[0].id;
       await client.query(`INSERT INTO public.order_items(order_id,nome_produto,quantity,price) VALUES('${oid}','__seed_item',1,10)`);
       const r = await client.query(`SELECT o.id,o.total,c.name,c.phone FROM public.orders o LEFT JOIN public.customers c ON c.id=o.customer_id LEFT JOIN public.order_items oi ON oi.order_id=o.id WHERE o.id='${oid}'`);
