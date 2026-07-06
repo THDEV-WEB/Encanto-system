@@ -160,4 +160,34 @@ A estabilização aplicou o mesmo padrão previsto no §6 (slice/patch programá
 ### 8.5 — Estado dos dados que o `DataService` serve (contexto, não é código)
 A auditoria mapeou, no banco lido por `DS.getProds`/`getAllProds`: **2 colisões** `unique_nome_categoria` (Encanto Mineiro `c4`+`c8`; Marmita G 2 prot. `c1`+`c2`) e **3 produtos com `preco=0`** (cadastro incompleto: as "Marmita Especial"). São questões de **dados** (GRUPO B, decisão de negócio pendente), **não** de código do `DataService` — não afetam o move-puro. Registrado aqui para que, ao rodar a Onda 2, esses retornos "estranhos" de `getProds` **não sejam confundidos com regressão** da extração.
 
+---
+
+## 9. Gates de segurança PRÉ-Onda 2 — EXECUTADOS (2026-07-06)
+
+> Etapa preparatória autorizada (reduzir risco da futura extração). **A Onda 2 NÃO foi iniciada** — nenhum código movido, nenhum contrato/arquitetura/checkout/banco alterado. Restore point: **`backup/main-pre-onda-2`** (HEAD ao fim desta etapa).
+
+### 9.1 — Produção validada
+Deploy no ar: SPA *"Encanto – Açaí & Marmitas"* responde (HTTP 200, app React montando). Suíte **verde** no baseline (`build` + `test:deps`/`pricing`/`addons`/`f1b`/`rls`/`orders-rls`). Sem regressão após `9b8f7ac`+`35e7b05`+`b2ff9ac`+`3fe2ac2`. (Validação de código/integridade; o clique end-to-end no WhatsApp não é automatizável aqui — coberto pelo golden §9.3.)
+
+### 9.2 — Fronteiras do objeto `DS` confirmadas
+Objeto literal `const DS = {` em **App.jsx L37** → fechamento `};` em **L230**. **22 métodos + 2 props** — bate com a anatomia (§1). **Divergência (editorial):** o cabeçalho diz "`DS` vive ~L41–230"; o `~L41` corresponde à 1ª propriedade (`_globalProductsCache`, L42), mas o literal **abre em L37**. Fronteira exata para o slice byte-exato da extração: **L37→L230**. Nenhum código movido.
+
+### 9.3 — Golden do Checkout (`test:checkout`) — materializado ✅
+`tests/checkout.golden.mjs`. **(A)** importa o domínio REAL (`pricing`/`ids`/`format`) e congela payload + mensagem WhatsApp + reconciliação `Σ(price×qty)=total` + `product_id` (uuid vs mock→null) + idempotência (`p_request_id` passthrough) + pureza + contratos null (7 asserções). **(B)** *pin de fonte*: trava as expressões-chave da montagem REAL do `submit`/`savePedido` em `App.jsx` (detecta regressão sem extração). **VERDE.** A religação plena (importar `buildOrderArgs` de `utils/orderPayload.js`) é o passo **gated da Onda 5** (§3.1 do B2).
+
+### 9.4 — Micro-tests / guards do `DataService` (`test:ds-micro`) — materializado ✅
+`tests/dataservice.micro.mjs`. **(A)** guards de fonte que automatizam os guards mecânicos do §5 sobre `App.jsx`: **R2** (objeto literal; sem desestruturar `DS`), **R4** (`_globalProductsCache` singleton único; invalidação em `upsert/toggle/del`), **R5** (`imagem_url` viva, nunca `image_url`; `_sanitizeImageUrl` rejeita `data:`) + anatomia (22 métodos + 2 props). **VERDE agora.** **(B)** runtime test-first (`import { DS }` de `services/DataService.js`): PENDENTE (módulo nasce na extração) → **ativa verde no 1º passo da Onda 2**.
+
+> **Nota de escopo (por que 9.3-B/9.4-B são gated):** o `submit`/`savePedido`/`DS` vivem dentro de `App.jsx` (JSX, não importável em Node) e o prompt proíbe mocks que escondam comportamento real + proíbe extrair. A interceptação de runtime do código-alvo exige que ele seja um módulo importável — o que a extração (Onda 2/5) provê. Escolhida a alternativa de **menor alteração**: guard de fonte + domínio real (verde agora) + runtime pronto para religar na extração.
+
+### 9.5 — Auditoria do B10 (GRUPO B) — CONCLUÍDA: **regra de negócio válida, NÃO inconsistência**
+Os adicionais c3 `simples` com `tipo='gratis'` e `preco=2` **representam a regra "grátis até a cota; R$2,00 por unidade excedente"** — não são cadastro inconsistente. Evidências no código de domínio (`src/utils/addons.js`):
+- **L75** — `ADICIONAL_SIMPLES_PRECO = 2.00`, comentário *"Preço do adicional simples EXCEDENTE (após esgotar a cota grátis do tamanho). Regra de NEGÓCIO."*
+- **L172** — `ehAdicionalGratis = ad.tipo === 'gratis' || Number(ad.preco) === 0` → o **TIPO vence o preço** (um `gratis` com `preco=2` conta na franquia).
+- **L183-188** — `resolverPrecoAdicionais`: dentro da cota → `preco 0`; **excedente → `Number(ad.preco)` (=2,00)**.
+- **L59-61** — dívida já documentada: *"c3 usa grupo 'simples' (gratis, preco 2.00)"* (modelo dual conhecido, congelado em teste P6).
+- Golden `tests/addons.golden.mjs` L88/L93 já congela esse comportamento.
+
+⇒ **B10 REMOVIDO do GRUPO B.** Não requer correção; é comportamento correto do motor de adicionais (Monte seu Copo / Batidinhas). Nenhum banco/query/registro alterado (auditoria read-only).
+
 > 🟦 **PROPOSTA — aguardando autorização.** Nenhuma extração iniciada.

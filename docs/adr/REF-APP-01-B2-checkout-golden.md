@@ -3,6 +3,7 @@
 - **Status:** 🟦 **PROPOSTA — NÃO APLICADA.** Pré-requisito do congelamento da **fase de execução** da REF-APP-01 (achado B2). Nada foi implementado; nenhuma extração iniciada.
 - **Pertence a:** [REF-APP-01 (DESENHO congelado)](REF-APP-01-modularizacao-appjsx.md) · achado **B2** (validação do checkout era 100% manual).
 - **Objetivo:** trocar a única garantia anti-regressão do fluxo sagrado (`create_order` + idempotência + mensagem WhatsApp) — hoje "1 pedido real" manual, não reproduzível — por um **teste automatizado sem dependência de banco real**.
+- **Atualização (2026-07-06) — golden MATERIALIZADO (`tests/checkout.golden.mjs` · `npm run test:checkout`):** na etapa pré-Onda 2 o golden foi implementado **sem o habilitador do §3.1** (a extração de `buildOrderArgs` para `utils/orderPayload.js` segue **gated**, pois altera o `submit`). Em vez disso: **(A)** builders-espelho fiéis + domínio REAL (`pricing`/`ids`/`format`) congelam as 7 asserções da §3.2; **(B)** *pin de fonte* trava a montagem real do `submit`/`savePedido` em `App.jsx`. **VERDE.** Na Onda 5, ao extrair `orderPayload.js`, troca-se o espelho pelo import real (o pin de fonte garante que ambos coincidem). Ver `REF-APP-01-onda-2-plan.md` §9.3.
 
 ---
 
