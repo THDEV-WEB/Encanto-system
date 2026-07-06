@@ -51,7 +51,8 @@ for (const d of DOMAIN)
    D3 (higiene): allowlist sem entrada morta (nenhum consumidor listado que ainda não importe um domínio).
    A prova de "domínio = folha pura, fora de ciclo, direção correta" permanece em A/B/C/E/F (inalteradas). */
 const DOMAIN_CONSUMERS = [
-  'App.jsx',                 // raiz (regra F) — único consumidor atual
+  'App.jsx',                 // raiz (regra F)
+  'hooks/useAdicionais.js',  // REF-APP-01 · Onda 3 — consome MOCK_ADS de utils/addons
   // Cada extração que importe pricing/addons adiciona a si mesma AQUI, no MESMO commit. Ex. (REF-APP-01):
   // 'pages/StoreApp.jsx', 'hooks/useCart.js', 'hooks/useAdicionais.js', 'components/ProductCard.jsx',
   // 'components/ProductModal/ProductModalInner.jsx', 'components/CartSidebar.jsx',

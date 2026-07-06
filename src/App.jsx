@@ -13,6 +13,7 @@ import { DS } from './services/DataService.js';
 import { useOrders } from './hooks/useOrders.js';
 import { useCategories } from './hooks/useCategories.js';
 import { useProducts } from './hooks/useProducts.js';
+import { useAdicionais } from './hooks/useAdicionais.js';
 
 /* ============================================================
    ENCANTO DELIVERY — React 18 + Supabase v2
@@ -51,14 +52,7 @@ import { useProducts } from './hooks/useProducts.js';
 
 /* useProducts → src/hooks/useProducts.js (REF-APP-01 · Onda 3) */
 
-function useAdicionais() {
-  const [ads, setAds] = useState([]);
-  useEffect(()=>{
-    // online → adicionais reais; null (offline/erro/sem dados) → fallback MOCK_ADS
-    DS.getAds().then(d=>{ setAds(d ?? MOCK_ADS); });
-  },[]);
-  return ads;
-}
+/* useAdicionais → src/hooks/useAdicionais.js (REF-APP-01 · Onda 3) */
 
 /* useOrders → src/hooks/useOrders.js (REF-APP-01 · Onda 3) */
 
