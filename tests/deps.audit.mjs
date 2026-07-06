@@ -53,6 +53,7 @@ for (const d of DOMAIN)
 const DOMAIN_CONSUMERS = [
   'App.jsx',                 // raiz (regra F)
   'hooks/useAdicionais.js',  // REF-APP-01 · Onda 3 — consome MOCK_ADS de utils/addons
+  'hooks/useCart.js',        // REF-APP-01 · Onda 3 — consome totalCarrinho de utils/pricing
   // Cada extração que importe pricing/addons adiciona a si mesma AQUI, no MESMO commit. Ex. (REF-APP-01):
   // 'pages/StoreApp.jsx', 'hooks/useCart.js', 'hooks/useAdicionais.js', 'components/ProductCard.jsx',
   // 'components/ProductModal/ProductModalInner.jsx', 'components/CartSidebar.jsx',
