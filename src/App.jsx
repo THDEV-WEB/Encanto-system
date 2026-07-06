@@ -12,6 +12,7 @@ import { STORAGE_KEYS } from './constants/storage.js';
 import { DS } from './services/DataService.js';
 import { useOrders } from './hooks/useOrders.js';
 import { useCategories } from './hooks/useCategories.js';
+import { useProducts } from './hooks/useProducts.js';
 
 /* ============================================================
    ENCANTO DELIVERY — React 18 + Supabase v2
@@ -40,8 +41,7 @@ import { useCategories } from './hooks/useCategories.js';
 /* ── Hooks ───────────────────────────────────────────────────── */
 /* useCategories → src/hooks/useCategories.js (REF-APP-01 · Onda 3) */
 
-/* Cache em memória — persiste durante a sessão */
-const _prodCache = new Map();
+/* _prodCache (Map de sessão) + useProducts → src/hooks/useProducts.js (REF-APP-01 · Onda 3) */
 
 /* filterMock → src/data/mockCatalog.js (REF-APP-01 · Onda 1) */
 
@@ -49,54 +49,7 @@ const _prodCache = new Map();
 
 /* isUuid / newRequestId → src/utils/ids.js (REF-APP-01 · Onda 1) */
 
-function useProducts(catId, search) {
-  const cacheKey = `${catId||'*'}::${search||''}`;
-
-  /* Iniciar com dados do cache (Supabase) ou mock enquanto busca */
-  const [prods,   setProds]   = useState(()=> _prodCache.get(cacheKey) || []);
-  const [loading, setLoading] = useState(!_prodCache.has(cacheKey));
-  const [src,     setSrc]     = useState(_prodCache.has(cacheKey) ? 'cache' : 'mock');
-
-  useEffect(()=>{
-    const key = `${catId||'*'}::${search||''}`;
-
-    /* Cache hit: usar imediatamente */
-    if (_prodCache.has(key)) {
-      setProds(_prodCache.get(key));
-      setSrc('cache');
-      setLoading(false);
-      return;
-    }
-
-    /* Sem cache: NÃO exibir mock como placeholder — manter vazio + loading
-       até o Supabase responder (evita o flash de produtos do MOCK no refresh). */
-    setSrc('mock');
-
-    let live = true;
-    DS.getProds(catId, search).then(data => {
-      if (!live) return;
-      if (data !== null) {
-        /* data = [] ou [...] — banco respondeu com sucesso */
-        _prodCache.set(key, data);
-        setProds(data);
-        setSrc('supabase');
-        if (!catId && !search) {
-          console.log(`[Encanto] ✅ ${data.length} products carregados do Supabase`);
-          if (data[0]) console.log('[Encanto] Amostra:', data[0].nome, '| imagem_url:', data[0].imagem_url || '(sem imagem)');
-        }
-      } else {
-        /* null = offline/erro — usar fallback local (mock) */
-        setProds(filterMock(catId, search));
-        console.warn('[Encanto] ⚠️ Supabase offline — products usando fallback local');
-        DS.logEvent('catalog','getProds','warn','Supabase offline — fallback local de products', { catId: catId||null, has_search: !!search });
-      }
-      setLoading(false);
-    });
-    return () => { live = false; };
-  }, [catId, search]);
-
-  return { prods, loading, src };
-}
+/* useProducts → src/hooks/useProducts.js (REF-APP-01 · Onda 3) */
 
 function useAdicionais() {
   const [ads, setAds] = useState([]);
