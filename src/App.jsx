@@ -10,6 +10,7 @@ import { catEmoji, isHttpUrl, isCategoriaDescontinuada, prodInCat, getProdCatIds
 import { MOCK_CATS, MOCK_PRODS, filterMock } from './data/mockCatalog.js';
 import { STORAGE_KEYS } from './constants/storage.js';
 import { DS } from './services/DataService.js';
+import { useOrders } from './hooks/useOrders.js';
 
 /* ============================================================
    ENCANTO DELIVERY — React 18 + Supabase v2
@@ -133,18 +134,7 @@ function useAdicionais() {
   return ads;
 }
 
-function useOrders() {
-  const [orders,  setOrders]  = useState([]);
-  const [loading, setLoading] = useState(true);
-  const load = useCallback(async()=>{
-    setLoading(true);
-    const data = await DS.getPedidos();
-    setOrders(data);
-    setLoading(false);
-  },[]);
-  useEffect(()=>{ load(); },[load]);
-  return { orders, loading, refresh:load };
-}
+/* useOrders → src/hooks/useOrders.js (REF-APP-01 · Onda 3) */
 
 function useCart() {
   /* HARDEN-07: carrinho persistente em localStorage (sobrevive a refresh → destrava idempotência durável).
