@@ -6,3 +6,6 @@ dist-ssr
 .vite
 .DS_Store
 *.log
+
+# Local Netlify folder
+.netlify
