@@ -1,6 +1,6 @@
 # REF-APP-01 · Onda 2 — `services/DataService.js`: Plano de Impacto & Não-Regressão (PROPOSTA)
 
-- **Status:** 🟦 **PROPOSTA — NÃO APLICADA.** Recon/design da Onda 2 (§6 do diagnóstico). Pré-requisito: autorização explícita do usuário. Nenhuma extração iniciada.
+- **Status:** ✅ **EXECUTADA (2026-07-06).** Move-puro do objeto `DS` aplicado em 2 commits verdes (`3643c9d` cria `services/DataService.js` byte-exato; `09aff7c` cutover do `App.jsx` + testes seguem o move). Byte-equivalência provada (working-tree + blob + 3 auditorias adversariais independentes). Suíte 8/8 + build verdes. **Sem push.** Ver **§10**.
 - **Pertence a:** [REF-APP-01 (DESENHO)](REF-APP-01-modularizacao-appjsx.md) · Onda 2 (risco **alto** — pivô de ~20 consumidores).
 - **Baseline:** `main` @ `de482a8` (pós-Onda 1). `DS` vive em `src/App.jsx` ~L41–230 (objeto literal único).
 - **Objetivo:** mover o objeto `DS` (Único Ponto de Acesso a Dados) para `src/services/DataService.js`, **move-puro 100%**, preservando `this`, os singletons de cache e os contratos de retorno.
@@ -190,4 +190,62 @@ Os adicionais c3 `simples` com `tipo='gratis'` e `preco=2` **representam a regra
 
 ⇒ **B10 REMOVIDO do GRUPO B.** Não requer correção; é comportamento correto do motor de adicionais (Monte seu Copo / Batidinhas). Nenhum banco/query/registro alterado (auditoria read-only).
 
-> 🟦 **PROPOSTA — aguardando autorização.** Nenhuma extração iniciada.
+---
+
+## 10. Execução da Onda 2 — CONCLUÍDA (2026-07-06)
+
+> **Autorização:** o usuário autorizou oficialmente o início da Onda 2 (modo acelerado; move-puro; **sem push**). Baseline oficial da execução: `9b8f7ac`→`35e7b05`→`b2ff9ac`→`3fe2ac2`→`6b0517e`. Restore point: `backup/main-pre-onda-2` (`6b0517e`).
+
+### 10.1 — Estratégia: 3 commits, cada um verde (create → cutover → docs)
+| Commit | Papel | Conteúdo |
+|---|---|---|
+| `3643c9d` | **C1 — create** | `src/services/DataService.js` = header + 3 imports + `export const DS = {…}` (slice **byte-exato** do baseline). Módulo ainda **não fiado** (o `App.jsx` segue com o `DS` inline) → C1 é verde por construção. |
+| `09aff7c` | **C2 — cutover** | `App.jsx`: remove o objeto `DS` inline (→ breadcrumb) e passa a `import { DS }`; retira os imports órfãos `RPC_TIMEOUT` (lib/supabase) e `PRODUCTS_*` (catalogConfig — só o `DS` os usava). Os testes seguem o código movido. |
+| (docs) | **C3 — docs** | Esta §10 + banners de status + memória. |
+
+Nenhum commit fica vermelho: no C1 os testes ainda leem o `DS` inline do `App.jsx`; no C2 o `DS` já foi movido e os testes o acompanham.
+
+### 10.2 — Byte-equivalência (move-puro provado)
+Corpo do objeto `DS` **byte-idêntico** ao baseline `6b0517e` — único delta é o prefixo `export ` na declaração:
+- **Working-tree + blob commitado:** `assert.strictEqual` do slice `const DS = {…\n};` vs `6b0517e:src/App.jsx` — idêntico nos dois níveis (`core.autocrlf=true` normaliza LF uniformemente).
+- **Auditoria adversarial independente (3 lentes, re-derivada do zero, sem confiar em scripts prévios):** todas **CLEAN**, `byteEquivConfirmed=true`. Confirmada por 3 técnicas distintas (`assert.strictEqual`; `sha256`+`diff`; comparação char-a-char) — a contagem absoluta de bytes varia com a convenção de corte, mas a **igualdade baseline==destino** é o invariante provado. Inventário/ordem de **23 membros idêntico**.
+
+### 10.3 — Antes × Depois (contratos preservados)
+| Dimensão | Antes (`6b0517e`) | Depois (`09aff7c`) | Δ |
+|---|---|---|---|
+| Local do `DS` | `App.jsx` L37–230 (inline) | `services/DataService.js` (export) | movido |
+| Corpo do `DS` | 22 métodos + 2 props | idem, **byte-idêntico** | 0 |
+| Call-sites `DS.*` no `App.jsx` | 21 (18 métodos) | 21 (18 métodos), **conjunto idêntico** | 0 |
+| `this` / caches / singleton | `this.*` (35 refs), `_globalProductsCache` 1× | idem | 0 |
+| `savePedido` → `create_order` | `{p_customer,p_order,p_items,p_request_id}` + timeout + 1 retry idempotente + retorno `order_id\|null` | idem | 0 |
+| `_sanitizeImageUrl` / `upsertProd` | grava `imagem_url`, nunca `image_url`; rejeita `data:`/não-http | idem | 0 |
+| Imports do `App.jsx` | `{db,WHATSAPP,RPC_TIMEOUT,LOGO}` + `PRODUCTS_*` | `{db,WHATSAPP,LOGO}` + `{DS}` (órfãos removidos) | ajuste |
+| `db` p/ AdminLogin/ImageUploader (R3) | via `import {db}` no `App.jsx` | idem (mantido) | 0 |
+| Grafo de deps | — | `DataService → {lib/supabase, catalogConfig, catalog}`; acíclico; D2 verde | +1 nó |
+
+### 10.4 — Testes (gates §6) — 8/8 verdes + build
+`test:deps` · `test:pricing` · `test:addons` · `test:checkout` · `test:ds-micro` · `test:f1b` · `test:rls` · `test:orders-rls` + `vite build` (114 módulos, +1 = `DataService.js`). Os testes de banco (f1b/rls/orders-rls) seguem verdes ⇒ backend intocado (ortogonal ao move).
+
+**Testes seguem o código movido (consequência direta, sem enfraquecer — regexes char-a-char idênticas):**
+- `dataservice.micro.mjs`: guards de **corpo** do `DS` (R2-literal/R4/R5/anatomia) leem `services/DataService.js`; guards de **consumo** (R2 sem desestruturar) + **resíduo** (novo) leem `App.jsx`.
+- `checkout.golden.mjs`: os 2 pins de `savePedido` leem `services/DataService.js` (`pinSvc`); os 9 pins do `submit` + as 7 asserções de domínio (A) permanecem inalterados.
+
+### 10.5 — Riscos: encontrados × mitigados
+| Risco (ADR §5) | Situação pós-move |
+|---|---|
+| **R2** (quebrar `this`) | **Mitigado** — `DS` continua objeto literal único, importado **sem desestruturar** (0 `= DS`); tudo via `DS.metodo()`. |
+| **R4** (cache singleton) | **Mitigado** — caches são props do `DS`, moveram juntas (1 instância); `_invalidateProductsCache` intacto; o `_prodCache` do `useProducts` **não** foi tocado (segue no `App.jsx`). |
+| **R3** (`db` vaza) | **Mitigado** — `App.jsx` mantém `import {db}` p/ AdminLogin + ImageUploader. |
+| **R5** (imagem legada) | **Mitigado** — byte-exato; grava `imagem_url`, nunca `image_url`. |
+| **R-contrato / R-checkout** | **Mitigado** — `savePedido` byte-idêntico; `submit` não tocado; golden do payload verde. |
+| **Achado (pré-existente, NÃO regressão):** a camada (B) *runtime* do `ds-micro` cai em *skip-clean* sob Node puro — `DataService.js` transita `lib/supabase.js`, que lê `import.meta.env` (só definido pelo Vite). | Guards de fonte (A) cobrem R2/R4/R5 no corpo real do `DS`; a resolução de imports é validada pelo `build`; a auditoria independente provou o `DS` **100% funcional com imports stubados**. Religar (B) exige runner Vite-aware — fora do escopo do move (candidato a melhoria futura). |
+
+### 10.6 — Checkpoint humano remanescente (§6.5)
+O único gate não-automatizável neste ambiente é o **"1 pedido real ponta-a-ponta"** (`submit → savePedido → create_order` → WhatsApp). Tripla blindagem já garante: (a) `savePedido` byte-idêntico; (b) `submit` intocado; (c) golden do payload verde. Recomenda-se 1 pedido de fumaça após o próximo deploy.
+
+### 10.7 — Rollback
+`git reset --hard backup/main-pre-onda-2` (=`6b0517e`) desfaz C1+C2+C3. Ou `git revert` na ordem inversa (`09aff7c` depois `3643c9d`); como `DataService.js` é arquivo novo, o revert do C1 o remove.
+
+---
+
+> ✅ **ONDA 2 EXECUTADA (2026-07-06).** Move-puro concluído e auditado (§10); suíte 8/8 + build verdes; byte-equivalência provada; **nenhum push**. Próximo: aguardar autorização explícita do usuário para o push ou para a próxima onda.
