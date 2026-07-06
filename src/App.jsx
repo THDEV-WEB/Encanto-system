@@ -11,6 +11,7 @@ import { MOCK_CATS, MOCK_PRODS, filterMock } from './data/mockCatalog.js';
 import { STORAGE_KEYS } from './constants/storage.js';
 import { DS } from './services/DataService.js';
 import { useOrders } from './hooks/useOrders.js';
+import { useCategories } from './hooks/useCategories.js';
 
 /* ============================================================
    ENCANTO DELIVERY — React 18 + Supabase v2
@@ -37,35 +38,7 @@ import { useOrders } from './hooks/useOrders.js';
 /* ── DataService → src/services/DataService.js (REF-APP-01 · Onda 2, move puro) ── */
 
 /* ── Hooks ───────────────────────────────────────────────────── */
-function useCategories() {
-  const [cats,    setCats]    = useState([]);
-  const [src,     setSrc]     = useState('mock');
-  const [loading, setLoading] = useState(true);
-  const load = useCallback(async () => {
-    setLoading(true);
-    const data = await DS.getCats();
-    if (data !== null) {
-      /* Banco respondeu (data pode ser [] ou [...]): usar dados do Supabase.
-         Filtra categorias descontinuadas mesmo que ainda existam no banco. */
-      const result = (data.length > 0 ? data : MOCK_CATS).filter(c => !isCategoriaDescontinuada(c));
-      setCats(result);
-      setSrc(data.length > 0 ? 'supabase' : 'mock');
-      if (data.length > 0) {
-        console.log(`[Encanto] ✅ ${data.length} categorias carregadas do Supabase`);
-      } else {
-        console.warn('[Encanto] ⚠️ Tabela categorias vazia — usando fallback local');
-      }
-    } else {
-      /* null = Supabase offline ou erro de rede */
-      console.warn('[Encanto] ⚠️ Supabase offline — categorias usando fallback local');
-      setCats(MOCK_CATS.filter(c => !isCategoriaDescontinuada(c)));
-      setSrc('mock');
-    }
-    setLoading(false);
-  },[]);
-  useEffect(()=>{ load(); },[load]);
-  return { cats, loading, src, refresh:load };
-}
+/* useCategories → src/hooks/useCategories.js (REF-APP-01 · Onda 3) */
 
 /* Cache em memória — persiste durante a sessão */
 const _prodCache = new Map();
