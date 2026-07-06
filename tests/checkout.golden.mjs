@@ -45,7 +45,7 @@ function buildOrderArgs(cart, form, requestId) {
   });
   return { customer, order, items, requestId };
 }
-/* mapeamento savePedido → RPC create_order (App.jsx L139-140) */
+/* mapeamento savePedido → RPC create_order (services/DataService.js, pós-Onda 2) */
 function buildRpcPayload(cart, form, requestId) {
   const { customer, order, items } = buildOrderArgs(cart, form, requestId);
   return { p_customer: customer, p_order: order, p_items: items, p_request_id: requestId ?? null };
@@ -119,10 +119,14 @@ check('7. contratos null (adicionais [] / observacoes null / obs → null)', () 
   assert.strictEqual(p.p_order.observacoes, 'sem cebola');
 });
 
-/* ── (B) PIN DE FONTE — trava a montagem REAL do submit/savePedido em src/App.jsx ── */
-console.error('— (B) PIN DE FONTE (montagem real do submit + savePedido)');
+/* ── (B) PIN DE FONTE — trava a montagem REAL do submit (App.jsx) e do savePedido (services/DataService.js) ──
+   Onda 2 (C2): savePedido foi movido para services/DataService.js; os 2 pins de savePedido passam a
+   ler esse módulo (pinSvc). Os pins do submit seguem no App.jsx (pin). Regexes idênticas ao pré-move. */
+console.error('— (B) PIN DE FONTE (submit em App.jsx + savePedido em services/DataService.js)');
 const APP = readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
-const pin = (m, re) => check('pin: ' + m, () => assert.ok(re.test(APP), 'expressão-chave ausente/alterada no submit — atualize o golden: ' + m));
+const SVC = readFileSync(new URL('../src/services/DataService.js', import.meta.url), 'utf8');
+const pin    = (m, re) => check('pin: ' + m, () => assert.ok(re.test(APP), 'expressão-chave ausente/alterada no submit — atualize o golden: ' + m));
+const pinSvc = (m, re) => check('pin: ' + m, () => assert.ok(re.test(SVC), 'expressão-chave ausente/alterada no savePedido (DataService) — atualize o golden: ' + m));
 pin("order.status 'recebido'",        /status:\s*'recebido'/);
 pin('order.total = cart.total',       /total:\s*cart\.total/);
 pin('order.observacoes = obs||null',  /observacoes:\s*form\.obs\s*\|\|\s*null/);
@@ -132,8 +136,8 @@ pin('item.preco_unitario = pu',       /preco_unitario:\s*pu/);
 pin('item.adicionais = i.adicionais||[]', /adicionais:\s*i\.adicionais\s*\|\|\s*\[\]/);
 pin('item.observacoes = i.obs||null', /observacoes:\s*i\.obs\s*\|\|\s*null/);
 pin('pu = precoUnitario(i)',          /const\s+pu\s*=\s*puComAdic\(i\)/);
-pin('savePedido → rpc create_order',  /d\.rpc\('create_order',\s*\{/);
-pin('rpc args p_customer/p_order/p_items/p_request_id', /p_customer:\s*cliente,\s*p_order:\s*order,\s*p_items:\s*itens,\s*p_request_id:\s*requestId\s*\?\?\s*null/);
+pinSvc('savePedido → rpc create_order',  /d\.rpc\('create_order',\s*\{/);
+pinSvc('rpc args p_customer/p_order/p_items/p_request_id', /p_customer:\s*cliente,\s*p_order:\s*order,\s*p_items:\s*itens,\s*p_request_id:\s*requestId\s*\?\?\s*null/);
 
 console.error(fail === 0
   ? '\n✅ checkout.golden OK — payload + mensagem + invariantes congelados; montagem real fixada (pin de fonte)'

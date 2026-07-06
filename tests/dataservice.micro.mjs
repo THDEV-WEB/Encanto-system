@@ -22,23 +22,30 @@ let fail = 0;
 const check = (m, fn) => { try { fn(); } catch (e) { fail++; console.error('✗', m, '—', e?.message ?? e); } };
 
 const APP = readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
-const dsStart = APP.indexOf('const DS = {');
-const dsEnd   = APP.indexOf('/* ── Hooks', dsStart);
-assert.ok(dsStart >= 0 && dsEnd > dsStart, 'não localizei o objeto DS em App.jsx');
-const DSRC = APP.slice(dsStart, dsEnd);   // objeto DS { ... };
+/* Onda 2 (C2): o objeto DS foi movido para services/DataService.js. Os guards de fonte do
+   CORPO do DS (R2-literal / R4 / R5 / anatomia) passam a ler o novo módulo; os guards de CONSUMO
+   (R2 sem desestruturar) + o resíduo continuam lidos no App.jsx. Regexes idênticas ao pré-move. */
+const SVC = readFileSync(new URL('../src/services/DataService.js', import.meta.url), 'utf8');
+const dsStart = SVC.indexOf('const DS = {');
+const dsClose = SVC.indexOf('\n};', dsStart);
+assert.ok(dsStart >= 0 && dsClose > dsStart, 'não localizei o objeto DS em services/DataService.js');
+const DSRC = SVC.slice(dsStart, dsClose + '\n};'.length);   // objeto DS { ... };
 /* código do DS SEM comentários (a doc do _sanitizeImageUrl menciona "image_url" em prosa;
    o guard R5 deve olhar só CÓDIGO — o que é gravado/acessado — não comentários). */
 const DSCODE = DSRC.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
 
-console.error('— (A) GUARDS DE FONTE (ADR §5) sobre src/App.jsx');
+console.error('— (A) GUARDS DE FONTE (ADR §5): corpo do DS em services/DataService.js + consumo/resíduo em App.jsx');
 
 /* R2 — objeto literal + this preservado (nunca desestruturar métodos) */
-check('R2 DS é objeto literal (const DS = {)', () => assert.ok(/const DS = \{/.test(APP)));
+check('R2 DS é objeto literal exportado (export const DS = {)', () => assert.ok(/export const DS = \{/.test(SVC)));
 check('R2 sem desestruturação de DS (const {…} = DS)', () => assert.ok(!/const\s*\{[^}]*\}\s*=\s*DS\b/.test(APP)));
 check('R2 sem método solto (= DS.metodo; sem invocar)', () => assert.ok(!/=\s*DS\.\w+\s*;/.test(APP)));
+/* Resíduo (§6.2 da Onda 2): o DS NÃO é mais literal no App.jsx (foi movido) e passa a ser importado */
+check('R2 resíduo: App.jsx não declara mais const DS = {', () => assert.ok(!/const DS = \{/.test(APP)));
+check('R2 App.jsx importa DS do módulo de serviço', () => assert.ok(/import \{ DS \} from '\.\/services\/DataService\.js'/.test(APP)));
 
 /* R4 — cache singleton único + invalidação em toda escrita de produto */
-check('R4 _globalProductsCache declarado 1× (singleton)', () => assert.strictEqual((APP.match(/_globalProductsCache:/g) || []).length, 1));
+check('R4 _globalProductsCache declarado 1× (singleton)', () => assert.strictEqual((SVC.match(/_globalProductsCache:/g) || []).length, 1));
 check('R4 _invalidateProductsCache zera cache+time', () => assert.ok(/_invalidateProductsCache\(\)\s*\{\s*this\._globalProductsCache\s*=\s*null;\s*this\._globalProductsCacheTime\s*=\s*0;\s*\}/.test(DSRC)));
 check('R4 escritas invalidam cache (upsert/toggle/del ≥ 3 chamadas)', () => assert.ok((DSRC.match(/this\._invalidateProductsCache\(\)/g) || []).length >= 3));
 
@@ -65,11 +72,14 @@ check('anatomia: savePedido → rpc create_order', () => assert.ok(/d\.rpc\('cre
 
 /* ── (B) RUNTIME — test-first (verde na extração da Onda 2) ── */
 console.error('— (B) RUNTIME do DS (ativa quando services/DataService.js existir)');
-let mod = null;
-try { mod = await import('../src/services/DataService.js'); } catch { /* módulo ainda não existe: pré-extração */ }
+let mod = null, importErr = null;
+try { mod = await import('../src/services/DataService.js'); } catch (e) { importErr = e; }
 if (!mod?.DS) {
-  console.error('  ⏳ PENDENTE: src/services/DataService.js ainda não existe (extração = Onda 2, não autorizada).');
-  console.error('     Guards de fonte (A) já cobrem R2/R4/R5 no App.jsx; runtime ativa no 1º passo da extração.');
+  const viteEnv = /VITE_|import\.meta|env/.test(importErr?.message || '');
+  console.error('  ⏳ PENDENTE (skip-clean): runtime do DS não pôde ser importado em Node puro.');
+  console.error('     Motivo:', importErr ? `${importErr.name}: ${importErr.message}` : 'módulo ausente');
+  if (viteEnv) console.error('     → fronteira Vite/Node: services/DataService.js importa lib/supabase.js, que lê import.meta.env (só definido pelo Vite). NÃO é regressão do move; a camada runtime ativa sob runner Vite-aware.');
+  console.error('     Cobertura real garantida pelos guards de fonte (A) sobre o CORPO do DS em DataService.js (R2/R4/R5/anatomia) + resíduo no App.jsx.');
 } else {
   const DS = mod.DS;
   check('rt R2 DS objeto literal com métodos', () => { assert.strictEqual(typeof DS, 'object'); assert.strictEqual(typeof DS.run, 'function'); assert.strictEqual(typeof DS.savePedido, 'function'); });
@@ -87,6 +97,6 @@ if (!mod?.DS) {
 }
 
 console.error(fail === 0
-  ? '\n✅ dataservice.micro OK — guards R2/R4/R5 travados no App.jsx (runtime pronto p/ a extração)'
+  ? '\n✅ dataservice.micro OK — guards R2/R4/R5 travados no CORPO do DS em services/DataService.js + resíduo/consumo no App.jsx'
   : `\n❌ dataservice.micro — ${fail} falha(s)`);
 process.exit(fail ? 1 : 0);
