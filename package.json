@@ -10,6 +10,8 @@
     "preview": "vite preview",
     "test:pricing": "node tests/pricing.golden.mjs",
     "test:addons": "node tests/addons.golden.mjs",
+    "test:checkout": "node tests/checkout.golden.mjs",
+    "test:ds-micro": "node tests/dataservice.micro.mjs",
     "test:deps": "node tests/deps.audit.mjs",
     "verify:norm05": "node scripts/norm05-verify.mjs",
     "guard:slug": "node scripts/norm06-f1a-slug-guard.mjs",
