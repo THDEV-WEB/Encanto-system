@@ -17,8 +17,7 @@ import { useAdicionais } from './hooks/useAdicionais.js';
 import { useCart } from './hooks/useCart.js';
 import { Spinner } from './components/ui/Spinner.jsx';
 import { ProductCard } from './components/ProductCard.jsx';
-import { ProductModalInner } from './components/ProductModal/ProductModalInner.jsx';
-import { ProductModalBoundary } from './components/ProductModal/ProductModalBoundary.jsx';
+import { ProductModal } from './components/ProductModal/index.jsx';
 
 /* ============================================================
    ENCANTO DELIVERY — React 18 + Supabase v2
@@ -72,13 +71,7 @@ import { ProductModalBoundary } from './components/ProductModal/ProductModalBoun
 
 
 /* ProductModalBoundary → src/components/ProductModal/ProductModalBoundary.jsx (REF-APP-01 · Onda 4) */
-function ProductModal(props){
-  return (
-    <ProductModalBoundary onClose={props.onClose}>
-      <ProductModalInner {...props}/>
-    </ProductModalBoundary>
-  );
-}
+/* ProductModal → src/components/ProductModal/index.jsx (REF-APP-01 · Onda 4) */
 function CartSidebar({ cart, catMap, onClose, onCheckout }) {
   const { items, total, remove, updateQty } = cart;
   return (
