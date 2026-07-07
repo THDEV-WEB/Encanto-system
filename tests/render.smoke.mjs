@@ -23,6 +23,7 @@ const h = React.createElement;
 /* ── Componentes sob teste (import dinâmico, após register do loader) ── */
 const AppShell       = (await import('../src/AppShell.jsx')).default;
 const BackgroundLayer = (await import('../src/BackgroundLayer.jsx')).default;
+const Spinner         = (await import('../src/components/ui/Spinner.jsx')).Spinner;
 
 /* ── Casos: props FIXAS + snapshot CONGELADO (Onda 4 acrescenta as folhas visuais AQUI) ── */
 const CASES = [
@@ -35,6 +36,11 @@ const CASES = [
     nome: 'AppShell(children)',
     el: () => h(AppShell, null, h('span', null, 'X')),
     snap: '<div class="app-shell"><div class="bg-layer" aria-hidden="true"></div><div class="app-content-layer"><span>X</span></div></div>',
+  },
+  {
+    nome: 'Spinner',
+    el: () => h(Spinner),
+    snap: '<div class="loading-state"><div class="spinner"></div><span>Carregando...</span></div>',
   },
 ];
 

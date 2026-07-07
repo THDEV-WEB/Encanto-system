@@ -15,6 +15,7 @@ import { useCategories } from './hooks/useCategories.js';
 import { useProducts } from './hooks/useProducts.js';
 import { useAdicionais } from './hooks/useAdicionais.js';
 import { useCart } from './hooks/useCart.js';
+import { Spinner } from './components/ui/Spinner.jsx';
 
 /* ============================================================
    ENCANTO DELIVERY — React 18 + Supabase v2
@@ -60,12 +61,7 @@ import { useCart } from './hooks/useCart.js';
 /* useCart → src/hooks/useCart.js (REF-APP-01 · Onda 3) */
 
 /* ── UI Components ───────────────────────────────────────────── */
-const Spinner = () => (
-  <div className="loading-state">
-    <div className="spinner"/>
-    <span>Carregando...</span>
-  </div>
-);
+/* Spinner → src/components/ui/Spinner.jsx (REF-APP-01 · Onda 4) */
 
 /* Mapa badge → estilo */
 const BADGE_MAP = {
