@@ -30,6 +30,7 @@ const AppShell        = (await import('../src/AppShell.jsx')).default;
 const BackgroundLayer = (await import('../src/BackgroundLayer.jsx')).default;
 const Spinner         = (await import('../src/components/ui/Spinner.jsx')).Spinner;
 const ProductCard     = (await import('../src/components/ProductCard.jsx')).ProductCard;
+const ProductModalBoundary = (await import('../src/components/ProductModal/ProductModalBoundary.jsx')).ProductModalBoundary;
 
 /* Casos: props FIXAS + snapshot CONGELADO (Onda 4 acrescenta as folhas visuais AQUI) */
 const CASES = [
@@ -57,6 +58,12 @@ const CASES = [
       onOpen: () => {},
     }),
     snap: '<div class="product-card"><div class="product-img"><div class="product-img-placeholder" style="display:flex">🍧</div></div><div class="product-info"><div class="product-name">Produto Teste</div><div class="product-desc">Descrição teste</div><div class="product-footer"><div class="product-price">R$ 19,90</div><button class="add-btn">+</button></div></div></div>',
+  },
+  {
+    /* sem erro → o boundary renderiza os children */
+    nome: 'ProductModalBoundary(children)',
+    el: () => h(ProductModalBoundary, { onClose: () => {} }, h('span', null, 'ok')),
+    snap: '<span>ok</span>',
   },
 ];
 
