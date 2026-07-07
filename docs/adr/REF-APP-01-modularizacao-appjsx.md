@@ -1,6 +1,6 @@
 # REF-APP-01 — Diagnóstico de Modularização do `App.jsx` (DESENHO)
 
-- **Status:** 🔒 **DESENHO CONGELADO (sem execução) — 2026-06-30.** Este é o diagnóstico arquitetural da REF-APP-01, **congelado como desenho**. **A fase de EXECUÇÃO NÃO está autorizada** e não começa sem (a) a aplicação da **Onda 0** (reestruturação da regra D do `test:deps`, ver [REF-APP-01 · Onda 0](REF-APP-01-onda-0-deps-audit.md)) e (b) congelamento explícito da fase de execução pelo usuário. Não altera código, banco, ADRs nem comportamento.
+- **Status:** ▶️ **EM EXECUÇÃO — desenho ratificado/congelado (2026-06-30) e execução autorizada.** Este é o diagnóstico arquitetural da REF-APP-01. As pré-condições (Onda 0 + congelamento explícito) foram cumpridas e a execução está em andamento: **Onda 0** (`1b55379`), **Onda 1** (`8703394`…`175542a`), **Onda 2** (`3643c9d`/`09aff7c`), **Onda 3** (`4d30541`…`a5194e8`) e a **rede R9 `test:render`** (`39615c9`) **aplicadas** (2026-07-06). **Próxima:** Onda 4 (folhas visuais). O desenho e as decisões deste documento permanecem como registrados — este cabeçalho apenas reconcilia o estado de execução.
 - **Pré-condição obrigatória (B1):** o achado **B1** (§5) é tratado como **pré-condição bloqueante da fase**. O `test:deps` (regra D) não pode depender de importers rígidos do `App.jsx` — isso inviabiliza refatoração incremental. A Onda 0 deve ser proposta, ratificada e aplicada **antes** de qualquer congelamento de execução.
 - **Baseline:** `main` @ `14f0752` (pós-merge do bloco F1; suíte verde). `src/App.jsx` = **3866 linhas**, ~40 unidades top-level num único componente-arquivo.
 - **Objetivo da fase:** quebrar o monólito `App.jsx` em módulos coesos **com ZERO mudança funcional**, preservando integralmente os ADRs, a arquitetura de domínio (NORM-03/04/05) e a estabilidade.
@@ -212,7 +212,9 @@ Candidatos a Context **futuros** (REF-APP-02+, não aqui): `CartContext`, `Store
 4. **INV-CK** (invariante do order-domain) — **ACEITO + risco eliminado por regra** (G-CK1/G-CK2/G-CK3, `937b6e6`). ✅
 5. **B4 / R9 / index.css** — **RATIFICADOS** (ver §10-bis). ✅
 6. **Congelamento da execução + Onda 1 (DOMÍNIO PURO)** — **APLICADA** (`8703394`…`175542a`, 2026-06-30; ledger [Onda 1 — Execution](REF-APP-01-onda-1-execution.md)): 6 módulos (`lib/supabase`, `utils/ids`, `utils/catalog`, `data/mockCatalog`, `constants/catalogConfig`, `constants/storage`); `App.jsx` 3866→3452 linhas; move-puro provado byte-a-byte + auditoria adversarial LIMPO; suíte completa verde; restore `backup/main-pre-onda-1`. `orderStatus.js` (dedup=B4) e `checkout.js` (`pays`/`steps`, Onda 5) diferidos. ✅
-7. **Pendente:** Onda 2 (`services/DataService.js`, objeto literal, **alto risco** — pivô de ~20 consumidores) — aguarda autorização explícita. ⏳
+7. **Onda 2** (`services/DataService.js`, objeto literal, **alto risco** — pivô de ~20 consumidores) — ✅ **EXECUTADA (2026-07-06)** (`3643c9d` C1 + `09aff7c` C2; move-puro byte-exato; suíte + build verdes; sem push; ledger [REF-APP-01 · Onda 2](REF-APP-01-onda-2-plan.md)).
+8. **Onda 3 (HOOKS)** (`useOrders`/`useCategories`/`useProducts`/`useAdicionais`/`useCart`) — ✅ **EXECUTADA (2026-07-06)** (`4d30541`…`a5194e8`; 1 hook = 1 commit; move-puro; suíte + build verdes; sem push).
+9. **Rede R9 `test:render`** (`tests/render.smoke.mjs` + loader esbuild) — ✅ **CONCLUÍDA (2026-07-06)** (`39615c9`; folhas `AppShell`/`BackgroundLayer` congeladas; pré-condição da Onda 4). ✅
 
 ## 10-bis. Decisões ratificadas pré-execução (2026-06-30)
 
@@ -224,8 +226,8 @@ Candidatos a Context **futuros** (REF-APP-02+, não aqui): `CartContext`, `Store
 
 ## 11. Próximos passos
 
-Este documento é **recon/design CONGELADO**. Nenhuma extração será feita sem: (a) **Onda 0 aplicada** (regra D reestruturada — proposta isolada à parte), (b) congelamento explícito da **fase de execução** pelo usuário, e (c) um Execution Plan por ondas (padrão F1A/F1B: pré-condições → passos imutáveis → gate entre passos → rollback documentado). O **F2 do NORM-06 permanece bloqueado** e independente desta fase.
+O desenho deste documento foi **congelado e ratificado**, e as pré-condições de execução — (a) **Onda 0 aplicada** (regra D reestruturada), (b) congelamento explícito da **fase de execução** pelo usuário, e (c) Execution Plan por ondas (padrão F1A/F1B) — foram **cumpridas**; a **execução está em andamento** (Ondas 0–3 + rede R9 aplicadas). O **F2 do NORM-06 permanece bloqueado** e independente desta fase.
 
-> 🔒 **REF-APP-01 — DESENHO CONGELADO (sem execução).** Pré-condição da execução: **Onda 0** (regra D do `test:deps`). Execução aguarda Onda 0 aplicada + congelamento explícito.
+> ▶️ **REF-APP-01 — EM EXECUÇÃO.** Desenho congelado/ratificado; Onda 0 + congelamento aplicados. **Ondas 0–3 + rede R9 executadas (2026-07-06).** Próxima: Onda 4.
 
-> 🟡 **REF-APP-01 — DESENHO. Aguardando ratificação das decisões da §10 para congelamento.**
+> ✅ **REF-APP-01 — decisões da §10/§10-bis ratificadas e congeladas; execução em andamento (Ondas 0–3 + rede R9).**

@@ -1,10 +1,10 @@
-# REF-APP-01 · Onda 2 — `services/DataService.js`: Plano de Impacto & Não-Regressão (PROPOSTA)
+# REF-APP-01 · Onda 2 — `services/DataService.js`: Plano de Impacto & Não-Regressão (EXECUTADA)
 
 - **Status:** ✅ **EXECUTADA (2026-07-06).** Move-puro do objeto `DS` aplicado em 2 commits verdes (`3643c9d` cria `services/DataService.js` byte-exato; `09aff7c` cutover do `App.jsx` + testes seguem o move). Byte-equivalência provada (working-tree + blob + 3 auditorias adversariais independentes). Suíte 8/8 + build verdes. **Sem push.** Ver **§10**.
 - **Pertence a:** [REF-APP-01 (DESENHO)](REF-APP-01-modularizacao-appjsx.md) · Onda 2 (risco **alto** — pivô de ~20 consumidores).
 - **Baseline:** `main` @ `de482a8` (pós-Onda 1). `DS` vive em `src/App.jsx` ~L41–230 (objeto literal único).
 - **Objetivo:** mover o objeto `DS` (Único Ponto de Acesso a Dados) para `src/services/DataService.js`, **move-puro 100%**, preservando `this`, os singletons de cache e os contratos de retorno.
-- **Atualização (2026-07-05):** incorporados aprendizados da **Estabilização de Produção** (Catálogo Offline, commit `b2ff9ac`, pushado) — ver **§8**. Não altera o desenho da Onda 2; apenas acrescenta evidências de produção que reforçam/complementam os riscos (§5) e gates (§6). Onda 2 permanece 🟦 PROPOSTA, aguardando autorização.
+- **Atualização (2026-07-05):** incorporados aprendizados da **Estabilização de Produção** (Catálogo Offline, commit `b2ff9ac`, pushado) — ver **§8**. Não altera o desenho da Onda 2; apenas acrescenta evidências de produção que reforçam/complementam os riscos (§5) e gates (§6). Onda 2 ✅ EXECUTADA em 2026-07-06 (status atualizado — ver o campo **Status** no topo e a §10).
 
 ---
 
