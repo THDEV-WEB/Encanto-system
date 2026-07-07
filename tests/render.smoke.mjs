@@ -10,8 +10,11 @@
    ESCOPO (plano R9): SÓ folhas apresentacionais puras (sem hooks/DS/Supabase/browser). Orquestrador (StoreApp)
    e componentes browser-heavy (AddressModal, LazySection) NÃO entram aqui — seguem em smoke manual por onda.
 
+   NBSP: fmt() emite o preço com NBSP (U+00A0, code 160). A comparação normaliza NBSP -> espaço comum, então os
+   snapshots ficam legíveis (sem char invisível na fonte) e nbsp-vs-espaço não conta como drift.
+
    COMO ADICIONAR UMA FOLHA (Onda 4): importe o componente; adicione um caso { nome, el, snap:null }; rode uma vez
-   (o teste imprime o markup atual do caso sem snapshot); cole esse markup em `snap`; rode de novo → verde. */
+   (o teste imprime o markup atual do caso sem snapshot); cole esse markup em `snap`; rode de novo -> verde. */
 import { register } from 'node:module';
 import assert from 'node:assert/strict';
 register('./_render-loader.mjs', import.meta.url);
@@ -19,13 +22,16 @@ register('./_render-loader.mjs', import.meta.url);
 const React = (await import('react')).default;
 const { renderToStaticMarkup } = await import('react-dom/server');
 const h = React.createElement;
+const NBSP = String.fromCharCode(160);
+const norm = s => s.split(NBSP).join(' ');
 
-/* ── Componentes sob teste (import dinâmico, após register do loader) ── */
-const AppShell       = (await import('../src/AppShell.jsx')).default;
+/* Componentes sob teste (import dinâmico, após register do loader) */
+const AppShell        = (await import('../src/AppShell.jsx')).default;
 const BackgroundLayer = (await import('../src/BackgroundLayer.jsx')).default;
 const Spinner         = (await import('../src/components/ui/Spinner.jsx')).Spinner;
+const ProductCard     = (await import('../src/components/ProductCard.jsx')).ProductCard;
 
-/* ── Casos: props FIXAS + snapshot CONGELADO (Onda 4 acrescenta as folhas visuais AQUI) ── */
+/* Casos: props FIXAS + snapshot CONGELADO (Onda 4 acrescenta as folhas visuais AQUI) */
 const CASES = [
   {
     nome: 'BackgroundLayer',
@@ -42,6 +48,16 @@ const CASES = [
     el: () => h(Spinner),
     snap: '<div class="loading-state"><div class="spinner"></div><span>Carregando...</span></div>',
   },
+  {
+    /* prod SEM tamanhos, sem promo, sem badge, disponível, sem imagem válida -> placeholder + precoVitrine */
+    nome: 'ProductCard',
+    el: () => h(ProductCard, {
+      prod: { id:'pc-fix', nome:'Produto Teste', descricao:'Descrição teste', preco:19.9, preco_promo:null, badge:null, disponivel:true, imagem_url:'' },
+      catNome: 'Açaí',
+      onOpen: () => {},
+    }),
+    snap: '<div class="product-card"><div class="product-img"><div class="product-img-placeholder" style="display:flex">🍧</div></div><div class="product-info"><div class="product-name">Produto Teste</div><div class="product-desc">Descrição teste</div><div class="product-footer"><div class="product-price">R$ 19,90</div><button class="add-btn">+</button></div></div></div>',
+  },
 ];
 
 let fail = 0;
@@ -49,16 +65,16 @@ for (const c of CASES) {
   const got = renderToStaticMarkup(c.el());
   if (c.snap == null) {
     fail++;
-    console.error(`  ✗ ${c.nome} — SEM snapshot congelado. Markup atual (copie para \`snap\`):\n    ${got}`);
+    console.error('  x ' + c.nome + ' — SEM snapshot congelado. Markup atual (copie para snap):\n    ' + got);
     continue;
   }
   try {
-    assert.strictEqual(got, c.snap);
-    console.error(`  ✓ ${c.nome}`);
+    assert.strictEqual(norm(got), norm(c.snap));
+    console.error('  ok ' + c.nome);
   } catch {
     fail++;
-    console.error(`  ✗ ${c.nome} — markup divergiu\n    esperado: ${c.snap}\n    obtido:   ${got}`);
+    console.error('  x ' + c.nome + ' — markup divergiu\n    esperado: ' + c.snap + '\n    obtido:   ' + got);
   }
 }
-console.log(fail === 0 ? `\n✅ render.smoke OK — ${CASES.length} folha(s), markup estável` : `\n❌ ${fail} caso(s) divergente(s)/sem snapshot`);
+console.log(fail === 0 ? '\nOK render.smoke — ' + CASES.length + ' folha(s), markup estável' : '\nFALHA: ' + fail + ' caso(s) divergente(s)/sem snapshot');
 process.exit(fail === 0 ? 0 : 1);
