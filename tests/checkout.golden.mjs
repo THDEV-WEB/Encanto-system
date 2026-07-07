@@ -19,49 +19,21 @@
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { precoUnitario, precoLinha, totalCarrinho } from '../src/utils/pricing.js';
-import { isUuid } from '../src/utils/ids.js';
+import { totalCarrinho } from '../src/utils/pricing.js';
 import { fmt } from '../src/utils/format.js';
+import { buildOrderArgs, buildWhatsAppMessage, buildCheckoutView } from '../src/utils/orderPayload.js';
 
 let fail = 0;
 const check = (m, fn) => { try { fn(); } catch (e) { fail++; console.error('✗', m, '—', e?.message ?? e); } };
 
-/* ── (A) BUILDERS — espelho fiel da montagem do submit (App.jsx L873-890 / L138-140 / L914-923) ── */
-function buildOrderArgs(cart, form, requestId) {
-  const customer = { name: form.nome, phone: form.telefone };
-  const order = { total: cart.total, status: 'recebido', payment_method: form.pagamento,
-                  address: form.endereco, observacoes: form.obs || null };
-  const items = cart.items.map(i => {
-    const pu = precoUnitario(i);
-    return {
-      product_id:     isUuid(i.id) ? i.id : null,
-      nome_produto:   i.nome,
-      quantity:       i.qty,
-      price:          pu,
-      preco_unitario: pu,
-      adicionais:     i.adicionais || [],
-      observacoes:    i.obs || null,
-    };
-  });
-  return { customer, order, items, requestId };
-}
-/* mapeamento savePedido → RPC create_order (services/DataService.js, pós-Onda 2) */
+/* ── (A) BUILDERS — IMPORT REAL do order-domain (Onda 5.2 · Trilha B) ──
+   buildOrderArgs / buildWhatsAppMessage / buildCheckoutView agora vêm de src/utils/orderPayload.js.
+   O espelho (antes fiel à montagem inline do submit) foi substituído pelo IMPORT REAL; os pins de
+   fonte (§B) garantem que a montagem real mora no order-domain. buildRpcPayload segue local (só mapeia
+   buildOrderArgs → chaves p_ da RPC create_order de services/DataService.js). */
 function buildRpcPayload(cart, form, requestId) {
   const { customer, order, items } = buildOrderArgs(cart, form, requestId);
   return { p_customer: customer, p_order: order, p_items: items, p_request_id: requestId ?? null };
-}
-function buildWhatsAppMessage(cart, form) {
-  let msg = `*🛍️ Novo Pedido - Encanto*\n\n`;
-  msg += `*Cliente:* ${form.nome}\n*Telefone:* ${form.telefone}\n*Endereço:* ${form.endereco}\n\n*📋 Itens:*\n`;
-  cart.items.forEach(i => {
-    msg += `• ${i.nome} x${i.qty} — ${fmt(precoLinha(i))}\n`;
-    if (i.adicionais?.length) msg += `  ↳ ${i.adicionais.map(a => a.nome).join(', ')}\n`;
-    if (i.obs) msg += `  ↳ Obs: ${i.obs}\n`;
-  });
-  msg += `\n*💰 Total: ${fmt(cart.total)}*\n*Pagamento:* ${form.pagamento}`;
-  if (form.troco) msg += ` (troco p/ ${form.troco})`;
-  if (form.obs) msg += `\n*Obs:* ${form.obs}`;
-  return msg;
 }
 
 /* ── FIXTURES determinísticas (ADR B2 §2): 1 item uuid c/ 2 adicionais pagos (qty 2) + 1 item mock (qty 1) ── */
@@ -118,24 +90,35 @@ check('7. contratos null (adicionais [] / observacoes null / obs → null)', () 
   assert.strictEqual(p.p_items[1].observacoes, null);
   assert.strictEqual(p.p_order.observacoes, 'sem cebola');
 });
+/* Onda 5.2: view-model do resumo (o componente passa a consumir buildCheckoutView, sem recalcular preço).
+   Congela nome/qty/valor por item + total — o resumo renderizado deve permanecer idêntico ao anterior. */
+check('8. buildCheckoutView reproduz o resumo (nome/qty/valor + total)', () => {
+  const v = buildCheckoutView(cart);
+  assert.strictEqual(v.total, fmt(56));
+  assert.deepStrictEqual(v.itens.map(x => ({ nome: x.nome, qty: x.qty, valor: x.valor })), [
+    { nome: 'Açaí 500ml', qty: 2, valor: fmt(44) },
+    { nome: 'Batidinha Morango', qty: 1, valor: fmt(12) },
+  ]);
+});
 
-/* ── (B) PIN DE FONTE — trava a montagem REAL do submit (App.jsx) e do savePedido (services/DataService.js) ──
-   Onda 2 (C2): savePedido foi movido para services/DataService.js; os 2 pins de savePedido passam a
-   ler esse módulo (pinSvc). Os pins do submit seguem no App.jsx (pin). Regexes idênticas ao pré-move. */
-console.error('— (B) PIN DE FONTE (submit em App.jsx + savePedido em services/DataService.js)');
-const APP = readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
+/* ── (B) PIN DE FONTE — trava a montagem REAL do pedido (order-domain) e do savePedido (services/DataService.js) ──
+   Onda 5.2 (Trilha B): a montagem do pedido saiu do submit (App.jsx) para src/utils/orderPayload.js; os pins do
+   payload passam a ler esse módulo (pinOD). Os 2 pins de savePedido seguem em services/DataService.js (pinSvc,
+   intocado). Regexes idênticas ao pré-move, exceto `pu` (era puComAdic no submit; no order-domain é precoUnitario). */
+console.error('— (B) PIN DE FONTE (montagem em src/utils/orderPayload.js + savePedido em services/DataService.js)');
+const OD  = readFileSync(new URL('../src/utils/orderPayload.js', import.meta.url), 'utf8');
 const SVC = readFileSync(new URL('../src/services/DataService.js', import.meta.url), 'utf8');
-const pin    = (m, re) => check('pin: ' + m, () => assert.ok(re.test(APP), 'expressão-chave ausente/alterada no submit — atualize o golden: ' + m));
+const pinOD  = (m, re) => check('pin: ' + m, () => assert.ok(re.test(OD),  'expressão-chave ausente/alterada no order-domain — atualize o golden: ' + m));
 const pinSvc = (m, re) => check('pin: ' + m, () => assert.ok(re.test(SVC), 'expressão-chave ausente/alterada no savePedido (DataService) — atualize o golden: ' + m));
-pin("order.status 'recebido'",        /status:\s*'recebido'/);
-pin('order.total = cart.total',       /total:\s*cart\.total/);
-pin('order.observacoes = obs||null',  /observacoes:\s*form\.obs\s*\|\|\s*null/);
-pin('item.product_id = isUuid?id:null', /product_id:\s*isUuid\(i\.id\)\s*\?\s*i\.id\s*:\s*null/);
-pin('item.price = pu',                /price:\s*pu/);
-pin('item.preco_unitario = pu',       /preco_unitario:\s*pu/);
-pin('item.adicionais = i.adicionais||[]', /adicionais:\s*i\.adicionais\s*\|\|\s*\[\]/);
-pin('item.observacoes = i.obs||null', /observacoes:\s*i\.obs\s*\|\|\s*null/);
-pin('pu = precoUnitario(i)',          /const\s+pu\s*=\s*puComAdic\(i\)/);
+pinOD("order.status 'recebido'",        /status:\s*'recebido'/);
+pinOD('order.total = cart.total',       /total:\s*cart\.total/);
+pinOD('order.observacoes = obs||null',  /observacoes:\s*form\.obs\s*\|\|\s*null/);
+pinOD('item.product_id = isUuid?id:null', /product_id:\s*isUuid\(i\.id\)\s*\?\s*i\.id\s*:\s*null/);
+pinOD('item.price = pu',                /price:\s*pu/);
+pinOD('item.preco_unitario = pu',       /preco_unitario:\s*pu/);
+pinOD('item.adicionais = i.adicionais||[]', /adicionais:\s*i\.adicionais\s*\|\|\s*\[\]/);
+pinOD('item.observacoes = i.obs||null', /observacoes:\s*i\.obs\s*\|\|\s*null/);
+pinOD('pu = precoUnitario(i)',          /const\s+pu\s*=\s*precoUnitario\(i\)/);
 pinSvc('savePedido → rpc create_order',  /d\.rpc\('create_order',\s*\{/);
 pinSvc('rpc args p_customer/p_order/p_items/p_request_id', /p_customer:\s*cliente,\s*p_order:\s*order,\s*p_items:\s*itens,\s*p_request_id:\s*requestId\s*\?\?\s*null/);
 

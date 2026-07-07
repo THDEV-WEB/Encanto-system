@@ -7,6 +7,7 @@ import { precoUnitario, precoLinha, totalCarrinho, emPromocao, precoVitrine } fr
 import { MOCK_ADS, ADICIONAL_SIMPLES_PRECO, resolverAdicionais, agruparPorGrupo, selecionarFonteAdicionais, cotaGratis, ehAdicionalGratis, resolverPrecoAdicionais } from './utils/addons.js';
 import { isUuid, newRequestId } from './utils/ids.js';
 import { catEmoji, isHttpUrl, isCategoriaDescontinuada, prodInCat, getProdCatIds } from './utils/catalog.js';
+import { buildOrderArgs, buildWhatsAppMessage, buildCheckoutView } from './utils/orderPayload.js';
 import { MOCK_CATS, MOCK_PRODS, filterMock } from './data/mockCatalog.js';
 import { STORAGE_KEYS } from './constants/storage.js';
 import { DS } from './services/DataService.js';
@@ -106,29 +107,13 @@ function CheckoutPage({ cart, onBack, onSuccess }) {
       requestIdRef.current = localStorage.getItem(STORAGE_KEYS.REQ_ID) || newRequestId();
       try { localStorage.setItem(STORAGE_KEYS.REQ_ID, requestIdRef.current); } catch (e) {}
     }
-    /* preço unitário = base do item (já reflete o tamanho) + adicionais por unidade.
-       Σ(price*quantity) reconcilia com orders.total. */
-    const puComAdic = precoUnitario;
+    /* Montagem do pedido no order-domain (Onda 5.2 · Trilha B): buildOrderArgs concentra a
+       lógica pura que antes vivia inline aqui (precoUnitario por item, product_id uuid/null,
+       contratos null). Σ(price*quantity) reconcilia com orders.total. */
+    const { customer, order, items } = buildOrderArgs(cart, form, requestIdRef.current);
     /* GATE (fonte única de verdade): a persistência bem-sucedida é o evento que autoriza TODAS as ações
        seguintes. savePedido devolve o order_id em sucesso, ou null em falha (validação/rollback/timeout). */
-    const orderId = await DS.savePedido(
-      { name: form.nome, phone: form.telefone },                                  // customers
-      { total: cart.total, status: 'recebido', payment_method: form.pagamento,    // orders
-        address: form.endereco, observacoes: form.obs || null },
-      cart.items.map(i=>{                                                          // order_items (A-fiel)
-        const pu = puComAdic(i);
-        return {
-          product_id:     isUuid(i.id) ? i.id : null,   // ids de mock (offline) não são uuid → null
-          nome_produto:   i.nome,
-          quantity:       i.qty,
-          price:          pu,
-          preco_unitario: pu,
-          adicionais:     i.adicionais || [],
-          observacoes:    i.obs || null,
-        };
-      }),
-      requestIdRef.current                                                        // idempotency key
-    );
+    const orderId = await DS.savePedido(customer, order, items, requestIdRef.current);
     if (!orderId) {
       /* Falha de persistência: interrompe o fluxo. NÃO conta fidelidade, NÃO limpa carrinho,
          NÃO executa onSuccess, NÃO mostra sucesso. Preserva requestId (retry reusa a MESMA
@@ -152,16 +137,7 @@ function CheckoutPage({ cart, onBack, onSuccess }) {
         }
       }
     }
-    let msg = `*🛍️ Novo Pedido - Encanto*\n\n`;
-    msg += `*Cliente:* ${form.nome}\n*Telefone:* ${form.telefone}\n*Endereço:* ${form.endereco}\n\n*📋 Itens:*\n`;
-    cart.items.forEach(i=>{
-      msg+=`• ${i.nome} x${i.qty} — ${fmt(precoLinha(i))}\n`;
-      if(i.adicionais?.length) msg+=`  ↳ ${i.adicionais.map(a=>a.nome).join(', ')}\n`;
-      if(i.obs) msg+=`  ↳ Obs: ${i.obs}\n`;
-    });
-    msg+=`\n*💰 Total: ${fmt(cart.total)}*\n*Pagamento:* ${form.pagamento}`;
-    if(form.troco) msg+=` (troco p/ ${form.troco})`;
-    if(form.obs)   msg+=`\n*Obs:* ${form.obs}`;
+    const msg = buildWhatsAppMessage(cart, form);
     setLoading(false);
     submittingRef.current = false;
     requestIdRef.current = null;   // próximo pedido recebe nova idempotency key
@@ -169,6 +145,7 @@ function CheckoutPage({ cart, onBack, onSuccess }) {
     cart.clear();
     onSuccess(msg);
   };
+  const view = buildCheckoutView(cart);   // Onda 5.2: resumo consome o view-model do order-domain (não recalcula preço)
   return (
     <div className="checkout-page">
       <button onClick={onBack} style={{background:'none',color:'var(--gray-500)',fontSize:14,marginBottom:16,display:'flex',alignItems:'center',gap:6,cursor:'pointer',border:'none'}}>
@@ -177,13 +154,13 @@ function CheckoutPage({ cart, onBack, onSuccess }) {
       <h2>Finalizar Pedido</h2>
       <div className="order-summary">
         <h3>Resumo</h3>
-        {cart.items.map(i=>(
-          <div key={i._key} className="summary-item">
-            <span>{i.nome} x{i.qty}</span>
-            <span>{fmt(precoLinha(i))}</span>
+        {view.itens.map(it=>(
+          <div key={it.key} className="summary-item">
+            <span>{it.nome} x{it.qty}</span>
+            <span>{it.valor}</span>
           </div>
         ))}
-        <div className="summary-total"><span>Total</span><span>{fmt(cart.total)}</span></div>
+        <div className="summary-total"><span>Total</span><span>{view.total}</span></div>
       </div>
       <div className="form-group">
         <label className="form-label">Nome completo *</label>
@@ -222,7 +199,7 @@ function CheckoutPage({ cart, onBack, onSuccess }) {
       </div>
       {err&&<p style={{color:'var(--red)',fontSize:13,marginBottom:8}}>{err}</p>}
       <button className="confirm-btn" onClick={submit} disabled={loading}>
-        {loading ? 'Enviando...' : `Confirmar via WhatsApp • ${fmt(cart.total)}`}
+        {loading ? 'Enviando...' : `Confirmar via WhatsApp • ${view.total}`}
       </button>
     </div>
   );
