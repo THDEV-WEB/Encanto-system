@@ -56,6 +56,7 @@ const DOMAIN_CONSUMERS = [
   'hooks/useCart.js',        // REF-APP-01 · Onda 3 — consome totalCarrinho de utils/pricing
   'components/ProductCard.jsx', // REF-APP-01 · Onda 4 — consome emPromocao/precoVitrine de utils/pricing
   'components/ProductModal/ProductModalInner.jsx', // REF-APP-01 · Onda 4 — consome addons (agruparPorGrupo/cotaGratis/...)
+  'components/CartSidebar.jsx', // REF-APP-01 · Onda 4 — consome precoUnitario de utils/pricing
   // Cada extração que importe pricing/addons adiciona a si mesma AQUI, no MESMO commit. Ex. (REF-APP-01):
   // 'pages/StoreApp.jsx', 'hooks/useCart.js', 'hooks/useAdicionais.js', 'components/ProductCard.jsx',
   // 'components/ProductModal/ProductModalInner.jsx', 'components/CartSidebar.jsx',

@@ -31,6 +31,7 @@ const BackgroundLayer = (await import('../src/BackgroundLayer.jsx')).default;
 const Spinner         = (await import('../src/components/ui/Spinner.jsx')).Spinner;
 const ProductCard     = (await import('../src/components/ProductCard.jsx')).ProductCard;
 const ProductModalBoundary = (await import('../src/components/ProductModal/ProductModalBoundary.jsx')).ProductModalBoundary;
+const CartSidebar     = (await import('../src/components/CartSidebar.jsx')).CartSidebar;
 
 /* Casos: props FIXAS + snapshot CONGELADO (Onda 4 acrescenta as folhas visuais AQUI) */
 const CASES = [
@@ -64,6 +65,17 @@ const CASES = [
     nome: 'ProductModalBoundary(children)',
     el: () => h(ProductModalBoundary, { onClose: () => {} }, h('span', null, 'ok')),
     snap: '<span>ok</span>',
+  },
+  {
+    /* carrinho vazio -> ramo cart-empty */
+    nome: 'CartSidebar(vazio)',
+    el: () => h(CartSidebar, {
+      cart: { items: [], total: 0, remove: () => {}, updateQty: () => {} },
+      catMap: {},
+      onClose: () => {},
+      onCheckout: () => {},
+    }),
+    snap: '<div class="cart-overlay"></div><div class="cart-sidebar"><div class="cart-header"><h2>🛒 Seu Pedido</h2><button class="cart-close">✕</button></div><div class="cart-empty"><div class="icon">🛒</div><p>Seu carrinho está vazio.<br/>Adicione itens para continuar!</p></div><div class="cart-footer"><div class="cart-total-row"><span>Subtotal</span><span>R$ 0,00</span></div><div class="cart-total-row"><span>Entrega</span><span style="color:var(--green);font-weight:600">A combinar</span></div><div class="cart-total-row grand"><span>Total</span><span>R$ 0,00</span></div><button class="checkout-btn" disabled="">Finalizar Pedido →</button></div></div>',
   },
 ];
 
