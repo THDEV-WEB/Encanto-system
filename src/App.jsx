@@ -19,6 +19,7 @@ import { Spinner } from './components/ui/Spinner.jsx';
 import { ProductCard } from './components/ProductCard.jsx';
 import { ProductModal } from './components/ProductModal/index.jsx';
 import { CartSidebar } from './components/CartSidebar.jsx';
+import { LazySection } from './components/ui/LazySection.jsx';
 
 /* ============================================================
    ENCANTO DELIVERY — React 18 + Supabase v2
@@ -1517,29 +1518,7 @@ function AdminPanel({ onExit }) {
 /* ── StoreApp ────────────────────────────────────────────────── */
 
 /* ── LazySection: renderiza filhos apenas quando seção entra na tela ── */
-const LazySection = React.memo(function LazySection({ id, children, style }) {
-  const [visible, setVisible] = React.useState(false);
-  const ref = React.useRef(null);
-  React.useEffect(()=>{
-    if (!ref.current) return;
-    /* Se já está no viewport (ex: seção do topo), renderizar imediatamente */
-    const rect = ref.current.getBoundingClientRect();
-    if (rect.top < window.innerHeight + 400) { setVisible(true); return; }
-    const obs = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) { setVisible(true); obs.disconnect(); } },
-      { rootMargin: '200px 0px' } /* pré-carregar 200px antes de aparecer */
-    );
-    obs.observe(ref.current);
-    return () => obs.disconnect();
-  }, []);
-  return (
-    <div ref={ref} id={id} style={{scrollMarginTop: style?.scrollMarginTop || 24, ...style}}>
-      {visible ? children : (
-        <div style={{minHeight:240,background:'transparent'}}/>
-      )}
-    </div>
-  );
-});
+/* LazySection -> src/components/ui/LazySection.jsx (REF-APP-01 Onda 4) */
 
 /* ── AddressModal: busca profissional com ViaCEP + Nominatim + Leaflet ── */
 function AddressModal({ onClose, onSelect }) {
