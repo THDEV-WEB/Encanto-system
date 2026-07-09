@@ -2,13 +2,11 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import AppShell from './AppShell.jsx';
 import './index.css';
 import { db, WHATSAPP, LOGO } from './lib/supabase.js';
-import { fmt, fmtDate, precoApartir, precoTamanho } from './utils/format.js';
-import { precoUnitario, precoLinha, totalCarrinho, emPromocao, precoVitrine } from './utils/pricing.js';
-import { MOCK_ADS, ADICIONAL_SIMPLES_PRECO, resolverAdicionais, agruparPorGrupo, selecionarFonteAdicionais, cotaGratis, ehAdicionalGratis, resolverPrecoAdicionais } from './utils/addons.js';
-import { isUuid, newRequestId } from './utils/ids.js';
-import { catEmoji, isHttpUrl, isCategoriaDescontinuada, prodInCat, getProdCatIds } from './utils/catalog.js';
-import { buildOrderArgs, buildWhatsAppMessage, buildCheckoutView } from './utils/orderPayload.js';
-import { MOCK_CATS, MOCK_PRODS, filterMock } from './data/mockCatalog.js';
+import { fmt, fmtDate } from './utils/format.js';
+import { precoVitrine } from './utils/pricing.js';
+import { MOCK_ADS, resolverAdicionais, selecionarFonteAdicionais } from './utils/addons.js';
+import { isHttpUrl, prodInCat, getProdCatIds } from './utils/catalog.js';
+import { MOCK_CATS, MOCK_PRODS } from './data/mockCatalog.js';
 import { STORAGE_KEYS } from './constants/storage.js';
 import { DS } from './services/DataService.js';
 import { useOrders } from './hooks/useOrders.js';
