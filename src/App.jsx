@@ -20,15 +20,8 @@ import { LazySection } from './components/ui/LazySection.jsx';
 import { SuccessPage } from './components/checkout/SuccessPage.jsx';
 import { CheckoutPage } from './components/checkout/CheckoutPage.jsx';
 import { AdminLogin } from './components/admin/AdminLogin.jsx';
-import { AdminCategorias } from './components/admin/AdminCategorias.jsx';
+import { AdminPanel } from './components/admin/AdminPanel.jsx';
 import { ImageUploader } from './components/admin/ImageUploader.jsx';
-import { AdminProducts } from './components/admin/AdminProducts.jsx';
-import { AdminAdicionais } from './components/admin/AdminAdicionais.jsx';
-import { AdminPedidos } from './components/admin/AdminPedidos.jsx';
-import { AdminDashboard } from './components/admin/AdminDashboard.jsx';
-import { AdminStatus } from './components/admin/AdminStatus.jsx';
-import { AdminFidelidade } from './components/admin/AdminFidelidade.jsx';
-import { AdminHealth } from './components/admin/AdminHealth.jsx';
 
 /* ============================================================
    ENCANTO DELIVERY — React 18 + Supabase v2
@@ -105,57 +98,7 @@ import { AdminHealth } from './components/admin/AdminHealth.jsx';
 /* AdminStatus → src/components/admin/AdminStatus.jsx (REF-APP-01 · Onda 7.4) */
 /* AdminFidelidade → src/components/admin/AdminFidelidade.jsx (REF-APP-01 · Onda 7.5) */
 /* AdminHealth → src/components/admin/AdminHealth.jsx (REF-APP-01 · Onda 7.6) */
-
-function AdminPanel({ onExit }) {
-  const [tab, setTab] = useState('dashboard');
-  const tabs = [
-    {id:'dashboard', icon:'📊', label:'Dashboard'},
-    {id:'pedidos',   icon:'📋', label:'Pedidos'},
-    {id:'products',  icon:'🛍️', label:'products'},
-    {id:'categorias',icon:'🏷️', label:'Categorias'},
-    {id:'adicionais',icon:'➕', label:'Adicionais'},
-    {id:'status',    icon:'🏪', label:'Status'},
-    {id:'fidelidade',icon:'🎁', label:'Fidelidade'},
-    {id:'saude',     icon:'🩺', label:'Saúde'},
-  ];
-  const titles = {dashboard:'Dashboard',pedidos:'Pedidos',products:'Products',categorias:'Categorias',adicionais:'Adicionais',status:'Status da Loja',fidelidade:'Fidelidade',saude:'Saúde do Sistema'};
-  return (
-    <div className="admin-layout">
-      <div className="admin-sidebar">
-        <div className="admin-logo">✨ <span>Encanto</span></div>
-        <nav className="admin-nav">
-          {tabs.map(t=>(
-            <div key={t.id} className={`admin-nav-item ${tab===t.id?'active':''}`} onClick={()=>setTab(t.id)}>
-              <span className="nav-icon">{t.icon}</span>
-              <span>{t.label}</span>
-            </div>
-          ))}
-        </nav>
-        <div style={{padding:'16px 8px'}}>
-          <div className="admin-nav-item" onClick={onExit} style={{color:'rgba(255,255,255,.5)'}}>
-            <span className="nav-icon">🚪</span><span>Sair</span>
-          </div>
-        </div>
-      </div>
-      <div className="admin-content">
-        <div className="admin-top">
-          <h1>{titles[tab]}</h1>
-          <button className="admin-exit" onClick={onExit}>← Ver loja</button>
-        </div>
-        <div className="admin-body">
-          {tab==='dashboard'  && <AdminDashboard/>}
-          {tab==='pedidos'    && <AdminPedidos/>}
-          {tab==='products'   && <AdminProducts/>}
-          {tab==='categorias' && <AdminCategorias/>}
-          {tab==='adicionais' && <AdminAdicionais/>}
-          {tab==='status'     && <AdminStatus/>}
-          {tab==='fidelidade' && <AdminFidelidade/>}
-          {tab==='saude'      && <AdminHealth/>}
-        </div>
-      </div>
-    </div>
-  );
-}
+/* AdminPanel (barrel dos 8 sub-componentes admin) → src/components/admin/AdminPanel.jsx (REF-APP-01 · Onda 7.7) */
 
 /* ── StoreApp ────────────────────────────────────────────────── */
 
