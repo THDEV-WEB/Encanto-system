@@ -21,7 +21,6 @@ import { SuccessPage } from './components/checkout/SuccessPage.jsx';
 import { CheckoutPage } from './components/checkout/CheckoutPage.jsx';
 import { AdminLogin } from './components/admin/AdminLogin.jsx';
 import { AdminPanel } from './components/admin/AdminPanel.jsx';
-import { ImageUploader } from './components/admin/ImageUploader.jsx';
 
 /* ============================================================
    ENCANTO DELIVERY — React 18 + Supabase v2
