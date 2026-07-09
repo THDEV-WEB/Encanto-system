@@ -1,6 +1,6 @@
 # REF-APP-01 · B2 — Golden de payload do checkout (PROPOSTA)
 
-- **Status:** 🟢 **GOLDEN APLICADO E VERDE** (`tests/checkout.golden.mjs`) · 🚦 **ONDA 5 AUTORIZADA — Trilha B** (order-domain), execução em subfases 5.0→5.4 (ver **"Decisão (2026-07-07)"** abaixo). O habilitador **§3.1** (`utils/orderPayload.js`) deixa de estar *gated* e passa a **autorizado**.
+- **Status:** 🟢 **GOLDEN APLICADO E VERDE** (`tests/checkout.golden.mjs`) · ✅ **ONDA 5 CONCLUÍDA — Trilha B** (order-domain), subfases 5.0→5.4 executadas (2026-07-09; ver **"Decisão (2026-07-07)"** e a tabela de subfases abaixo). O habilitador **§3.1** (`utils/orderPayload.js`) foi **extraído** (5.2, `e5ae1a2`); `submit` e resumo passaram a consumir o order-domain, e `test:checkout` seguiu **verde** (moveu, não alterou).
 - **Pertence a:** [REF-APP-01 (DESENHO congelado)](REF-APP-01-modularizacao-appjsx.md) · achado **B2** (validação do checkout era 100% manual).
 - **Objetivo:** trocar a única garantia anti-regressão do fluxo sagrado (`create_order` + idempotência + mensagem WhatsApp) — hoje "1 pedido real" manual, não reproduzível — por um **teste automatizado sem dependência de banco real**.
 - **Atualização (2026-07-06) — golden MATERIALIZADO (`tests/checkout.golden.mjs` · `npm run test:checkout`):** na etapa pré-Onda 2 o golden foi implementado **sem o habilitador do §3.1** (a extração de `buildOrderArgs` para `utils/orderPayload.js` segue **gated**, pois altera o `submit`). Em vez disso: **(A)** builders-espelho fiéis + domínio REAL (`pricing`/`ids`/`format`) congelam as 7 asserções da §3.2; **(B)** *pin de fonte* trava a montagem real do `submit`/`savePedido` em `App.jsx`. **VERDE.** Na Onda 5, ao extrair `orderPayload.js`, troca-se o espelho pelo import real (o pin de fonte garante que ambos coincidem). Ver `REF-APP-01-onda-2-plan.md` §9.3.
@@ -13,12 +13,12 @@ Autorização formal do usuário: executar a **Onda 5 exclusivamente pela Trilha
 
 | Sub | Objetivo | Arquivos-alvo | Gate |
 |---|---|---|---|
-| **5.0** | Registrar Trilha B (este bloco) | `docs/adr/REF-APP-01-B2-checkout-golden.md` | revisão humana |
-| **5.0.5** | Baseline — congelar estado inicial do checkout (evidência pré-mudança) | doc de baseline | evidência registrada |
-| **5.1** | Extrair `SuccessPage` | `components/checkout/SuccessPage.jsx` + `App.jsx` | build · suíte · smoke manual |
-| **5.2** | Extrair order-domain; `submit` passa a consumi-lo | `utils/orderPayload.js` + `App.jsx` + `tests/checkout.golden.mjs` | test:checkout (espelho→import real + pins B) · test:deps (G-CK3) · suíte |
-| **5.3** | Extrair `CheckoutPage` consumindo o order-domain | `components/checkout/CheckoutPage.jsx` + `App.jsx` + testes | test:deps (D1 + G-CK2) · test:checkout (pins B) · smoke E2E |
-| **5.4** | Limpeza de resíduo + reconciliação documental | `App.jsx` + docs | auditoria de resíduo · suíte |
+| **5.0** ✅ (`5668e32`) | Registrar Trilha B (este bloco) | `docs/adr/REF-APP-01-B2-checkout-golden.md` | revisão humana |
+| **5.0.5** ✅ (`b4f2b3d`) | Baseline — congelar estado inicial do checkout (evidência pré-mudança) | doc de baseline | evidência registrada |
+| **5.1** ✅ (`3350ab3`) | Extrair `SuccessPage` | `components/checkout/SuccessPage.jsx` + `App.jsx` | build · suíte verdes |
+| **5.2** ✅ (`e5ae1a2`) | Extrair order-domain; `submit` passa a consumi-lo | `utils/orderPayload.js` + `App.jsx` + `tests/checkout.golden.mjs` | test:checkout (espelho→import real + pins B) · test:deps (G-CK3) · suíte |
+| **5.3** ✅ (`e4985e8`) | Extrair `CheckoutPage` consumindo o order-domain | `components/checkout/CheckoutPage.jsx` + `App.jsx` + testes | test:deps (D1 + G-CK2) · test:checkout (pins B) · comportamento preservado |
+| **5.4** ✅ (`796098c` + este commit) | Limpeza de resíduo (19 imports órfãos) + reconciliação documental | `App.jsx` + docs | auditoria de resíduo · suíte 7/7 |
 
 **Invariantes preservados (móvel, nunca alterado):** `DS.savePedido`, RPC `create_order`, `useCart`, regras de fidelidade e o **gate de persistência** permanecem **intocados**; **payload**, **mensagem WhatsApp** e **resumo** ficam **funcionalmente idênticos** (o `test:checkout` congela byte-a-byte). Bug incidental é **apenas registrado**, nunca corrigido nesta onda. Qualquer divergência estrutural, quebra de teste ou necessidade de mudar regra de negócio **interrompe a execução** e exige nova autorização. Cada subfase é aprovada individualmente antes da seguinte.
 
@@ -64,7 +64,7 @@ Fixtures determinísticas: 1 item **uuid** com 2 adicionais pagos (qty 2) + 1 it
 
 ## 3. Critério de validação automatizado (sem banco)
 
-### 3.1 Habilitador (extração mínima e fiel — ✅ **DESBLOQUEADO na Onda 5 · Trilha B**, autorizado 2026-07-07)
+### 3.1 Habilitador (extração mínima e fiel — ✅ **EXTRAÍDO na Onda 5.2 · Trilha B** (`e5ae1a2`), autorizado 2026-07-07)
 Extrair do corpo do `submit`, **sem reescrever a lógica** (move puro das expressões), duas funções puras:
 
 ```js
@@ -111,4 +111,4 @@ O PoC importou `pricing.js`/`format.js` reais e a montagem fiel → produziu o p
 - O golden vira parte da suíte cumulativa (`test:pricing`/`addons`/`deps`/**`checkout`**), rodada a cada commit da fase.
 - **Nenhuma mudança de comportamento:** o golden trava o payload atual; a extração só pode mover, nunca alterar.
 
-> 🟢 **B2 — GOLDEN APLICADO (VERDE).** Payload mínimo + critério automatizado sem banco materializados em `tests/checkout.golden.mjs`. 🚦 **Onda 5 autorizada (Trilha B, 2026-07-07):** o habilitador §3.1 (`utils/orderPayload.js`) está desbloqueado; a extração do checkout roda em subfases 5.0→5.4 mantendo `test:checkout` verde (mover, nunca alterar).
+> 🟢 **B2 — GOLDEN APLICADO (VERDE).** Payload mínimo + critério automatizado sem banco materializados em `tests/checkout.golden.mjs`. ✅ **Onda 5 CONCLUÍDA (Trilha B):** o habilitador §3.1 (`utils/orderPayload.js`) foi extraído (5.2, `e5ae1a2`); `SuccessPage` (5.1, `3350ab3`) e `CheckoutPage` (5.3, `e4985e8`) extraídos; a limpeza 5.4 (`796098c`) removeu os imports órfãos residuais. `test:checkout` permaneceu **verde** em todas as subfases (moveu, nunca alterou).

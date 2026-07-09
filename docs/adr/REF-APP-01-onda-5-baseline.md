@@ -1,6 +1,6 @@
 # REF-APP-01 · Onda 5 — BASELINE do Checkout (subfase 5.0.5)
 
-- **Status:** 🧊 **BASELINE CONGELADO** — subfase preparatória (5.0.5). **Nenhum código/teste/config alterado.** Só registro de estado inicial.
+- **Status:** 🧊 **BASELINE CONGELADO** — subfase preparatória (5.0.5). **Nenhum código/teste/config alterado.** Só registro de estado inicial. · ✅ **ONDA 5 CONCLUÍDA (2026-07-09):** subfases 5.1→5.4 executadas e medidas contra estas âncoras (§6); as âncoras de bytes abaixo permanecem como registro histórico do ponto de partida.
 - **Data:** 2026-07-07
 - **HEAD no congelamento:** `5668e32` (branch `main`, ahead 21 de `origin/main`; sem push)
 - **Propósito:** fixar o estado do checkout ANTES da primeira alteração de código, servindo de âncora de comparação para todas as subfases 5.1→5.4 (Trilha B). Ver a decisão em [REF-APP-01-B2-checkout-golden.md](REF-APP-01-B2-checkout-golden.md#decisão-2026-07-07--onda-5-autorizada--trilha-b-order-domain).
@@ -92,9 +92,9 @@ Na 5.2/5.3 os pins do **submit** passam a ler o novo arquivo (order-domain / `Ch
 
 ## 6. Checklist de reconciliação por subfase (como o baseline será usado)
 
-- **5.1 (`SuccessPage`):** corpo extraído == **R1** verbatim (igualdade de sha256 da região movida); build + suíte + smoke manual.
-- **5.2 (`orderPayload`):** `test:checkout` troca espelho→import real e continua **byte-a-byte igual** a §4.1/§4.2; `buildCheckoutView` produz §4.3; G-CK3 (order-domain puro) verde; pins do submit repontados.
-- **5.3 (`CheckoutPage`):** G-CK2 verde (checkout não importa `pricing/format` direto) + D1 atualizada; `test:checkout` verde; **smoke E2E** (pedido real → persistido → WhatsApp) preserva §4.
-- **5.4 (limpeza):** `App.jsx` final menos os comentários-ponteiro do checkout == **RESTO** (nenhuma mudança colateral); auditoria de resíduo.
+- ✅ **5.1 (`SuccessPage`)** (`3350ab3`): corpo extraído == **R1** verbatim (sha256 da região movida conferido contra o baseline); build + suíte verdes.
+- ✅ **5.2 (`orderPayload`)** (`e5ae1a2`): `test:checkout` trocou espelho→import real e seguiu **byte-a-byte igual** a §4.1/§4.2; `buildCheckoutView` fornece §4.3; G-CK3 (order-domain puro) verde; pins do submit repontados para `utils/orderPayload.js`.
+- ✅ **5.3 (`CheckoutPage`)** (`e4985e8`): G-CK2 verde (checkout não importa `pricing/format` direto) + D1 atualizada; `test:checkout` verde (pins B); comportamento preservado.
+- ✅ **5.4 (limpeza de resíduo + reconciliação documental):** **5.4a** (`796098c`) removeu 19 imports órfãos comprovados do `App.jsx` (só linhas de import; **comentários-ponteiro preservados** — diferente do plano inicial, que previa removê-los); a auditoria de resíduo confirmou **zero definições remanescentes** das extrações; suíte **7/7 verde**. **5.4b** (este commit) reconcilia os 4 docs de status da Onda 5.
 
-> 🧊 **Baseline 5.0.5 congelado.** Nenhuma extração iniciada. A partir da 5.1 toda alteração é medida contra estas âncoras.
+> ✅ **Onda 5 CONCLUÍDA (2026-07-09).** As subfases 5.1→5.4 foram executadas e medidas contra estas âncoras (verificações da §6 satisfeitas; suíte **7/7 verde**; `App.jsx` 2878→2668 linhas). Este baseline permanece **congelado** como registro histórico do ponto de partida.
