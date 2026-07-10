@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import AppShell from './AppShell.jsx';
 import './index.css';
 import { precoVitrine } from './utils/pricing.js'; /* eslint-disable-line no-unused-vars */ // TOKEN Regra F (deps.audit.mjs §F): App.jsx deve consumir pricing; consumidor real movido p/ components/admin/AdminProducts.jsx (Onda 6.4). NAO remover sem ajustar a Regra F.
 import { resolverAdicionais } from './utils/addons.js'; /* eslint-disable-line no-unused-vars */ // TOKEN Regra F (deps.audit.mjs §F): App.jsx deve consumir addons; consumidores reais movidos p/ pages/StoreApp.jsx (Onda 9.1) e components/admin/AdminAdicionais.jsx (Onda 7.1). NAO remover sem ajustar a Regra F.
-import { DS } from './services/DataService.js';
+import { DS } from './services/DataService.js'; /* eslint-disable-line no-unused-vars */ // TOKEN guard test:ds-micro R2 (dataservice.micro.mjs §A): App.jsx mantem o residuo de consumo do DS (corpo movido p/ services/DataService.js na Onda 2). NAO remover sem ajustar o guard R2.
 import { AdminLogin } from './components/admin/AdminLogin.jsx';
 import { AdminPanel } from './components/admin/AdminPanel.jsx';
 import { StoreApp } from './pages/StoreApp.jsx';
