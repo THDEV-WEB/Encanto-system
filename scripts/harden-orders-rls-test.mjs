@@ -51,9 +51,16 @@ async function counts() {
     (SELECT count(*) FROM public.order_items) AS order_items`);
   return q.rows[0];
 }
+// AUTH-01: apos o endurecimento, a gestao de pedidos e privilegio de ADMIN. Os testes 'authenticated'
+// (admin: getPedidos/setStatus/health) rodam com o JWT do admin (is_admin()=true). anon segue sem JWT.
+let ADMIN_UID = null;
 async function tx(role, fn) {
-  try { await client.query('BEGIN'); await client.query(`SET LOCAL ROLE ${role}`); return await fn(); }
-  finally { await client.query('ROLLBACK').catch(() => {}); }
+  try {
+    await client.query('BEGIN');
+    if (role === 'authenticated' && ADMIN_UID) await client.query("SELECT set_config('request.jwt.claims', $1, true)", [JSON.stringify({ sub: ADMIN_UID, role: 'authenticated' })]);
+    await client.query(`SET LOCAL ROLE ${role}`);
+    return await fn();
+  } finally { await client.query('ROLLBACK').catch(() => {}); }
 }
 function record(id, role, desc, verdict, detail) {
   if (verdict === 'PASS') passes++; else failures++;
@@ -77,6 +84,7 @@ try {
   out('SET LOCAL ROLE anon/authenticated em BEGIN..ROLLBACK. Nenhuma escrita persiste.');
   out('');
   await client.connect();
+  ADMIN_UID = (await client.query('SELECT id FROM auth.users ORDER BY created_at LIMIT 1')).rows[0]?.id; // AUTH-01: admin p/ os testes authenticated
   const meta = (await client.query("SELECT current_user AS who, to_char(now() AT TIME ZONE 'utc','YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS utc")).rows[0];
   out('— Fingerprint — Project ' + projectRef(host, user) + ' · sessão ' + meta.who + ' · ' + meta.utc + ' UTC');
   out('');

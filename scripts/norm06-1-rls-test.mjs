@@ -57,9 +57,17 @@ async function counts() {
   return q.rows[0];
 }
 // Executa fn dentro de BEGIN; SET LOCAL ROLE <role>; ... ROLLBACK.
+// AUTH-01: apos o endurecimento, so ADMIN escreve o catalogo. Os testes 'authenticated' (BW/CS, que
+// assumiam authenticated==admin no NORM-06.1) passam a rodar com o JWT do admin (is_admin()=true),
+// preservando as asseroes originais sob o novo modelo. anon continua sem JWT.
+let ADMIN_UID = null;
 async function tx(role, fn) {
-  try { await client.query('BEGIN'); await client.query(`SET LOCAL ROLE ${role}`); return await fn(); }
-  finally { await client.query('ROLLBACK').catch(() => {}); }
+  try {
+    await client.query('BEGIN');
+    if (role === 'authenticated' && ADMIN_UID) await client.query("SELECT set_config('request.jwt.claims', $1, true)", [JSON.stringify({ sub: ADMIN_UID, role: 'authenticated' })]);
+    await client.query(`SET LOCAL ROLE ${role}`);
+    return await fn();
+  } finally { await client.query('ROLLBACK').catch(() => {}); }
 }
 function record(id, role, kind, desc, verdict, detail) {
   if (verdict === 'PASS') passes++; else failures++;
@@ -105,6 +113,7 @@ try {
   out('Testes via SET LOCAL ROLE anon/authenticated em BEGIN..ROLLBACK. Nenhuma escrita persiste.');
   out('');
   await client.connect();
+  ADMIN_UID = (await client.query('SELECT id FROM auth.users ORDER BY created_at LIMIT 1')).rows[0]?.id; // AUTH-01: admin = usuario mais antigo (registrado em public.admins)
   const meta = (await client.query("SELECT current_user AS who, current_database() AS db, to_char(now() AT TIME ZONE 'utc','YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS utc")).rows[0];
   out('— Fingerprint —');
   out('  Project ID : ' + projectRef(host, user) + ' · db ' + meta.db + ' · sessão como ' + meta.who);
