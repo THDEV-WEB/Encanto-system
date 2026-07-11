@@ -9,6 +9,7 @@ import { useProducts } from '../hooks/useProducts.js';
 import { useAdicionais } from '../hooks/useAdicionais.js';
 import { useCart } from '../hooks/useCart.js';
 import { Spinner } from '../components/ui/Spinner.jsx';
+import { AuthButton } from '../components/auth/AuthButton.jsx'; // AUTH-01: entrada de login opcional no header
 import { ProductCard } from '../components/ProductCard.jsx';
 import { ProductModal } from '../components/ProductModal/index.jsx';
 import { CartSidebar } from '../components/CartSidebar.jsx';
@@ -113,8 +114,9 @@ export function StoreApp({ onAdmin }) {
           </div>
         </div>
 
-        {/* Direita: carrinho + admin (admin só para logados) */}
+        {/* Direita: entrar (AUTH-01) + carrinho + admin (admin só para logados) */}
         <div className="header-actions">
+          <AuthButton />
           <button className="header-cart-btn" onClick={()=>setCartOpen(true)}>
             🛒{cart.count>0&&<span> {fmt(cart.total)}</span>}
             {cart.count>0&&<span className="cart-badge">{cart.count}</span>}
