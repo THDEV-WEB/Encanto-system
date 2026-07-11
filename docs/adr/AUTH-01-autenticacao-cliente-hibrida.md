@@ -1,6 +1,6 @@
 # AUTH-01 — Autenticação de cliente em modo híbrido (guest-first)
 
-**Status:** IMPLEMENTADA no código (Ondas 0–3, 2026-07-11) · **aplicação das migrations e provider SMS = passos manuais pendentes** (ver §Ativação).
+**Status:** **ATIVADA em produção (2026-07-11)** — migrations step1/step2/step3 aplicadas, admin registrado, RLS validada em runtime (net-zero); guest checkout e Admin preservados. **Resta apenas habilitar o provedor SMS (Phone OTP) no painel Supabase** para o login OTP ao vivo (config externa / decisão de negócio — ver §Ativação).
 **Depende de:** NORM-06.1 (RLS do catálogo), HARDEN-ORDERS-RLS (checkout via `create_order` SECURITY DEFINER).
 **Relacionado:** REQ-01 (telefone válido), PEND-PHONE-SSOT (unificação da normalização de telefone), REF-APP-01 (arquitetura em camadas).
 
@@ -34,18 +34,21 @@ A loja precisa de **contas opcionais** para o cliente, sem obstruir a compra. Do
 - **−** +1 coluna (`customers.auth_user_id`), +tabela `admins`, +`is_admin()`, +RPC, +policies; requer **provedor SMS** (custo) e **registro do admin** antes do endurecimento.
 - **Débito:** PEND-PHONE-SSOT (a redução E.164→local vive na RPC como paliativo; unificar a normalização telefone frontend↔backend no futuro).
 
-## Ativação (passos MANUAIS — não automatizados por segurança)
+## Ativação (EXECUTADA em 2026-07-11)
 
-1. Aplicar `migrations/AUTH-01-step1-fundacao.sql` (aditivo, não-breaking).
-2. Registrar o admin: `INSERT INTO public.admins(user_id) SELECT id FROM auth.users WHERE email='<admin>';` e validar `SELECT public.is_admin();` (logado como admin ⇒ true).
-3. Aplicar `migrations/AUTH-01-step2-harden-rls.sql` (BREAKING; só após o passo 2). Auditar `pg_policies` antes.
-4. Supabase → Auth: habilitar **Phone provider** (SMS) e signup de cliente.
-5. Rodar `npm run test:auth-rls` (deve ficar GREEN).
+Aplicado em produção via conexão Postgres direta (mesma infra do `test:rls`), na ordem segura:
+1. ✅ `migrations/AUTH-01-step1-fundacao.sql` (aditivo): `customers.auth_user_id`, tabela `admins`, `is_admin()`, policies de leitura própria, RPC `link_customer_to_auth`.
+2. ✅ Admin registrado: `INSERT INTO public.admins(user_id) VALUES ('b9dc7626-af9c-4ab5-95f7-3207e6469129')` (as992203620@gmail.com — único usuário). `is_admin()`: admin=true, cliente=false.
+3. ✅ `migrations/AUTH-01-step2-harden-rls.sql` (escrita de catálogo → `is_admin()`). Verificação imediata + auto-rollback armado: admin escreve (rc=1), cliente não (rc=0).
+4. ✅ **`migrations/AUTH-01-step3-harden-orders-rls.sql`** — **achado na ativação:** as policies `Auth all {orders,customers,order_items}` (`FOR ALL TO authenticated USING(true)`) davam a qualquer autenticado (inclusive cliente logado) leitura/escrita de **todos** os pedidos/clientes — vazamento (um cliente não-admin via os 43 pedidos). Restringidas a `is_admin()`; cliente comum fica só com a leitura própria. Guest checkout intocado (`create_order` SECURITY DEFINER).
+5. ⏳ **Supabase → Auth → Providers → Phone (SMS): habilitar + conectar provedor** (Twilio/etc.) e permitir signup de cliente. **PENDENTE** — config externa + conta SMS (custo) = decisão de negócio. Sem isso o OTP não envia código (o resto do fluxo já está pronto).
+
+Validações em runtime (net-zero, `BEGIN..ROLLBACK`): leak fechado (cliente→0, admin→43/43); `link_customer_to_auth` (vincula customer existente por telefone + cria novo, idempotente); `create_order` guest `ok:true`. `test:auth-rls` 10/10, `test:rls` 15/15, `test:orders-rls` — todos GREEN (os testes `authenticated` foram reconciliados p/ rodar com JWT do admin, refletindo o novo modelo).
 
 ## Rollback
 
 - Código: `git revert` das Ondas 0–3 (frontend é aditivo; `App.jsx` volta a `<StoreApp/>` sem provider).
-- Banco: `AUTH-01-step2-harden-rls-rollback.sql` (restaura escrita `authenticated`) e `AUTH-01-step1-fundacao-rollback.sql` (remove tabela/funções/policies; coluna preservada por padrão).
+- Banco (ordem inversa): `AUTH-01-step3-harden-orders-rls-rollback.sql` (restaura `Auth all` em pedidos), `AUTH-01-step2-harden-rls-rollback.sql` (restaura escrita `authenticated` no catálogo), `AUTH-01-step1-fundacao-rollback.sql` (remove tabela/funções/policies; coluna `auth_user_id` preservada por padrão).
 
 ## Gates por onda
 
