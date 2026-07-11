@@ -2,8 +2,8 @@
    Sair + ganchos dos beneficios FUTUROS (historico/favoritos/fidelidade) — ainda nao implementados. */
 import { useAuth } from '../../hooks/useAuth.js';
 
-const overlay = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 3000, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' };
-const sheet = { background: 'var(--white)', width: '100%', maxWidth: 460, borderRadius: '18px 18px 0 0', padding: 20, boxShadow: '0 -8px 30px rgba(0,0,0,.2)' };
+const overlay = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 };
+const sheet = { background: 'var(--white)', width: '100%', maxWidth: 420, borderRadius: 18, padding: 24, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.3)' };
 
 export function AccountMenu({ onClose }) {
   const { user, sair } = useAuth();

@@ -4,8 +4,8 @@ import { useState } from 'react';
 import { useAuth } from '../../hooks/useAuth.js';
 import { OtpForm } from './OtpForm.jsx';
 
-const overlay = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 3000, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' };
-const sheet = { background: 'var(--white)', width: '100%', maxWidth: 460, borderRadius: '18px 18px 0 0', padding: 20, boxShadow: '0 -8px 30px rgba(0,0,0,.2)' };
+const overlay = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 };
+const sheet = { background: 'var(--white)', width: '100%', maxWidth: 420, borderRadius: 18, padding: 24, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.3)' };
 const hint = { fontSize: 13, color: 'var(--gray-500)', marginBottom: 10 };
 const erroStyle = { color: 'var(--red)', fontSize: 13, marginTop: 6 };
 
@@ -24,7 +24,14 @@ export function LoginSheet({ onClose }) {
     setEnviando(true);
     const { error } = await entrar(e164());
     setEnviando(false);
-    if (error) { setErro(error.message || 'Não foi possível enviar o código.'); return; }
+    if (error) {
+      const bruto = error.message || '';
+      // Provider de SMS ainda nao habilitado no Supabase -> mensagem amigavel (nao bloqueia a compra).
+      setErro(/provider|not enabled|unsupported/i.test(bruto)
+        ? 'Login por SMS ainda não está disponível. Você pode continuar como visitante. 🙂'
+        : (bruto || 'Não foi possível enviar o código.'));
+      return;
+    }
     setFase('codigo');
   };
 
