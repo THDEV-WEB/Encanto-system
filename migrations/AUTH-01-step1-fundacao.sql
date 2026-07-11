@@ -58,6 +58,11 @@ begin
   if v_uid   is null then return jsonb_build_object('ok', false, 'error', 'nao autenticado'); end if;
   if v_phone is null then return jsonb_build_object('ok', false, 'error', 'telefone invalido'); end if;
 
+  -- AUTH-01 · Onda 3: o Supabase entrega o telefone em E.164 BR (12-13 digitos, prefixo 55), mas o
+  -- checkout grava no formato LOCAL (DDD+numero, 10-11 digitos via normalize_phone). Reduz E.164 -> local
+  -- p/ CASAR com o customer historico e nunca duplicar. (Debt PEND-PHONE-SSOT: unificar no futuro.)
+  if length(v_phone) in (12,13) and left(v_phone,2) = '55' then v_phone := substr(v_phone,3); end if;
+
   -- (a) ja vinculado a ESTE usuario? idempotente.
   select id into v_cid from public.customers where auth_user_id = v_uid limit 1;
   if v_cid is not null then return jsonb_build_object('ok', true, 'customer_id', v_cid, 'status', 'ja_vinculado'); end if;
