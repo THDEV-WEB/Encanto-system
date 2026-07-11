@@ -1,5 +1,7 @@
 /* components/ProductCard.jsx — REF-APP-01 · Onda 4 (move puro do App.jsx).
-   Card de produto. React.memo com comparador que IGNORA preço (staleness intencional — PRESERVADA).
+   Card de produto. React.memo cujo comparador COMPARA preço/tamanhos (PRICE-DOMAIN-01): uma
+   alteração de preco/preco_promo/tamanhos passa a re-renderizar o card, eliminando a staleness
+   visual (antes o comparador ignorava preço de propósito).
    Consumidor de domínio (utils/pricing) → allowlist D1 do test:deps. BADGE_MAP movido junto (privado). */
 import React from 'react';
 import { emPromocao, precoVitrine } from '../utils/pricing.js';
@@ -60,9 +62,14 @@ export const ProductCard = React.memo(function ProductCard({ prod, catNome, onOp
     </div>
   );
 }, (prev, next) =>
-  prev.prod.id         === next.prod.id &&
-  prev.prod.disponivel === next.prod.disponivel &&
-  prev.prod.imagem_url === next.prod.imagem_url &&
-  prev.prod.badge      === next.prod.badge &&
-  prev.catNome         === next.catNome
+  prev.prod.id          === next.prod.id &&
+  prev.prod.disponivel  === next.prod.disponivel &&
+  prev.prod.imagem_url  === next.prod.imagem_url &&
+  prev.prod.badge       === next.prod.badge &&
+  /* PRICE-DOMAIN-01: preço passa a contar na igualdade. preco/preco_promo cobrem produto
+     simples (vitrine + PROMO/preço riscado); precoApartir cobre produtos com tamanhos (menor tamanho). */
+  prev.prod.preco       === next.prod.preco &&
+  prev.prod.preco_promo === next.prod.preco_promo &&
+  precoApartir(prev.prod) === precoApartir(next.prod) &&
+  prev.catNome          === next.catNome
 );
