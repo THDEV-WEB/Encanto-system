@@ -8,6 +8,7 @@
 import { db, RPC_TIMEOUT } from '../lib/supabase.js';
 import { PRODUCTS_PAGE_SIZE, PRODUCTS_PAGINATE, PRODUCTS_CACHE_TTL } from '../constants/catalogConfig.js';
 import { prodInCat } from '../utils/catalog.js';
+import { emitProductsChanged } from './productCacheBus.js';
 
 export const DS = {
   /* HARDENING — cache global leve da lista COMPLETA de produtos (só quando NÃO há
@@ -194,9 +195,10 @@ export const DS = {
       await this.run(d => d.from('products').insert(payload), { throwOnError: true });
     }
     this._invalidateProductsCache();
+    emitProductsChanged();   /* PRICE-DOMAIN-01: invalida tambem o cache de sessao da loja (hooks/useProducts) */
   },
-  async toggleProd(id,disponivel) { await this.run(d=>d.from('products').update({disponivel}).eq('id',id)); this._invalidateProductsCache(); },
-  async delProd(id) { await this.run(d=>d.from('products').delete().eq('id',id)); this._invalidateProductsCache(); },
+  async toggleProd(id,disponivel) { await this.run(d=>d.from('products').update({disponivel}).eq('id',id)); this._invalidateProductsCache(); emitProductsChanged(); },
+  async delProd(id) { await this.run(d=>d.from('products').delete().eq('id',id)); this._invalidateProductsCache(); emitProductsChanged(); },
   async upsertAd(data,id) {
     if (id) await this.run(d=>d.from('adicionais').update(data).eq('id',id));
     else    await this.run(d=>d.from('adicionais').insert({...data,ativo:true}));

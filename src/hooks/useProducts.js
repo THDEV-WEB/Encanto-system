@@ -4,9 +4,15 @@
 import { useState, useEffect } from 'react';
 import { DS } from '../services/DataService.js';
 import { filterMock } from '../data/mockCatalog.js';
+import { onProductsChanged } from '../services/productCacheBus.js';
 
 /* Cache em memória — persiste durante a sessão (singleton do módulo, como no App.jsx original) */
 const _prodCache = new Map();
+
+/* PRICE-DOMAIN-01: toda escrita de produto no Admin (DataService.upsert/toggle/delProd) limpa
+   este cache de sessão, garantindo que a próxima leitura da loja busque dados frescos do
+   Supabase — sem depender de F5 nem de nova aba. Inscrição única no load do módulo (singleton). */
+onProductsChanged(() => _prodCache.clear());
 
 export function useProducts(catId, search) {
   const cacheKey = `${catId||'*'}::${search||''}`;
