@@ -7,6 +7,7 @@ import { DS } from './services/DataService.js'; /* eslint-disable-line no-unused
 import { AdminLogin } from './components/admin/AdminLogin.jsx';
 import { AdminPanel } from './components/admin/AdminPanel.jsx';
 import { StoreApp } from './pages/StoreApp.jsx';
+import { AuthProvider } from './providers/AuthProvider.jsx'; // AUTH-01: sessao do CLIENTE (envolve so a loja)
 
 /* ============================================================
    ENCANTO DELIVERY — React 18 + Supabase v2
@@ -111,7 +112,8 @@ function App() {
   let content;
   if (mode==='login')      content = <AdminLogin onLogin={u=>{setAdmin(u);setMode('admin');}}/>;
   else if (mode==='admin') content = <AdminPanel onExit={()=>{setMode('store');setAdmin(null);}}/>;
-  else                     content = <StoreApp onAdmin={()=>setMode('login')}/>;
+  /* AUTH-01: a loja (e SO ela) vive dentro do AuthProvider — sessao de cliente isolada do Admin. */
+  else                     content = <AuthProvider><StoreApp onAdmin={()=>setMode('login')}/></AuthProvider>;
 
   /* AppShell envolve TUDO: BackgroundLayer (fundo único, loja + admin) + camada de conteúdo. */
   return (
