@@ -18,7 +18,7 @@ export function AdminProducts() {
   const KEEP = '__KEEP__'; // sentinel: não alterar image_url no banco
   const ef = {nome:'',descricao:'',preco:'',preco_promo:'',categoria_id:'',
     imagem_url: KEEP, // ao criar, começar vazio
-    disponivel:true,destaque:false,adicionais_gratis:0,badge:''};
+    disponivel:true,destaque:false,adicionais_gratis:0,badge:'',tamanhos:[]};
   const [form, setForm] = useState(ef);
 
   const load = async () => {
@@ -50,6 +50,8 @@ export function AdminProducts() {
       destaque:         p.destaque || false,
       adicionais_gratis: p.adicionais_gratis || 0,
       badge:            p.badge || '',
+      // PRICE-DOMAIN-01: carrega o array de tamanhos (copia profunda 1 nivel p/ nao mutar o produto)
+      tamanhos:         Array.isArray(p.tamanhos) ? p.tamanhos.map(t=>({...t})) : [],
     });
     setSaveErr('');
     setModal(p);
@@ -57,7 +59,7 @@ export function AdminProducts() {
 
   /* Abrir modal de criação */
   const openNew = () => {
-    setForm({ ...ef, imagem_url: '', categoria_id: cats[0]?.id || '' });
+    setForm({ ...ef, imagem_url: '', categoria_id: cats[0]?.id || '', tamanhos: [] });
     setSaveErr('');
     setModal('new');
   };
@@ -68,8 +70,37 @@ export function AdminProducts() {
     setForm(f => ({ ...f, imagem_url: url || null }));
   };
 
+  /* ── Tamanhos (PRICE-DOMAIN-01) — editor do array de precos por tamanho ────────
+     Produto COM tamanhos: preco/preco_promo do topo ficam ocultos; o preco efetivo
+     (vitrine + checkout) vem de tamanhos[].preco. Editor add/remove/edita cada tamanho. */
+  const temTamanhos = Array.isArray(form.tamanhos) && form.tamanhos.length > 0;
+  const addTamanho = () => setForm(f => ({ ...f, tamanhos: [...(f.tamanhos||[]), { label:'', preco:'', adicionais_gratis:0 }] }));
+  const updTamanho = (i, patch) => setForm(f => ({ ...f, tamanhos: (f.tamanhos||[]).map((t,idx)=> idx===i ? { ...t, ...patch } : t) }));
+  const delTamanho = (i) => setForm(f => ({ ...f, tamanhos: (f.tamanhos||[]).filter((_,idx)=>idx!==i) }));
+
   const save = async () => {
-    if (!form.nome || !form.preco) { setSaveErr('Nome e preço são obrigatórios.'); return; }
+    const usaTamanhos = Array.isArray(form.tamanhos) && form.tamanhos.length > 0;
+
+    if (!form.nome) { setSaveErr('Nome é obrigatório.'); return; }
+
+    // PRICE-DOMAIN-01: validar/normalizar tamanhos (fonte única do preço quando existem)
+    let tamanhosNorm = null;
+    if (usaTamanhos) {
+      const norm = [];
+      for (const t of form.tamanhos) {
+        const label = (t.label || '').trim();
+        const preco = Number(t.preco);
+        if (!label)       { setSaveErr('Cada tamanho precisa de um nome/volume.'); return; }
+        if (!(preco > 0)) { setSaveErr(`Preço inválido no tamanho "${label}".`); return; }
+        norm.push({ ...t, label, preco, adicionais_gratis: Number(t.adicionais_gratis) || 0 }); // preserva id/chaves existentes
+      }
+      const labels = norm.map(t => t.label.toLowerCase());
+      if (new Set(labels).size !== labels.length) { setSaveErr('Há tamanhos com o mesmo nome/volume.'); return; }
+      tamanhosNorm = norm;
+    } else if (!form.preco) {
+      setSaveErr('Preço é obrigatório.'); return;
+    }
+
     setSaving(true); setSaveErr('');
     try {
       const isNew = modal === 'new';
@@ -78,14 +109,25 @@ export function AdminProducts() {
       const data = {
         nome:             form.nome,
         descricao:        form.descricao || null,
-        preco:            +form.preco,
-        preco_promo:      form.preco_promo ? +form.preco_promo : null,
         categoria_id:     form.categoria_id || null,
         disponivel:       form.disponivel,
         destaque:         form.destaque,
         adicionais_gratis: +form.adicionais_gratis || 0,
         badge:            form.badge || null,
       };
+
+      if (usaTamanhos) {
+        // Fonte única do preço = tamanhos. Espelha preco = MENOR tamanho e zera promo,
+        // para o banco NUNCA guardar um preço divergente/oculto (regra 10 do PRICE-DOMAIN-01).
+        data.tamanhos    = tamanhosNorm;
+        data.preco       = Math.min(...tamanhosNorm.map(t => t.preco));
+        data.preco_promo = null;
+      } else {
+        // Produto simples: garante que não sobra `tamanhos` antigo e usa preco/preco_promo.
+        data.tamanhos    = null;
+        data.preco       = +form.preco;
+        data.preco_promo = form.preco_promo ? +form.preco_promo : null;
+      }
 
       // REGRA CRÍTICA DE IMAGEM:
       // - KEEP sentinel → não incluir image_url no payload (preserva existente no banco)
@@ -208,17 +250,65 @@ export function AdminProducts() {
                 onChange={e=>setForm(f=>({...f,descricao:e.target.value}))}/>
             </div>
 
-            <div className="form-row">
-              <div className="form-group">
-                <label className="form-label">Preço (R$) *</label>
-                <input className="form-input" type="number" step="0.01" value={form.preco}
-                  onChange={e=>setForm(f=>({...f,preco:e.target.value}))}/>
+            {/* PRICE-DOMAIN-01: preco/preco_promo aparecem SO para produto simples (sem tamanhos) */}
+            {!temTamanhos && (
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">Preço (R$) *</label>
+                  <input className="form-input" type="number" step="0.01" value={form.preco}
+                    onChange={e=>setForm(f=>({...f,preco:e.target.value}))}/>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Preço Promo</label>
+                  <input className="form-input" type="number" step="0.01" value={form.preco_promo}
+                    onChange={e=>setForm(f=>({...f,preco_promo:e.target.value}))}/>
+                </div>
               </div>
-              <div className="form-group">
-                <label className="form-label">Preço Promo</label>
-                <input className="form-input" type="number" step="0.01" value={form.preco_promo}
-                  onChange={e=>setForm(f=>({...f,preco_promo:e.target.value}))}/>
-              </div>
+            )}
+
+            {/* ── Tamanhos (PRICE-DOMAIN-01) — editor completo do array de precos por tamanho ── */}
+            <div className="form-group">
+              <label className="form-label">
+                Tamanhos
+                <span style={{fontSize:10,color:'var(--gray-400)',fontWeight:400,marginLeft:6}}>
+                  {temTamanhos
+                    ? '(o preço vem dos tamanhos — o campo Preço acima fica oculto)'
+                    : '(opcional — ex.: Monte seu Copo / Batidinhas, preço por tamanho)'}
+                </span>
+              </label>
+
+              {temTamanhos && form.tamanhos.map((t,i)=>(
+                <div key={i} style={{display:'flex',gap:8,marginBottom:8,alignItems:'flex-end',flexWrap:'wrap'}}>
+                  <div style={{flex:'2 1 130px'}}>
+                    <label className="form-label" style={{fontSize:11}}>Nome / volume *</label>
+                    <input className="form-input" placeholder="300 ml" value={t.label||''}
+                      onChange={e=>updTamanho(i,{label:e.target.value})}/>
+                  </div>
+                  <div style={{flex:'1 1 90px'}}>
+                    <label className="form-label" style={{fontSize:11}}>Preço (R$) *</label>
+                    <input className="form-input" type="number" step="0.01" placeholder="0.00"
+                      value={t.preco ?? ''} onChange={e=>updTamanho(i,{preco:e.target.value})}/>
+                  </div>
+                  <div style={{flex:'1 1 90px'}}>
+                    <label className="form-label" style={{fontSize:11}}>Adic. grátis</label>
+                    <input className="form-input" type="number" min="0"
+                      value={t.adicionais_gratis ?? 0} onChange={e=>updTamanho(i,{adicionais_gratis:e.target.value})}/>
+                  </div>
+                  <button type="button" className="btn-danger" title="Remover tamanho"
+                    style={{flexShrink:0}} onClick={()=>delTamanho(i)}>🗑</button>
+                </div>
+              ))}
+
+              <button type="button" className="btn-secondary" style={{marginTop:4}} onClick={addTamanho}>
+                + Adicionar tamanho
+              </button>
+
+              {temTamanhos && (
+                <div style={{fontSize:11,color:'var(--gray-500)',marginTop:6,lineHeight:1.5}}>
+                  A loja mostra o menor preço como “a partir de” na vitrine e cobra o preço do tamanho
+                  escolhido no checkout. Ao salvar, o campo <b>Preço</b> do produto é sincronizado com o menor tamanho.
+                </div>
+              )}
             </div>
 
             <div className="form-group">
