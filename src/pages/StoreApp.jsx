@@ -9,7 +9,7 @@ import { useProducts } from '../hooks/useProducts.js';
 import { useAdicionais } from '../hooks/useAdicionais.js';
 import { useCart } from '../hooks/useCart.js';
 import { Spinner } from '../components/ui/Spinner.jsx';
-import { AuthButton } from '../components/auth/AuthButton.jsx'; // AUTH-01: entrada de login opcional no header
+import { StoreMenu } from '../components/menu/StoreMenu.jsx'; // LOGIN-ARCH-02: menu lateral (drawer) + login
 import { ProductCard } from '../components/ProductCard.jsx';
 import { ProductModal } from '../components/ProductModal/index.jsx';
 import { CartSidebar } from '../components/CartSidebar.jsx';
@@ -114,9 +114,8 @@ export function StoreApp({ onAdmin }) {
           </div>
         </div>
 
-        {/* Direita: entrar (AUTH-01) + carrinho + admin (admin só para logados) */}
+        {/* Direita: carrinho + engrenagem + menu ☰ (LOGIN-ARCH-02) */}
         <div className="header-actions">
-          <AuthButton />
           <button className="header-cart-btn" onClick={()=>setCartOpen(true)}>
             🛒{cart.count>0&&<span> {fmt(cart.total)}</span>}
             {cart.count>0&&<span className="cart-badge">{cart.count}</span>}
@@ -124,6 +123,7 @@ export function StoreApp({ onAdmin }) {
           <button className="header-admin-btn" onClick={onAdmin} title="Painel Admin">
             ⚙️
           </button>
+          <StoreMenu />
         </div>
 
       </header>
