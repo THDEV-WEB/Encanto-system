@@ -8,6 +8,7 @@ import { ContatoScreen } from './ContatoScreen.jsx';
 import { SobreScreen } from './SobreScreen.jsx';
 import { TermosScreen } from './TermosScreen.jsx';
 import { FidelidadeScreen } from './FidelidadeScreen.jsx';
+import { CompletarCadastro } from './CompletarCadastro.jsx';
 
 export function StoreMenu() {
   const [drawer, setDrawer] = useState(false);
@@ -29,6 +30,8 @@ export function StoreMenu() {
       {tela === 'sobre' && <SobreScreen onClose={fechar} />}
       {tela === 'termos' && <TermosScreen onClose={fechar} />}
       {tela === 'fidelidade' && <FidelidadeScreen onClose={fechar} />}
+      {/* 1o acesso: pede telefone (identidade) apos login por Google/e-mail. Auto-oculta. */}
+      <CompletarCadastro />
     </>
   );
 }
