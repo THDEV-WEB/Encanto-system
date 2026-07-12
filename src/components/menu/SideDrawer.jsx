@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../hooks/useAuth.js';
 import { STORE_INFO } from '../../constants/storeInfo.js';
+import { nomeExibicao, inicialExibicao, avatarUrlDe } from './userDisplay.js';
 
 const overlay = (shown) => ({ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 3100, display: 'flex', justifyContent: 'flex-end', opacity: shown ? 1 : 0, transition: 'opacity .2s ease' });
 const drawer = (shown) => ({ width: '86%', maxWidth: 340, height: '100%', background: 'var(--white)', boxShadow: '-8px 0 30px rgba(0,0,0,.2)', display: 'flex', flexDirection: 'column', overflowY: 'auto', transform: shown ? 'translateX(0)' : 'translateX(100%)', transition: 'transform .26s cubic-bezier(.2,.8,.2,1)', paddingBottom: 'env(safe-area-inset-bottom)' });
@@ -15,9 +16,9 @@ export function SideDrawer({ onClose, onNavigate }) {
   const [shown, setShown] = useState(false);
   useEffect(() => { const id = requestAnimationFrame(() => setShown(true)); return () => cancelAnimationFrame(id); }, []);
 
-  const nome = customer?.name || user?.user_metadata?.full_name || user?.user_metadata?.name || (user?.email ? user.email.split('@')[0] : '');
-  const inicial = (nome || 'U').trim().charAt(0).toUpperCase();
-  const avatarUrl = user?.user_metadata?.avatar_url || user?.user_metadata?.picture || '';
+  const nome = nomeExibicao(customer, user);
+  const inicial = inicialExibicao(nome);
+  const avatarUrl = avatarUrlDe(user);
 
   return (
     <div style={overlay(shown)} onClick={e => e.target === e.currentTarget && onClose()}>
