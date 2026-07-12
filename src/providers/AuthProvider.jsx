@@ -15,7 +15,7 @@ export function AuthProvider({ children }) {
 
   const carregarCustomer = useCallback(async (s) => {
     if (!s?.user) { setCustomer(null); setPrecisaTelefone(false); return; }
-    const cust = await AuthService.getMeuCustomer();
+    const cust = await AuthService.getMeuCustomer(s.user.id);
     setCustomer(cust);
     setPrecisaTelefone(!cust?.phone);   // 1o acesso (sem telefone) -> pedir telefone uma vez
   }, []);
@@ -43,7 +43,10 @@ export function AuthProvider({ children }) {
   const completarCadastro = useCallback(async (nome, telefone) => {
     const email = session?.user?.email ?? null;
     const r = await AuthService.linkCustomer(telefone, email, nome);
-    if (!r?.error && r?.data?.ok !== false) await carregarCustomer(session);
+    if (!r?.error && r?.data?.ok !== false) {
+      await AuthService.atualizarNome(nome);   // espelha o nome no metadata (fallback reload-safe)
+      await carregarCustomer(session);
+    }
     return r;
   }, [session, carregarCustomer]);
 

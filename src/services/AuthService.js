@@ -42,11 +42,19 @@ export const AuthService = {
     return dbCliente.auth.signOut();
   },
 
-  /* Meu customer (leitura propria via RLS: auth_user_id = auth.uid()). Usado p/ saber se ja tem telefone. */
-  async getMeuCustomer() {
-    if (!dbCliente) return null;
-    const { data } = await dbCliente.from('customers').select('id,name,phone,email').limit(1).maybeSingle();
+  /* Meu customer — SEMPRE filtrado pelo proprio auth_user_id. Nao depende so da RLS: is_admin() enxerga
+     TODOS os customers, entao um .limit(1) sem filtro traria linha alheia (nome bugado apos F5). (fix 02.2) */
+  async getMeuCustomer(userId) {
+    if (!dbCliente || !userId) return null;
+    const { data } = await dbCliente.from('customers').select('id,name,phone,email').eq('auth_user_id', userId).limit(1).maybeSingle();
     return data ?? null;
+  },
+
+  /* Espelha o nome no metadata do Auth: fallback reload-safe (nomeExibicao usa full_name se o customer
+     vier vazio/lento na restauracao da sessao). Best-effort — nunca bloqueia o cadastro. */
+  async atualizarNome(nome) {
+    if (!dbCliente || !nome?.trim()) return;
+    try { await dbCliente.auth.updateUser({ data: { full_name: nome.trim() } }); } catch { /* best-effort */ }
   },
 
   /* Vinculo HIBRIDO: telefone e a identidade; email/nome sao atributos. Idempotente, nunca duplica. */
