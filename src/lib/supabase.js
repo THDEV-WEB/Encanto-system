@@ -16,7 +16,9 @@ export const LOGO     = ENCANTO_LOGO || '';
 export let db = null;
 try {
   db = createClient(SUPA_URL, SUPA_KEY, {
-    auth: { persistSession: true, autoRefreshToken: true },
+    // detectSessionInUrl:false -> admin usa signInWithPassword (sem redirect); NAO pode capturar/queimar
+    // o ?code= do OAuth do cliente. So o dbCliente conclui o OAuth. (LOGIN-ARCH-02.2)
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
   });
   console.log('[Encanto] Supabase client criado');
 } catch (e) {

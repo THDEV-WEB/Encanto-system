@@ -14,7 +14,8 @@ try {
         storageKey: 'encanto-cliente-auth',   // isolamento total da sessao do admin (db)
         persistSession: true,
         autoRefreshToken: true,
-        detectSessionInUrl: false,
+        detectSessionInUrl: true,   // ESTA instancia inicia o OAuth (Google) -> precisa capturar o ?code=
+        flowType: 'pkce',           // do retorno, trocar por sessao e PERSISTIR. (LOGIN-ARCH-02.2: corrige F5)
       },
     });
     console.log('[Encanto] dbCliente (sessao de cliente) criado');

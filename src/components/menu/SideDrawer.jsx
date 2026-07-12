@@ -10,10 +10,14 @@ const item = { display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20
 const socialBtn = { width: 44, height: 44, borderRadius: '50%', background: 'var(--grape-pale)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, textDecoration: 'none' };
 
 export function SideDrawer({ onClose, onNavigate }) {
-  const { isLogged, user, sair } = useAuth();
+  const { isLogged, user, customer, sair } = useAuth();
   const { social } = STORE_INFO;
   const [shown, setShown] = useState(false);
   useEffect(() => { const id = requestAnimationFrame(() => setShown(true)); return () => cancelAnimationFrame(id); }, []);
+
+  const nome = customer?.name || user?.user_metadata?.full_name || user?.user_metadata?.name || (user?.email ? user.email.split('@')[0] : '');
+  const inicial = (nome || 'U').trim().charAt(0).toUpperCase();
+  const avatarUrl = user?.user_metadata?.avatar_url || user?.user_metadata?.picture || '';
 
   return (
     <div style={overlay(shown)} onClick={e => e.target === e.currentTarget && onClose()}>
@@ -25,10 +29,14 @@ export function SideDrawer({ onClose, onNavigate }) {
 
         {/* Topo — entrar / conta */}
         <button style={{ ...item, background: 'var(--grape-pale)' }} onClick={() => onNavigate('login')}>
-          <span style={{ fontSize: 22 }}>{isLogged ? '👤' : '🔑'}</span>
-          <div>
-            <div style={{ fontWeight: 700 }}>{isLogged ? 'Minha conta' : 'Entre ou cadastre-se'}</div>
-            <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>{isLogged ? (user?.email || 'Conectado') : 'Acesse pedidos e benefícios'}</div>
+          {isLogged
+            ? (avatarUrl
+                ? <img src={avatarUrl} alt="" referrerPolicy="no-referrer" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+                : <span style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--grape)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 18, flexShrink: 0 }}>{inicial}</span>)
+            : <span style={{ fontSize: 22, width: 40, textAlign: 'center', flexShrink: 0 }}>🔑</span>}
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{isLogged ? (nome || 'Minha conta') : 'Entre ou cadastre-se'}</div>
+            <div style={{ fontSize: 12, color: 'var(--gray-500)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{isLogged ? (user?.email || 'Conectado') : 'Acesse pedidos e benefícios'}</div>
           </div>
         </button>
 

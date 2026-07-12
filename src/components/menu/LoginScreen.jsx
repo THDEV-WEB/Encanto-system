@@ -13,12 +13,37 @@ const erroStyle = { color: 'var(--red)', fontSize: 13, marginTop: 6, marginBotto
 const semConta = { width: '100%', marginTop: 8, background: 'none', border: 'none', color: 'var(--gray-500)', cursor: 'pointer', fontSize: 13 };
 
 export function LoginScreen({ onClose }) {
-  const { entrarComGoogle, enviarEmail, confirmarEmail } = useAuth();
+  const { entrarComGoogle, enviarEmail, confirmarEmail, isLogged, user, customer, precisaTelefone, sair } = useAuth();
   const [modo, setModo] = useState('opcoes'); // opcoes | email | codigo
   const [email, setEmail] = useState('');
   const [codigo, setCodigo] = useState('');
   const [erro, setErro] = useState('');
   const [busy, setBusy] = useState(false);
+
+  /* Ja autenticado -> mostra a CONTA (nome/avatar/e-mail), nunca pede login de novo (LOGIN-ARCH-02.2). */
+  if (isLogged) {
+    const nome = customer?.name || user?.user_metadata?.full_name || user?.user_metadata?.name || (user?.email ? user.email.split('@')[0] : 'Você');
+    const inicial = (nome || 'U').trim().charAt(0).toUpperCase();
+    const avatarUrl = user?.user_metadata?.avatar_url || user?.user_metadata?.picture || '';
+    return (
+      <ScreenModal title="Minha conta" onClose={onClose}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 16 }}>
+          {avatarUrl
+            ? <img src={avatarUrl} alt="" referrerPolicy="no-referrer" style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+            : <span style={{ width: 56, height: 56, borderRadius: '50%', background: 'var(--grape)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 24, flexShrink: 0 }}>{inicial}</span>}
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 800, fontSize: 17, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nome}</div>
+            {user?.email && <div style={{ fontSize: 13, color: 'var(--gray-500)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user.email}</div>}
+            {customer?.phone && <div style={{ fontSize: 13, color: 'var(--gray-500)' }}>{customer.phone}</div>}
+          </div>
+        </div>
+        {precisaTelefone && <p style={{ fontSize: 13, color: 'var(--grape)', marginBottom: 12 }}>Complete seu cadastro com telefone para pedidos e benefícios.</p>}
+        <button style={{ ...btn, background: 'var(--white)', border: '1px solid var(--gray-300)', color: 'var(--red)', marginBottom: 0 }} onClick={async () => { await sair(); onClose(); }}>
+          🚪 Sair da conta
+        </button>
+      </ScreenModal>
+    );
+  }
 
   const google = async () => { setErro(''); setBusy(true); const { error } = await entrarComGoogle(); setBusy(false); if (error) setErro(amigavel(error)); /* sucesso -> redirect do OAuth */ };
   const enviar = async () => { setErro(''); if (!/.+@.+\..+/.test(email.trim())) { setErro('Digite um e-mail válido.'); return; } setBusy(true); const { error } = await enviarEmail(email.trim()); setBusy(false); if (error) { setErro(amigavel(error)); return; } setModo('codigo'); };
