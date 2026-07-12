@@ -4,6 +4,10 @@
 **Depende de:** NORM-06.1 (RLS do catálogo), HARDEN-ORDERS-RLS (checkout via `create_order` SECURITY DEFINER).
 **Relacionado:** REQ-01 (telefone válido), PEND-PHONE-SSOT (unificação da normalização de telefone), REF-APP-01 (arquitetura em camadas).
 
+## Atualização LOGIN-ARCH-02 (2026-07-11) — método passa a Google + E-mail
+
+O **método** de autenticação mudou de **Phone OTP → Google OAuth + e-mail (OTP)**; **toda a arquitetura permanece** (dbCliente isolado, AuthProvider/useAuth/Context, RLS, `admins`/`is_admin()`, `auth_user_id`). Mudanças: `AuthService` (google/email, phone removido); UI de auth reescrita dentro de um **menu lateral** (`components/menu/*`: StoreMenu ☰, SideDrawer, LoginScreen com "Continuar com Google/e-mail/sem conta", telas Contato/Sobre/Termos/Fidelidade); header reorganizado (carrinho · engrenagem · menu ☰; botão "Entrar" removido); `constants/storeInfo.js` centraliza contato/institucional; UI de Phone OTP deletada. **Vínculo agora por E-MAIL**: migration `LOGIN-ARCH-02-email-auth.sql` (+rollback) — `customers.email`, `phone` NULLABLE, RPC `link_customer_to_auth_email` (idempotente). Checkout/guest/domínio intocados; App.jsx intocado. **Ativação externa pendente:** aplicar a migration + habilitar os **providers Google e e-mail** no Supabase (o Phone provider deixa de ser necessário).
+
 ## Contexto
 
 A loja precisa de **contas opcionais** para o cliente, sem obstruir a compra. Dois fatos condicionam o desenho:
