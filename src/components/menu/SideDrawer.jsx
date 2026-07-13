@@ -41,6 +41,9 @@ export function SideDrawer({ onClose, onNavigate }) {
           </div>
         </button>
 
+        {isLogged && (
+          <button style={item} onClick={() => onNavigate('pedidos')}><span style={{ fontSize: 18 }}>🧾</span> Meus pedidos</button>
+        )}
         <button style={item} onClick={() => onNavigate('fidelidade')}><span style={{ fontSize: 18 }}>🎁</span> Programa de Fidelidade</button>
         <button style={item} onClick={() => onNavigate('contato')}><span style={{ fontSize: 18 }}>📞</span> Contato</button>
         <button style={item} onClick={() => onNavigate('sobre')}><span style={{ fontSize: 18 }}>🏪</span> Sobre nós</button>
