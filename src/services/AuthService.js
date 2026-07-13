@@ -62,4 +62,14 @@ export const AuthService = {
     if (!dbCliente) return semAuth();
     return dbCliente.rpc('link_customer_to_auth', { p_phone: phone, p_email: email ?? null, p_name: nome ?? null });
   },
+
+  /* REF-CLIENTE-03 (Minha Conta): troca de e-mail pelo fluxo OFICIAL do Supabase Auth. Envia link de
+     confirmacao ao novo e-mail (e ao atual, se "Secure email change" ligado); so efetiva quando o
+     usuario confirma. Nao cria fluxo paralelo. Retorna {data,error} do proprio updateUser. */
+  async atualizarEmail(email) {
+    if (!dbCliente) return semAuth();
+    const e = (email || '').trim().toLowerCase();
+    if (!/.+@.+\..+/.test(e)) return { data: null, error: { message: 'e-mail invalido' } };
+    return dbCliente.auth.updateUser({ email: e });
+  },
 };

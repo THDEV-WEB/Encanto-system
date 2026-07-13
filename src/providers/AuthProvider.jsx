@@ -27,9 +27,16 @@ export function AuthProvider({ children }) {
       setSession(s); setStatus(s ? 'logged' : 'anon');
       await carregarCustomer(s);
     });
-    const off = AuthService.onAuthStateChange(async (_evento, s) => {
+    /* REF-CLIENTE-03 (fix restauracao de perfil pos-login): o callback do onAuthStateChange roda DENTRO
+       do lock de auth do gotrue-js (_notifyAllSubscribers faz `await cb()` dentro do _acquireLock que
+       verifyOtp/OAuth seguram). Se aqui a gente AWAIT-ar uma query .from() (carregarCustomer -> getMeuCustomer),
+       o request re-entra no lock p/ pegar o token (getSession) e fica enfileirado no MESMO lock -> DEADLOCK:
+       o customer nunca carrega ate um F5 (que carrega via getSession() de montagem, FORA do lock). Solucao
+       oficial Supabase: NAO await Supabase dentro do callback; sincroniza o estado leve (session/status) na
+       hora e DEFERE a carga do customer p/ um task novo, fora do lock -> perfil aparece na hora, sem F5. */
+    const off = AuthService.onAuthStateChange((_evento, s) => {
       setSession(s); setStatus(s ? 'logged' : 'anon');
-      await carregarCustomer(s);
+      setTimeout(() => { if (vivo) carregarCustomer(s); }, 0);
     });
     return () => { vivo = false; off && off(); };
   }, [carregarCustomer]);
@@ -50,6 +57,22 @@ export function AuthProvider({ children }) {
     return r;
   }, [session, carregarCustomer]);
 
+  /* REF-CLIENTE-03 (Minha Conta): edicao de perfil do cliente JA cadastrado. Reusa o vinculo hibrido
+     por telefone (link_customer_to_auth, SECURITY DEFINER, escopo auth.uid()) -> ATUALIZA o MESMO
+     customer (mesmo id/auth_user_id) sem criar novo nem quebrar pedidos/historico. Roda em handler de
+     acao do usuario (fora do lock de auth), entao pode await-ar a recarga do customer sem risco. */
+  const atualizarPerfil = useCallback(async (nome, telefone) => {
+    const email = session?.user?.email ?? null;
+    const r = await AuthService.linkCustomer(telefone, email, nome);
+    if (!r?.error && r?.data?.ok !== false) {
+      await AuthService.atualizarNome(nome);   // espelha o nome no metadata (fallback reload-safe)
+      await carregarCustomer(session);         // sincroniza a UI na hora
+    }
+    return r;
+  }, [session, carregarCustomer]);
+
+  const atualizarEmail = useCallback((email) => AuthService.atualizarEmail(email), []);
+
   const value = useMemo(() => ({
     session,
     user: session?.user ?? null,
@@ -58,8 +81,8 @@ export function AuthProvider({ children }) {
     disponivel: AuthService.disponivel(),
     customer,
     precisaTelefone,
-    entrarComGoogle, enviarEmail, confirmarEmail, completarCadastro, sair,
-  }), [session, status, customer, precisaTelefone, entrarComGoogle, enviarEmail, confirmarEmail, completarCadastro, sair]);
+    entrarComGoogle, enviarEmail, confirmarEmail, completarCadastro, atualizarPerfil, atualizarEmail, sair,
+  }), [session, status, customer, precisaTelefone, entrarComGoogle, enviarEmail, confirmarEmail, completarCadastro, atualizarPerfil, atualizarEmail, sair]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

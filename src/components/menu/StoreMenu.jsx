@@ -10,10 +10,11 @@ import { TermosScreen } from './TermosScreen.jsx';
 import { FidelidadeScreen } from './FidelidadeScreen.jsx';
 import { CompletarCadastro } from './CompletarCadastro.jsx';
 import { MeusPedidosScreen } from '../pedidos/MeusPedidosScreen.jsx';
+import { MinhaContaScreen } from '../conta/MinhaContaScreen.jsx';
 
 export function StoreMenu({ onRecomprar }) {
   const [drawer, setDrawer] = useState(false);
-  const [tela, setTela] = useState(null); // login | pedidos | contato | sobre | termos | fidelidade
+  const [tela, setTela] = useState(null); // login | pedidos | conta | contato | sobre | termos | fidelidade
   const navegar = (t) => { setDrawer(false); setTela(t); };
   const fechar = () => setTela(null);
 
@@ -28,6 +29,7 @@ export function StoreMenu({ onRecomprar }) {
       {drawer && <SideDrawer onClose={() => setDrawer(false)} onNavigate={navegar} />}
       {tela === 'login' && <LoginScreen onClose={fechar} />}
       {tela === 'pedidos' && <MeusPedidosScreen onClose={fechar} onRecomprar={onRecomprar} />}
+      {tela === 'conta' && <MinhaContaScreen onClose={fechar} />}
       {tela === 'contato' && <ContatoScreen onClose={fechar} />}
       {tela === 'sobre' && <SobreScreen onClose={fechar} />}
       {tela === 'termos' && <TermosScreen onClose={fechar} />}
