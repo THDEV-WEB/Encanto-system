@@ -1,19 +1,20 @@
-/* hooks/useBusinessHours.js — REF-BUSINESS-HOURS-01/02.
-   Camada REATIVA sobre o engine puro (services/businessHours) e PONTO UNICO de consumo do estado da loja:
-   Home, banner, checkout e painel Admin passam por aqui e recebem EXATAMENTE o mesmo resultado final.
+/* hooks/useBusinessHours.js — REF-BUSINESS-HOURS-01/02/03.
+   Camada REATIVA sobre o engine puro e PONTO UNICO de consumo do estado da loja: Home, banner, checkout e
+   Admin passam por aqui e recebem EXATAMENTE o mesmo resultado final.
 
-   A decisao (cronograma + override AUTO/OPEN/CLOSED) e feita em resolverOverride — FONTE UNICA; este hook
-   nao repete regra alguma, so orquestra reatividade: reavalia na virada de periodo/dia (tick 30s), ao
-   focar a aba, e quando o Admin troca o modo (MODE_EVENT na mesma aba / evento 'storage' entre abas). */
+   HB-03: a fonte OFICIAL do modo (AUTO/OPEN/CLOSED) e o Supabase. O hook pinta o estado na hora a partir do
+   CACHE local (lerModoCache — sincrono, sem flash) e, em paralelo, PUXA o modo oficial do Supabase
+   (sincronizarModo) no mount, a cada tick (30s), ao focar a aba e via eventos. Assim varios navegadores/
+   dispositivos convergem para o mesmo estado global. A decisao (OPEN>CLOSED>AUTO) segue em resolverOverride. */
 import { useEffect, useState, useCallback } from 'react';
-import { getStoreStatus, resolverOverride, lerModo, MODE_EVENT } from '../services/businessHours/index.js';
+import { getStoreStatus, resolverOverride, lerModoCache, sincronizarModo, MODE_EVENT } from '../services/businessHours/index.js';
 
 function calcular() {
-  return resolverOverride(getStoreStatus(), lerModo());
+  return resolverOverride(getStoreStatus(), lerModoCache());
 }
 
-/* Compara os campos que afetam a UI — se nada mudou, o tick mantem a MESMA referencia p/ o React
-   descartar o re-render (inclui modo/forcado p/ reagir a troca de override do Admin na hora). */
+/* Compara os campos que afetam a UI — se nada mudou, mantem a MESMA referencia p/ o React descartar o
+   re-render (inclui modo/forcado p/ reagir a troca de override). */
 function mesmoStatus(a, b) {
   return !!a && !!b
     && a.aberto === b.aberto
@@ -29,20 +30,24 @@ export function useBusinessHours() {
   const calc = useCallback(calcular, []);
   const [estado, setEstado] = useState(calc);
   useEffect(() => {
-    const tick = () => setEstado((prev) => { const next = calc(); return mesmoStatus(prev, next) ? prev : next; });
-    tick(); // sincroniza no mount (cobre restauracao de sessao / troca de aba)
-    const id = setInterval(tick, 30000); // vira periodo/dia sem reload
-    const onVisivel = () => tick();
+    let vivo = true;
+    const recompute = () => setEstado((prev) => { const next = calc(); return mesmoStatus(prev, next) ? prev : next; });
+    const pull = () => { sincronizarModo().finally(() => { if (vivo) recompute(); }); }; // busca o modo oficial no Supabase
+    recompute(); // pinta do cache local imediatamente (sem flash)
+    pull();      // reconcilia com a fonte oficial (Supabase)
+    const id = setInterval(() => { recompute(); pull(); }, 30000); // vira periodo/dia + re-sincroniza o modo
+    const onVisivel = () => pull();
     window.addEventListener('focus', onVisivel);
     document.addEventListener('visibilitychange', onVisivel);
-    window.addEventListener(MODE_EVENT, tick);   // Admin trocou o modo na MESMA aba
-    window.addEventListener('storage', tick);    // ... ou em outra aba
+    window.addEventListener(MODE_EVENT, recompute); // cache do modo mudou nesta aba (ex.: Admin salvou)
+    window.addEventListener('storage', recompute);  // ... ou em outra aba do mesmo navegador
     return () => {
+      vivo = false;
       clearInterval(id);
       window.removeEventListener('focus', onVisivel);
       document.removeEventListener('visibilitychange', onVisivel);
-      window.removeEventListener(MODE_EVENT, tick);
-      window.removeEventListener('storage', tick);
+      window.removeEventListener(MODE_EVENT, recompute);
+      window.removeEventListener('storage', recompute);
     };
   }, [calc]);
   return estado;

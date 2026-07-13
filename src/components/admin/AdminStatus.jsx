@@ -3,6 +3,7 @@
    que a loja (useBusinessHours -> resolverOverride, fonte unica). Aqui o Admin apenas escolhe o MODO
    (AUTO/OPEN/CLOSED) via definirModo — sobrescreve TEMPORARIAMENTE o resultado; o cronograma fica intacto.
    Prioridade da decisao (OPEN>CLOSED>AUTO) vive so no servico; este componente nunca a repete. */
+import { useState } from 'react';
 import { useBusinessHours } from '../../hooks/useBusinessHours.js';
 import { definirModo, MODOS } from '../../services/businessHours/index.js';
 
@@ -14,6 +15,19 @@ const OPCOES = [
 
 export function AdminStatus() {
   const h = useBusinessHours();
+  const [salvando, setSalvando] = useState(null);   // modo em gravacao (ou null)
+  const [erro, setErro] = useState('');
+
+  /* Grava o modo na FONTE OFICIAL (Supabase, via definirModo -> set_store_mode). Otimista: a UI ja
+     reflete pelo evento; aqui so tratamos o estado de salvando/erro do servidor. */
+  const escolher = async (m) => {
+    if (salvando || m === h.modo) return;
+    setSalvando(m); setErro('');
+    const r = await definirModo(m);
+    setSalvando(null);
+    if (!r.ok) setErro(r.error === 'offline' ? 'Sem conexão — tente novamente.' : 'Não foi possível salvar. Verifique seu acesso de administrador.');
+  };
+
   const aberta = h.aberto;
   const forcada = h.forcado;
   const cor = aberta ? '#16A34A' : '#DC2626';
@@ -61,12 +75,15 @@ export function AdminStatus() {
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             {OPCOES.map((o) => {
               const ativo = h.modo === o.modo;
+              const gravando = salvando === o.modo;
               return (
                 <button
                   key={o.modo}
-                  onClick={() => definirModo(o.modo)}
+                  onClick={() => escolher(o.modo)}
+                  disabled={!!salvando}
                   style={{
-                    flex: 1, minWidth: 150, padding: '16px 18px', borderRadius: 14, cursor: 'pointer',
+                    flex: 1, minWidth: 150, padding: '16px 18px', borderRadius: 14,
+                    cursor: salvando ? 'default' : 'pointer', opacity: salvando && !gravando ? 0.6 : 1,
                     border: ativo ? `2.5px solid ${o.cor}` : '2px solid var(--gray-200)',
                     background: ativo ? o.bg : 'var(--white)',
                     display: 'flex', alignItems: 'flex-start', gap: 10, textAlign: 'left',
@@ -79,12 +96,13 @@ export function AdminStatus() {
                   }} />
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 14, color: ativo ? o.cor : 'var(--gray-700)' }}>{o.titulo}</div>
-                    <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 2 }}>{o.desc}</div>
+                    <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 2 }}>{gravando ? 'Salvando…' : o.desc}</div>
                   </div>
                 </button>
               );
             })}
           </div>
+          {erro && <p style={{ fontSize: 13, color: '#DC2626', marginTop: 12, fontWeight: 600 }}>{erro}</p>}
 
           <p style={{ fontSize: 12, color: 'var(--gray-400)', marginTop: 16, lineHeight: 1.5 }}>
             {h.modo === MODOS.AUTO

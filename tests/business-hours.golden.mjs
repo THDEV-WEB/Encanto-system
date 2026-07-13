@@ -8,7 +8,9 @@
      (B) FUSO da loja: getStoreStatus(date)/partesLocais(date) com instantes UTC fixos, provando que o
          status e calculado no horario de America/Sao_Paulo, nao no fuso do dispositivo. */
 import assert from 'node:assert/strict';
-import { avaliar, getStoreStatus, partesLocais, periodosDoDia, horarioSemanal, resolverOverride, MODOS } from '../src/services/businessHours/index.js';
+/* Importa o ENGINE PURO direto (nao o barrel index.js): o barrel re-exporta override.js, que importa
+   lib/supabase (import.meta.env), quebrando em Node. O golden so exercita a logica pura. */
+import { avaliar, getStoreStatus, partesLocais, periodosDoDia, horarioSemanal, resolverOverride, MODOS } from '../src/services/businessHours/businessHours.js';
 import { SEMANA } from '../src/services/businessHours/schedule.js';
 
 let fail = 0;

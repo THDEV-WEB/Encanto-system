@@ -41,6 +41,14 @@ check('(3) AdminStatus consome useBusinessHours e delega o modo a definirModo', 
   assert.ok(!/STORE_STATUS/.test(code), 'AdminStatus NAO deve ler STORE_STATUS direto (sem logica propria)');
 });
 
+/* (4) HB-03: a FONTE OFICIAL do override e o Supabase (RPCs get_store_mode/set_store_mode), nao o
+   navegador. override.js deve chamar os dois RPCs — trava a regressao "volta a ser so localStorage". */
+check('(4) override.js persiste no Supabase (get_store_mode + set_store_mode)', () => {
+  const code = strip(read('services/businessHours/override.js'));
+  assert.ok(/get_store_mode/.test(code), 'override.js deve LER o modo oficial via RPC get_store_mode');
+  assert.ok(/set_store_mode/.test(code), 'override.js deve GRAVAR o modo oficial via RPC set_store_mode');
+});
+
 console.log(fail === 0
   ? '\nOK store-status.guard — fonte unica preservada (resolverOverride unico, sem getHours/getDay, Admin consome o hook)'
   : `\nFALHA store-status.guard — ${fail} invariante(s)`);
