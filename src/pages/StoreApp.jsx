@@ -16,7 +16,7 @@ import { ProductCard } from '../components/ProductCard.jsx';
 import { ProductModal } from '../components/ProductModal/index.jsx';
 import { CartSidebar } from '../components/CartSidebar.jsx';
 import { SearchBar } from '../components/SearchBar.jsx';
-import { AddressModal } from '../components/AddressModal.jsx';
+import { AddressModal, useAddress } from '../address/index.js'; // REF-ADDRESS-01: dominio proprio de endereco
 import { LazySection } from '../components/ui/LazySection.jsx';
 import { SuccessPage } from '../components/checkout/SuccessPage.jsx';
 import { CheckoutPage } from '../components/checkout/CheckoutPage.jsx';
@@ -32,8 +32,9 @@ export function StoreApp({ onAdmin }) {
   const [waMsg,         setWaMsg]         = useState('');
   /* Estado visual do header — não afeta lógica */
   const [deliveryMode,   setDeliveryMode]   = useState('entrega');
-  const [deliveryAddress,setDeliveryAddress] = useState(()=>
-    localStorage.getItem(STORAGE_KEYS.DELIVERY_ADDRESS)||'');
+  /* REF-ADDRESS-01: endereco de entrega + persistencia pertencem ao dominio Address (useAddress).
+     O StoreApp so CONSOME (nao le/escreve localStorage de endereco nem monta strings). */
+  const { endereco: deliveryAddress, selecionar: selecionarEndereco } = useAddress();
   const [showAddressModal,setShowAddressModal] = useState(false);
   const [showLoyalty,    setShowLoyalty]     = useState(false);
   /* ── Programa de Fidelidade (REF-LOYALTY-01) ── fonte unica: Supabase (get_my_loyalty), por CLIENTE.
@@ -629,11 +630,7 @@ export function StoreApp({ onAdmin }) {
         <AddressModal
           onClose={()=>setShowAddressModal(false)}
           onSelect={(addr, meta)=>{
-            setDeliveryAddress(addr);
-            localStorage.setItem(STORAGE_KEYS.DELIVERY_ADDRESS, addr);
-            if (meta && meta.lat) {
-              localStorage.setItem(STORAGE_KEYS.DELIVERY_META, JSON.stringify(meta));
-            }
+            selecionarEndereco(addr, meta);   // dominio Address: grava endereco (+meta com lat)
             setShowAddressModal(false);
           }}
         />

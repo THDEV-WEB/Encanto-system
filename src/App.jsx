@@ -91,7 +91,7 @@ import { AuthProvider } from './providers/AuthProvider.jsx'; // AUTH-01: sessao 
 /* ── LazySection: renderiza filhos apenas quando seção entra na tela ── */
 /* LazySection -> src/components/ui/LazySection.jsx (REF-APP-01 Onda 4) */
 
-/* AddressModal -> src/components/AddressModal.jsx (REF-APP-01 Onda 8.2) */
+/* AddressModal -> src/address/ (REF-ADDRESS-01: dominio proprio; ex-src/components/AddressModal.jsx da Onda 8.2) */
 
 /* SearchBar -> src/components/SearchBar.jsx (REF-APP-01 Onda 8.1) */
 
