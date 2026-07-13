@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { fmt, fmtDate } from '../../utils/format.js';
 import { statusInfo } from './pedidoStatus.js';
 import { PedidoTimeline } from './PedidoTimeline.jsx';
+import { PedidoItens } from './PedidoItens.jsx';
 
 const numeroPedido = (id) => '#' + String(id || '').replace(/-/g, '').slice(0, 8).toUpperCase();
 const resumoItens = (items) => {
@@ -41,7 +42,12 @@ export function PedidoCard({ pedido }) {
         </div>
       </button>
 
-      {aberto && <PedidoTimeline orderId={pedido.id} status={pedido.status} />}
+      {aberto && (
+        <>
+          <PedidoTimeline orderId={pedido.id} status={pedido.status} />
+          <PedidoItens itens={itens} />
+        </>
+      )}
     </div>
   );
 }
