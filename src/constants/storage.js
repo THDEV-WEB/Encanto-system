@@ -11,7 +11,8 @@ export const STORAGE_KEYS = {
   LOYALTY_DISCOUNT:         'encanto_loyalty_discount',
   LOYALTY_REWARD_AVAILABLE: 'encanto_loyalty_reward_available',
   LOYALTY_REWARD_USED:      'encanto_loyalty_reward_used',
-  STORE_STATUS:             'encanto_store_status',
+  STORE_STATUS:             'encanto_store_status',   // legado (pre HB-02): 'open'/'closed' — lido so p/ compat
+  STORE_MODE:               'encanto_store_mode',      // HB-02: override 3-estados 'AUTO'|'OPEN'|'CLOSED'
   DELIVERY_ADDRESS:         'encanto_delivery_address',
   DELIVERY_META:            'encanto_delivery_meta',
   LOGO_CLICKS:              'encanto_logo_clicks',

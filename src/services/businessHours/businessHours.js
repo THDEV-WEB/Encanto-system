@@ -107,3 +107,40 @@ export function horarioSemanal() {
     periodos: periodos.map((p) => ({ inicio: hhmm(p.ini), fim: hhmm(p.fim) })),
   }));
 }
+
+/* ── OVERRIDE ADMINISTRATIVO (REF-BUSINESS-HOURS-02) ────────────────────────────────────────────
+   Modos: AUTO segue o cronograma; OPEN/CLOSED sobrescrevem TEMPORARIAMENTE o resultado (o cronograma
+   em SEMANA permanece intacto). */
+export const MODOS = { AUTO: 'AUTO', OPEN: 'OPEN', CLOSED: 'CLOSED' };
+
+/* DECISAO UNICA (pura) do estado final da loja = cronograma + override do Admin. Prioridade EXATA:
+     1) OPEN   -> aberta;
+     2) CLOSED -> fechada;
+     3) AUTO   -> usa integralmente o resultado do cronograma (status), sem alterar NENHUMA mensagem.
+   Este e o UNICO lugar do sistema que combina cronograma+override — Home, banner, checkout e Admin
+   consomem este resultado (via useBusinessHours) e nunca repetem a regra. */
+export function resolverOverride(status, modo = MODOS.AUTO) {
+  /* Em modo FORCADO, o estado nao e mais governado pelo cronograma — entao zeramos TODOS os campos
+     derivados do cronograma (fechaAs/periodoAtual/proximaAbertura/haOutroPeriodoHoje/expedienteEncerrado)
+     p/ o objeto nunca carregar um "proximo horario"/"fecha as" que contradiga o override (o mesmo tipo de
+     armadilha que causou o bug do banner no HB-01). Resultado sempre internamente coerente. */
+  if (modo === MODOS.OPEN) {
+    return {
+      ...status, aberto: true, modo: MODOS.OPEN, forcado: true, origem: 'forcado-admin',
+      rotuloCurto: 'Aberto agora', detalhe: null, mensagemFechado: null,
+      fechaAs: null, periodoAtual: null, proximaAbertura: null,
+      haOutroPeriodoHoje: false, expedienteEncerrado: false,
+    };
+  }
+  if (modo === MODOS.CLOSED) {
+    return {
+      ...status, aberto: false, modo: MODOS.CLOSED, forcado: true, origem: 'forcado-admin',
+      rotuloCurto: 'Fechado', detalhe: 'Fechado no momento',
+      mensagemFechado: 'Estamos fechados no momento.',   // fechamento manual: sem "proximo horario" (o Admin reabre quando quiser)
+      fechaAs: null, periodoAtual: null, proximaAbertura: null,
+      haOutroPeriodoHoje: false, expedienteEncerrado: false,
+    };
+  }
+  // AUTO — cronograma intacto (mensagens aprovadas preservadas byte-a-byte); so anota a origem.
+  return { ...status, modo: MODOS.AUTO, forcado: false, origem: 'automatico' };
+}

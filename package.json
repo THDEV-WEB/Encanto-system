@@ -18,6 +18,7 @@
     "test:recompra": "node tests/recompra.smoke.mjs",
     "test:auth-lock": "node tests/auth-lock.guard.mjs",
     "test:hours": "node tests/business-hours.golden.mjs",
+    "test:store-status": "node tests/store-status.guard.mjs",
     "verify:norm05": "node scripts/norm05-verify.mjs",
     "guard:slug": "node scripts/norm06-f1a-slug-guard.mjs",
     "test:f1b": "node scripts/norm06-f1b-invariants-test.mjs",

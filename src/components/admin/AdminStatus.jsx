@@ -1,96 +1,98 @@
-import { useState } from 'react';
-import { STORAGE_KEYS } from '../../constants/storage.js';
+/* components/admin/AdminStatus.jsx — REF-BUSINESS-HOURS-02.
+   Painel de status da loja. NAO calcula aberto/fechado por conta propria: consome o MESMO estado final
+   que a loja (useBusinessHours -> resolverOverride, fonte unica). Aqui o Admin apenas escolhe o MODO
+   (AUTO/OPEN/CLOSED) via definirModo — sobrescreve TEMPORARIAMENTE o resultado; o cronograma fica intacto.
+   Prioridade da decisao (OPEN>CLOSED>AUTO) vive so no servico; este componente nunca a repete. */
+import { useBusinessHours } from '../../hooks/useBusinessHours.js';
+import { definirModo, MODOS } from '../../services/businessHours/index.js';
 
-/* ── Admin: Status do Estabelecimento ─────────────────────── */
+const OPCOES = [
+  { modo: MODOS.AUTO,   titulo: 'Automático',    desc: 'Segue o horário oficial da loja',        cor: '#6B21A8', bg: '#F5F3FF', bd: '#DDD6FE' },
+  { modo: MODOS.OPEN,   titulo: 'Forçar Aberta', desc: 'Aberta mesmo fora do horário',           cor: '#16A34A', bg: '#F0FDF4', bd: '#BBF7D0' },
+  { modo: MODOS.CLOSED, titulo: 'Forçar Fechada',desc: 'Fechada mesmo dentro do horário',        cor: '#DC2626', bg: '#FEF2F2', bd: '#FECACA' },
+];
+
 export function AdminStatus() {
-  const [status, setStatus] = useState(()=>{
-    return localStorage.getItem(STORAGE_KEYS.STORE_STATUS) || 'open';
-  });
-  const toggle = (val) => {
-    setStatus(val);
-    localStorage.setItem(STORAGE_KEYS.STORE_STATUS, val);
-  };
+  const h = useBusinessHours();
+  const aberta = h.aberto;
+  const forcada = h.forcado;
+  const cor = aberta ? '#16A34A' : '#DC2626';
+  const bgStatus = aberta ? '#F0FDF4' : '#FEF2F2';
+  const bdStatus = aberta ? '#BBF7D0' : '#FECACA';
+  const origem = forcada ? 'Forçada pelo administrador' : 'Automático';
+
   return (
     <div>
-      <div className="admin-card" style={{marginBottom:20}}>
+      <div className="admin-card" style={{ marginBottom: 20 }}>
         <div className="admin-card-header">
-          <h3>🏪 Status do Estabelecimento</h3>
+          <h3>🏪 Status da Loja</h3>
         </div>
-        <div style={{padding:'24px 20px'}}>
-          <p style={{fontSize:14,color:'var(--gray-500)',marginBottom:20}}>
-            Define se a loja aparece como aberta ou fechada para os clientes no site.
-          </p>
-          <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
-            {/* Botão Aberto */}
-            <button
-              onClick={()=>toggle('open')}
-              style={{
-                flex:1,minWidth:140,padding:'18px 24px',borderRadius:14,cursor:'pointer',
-                border: status==='open' ? '2.5px solid #16A34A' : '2px solid var(--gray-200)',
-                background: status==='open' ? '#F0FDF4' : 'var(--white)',
-                display:'flex',alignItems:'center',gap:12,transition:'all .2s',
-                fontFamily:'var(--font-body)',
-              }}>
-              <span style={{
-                width:14,height:14,borderRadius:'50%',flexShrink:0,
-                background: status==='open' ? '#22C55E' : '#D1D5DB',
-                boxShadow: status==='open' ? '0 0 0 3px rgba(34,197,94,.2)' : 'none',
-                transition:'all .2s',
-              }}/>
-              <div style={{textAlign:'left'}}>
-                <div style={{fontWeight:700,fontSize:15,color: status==='open'?'#15803D':'var(--gray-700)'}}>Aberto</div>
-                <div style={{fontSize:12,color:'var(--gray-500)',marginTop:2}}>Aceita pedidos normalmente</div>
-              </div>
-              {status==='open' && <span style={{marginLeft:'auto',color:'#16A34A',fontSize:18}}>✓</span>}
-            </button>
+        <div style={{ padding: '24px 20px' }}>
 
-            {/* Botão Fechado */}
-            <button
-              onClick={()=>toggle('closed')}
-              style={{
-                flex:1,minWidth:140,padding:'18px 24px',borderRadius:14,cursor:'pointer',
-                border: status==='closed' ? '2.5px solid #DC2626' : '2px solid var(--gray-200)',
-                background: status==='closed' ? '#FEF2F2' : 'var(--white)',
-                display:'flex',alignItems:'center',gap:12,transition:'all .2s',
-                fontFamily:'var(--font-body)',
-              }}>
-              <span style={{
-                width:14,height:14,borderRadius:'50%',flexShrink:0,
-                background: status==='closed' ? '#EF4444' : '#D1D5DB',
-                boxShadow: status==='closed' ? '0 0 0 3px rgba(239,68,68,.2)' : 'none',
-                transition:'all .2s',
-              }}/>
-              <div style={{textAlign:'left'}}>
-                <div style={{fontWeight:700,fontSize:15,color: status==='closed'?'#DC2626':'var(--gray-700)'}}>Fechado</div>
-                <div style={{fontSize:12,color:'var(--gray-500)',marginTop:2}}>Exibe "Fechado no momento"</div>
-              </div>
-              {status==='closed' && <span style={{marginLeft:'auto',color:'#DC2626',fontSize:18}}>✓</span>}
-            </button>
-          </div>
-
-          {/* Preview */}
+          {/* ── STATUS ATUAL (resolvido — mesma fonte da loja) ── */}
           <div style={{
-            marginTop:20,padding:'12px 16px',borderRadius:10,
-            background: status==='open' ? '#F0FDF4' : '#FEF2F2',
-            border: `1px solid ${status==='open'?'#BBF7D0':'#FECACA'}`,
-            display:'flex',alignItems:'center',gap:8,fontSize:13,
-            color: status==='open'?'#15803D':'#DC2626',fontWeight:600,
-            flexWrap:'wrap',
+            display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+            padding: '16px 18px', borderRadius: 14, marginBottom: 22,
+            background: bgStatus, border: `1.5px solid ${bdStatus}`,
           }}>
-            <span style={{width:8,height:8,borderRadius:'50%',
-              background: status==='open'?'#22C55E':'#EF4444',flexShrink:0}}/>
-            {status==='open' ? '● Aberto agora' : '● Fechado no momento'}
-            {status==='closed' && (
-              <span style={{
-                marginLeft:8,padding:'3px 10px',borderRadius:8,
-                background:'rgba(220,38,38,.1)',border:'1px solid rgba(220,38,38,.2)',
-                fontSize:11,fontWeight:600,color:'#DC2626',
-              }}>📅 Botão "Agendar pedido" visível no site</span>
-            )}
-            <span style={{marginLeft:'auto',fontSize:11,fontWeight:400,color:'var(--gray-500)'}}>
-              Visível imediatamente
-            </span>
+            <span style={{
+              width: 14, height: 14, borderRadius: '50%', flexShrink: 0, background: cor,
+              boxShadow: `0 0 0 3px ${cor}33`,
+            }} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.5px', textTransform: 'uppercase', color: 'var(--gray-500)' }}>Status atual</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: cor, lineHeight: 1.2 }}>
+                {aberta ? '🟢 Aberta' : '🔴 Fechada'}{' '}
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--gray-500)' }}>({origem})</span>
+              </div>
+              {/* Detalhe do cronograma (mesmas strings da loja): "Aberto até 15:00", "Abre amanhã às 10:00"... */}
+              {h.detalhe && (
+                <div style={{ fontSize: 12.5, color: 'var(--gray-500)', marginTop: 3 }}>{h.detalhe}</div>
+              )}
+            </div>
           </div>
+
+          <p style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 14 }}>
+            Escolha o modo de operação. Em <strong>Automático</strong>, a loja abre e fecha sozinha pelo horário
+            oficial. Os modos <strong>Forçar</strong> sobrescrevem temporariamente esse resultado sem alterar o horário.
+          </p>
+
+          {/* ── MODOS (AUTO / OPEN / CLOSED) ── */}
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            {OPCOES.map((o) => {
+              const ativo = h.modo === o.modo;
+              return (
+                <button
+                  key={o.modo}
+                  onClick={() => definirModo(o.modo)}
+                  style={{
+                    flex: 1, minWidth: 150, padding: '16px 18px', borderRadius: 14, cursor: 'pointer',
+                    border: ativo ? `2.5px solid ${o.cor}` : '2px solid var(--gray-200)',
+                    background: ativo ? o.bg : 'var(--white)',
+                    display: 'flex', alignItems: 'flex-start', gap: 10, textAlign: 'left',
+                    transition: 'all .2s', fontFamily: 'var(--font-body)',
+                  }}>
+                  <span style={{
+                    width: 18, height: 18, borderRadius: '50%', flexShrink: 0, marginTop: 1,
+                    border: ativo ? `5px solid ${o.cor}` : '2px solid var(--gray-300)',
+                    background: 'var(--white)', boxSizing: 'border-box',
+                  }} />
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: ativo ? o.cor : 'var(--gray-700)' }}>{o.titulo}</div>
+                    <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 2 }}>{o.desc}</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          <p style={{ fontSize: 12, color: 'var(--gray-400)', marginTop: 16, lineHeight: 1.5 }}>
+            {h.modo === MODOS.AUTO
+              ? 'Modo automático ativo — o status acima segue o horário de funcionamento.'
+              : 'Override manual ativo — clique em “Automático” para voltar ao horário oficial.'}
+            {' '}A loja, o cardápio e o checkout usam exatamente este mesmo status.
+          </p>
+
         </div>
       </div>
     </div>

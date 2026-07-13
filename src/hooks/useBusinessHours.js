@@ -1,42 +1,24 @@
-/* hooks/useBusinessHours.js — REF-BUSINESS-HOURS-01.
-   Camada REATIVA sobre o engine puro (services/businessHours): re-avalia o status ao virar de periodo/dia
-   (tick) e ao voltar o foco a aba, sem exigir reload. Aqui — e SO aqui — mora a combinacao com o override
-   manual do Admin (localStorage STORE_STATUS), mantendo o engine 100% puro/testavel.
+/* hooks/useBusinessHours.js — REF-BUSINESS-HOURS-01/02.
+   Camada REATIVA sobre o engine puro (services/businessHours) e PONTO UNICO de consumo do estado da loja:
+   Home, banner, checkout e painel Admin passam por aqui e recebem EXATAMENTE o mesmo resultado final.
 
-   Regra do override (o HORARIO e a fonte de verdade sobre quando abre/fecha):
-     - 'closed'  -> forca fechado (fechamento emergencial pelo Admin), mesmo dentro do horario.
-     - 'open'/ausente -> segue o horario oficial (nao "forca aberto" fora do horario — isso contrariaria
-        a fonte de verdade; abrir fora do padrao e papel das EXCECOES, ja estruturadas no schedule). */
+   A decisao (cronograma + override AUTO/OPEN/CLOSED) e feita em resolverOverride — FONTE UNICA; este hook
+   nao repete regra alguma, so orquestra reatividade: reavalia na virada de periodo/dia (tick 30s), ao
+   focar a aba, e quando o Admin troca o modo (MODE_EVENT na mesma aba / evento 'storage' entre abas). */
 import { useEffect, useState, useCallback } from 'react';
-import { getStoreStatus } from '../services/businessHours/index.js';
-import { STORAGE_KEYS } from '../constants/storage.js';
-
-function overrideManual() {
-  try { return localStorage.getItem(STORAGE_KEYS.STORE_STATUS); } catch { return null; }
-}
+import { getStoreStatus, resolverOverride, lerModo, MODE_EVENT } from '../services/businessHours/index.js';
 
 function calcular() {
-  const status = getStoreStatus();
-  const forcadoFechado = overrideManual() === 'closed';
-  if (!forcadoFechado) return { ...status, forcadoFechado: false };
-  /* Override 'closed' dentro do horario: apresenta estado fechado coerente (o engine tinha textos de
-     "aberto"); fora do horario o status ja vem fechado com o proximo horario correto. */
-  if (status.aberto) {
-    return {
-      ...status, aberto: false, forcadoFechado: true, fechaAs: null, periodoAtual: null,
-      rotuloCurto: 'Fechado', detalhe: 'Fechado no momento',
-      mensagemFechado: 'Estamos fechados no momento. Tente novamente em instantes.',
-    };
-  }
-  return { ...status, forcadoFechado: true };
+  return resolverOverride(getStoreStatus(), lerModo());
 }
 
 /* Compara os campos que afetam a UI — se nada mudou, o tick mantem a MESMA referencia p/ o React
-   descartar o re-render (senao cada tick/foco recriaria o objeto e re-renderizaria a toa). */
+   descartar o re-render (inclui modo/forcado p/ reagir a troca de override do Admin na hora). */
 function mesmoStatus(a, b) {
   return !!a && !!b
     && a.aberto === b.aberto
-    && a.forcadoFechado === b.forcadoFechado
+    && a.modo === b.modo
+    && a.forcado === b.forcado
     && a.rotuloCurto === b.rotuloCurto
     && a.detalhe === b.detalhe
     && a.mensagemFechado === b.mensagemFechado
@@ -53,10 +35,14 @@ export function useBusinessHours() {
     const onVisivel = () => tick();
     window.addEventListener('focus', onVisivel);
     document.addEventListener('visibilitychange', onVisivel);
+    window.addEventListener(MODE_EVENT, tick);   // Admin trocou o modo na MESMA aba
+    window.addEventListener('storage', tick);    // ... ou em outra aba
     return () => {
       clearInterval(id);
       window.removeEventListener('focus', onVisivel);
       document.removeEventListener('visibilitychange', onVisivel);
+      window.removeEventListener(MODE_EVENT, tick);
+      window.removeEventListener('storage', tick);
     };
   }, [calc]);
   return estado;

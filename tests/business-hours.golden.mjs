@@ -8,7 +8,7 @@
      (B) FUSO da loja: getStoreStatus(date)/partesLocais(date) com instantes UTC fixos, provando que o
          status e calculado no horario de America/Sao_Paulo, nao no fuso do dispositivo. */
 import assert from 'node:assert/strict';
-import { avaliar, getStoreStatus, partesLocais, periodosDoDia, horarioSemanal } from '../src/services/businessHours/index.js';
+import { avaliar, getStoreStatus, partesLocais, periodosDoDia, horarioSemanal, resolverOverride, MODOS } from '../src/services/businessHours/index.js';
 import { SEMANA } from '../src/services/businessHours/schedule.js';
 
 let fail = 0;
@@ -166,7 +166,61 @@ check('getStoreStatus DOM 12:00 SP -> fechado, domingo', () => {
   assert.equal(s.domingo, true);
 });
 
+console.error('— (C) OVERRIDE do Admin: resolverOverride(status, modo) — fonte unica de decisao (REF-BUSINESS-HOURS-02)');
+const seg16 = avaliar(SEG, m(16));   // AUTO -> fechado
+const ter11 = avaliar(TER, m(11));   // AUTO -> aberto
+const dom12 = avaliar(DOM, m(12));   // AUTO -> fechado
+
+/* Casos OBRIGATORIOS do escopo */
+check('AUTO   Seg 16:00 -> fechada', () => assert.equal(resolverOverride(seg16, MODOS.AUTO).aberto, false));
+check('OPEN   Seg 16:00 -> aberta',  () => assert.equal(resolverOverride(seg16, MODOS.OPEN).aberto, true));
+check('CLOSED Ter 11:00 -> fechada', () => assert.equal(resolverOverride(ter11, MODOS.CLOSED).aberto, false));
+check('AUTO   Ter 11:00 -> aberta',  () => assert.equal(resolverOverride(ter11, MODOS.AUTO).aberto, true));
+check('Domingo + OPEN   -> aberta',  () => assert.equal(resolverOverride(dom12, MODOS.OPEN).aberto, true));
+check('Domingo + AUTO   -> fechada', () => assert.equal(resolverOverride(dom12, MODOS.AUTO).aberto, false));
+check('Domingo + CLOSED -> fechada', () => assert.equal(resolverOverride(dom12, MODOS.CLOSED).aberto, false));
+
+/* Prioridade + coerencia dos campos */
+check('AUTO preserva o status do cronograma (mensagens aprovadas intactas)', () => {
+  const r = resolverOverride(ter11, MODOS.AUTO);
+  assert.equal(r.forcado, false);
+  assert.equal(r.origem, 'automatico');
+  assert.equal(r.detalhe, ter11.detalhe);                 // "Aberto até 15:00" intacto
+  assert.equal(r.mensagemFechado, ter11.mensagemFechado); // null (aberto) intacto
+});
+check('OPEN fora do cronograma: aberta, forcada, sem mensagemFechado', () => {
+  const r = resolverOverride(seg16, MODOS.OPEN);
+  assert.equal(r.aberto, true); assert.equal(r.forcado, true);
+  assert.equal(r.modo, 'OPEN'); assert.equal(r.origem, 'forcado-admin');
+  assert.equal(r.rotuloCurto, 'Aberto agora');
+  assert.equal(r.mensagemFechado, null);
+});
+check('CLOSED dentro do cronograma: fechada, forcada, mensagem generica (sem proximo horario)', () => {
+  const r = resolverOverride(ter11, MODOS.CLOSED);
+  assert.equal(r.aberto, false); assert.equal(r.forcado, true);
+  assert.equal(r.modo, 'CLOSED'); assert.equal(r.origem, 'forcado-admin');
+  assert.equal(r.rotuloCurto, 'Fechado');
+  assert.equal(r.detalhe, 'Fechado no momento');
+  assert.equal(r.mensagemFechado, 'Estamos fechados no momento.');
+});
+check('modo ausente/desconhecido -> tratado como AUTO', () => {
+  assert.equal(resolverOverride(ter11).aberto, ter11.aberto);
+  assert.equal(resolverOverride(ter11, 'xyz').modo, 'AUTO');
+});
+check('estado FORCADO nao carrega campos de cronograma contraditorios (coerencia interna)', () => {
+  const o = resolverOverride(seg16, MODOS.OPEN);   // cronograma: fechado/encerrado -> forcado aberto
+  assert.equal(o.proximaAbertura, null);
+  assert.equal(o.fechaAs, null);
+  assert.equal(o.expedienteEncerrado, false);
+  assert.equal(o.haOutroPeriodoHoje, false);
+  const c = resolverOverride(ter11, MODOS.CLOSED); // cronograma: aberto -> forcado fechado
+  assert.equal(c.proximaAbertura, null);
+  assert.equal(c.periodoAtual, null);
+  assert.equal(c.fechaAs, null);
+  assert.equal(c.haOutroPeriodoHoje, false);
+});
+
 console.log(fail === 0
-  ? '\nOK business-hours.golden — engine de horario congelado (segunda/terca-sabado/intervalo/domingo/virada + fuso)'
+  ? '\nOK business-hours.golden — engine + override congelados (cronograma + AUTO/OPEN/CLOSED, fonte unica)'
   : `\nFALHA business-hours.golden — ${fail} caso(s)`);
 process.exit(fail ? 1 : 0);
