@@ -9,6 +9,7 @@ import { useProducts } from '../hooks/useProducts.js';
 import { useAdicionais } from '../hooks/useAdicionais.js';
 import { useCart } from '../hooks/useCart.js';
 import { useBusinessHours } from '../hooks/useBusinessHours.js';   // REF-BUSINESS-HOURS-01: horario oficial (fonte unica)
+import { useLoyalty } from '../hooks/useLoyalty.js';               // REF-LOYALTY-01: fidelidade do cliente (fonte unica Supabase)
 import { Spinner } from '../components/ui/Spinner.jsx';
 import { StoreMenu } from '../components/menu/StoreMenu.jsx'; // LOGIN-ARCH-02: menu lateral (drawer) + login
 import { ProductCard } from '../components/ProductCard.jsx';
@@ -35,14 +36,16 @@ export function StoreApp({ onAdmin }) {
     localStorage.getItem(STORAGE_KEYS.DELIVERY_ADDRESS)||'');
   const [showAddressModal,setShowAddressModal] = useState(false);
   const [showLoyalty,    setShowLoyalty]     = useState(false);
-  /* ── Programa de Fidelidade ── armazenado localmente */
-  const [loyaltyCount,   setLoyaltyCount]    = useState(()=>
-    parseInt(localStorage.getItem(STORAGE_KEYS.LOYALTY_COUNT)||'0'));
-  const [loyaltyConfig]  = useState(()=>({
-    required: parseInt(localStorage.getItem(STORAGE_KEYS.LOYALTY_REQUIRED)||'10'),
-    discount: parseInt(localStorage.getItem(STORAGE_KEYS.LOYALTY_DISCOUNT)||'50'),
-  }));
-  const loyaltyReward = loyaltyCount >= loyaltyConfig.required;
+  /* ── Programa de Fidelidade (REF-LOYALTY-01) ── fonte unica: Supabase (get_my_loyalty), por CLIENTE.
+     O visitante nao-logado ve zeros (fidelidade nao pertence ao navegador). O cliente logado ve o
+     PROPRIO saldo, sincronizado entre dispositivos. localStorage e so cache (dentro do hook). */
+  const { estado: loyalty, temCadastro, resgatar: resgatarFidelidade } = useLoyalty();
+  const [resgatando,  setResgatando]  = useState(false);
+  const [resgateErro, setResgateErro] = useState('');
+  const loyaltyConfig  = { required: loyalty.required, discount: loyalty.discount };
+  const loyaltyEnabled = loyalty.enabled;                              // programa ligado?
+  const loyaltyCount   = loyalty.stamps;
+  const loyaltyReward  = loyalty.rewardAvailable && loyalty.enabled;   // fix (#5): desativado nunca oferece recompensa
   /* REF-BUSINESS-HOURS-01: status vem do horário oficial (fonte única, services/businessHours) — sem
      heurística de horário aqui. O hook reavalia sozinho na virada de período/dia e aplica o override
      manual do Admin (STORE_STATUS='closed' força fechado). */
@@ -191,8 +194,8 @@ export function StoreApp({ onAdmin }) {
         )}
       </div>
 
-      {/* ── Progresso de fidelidade mini (abaixo da barra de entrega) ── */}
-      {loyaltyCount>0 && !loyaltyReward && (
+      {/* ── Progresso de fidelidade mini (abaixo da barra de entrega) — so p/ cliente logado c/ programa ativo ── */}
+      {temCadastro && loyaltyEnabled && loyaltyCount>0 && !loyaltyReward && (
         <div
           onClick={()=>setShowLoyalty(true)}
           style={{
@@ -219,7 +222,7 @@ export function StoreApp({ onAdmin }) {
           </span>
         </div>
       )}
-      {loyaltyReward && (
+      {temCadastro && loyaltyReward && (
         <div
           onClick={()=>setShowLoyalty(true)}
           style={{
@@ -683,21 +686,29 @@ export function StoreApp({ onAdmin }) {
                     </p>
                   </div>
                   <button
-                    onClick={()=>{
-                      /* Zerar: order_count=0, reward_available=false, reward_used=true */
-                      setLoyaltyCount(0);
-                      localStorage.setItem(STORAGE_KEYS.LOYALTY_COUNT,'0');
-                      localStorage.setItem(STORAGE_KEYS.LOYALTY_REWARD_USED,'true');
-                      setShowLoyalty(false);
+                    disabled={resgatando}
+                    onClick={async ()=>{
+                      /* REF-LOYALTY-01: resgate no BACKEND (redeem_reward, atomico). Consome a recompensa
+                         e reinicia o ciclo no Supabase — nunca no navegador. */
+                      if (resgatando) return;
+                      setResgatando(true); setResgateErro('');
+                      const r = await resgatarFidelidade();
+                      setResgatando(false);
+                      if (r.ok) { setShowLoyalty(false); }
+                      else setResgateErro(r.error === 'offline'
+                        ? 'Sem conexão — tente novamente.'
+                        : 'Não foi possível resgatar agora. Tente novamente.');
                     }}
                     style={{
                       padding:'13px 32px',borderRadius:12,border:'none',
                       background:'linear-gradient(135deg,#16A34A,#15803D)',
-                      color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer',
+                      color:'#fff',fontWeight:700,fontSize:15,cursor:resgatando?'default':'pointer',
+                      opacity:resgatando?0.7:1,
                       fontFamily:'var(--font-body)',boxShadow:'0 4px 16px rgba(22,163,74,.3)',
                     }}>
-                    ✅ Usar desconto agora
+                    {resgatando ? 'Resgatando…' : '✅ Usar desconto agora'}
                   </button>
+                  {resgateErro && <p style={{fontSize:13,color:'#DC2626',marginTop:12,fontWeight:600}}>{resgateErro}</p>}
                 </div>
               ) : (
                 <>

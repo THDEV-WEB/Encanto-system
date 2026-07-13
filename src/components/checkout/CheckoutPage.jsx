@@ -10,6 +10,7 @@ import { STORAGE_KEYS } from '../../constants/storage.js';
 import { newRequestId } from '../../utils/ids.js';
 import { buildOrderArgs, buildWhatsAppMessage, buildCheckoutView } from '../../utils/orderPayload.js';
 import { DS } from '../../services/DataService.js';
+import { LOYALTY_EVENT } from '../../services/loyalty/index.js';   // REF-LOYALTY-01: avisa a loja p/ re-buscar o estado oficial
 
 export function CheckoutPage({ cart, onBack, onSuccess }) {
   /* REF-CLIENTE-02 (vinculo pedido<->conta): create_order reusa o customer POR TELEFONE e nunca toca
@@ -74,20 +75,11 @@ export function CheckoutPage({ cart, onBack, onSuccess }) {
       setErr('Não foi possível registrar seu pedido. Confira o telefone e tente novamente.');
       return;
     }
-    /* Incrementar contador de fidelidade (somente após o pedido PERSISTIDO com sucesso) */
-    if (localStorage.getItem(STORAGE_KEYS.LOYALTY_ENABLED) !== 'false') {
-      const required = parseInt(localStorage.getItem(STORAGE_KEYS.LOYALTY_REQUIRED)||'10');
-      const cur      = parseInt(localStorage.getItem(STORAGE_KEYS.LOYALTY_COUNT)||'0');
-      /* Não ultrapassar o limite — cliente deve resgatar antes de acumular mais */
-      if (cur < required) {
-        const next = cur + 1;
-        localStorage.setItem(STORAGE_KEYS.LOYALTY_COUNT, String(next));
-        /* Se atingiu o limite, marcar reward_available */
-        if (next >= required) {
-          localStorage.setItem(STORAGE_KEYS.LOYALTY_REWARD_AVAILABLE, 'true');
-        }
-      }
-    }
+    /* REF-LOYALTY-01: o selo de fidelidade e concedido no BACKEND, DENTRO de create_order (mesma
+       transacao do pedido, idempotente por request_id + indice unico). O frontend NAO conta/grava
+       selo — apenas avisa a loja para re-buscar o estado oficial (get_my_loyalty) e refletir o novo
+       selo do proprio cliente logado. Guest acumula na conta do telefone e ve ao logar depois. */
+    try { window.dispatchEvent(new Event(LOYALTY_EVENT)); } catch (e) {}
     const msg = buildWhatsAppMessage(cart, form);
     setLoading(false);
     submittingRef.current = false;

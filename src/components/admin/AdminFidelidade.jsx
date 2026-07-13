@@ -1,44 +1,77 @@
-import { useState } from 'react';
-import { STORAGE_KEYS } from '../../constants/storage.js';
+/* components/admin/AdminFidelidade.jsx — REF-LOYALTY-01.
+   Painel de fidelidade POR CLIENTE (a fonte unica e o Supabase; nao ha mais contador global no
+   navegador). Config do programa (required/discount/enabled) e persistida em settings via
+   set_loyalty_config; a consulta/ajuste/resgate de um cliente usa admin_find_loyalty /
+   admin_adjust_loyalty / redeem_reward. Toda escrita e validada no servidor por is_admin(). */
+import { useState, useEffect } from 'react';
+import {
+  adminLerConfig, adminSalvarConfig, adminBuscar, adminAjustar, adminResgatar,
+} from '../../services/loyalty/index.js';
 
-/* ── Admin: Fidelidade ─────────────────────────────────── */
 export function AdminFidelidade() {
-  const [count,    setCount]    = useState(()=>parseInt(localStorage.getItem(STORAGE_KEYS.LOYALTY_COUNT)||'0'));
-  const [required, setRequired] = useState(()=>parseInt(localStorage.getItem(STORAGE_KEYS.LOYALTY_REQUIRED)||'10'));
-  const [discount, setDiscount] = useState(()=>parseInt(localStorage.getItem(STORAGE_KEYS.LOYALTY_DISCOUNT)||'50'));
-  const [enabled,  setEnabled]  = useState(()=>localStorage.getItem(STORAGE_KEYS.LOYALTY_ENABLED)!=='false');
-  const [saved,    setSaved]    = useState(false);
-  const [editReq,  setEditReq]  = useState(false);
-  const [editDis,  setEditDis]  = useState(false);
-  const rewardAvail = count >= required;
+  /* ── Config do programa ── */
+  const [required, setRequired] = useState(10);
+  const [discount, setDiscount] = useState(50);
+  const [enabled,  setEnabled]  = useState(true);
+  const [cfgSaved, setCfgSaved] = useState(false);
+  const [cfgErro,  setCfgErro]  = useState('');
+  const [cfgLoad,  setCfgLoad]  = useState(true);
 
-  const saveConfig = () => {
-    localStorage.setItem(STORAGE_KEYS.LOYALTY_REQUIRED, String(required));
-    localStorage.setItem(STORAGE_KEYS.LOYALTY_DISCOUNT,  String(discount));
-    localStorage.setItem(STORAGE_KEYS.LOYALTY_ENABLED,   String(enabled));
-    setSaved(true); setEditReq(false); setEditDis(false);
-    setTimeout(()=>setSaved(false), 2500);
+  useEffect(() => {
+    let vivo = true;
+    adminLerConfig().then((c) => { if (!vivo) return; setRequired(c.required); setDiscount(c.discount); setEnabled(c.enabled); setCfgLoad(false); });
+    return () => { vivo = false; };
+  }, []);
+
+  const salvarConfig = async (over) => {
+    const r = over || { required, discount, enabled };
+    setCfgErro('');
+    const res = await adminSalvarConfig(r.required, r.discount, r.enabled);
+    if (res.ok) { setCfgSaved(true); setTimeout(() => setCfgSaved(false), 2500); }
+    else setCfgErro(res.error === 'sem permissao' ? 'Sem permissão de administrador.' : 'Não foi possível salvar.');
   };
 
-  const resetCounter = () => {
-    if (!window.confirm(
-      'Zerar o contador de pedidos?\nEsta ação representa que o cliente usou sua recompensa ou foi feito um ajuste manual.'
-    )) return;
-    localStorage.setItem(STORAGE_KEYS.LOYALTY_COUNT, '0');
-    localStorage.setItem(STORAGE_KEYS.LOYALTY_REWARD_USED,'true');
-    setCount(0);
+  const toggleEnabled = async (v) => { setEnabled(v); await salvarConfig({ required, discount, enabled: v }); };
+
+  /* ── Consulta/gestão de um cliente ── */
+  const [query,    setQuery]    = useState('');
+  const [buscando, setBuscando] = useState(false);
+  const [buscaErro,setBuscaErro]= useState('');
+  const [cliente,  setCliente]  = useState(null);   // {customer_id,name,phone,stamps,required,reward_available,rewards_redeemed}
+  const [acting,   setActing]   = useState(false);
+  const [actErro,  setActErro]  = useState('');
+  const [nota,     setNota]     = useState('');
+
+  const buscar = async () => {
+    const q = query.trim();
+    if (!q || buscando) return;
+    setBuscando(true); setBuscaErro(''); setActErro(''); setCliente(null);
+    const r = await adminBuscar(q);
+    setBuscando(false);
+    if (r.ok) setCliente(r);
+    else setBuscaErro(r.error === 'cliente nao encontrado' ? 'Cliente não encontrado.' : (r.error === 'sem permissao' ? 'Sem permissão de administrador.' : 'Falha na busca.'));
   };
 
-  const addPedido = () => {
-    if (count >= required) { alert('Recompensa já disponível. Peça para o cliente usar o desconto antes de adicionar novos pedidos.'); return; }
-    const next = count + 1;
-    localStorage.setItem(STORAGE_KEYS.LOYALTY_COUNT, String(next));
-    setCount(next);
+  const aplicar = async (fn) => {
+    if (!cliente || acting) return;
+    setActing(true); setActErro('');
+    const r = await fn();
+    setActing(false);
+    if (r.ok) {
+      setCliente((c) => ({ ...c, stamps: r.stamps, required: r.required ?? c.required, reward_available: r.reward_available ?? (r.stamps >= (r.required ?? c.required)), rewards_redeemed: r.rewards_redeemed ?? c.rewards_redeemed }));
+      setNota('');
+    } else {
+      setActErro(r.error === 'recompensa indisponivel' ? 'Recompensa indisponível (cartela incompleta).' : (r.error === 'sem permissao' ? 'Sem permissão de administrador.' : 'Não foi possível concluir.'));
+    }
   };
+
+  const ajustar   = (delta) => aplicar(() => adminAjustar(cliente.customer_id, delta, nota));
+  const resgatar  = ()      => aplicar(() => adminResgatar(cliente.customer_id));
+  const rewardAvail = cliente ? (cliente.reward_available ?? (cliente.stamps >= cliente.required)) : false;
 
   return (
     <div>
-      {/* ── Cabeçalho com status ── */}
+      {/* ── Cabeçalho + status do programa ── */}
       <div style={{
         display:'flex',alignItems:'center',justifyContent:'space-between',
         flexWrap:'wrap',gap:12,marginBottom:20,
@@ -50,7 +83,7 @@ export function AdminFidelidade() {
             🎁 Programa de Fidelidade
           </h2>
           <p style={{fontSize:13,color:'var(--gray-500)',marginTop:4}}>
-            Regra: {required} pedidos = {discount}% de desconto
+            Regra: {required} pedidos = {discount}% de desconto · fidelidade por cliente (Supabase)
           </p>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:10}}>
@@ -63,110 +96,89 @@ export function AdminFidelidade() {
             {enabled ? '● Ativo' : '○ Desativado'}
           </span>
           <label className="toggle-switch">
-            <input type="checkbox" checked={enabled} onChange={e=>{
-              setEnabled(e.target.checked);
-              localStorage.setItem(STORAGE_KEYS.LOYALTY_ENABLED,String(e.target.checked));
-            }}/>
+            <input type="checkbox" checked={enabled} disabled={cfgLoad} onChange={e=>toggleEnabled(e.target.checked)}/>
             <span className="toggle-slider"/>
           </label>
         </div>
       </div>
 
-      {/* ── Progresso do cliente ── */}
+      {/* ── Consulta de cliente ── */}
       <div className="admin-card" style={{marginBottom:20}}>
-        <div className="admin-card-header">
-          <h3>📊 Progresso atual</h3>
-          <div style={{display:'flex',gap:8}}>
-            <button className="btn-sm" onClick={addPedido} title="Adicionar 1 pedido manualmente">
-              + Pedido
-            </button>
-            <button className="btn-danger" onClick={resetCounter}>
-              ↺ Resetar
-            </button>
-          </div>
-        </div>
+        <div className="admin-card-header"><h3>🔎 Fidelidade do cliente</h3></div>
         <div style={{padding:'20px'}}>
-          {/* Card de status */}
-          <div style={{
-            display:'flex',alignItems:'center',gap:16,
-            padding:'18px',borderRadius:14,marginBottom:16,
-            background: rewardAvail ? '#F0FDF4' : 'var(--grape-pale)',
-            border: `1.5px solid ${rewardAvail?'#BBF7D0':'#DDD6FE'}`,
-          }}>
-            <div style={{
-              width:64,height:64,borderRadius:14,flexShrink:0,
-              background: rewardAvail ? '#16A34A' : '#6B21A8',
-              display:'flex',alignItems:'center',justifyContent:'center',
-              fontSize:28,boxShadow:`0 4px 12px ${rewardAvail?'rgba(22,163,74,.3)':'rgba(107,33,168,.3)'}`,
-            }}>
-              {rewardAvail ? '🎉' : '🛍️'}
-            </div>
-            <div style={{flex:1}}>
+          <div style={{display:'flex',gap:10,flexWrap:'wrap',marginBottom:4}}>
+            <input className="form-input" style={{flex:1,minWidth:200}}
+              placeholder="Telefone (com DDD) ou nome do cliente"
+              value={query} onChange={e=>setQuery(e.target.value)}
+              onKeyDown={e=>{ if(e.key==='Enter') buscar(); }}/>
+            <button className="btn-primary" onClick={buscar} disabled={buscando} style={{minWidth:120}}>
+              {buscando ? 'Buscando…' : 'Buscar'}
+            </button>
+          </div>
+          {buscaErro && <p style={{fontSize:13,color:'#DC2626',marginTop:8,fontWeight:600}}>{buscaErro}</p>}
+
+          {cliente && (
+            <div style={{marginTop:18}}>
+              {/* Status do cliente */}
               <div style={{
-                fontFamily:'var(--font-head)',fontSize:32,fontWeight:800,lineHeight:1,
-                color: rewardAvail ? '#15803D' : '#6B21A8',
+                display:'flex',alignItems:'center',gap:16,
+                padding:'18px',borderRadius:14,marginBottom:16,
+                background: rewardAvail ? '#F0FDF4' : 'var(--grape-pale)',
+                border: `1.5px solid ${rewardAvail?'#BBF7D0':'#DDD6FE'}`,
               }}>
-                {count}
-                <span style={{fontSize:16,fontWeight:500,color:'var(--gray-400)',marginLeft:4}}>
-                  / {required} pedidos
-                </span>
+                <div style={{
+                  width:64,height:64,borderRadius:14,flexShrink:0,
+                  background: rewardAvail ? '#16A34A' : '#6B21A8',
+                  display:'flex',alignItems:'center',justifyContent:'center',
+                  fontSize:28,
+                }}>
+                  {rewardAvail ? '🎉' : '🛍️'}
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:800,fontSize:16,color:'var(--gray-800)'}}>{cliente.name}</div>
+                  <div style={{fontSize:12,color:'var(--gray-500)'}}>{cliente.phone}</div>
+                  <div style={{
+                    fontFamily:'var(--font-head)',fontSize:26,fontWeight:800,lineHeight:1.1,marginTop:6,
+                    color: rewardAvail ? '#15803D' : '#6B21A8',
+                  }}>
+                    {cliente.stamps}
+                    <span style={{fontSize:14,fontWeight:500,color:'var(--gray-400)',marginLeft:4}}>/ {cliente.required} pedidos</span>
+                  </div>
+                  <div style={{fontSize:12.5,marginTop:4,fontWeight:600,color: rewardAvail ? '#15803D' : 'var(--gray-500)'}}>
+                    {rewardAvail
+                      ? '🎁 Recompensa disponível'
+                      : `Faltam ${Math.max(0, cliente.required - cliente.stamps)} pedido(s)`}
+                    {' · '}resgates: {cliente.rewards_redeemed}
+                  </div>
+                </div>
               </div>
-              <div style={{fontSize:13,marginTop:6,fontWeight:600,
-                color: rewardAvail ? '#15803D' : 'var(--grape)'}}>
-                {rewardAvail
-                  ? '🎁 Recompensa disponível! Cliente pode usar o desconto.'
-                  : `Faltam ${required-count} pedido(s) para ${discount}% de desconto`}
+
+              {/* Ações */}
+              <input className="form-input" style={{marginBottom:10}}
+                placeholder="Motivo do ajuste (opcional)" value={nota} onChange={e=>setNota(e.target.value)}/>
+              <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+                <button className="btn-sm" disabled={acting} onClick={()=>ajustar(1)}>+ Selo</button>
+                <button className="btn-sm" disabled={acting || cliente.stamps<=0} onClick={()=>ajustar(-1)}>− Selo</button>
+                <button className="btn-primary" disabled={acting || !rewardAvail} onClick={resgatar} style={{minWidth:180}}>
+                  {acting ? 'Processando…' : '✅ Resgatar recompensa'}
+                </button>
               </div>
+              {actErro && <p style={{fontSize:13,color:'#DC2626',marginTop:10,fontWeight:600}}>{actErro}</p>}
+              <p style={{fontSize:11,color:'var(--gray-400)',marginTop:12,lineHeight:1.5}}>
+                Ajustes e resgates são registrados no histórico (loyalty_events) e valem globalmente,
+                em qualquer dispositivo do cliente. O selo automático é concedido no backend a cada
+                pedido válido; cancelamento reverte o selo daquele pedido.
+              </p>
             </div>
-          </div>
-
-          {/* Barra */}
-          <div style={{marginBottom:4}}>
-            <div style={{display:'flex',justifyContent:'space-between',fontSize:11,color:'var(--gray-400)',marginBottom:6}}>
-              <span>order_count: {count} | reward_available: {rewardAvail?'true':'false'}</span>
-              <span>{Math.round((count/required)*100)}%</span>
-            </div>
-            <div style={{width:'100%',height:12,background:'var(--gray-100)',borderRadius:6,overflow:'hidden'}}>
-              <div style={{
-                height:'100%',borderRadius:6,
-                width:`${Math.min(100,(count/required)*100)}%`,
-                background: rewardAvail
-                  ? 'linear-gradient(90deg,#16A34A,#4ADE80)'
-                  : 'linear-gradient(90deg,#6B21A8,#A855F7)',
-                transition:'width .4s',
-              }}/>
-            </div>
-          </div>
-
-          {/* Grade de pedidos */}
-          <div style={{display:'flex',gap:5,flexWrap:'wrap',marginTop:16}}>
-            {Array.from({length:required}).map((_,i)=>(
-              <div key={i} style={{
-                width:34,height:34,borderRadius:8,
-                background: i<count ? 'linear-gradient(135deg,#6B21A8,#A855F7)' : 'var(--gray-100)',
-                display:'flex',alignItems:'center',justifyContent:'center',
-                fontSize:14,border: i<count ? 'none' : '1px solid var(--gray-200)',
-                boxShadow: i<count ? '0 2px 6px rgba(107,33,168,.25)' : 'none',
-                title:`Pedido ${i+1}`,
-              }}>
-                {i<count ? '🛍️' : <span style={{color:'var(--gray-300)'}}>○</span>}
-              </div>
-            ))}
-          </div>
-
-          <p style={{fontSize:11,color:'var(--gray-400)',marginTop:12,lineHeight:1.5}}>
-            <b>+Pedido</b>: adiciona 1 pedido manualmente (ex: aprovado pelo sistema).
-            <b> Resetar</b>: zera o contador (ex: cliente usou o desconto).
-            Os campos <code>order_count</code> e <code>reward_available</code> refletem o estado atual.
-          </p>
+          )}
         </div>
       </div>
 
-      {/* ── Configurações ── */}
+      {/* ── Configurações do programa ── */}
       <div className="admin-card" style={{marginBottom:20}}>
         <div className="admin-card-header">
           <h3>⚙️ Configurações do Programa</h3>
-          {saved && <span style={{color:'#16A34A',fontSize:13,fontWeight:700}}>✓ Salvo com sucesso!</span>}
+          {cfgSaved && <span style={{color:'#16A34A',fontSize:13,fontWeight:700}}>✓ Salvo com sucesso!</span>}
         </div>
         <div style={{padding:'20px'}}>
           <div className="form-row" style={{marginBottom:20}}>
@@ -174,32 +186,27 @@ export function AdminFidelidade() {
               <label className="form-label">Pedidos para recompensa</label>
               <input className="form-input" type="number" min="1" max="100"
                 value={required} onChange={e=>setRequired(+e.target.value)}/>
-              <span style={{fontSize:11,color:'var(--gray-400)',marginTop:3,display:'block'}}>
-                Campo: <code>order_count</code> — padrão: 10
-              </span>
             </div>
             <div className="form-group">
               <label className="form-label">Desconto da recompensa (%)</label>
               <input className="form-input" type="number" min="1" max="100"
                 value={discount} onChange={e=>setDiscount(+e.target.value)}/>
-              <span style={{fontSize:11,color:'var(--gray-400)',marginTop:3,display:'block'}}>
-                Campo: <code>reward_discount</code> — padrão: 50
-              </span>
             </div>
           </div>
           <div style={{
             padding:'12px 16px',background:'var(--gray-50)',borderRadius:10,
             marginBottom:20,fontSize:13,color:'var(--gray-600)',lineHeight:1.6,
           }}>
-            <b>Lógica aplicada:</b><br/>
-            • <code>order_count ≥ {required}</code> → <code>reward_available = true</code><br/>
-            • Ao usar o desconto: <code>order_count = 0</code>, <code>reward_available = false</code>, <code>reward_used = true</code><br/>
-            • Valor do frete não é contabilizado — somente products.<br/>
-            • Recompensas não são cumulativas (1 por ciclo).
+            <b>Lógica aplicada (backend):</b><br/>
+            • Cada <b>pedido válido</b> concede 1 selo ao cliente (idempotente por pedido).<br/>
+            • <code>stamps ≥ {required}</code> → recompensa disponível.<br/>
+            • Ao resgatar: <code>stamps −= {required}</code>, novo ciclo. Recompensas não são cumulativas.<br/>
+            • Pedido <b>cancelado</b> reverte o selo daquele pedido. Frete não é contabilizado.
           </div>
-          <button className="btn-primary" onClick={saveConfig} style={{minWidth:160}}>
-            {saved ? '✓ Salvo!' : '💾 Salvar configurações'}
+          <button className="btn-primary" onClick={()=>salvarConfig()} disabled={cfgLoad} style={{minWidth:160}}>
+            {cfgSaved ? '✓ Salvo!' : '💾 Salvar configurações'}
           </button>
+          {cfgErro && <p style={{fontSize:13,color:'#DC2626',marginTop:10,fontWeight:600}}>{cfgErro}</p>}
         </div>
       </div>
 
@@ -209,8 +216,8 @@ export function AdminFidelidade() {
         <div style={{padding:'20px'}}>
           {[
             ['Elegibilidade','Para participar, o cliente deve possuir cadastro ativo. Em caso de uso indevido ou fraude, a loja pode cancelar os benefícios.'],
-            ['Contabilização','O pedido só contabiliza após ser aprovado ou finalizado pela loja. O valor do frete não é contabilizado.'],
-            ['Recompensa','Peça 10 vezes e ganhe 50% de desconto no próximo pedido. O resgate só pode ser feito pelo próprio participante.'],
+            ['Contabilização','O selo é concedido no backend a cada pedido válido. Pedidos cancelados revertem o selo. O valor do frete não é contabilizado.'],
+            ['Recompensa','Peça 10 vezes e ganhe 50% de desconto no próximo pedido. O resgate só pode ser feito pelo próprio participante (ou pela loja).'],
             ['Validade','O programa é válido por tempo indeterminado. A loja pode alterar regras, duração ou benefícios a qualquer momento.'],
             ['Encerramento','Em caso de encerramento, pontos e recompensas poderão ser zerados.'],
           ].map(([t,d])=>(
@@ -225,9 +232,7 @@ export function AdminFidelidade() {
               <div style={{fontSize:13,color:'var(--gray-600)',lineHeight:1.55}}>{d}</div>
             </div>
           ))}
-          <div style={{
-            display:'flex',gap:12,padding:'12px 0',
-          }}>
+          <div style={{display:'flex',gap:12,padding:'12px 0'}}>
             <div style={{fontSize:12,fontWeight:700,color:'var(--amarelo)',minWidth:110,flexShrink:0}}>Contato</div>
             <div style={{fontSize:13,color:'var(--gray-600)'}}>
               <a href="https://wa.me/5538992203620" target="_blank"

@@ -22,6 +22,12 @@ export function CompletarCadastro() {
     setBusy(true);
     const r = await completarCadastro(nome.trim(), tel);
     setBusy(false);
+    /* REF-LOYALTY-01a: telefone com historico (pedidos/selos) nao e reivindicado automaticamente
+       (protege a fidelidade/historico do convidado) -> mensagem clara; o cadastro segue dispensavel. */
+    if (r?.data?.status === 'requer_verificacao') {
+      setErro(r.data.error || 'Este telefone já possui histórico. Para vinculá-lo à sua conta, fale com a loja.');
+      return;
+    }
     const appErr = r?.error?.message || (r?.data?.ok === false ? r.data.error : null);
     if (appErr) {
       setErro(/outra conta/i.test(appErr) ? 'Este telefone já está vinculado a outra conta.' : 'Não foi possível salvar. Tente novamente.');
