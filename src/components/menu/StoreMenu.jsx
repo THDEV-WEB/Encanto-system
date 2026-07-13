@@ -11,7 +11,7 @@ import { FidelidadeScreen } from './FidelidadeScreen.jsx';
 import { CompletarCadastro } from './CompletarCadastro.jsx';
 import { MeusPedidosScreen } from '../pedidos/MeusPedidosScreen.jsx';
 
-export function StoreMenu() {
+export function StoreMenu({ onRecomprar }) {
   const [drawer, setDrawer] = useState(false);
   const [tela, setTela] = useState(null); // login | pedidos | contato | sobre | termos | fidelidade
   const navegar = (t) => { setDrawer(false); setTela(t); };
@@ -27,7 +27,7 @@ export function StoreMenu() {
       </button>
       {drawer && <SideDrawer onClose={() => setDrawer(false)} onNavigate={navegar} />}
       {tela === 'login' && <LoginScreen onClose={fechar} />}
-      {tela === 'pedidos' && <MeusPedidosScreen onClose={fechar} />}
+      {tela === 'pedidos' && <MeusPedidosScreen onClose={fechar} onRecomprar={onRecomprar} />}
       {tela === 'contato' && <ContatoScreen onClose={fechar} />}
       {tela === 'sobre' && <SobreScreen onClose={fechar} />}
       {tela === 'termos' && <TermosScreen onClose={fechar} />}

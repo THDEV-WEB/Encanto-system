@@ -18,6 +18,8 @@ import { AddressModal } from '../components/AddressModal.jsx';
 import { LazySection } from '../components/ui/LazySection.jsx';
 import { SuccessPage } from '../components/checkout/SuccessPage.jsx';
 import { CheckoutPage } from '../components/checkout/CheckoutPage.jsx';
+import { DS } from '../services/DataService.js';                       // REF-CLIENTE-02: catalogo atual p/ recompra
+import { montarRecompra } from '../components/pedidos/recompra.js';   // REF-CLIENTE-02 Onda 4 (regras puras)
 
 export function StoreApp({ onAdmin }) {
   const [page,          setPage]         = useState('home');
@@ -49,6 +51,19 @@ export function StoreApp({ onAdmin }) {
     return h >= 9 && h < 22;
   });
   const cart = useCart();
+
+  /* REF-CLIENTE-02 Onda 4: "Pedir novamente" — re-adiciona os itens do pedido antigo resolvendo pelo
+     catalogo ATUAL (preco atual via pricing; pula custom/indisponivel/que exige tamanho-variante) e
+     abre o carrinho para o cliente revisar antes do checkout normal. Nunca copia preco antigo. */
+  const recomprar = async (pedido) => {
+    const catalogo = await DS.getProds(null, '');
+    if (!catalogo) return { erro: true, add: 0, pulados: [] };
+    const { adicionar, pulados } = montarRecompra(pedido?.order_items, catalogo);
+    adicionar.forEach(a => cart.add(a.prod, a.qty, [], a.obs));
+    if (adicionar.length > 0) setCartOpen(true);
+    return { erro: false, add: adicionar.length, pulados };
+  };
+
   const { cats, src:catSrc }                    = useCategories();
   const { prods:rawProds, loading, src:prodSrc }= useProducts(selCat, search);
   const adicionais = useAdicionais();
@@ -123,7 +138,7 @@ export function StoreApp({ onAdmin }) {
           <button className="header-admin-btn" onClick={onAdmin} title="Painel Admin">
             ⚙️
           </button>
-          <StoreMenu />
+          <StoreMenu onRecomprar={recomprar} />
         </div>
 
       </header>

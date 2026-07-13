@@ -11,7 +11,7 @@ import { PedidoCard } from './PedidoCard.jsx';
 const aviso = { fontSize: 14, color: 'var(--gray-500)', textAlign: 'center', padding: '28px 12px', lineHeight: 1.5 };
 const PAGINA = 8;
 
-export function MeusPedidosScreen({ onClose }) {
+export function MeusPedidosScreen({ onClose, onRecomprar }) {
   const { isLogged } = useAuth();
   const { pedidos, loading, erro, temCadastro } = useMeusPedidos();
   const [visiveis, setVisiveis] = useState(PAGINA);
@@ -31,7 +31,9 @@ export function MeusPedidosScreen({ onClose }) {
           {!loading && !erro && pedidos.length === 0 && (
             <p style={aviso}>Você ainda não fez pedidos. Que tal começar agora? 💜</p>
           )}
-          {!loading && !erro && pedidos.slice(0, visiveis).map((p) => <PedidoCard key={p.id} pedido={p} />)}
+          {!loading && !erro && pedidos.slice(0, visiveis).map((p) => (
+            <PedidoCard key={p.id} pedido={p} onRecomprar={onRecomprar} onFechar={onClose} />
+          ))}
           {!loading && !erro && pedidos.length > visiveis && (
             <button onClick={() => setVisiveis((v) => v + PAGINA)}
               style={{ width: '100%', padding: '11px', borderRadius: 12, border: '1px solid var(--gray-200)', background: 'var(--white)', color: 'var(--grape)', fontWeight: 700, fontSize: 14, cursor: 'pointer', marginTop: 4 }}>
