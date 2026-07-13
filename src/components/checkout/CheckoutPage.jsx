@@ -5,6 +5,7 @@
    (utils/ids) e STORAGE_KEYS (constants) sao dependencias PRE-EXISTENTES do submit (idempotency key/localStorage). */
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../../hooks/useAuth.js';
+import { useBusinessHours } from '../../hooks/useBusinessHours.js';   // REF-BUSINESS-HOURS-01: bloqueio fora do horario
 import { STORAGE_KEYS } from '../../constants/storage.js';
 import { newRequestId } from '../../utils/ids.js';
 import { buildOrderArgs, buildWhatsAppMessage, buildCheckoutView } from '../../utils/orderPayload.js';
@@ -17,6 +18,10 @@ export function CheckoutPage({ cart, onBack, onSuccess }) {
      fica TRAVADO (=identidade, ja coletada no 1o acesso) — garante o vinculo, sem re-orfanar o pedido.
      Guest (nao logado) segue 100% editavel: guest checkout intocado. */
   const { isLogged, customer } = useAuth();
+  /* REF-BUSINESS-HOURS-01: fora do horário oficial o cliente navega/vê preços normalmente, mas NÃO
+     finaliza pedido. Mesma fonte de verdade do header (services/businessHours via useBusinessHours). */
+  const horario = useBusinessHours();
+  const lojaFechada = !horario.aberto;
   const identidadeTravada = isLogged && !!customer?.phone;
   const [form, setForm] = useState({nome:'',telefone:'',endereco:'',pagamento:'dinheiro',troco:'',obs:''});
   useEffect(() => {
@@ -38,6 +43,9 @@ export function CheckoutPage({ cart, onBack, onSuccess }) {
     if (submittingRef.current || loading) return;   // impede envio simultâneo
     console.log('[ENCANTO] Finalizar Pedido clicado. cart.items=', cart.items, 'total=', cart.total);
     setErr('');
+    /* GATE de horário (REF-BUSINESS-HOURS-01): fora do expediente NÃO cria pedido — interrompe antes de
+       validar/persistir e informa o próximo horário correto. Guest e logado passam pelo mesmo gate. */
+    if (lojaFechada) { setErr(horario.mensagemFechado || 'Estamos fechados no momento.'); return; }
     if (!form.nome||!form.telefone||!form.endereco) { setErr('Preencha nome, telefone e endereço.'); return; }
     /* Validação de telefone alinhada ao servidor (normalize_phone): DDD + número = ≥10 dígitos.
        Impede que telefone inválido chegue à RPC create_order (que rejeitaria com rollback). */
@@ -146,9 +154,29 @@ export function CheckoutPage({ cart, onBack, onSuccess }) {
         <textarea className="form-input obs-textarea" placeholder="Alguma observação..."
           value={form.obs} onChange={e=>upd('obs',e.target.value)}/>
       </div>
+      {lojaFechada && (
+        <div style={{
+          display:'flex',gap:10,alignItems:'flex-start',
+          background:'#FEF2F2',border:'1px solid #FECACA',borderRadius:12,
+          padding:'12px 14px',marginBottom:12,
+        }}>
+          <span style={{fontSize:18,lineHeight:1.2,flexShrink:0}}>🔒</span>
+          <div>
+            {/* Fonte única: mensagemFechado já traz o próximo horário correto (ou, em fechamento
+                emergencial dentro do expediente, a mensagem coerente) — nunca reinventar o horário aqui. */}
+            <div style={{fontWeight:700,fontSize:14,color:'#B91C1C',lineHeight:1.4}}>
+              {horario.mensagemFechado || 'Estamos fechados no momento.'}
+            </div>
+            <div style={{fontSize:13,color:'#7F1D1D',marginTop:3,lineHeight:1.5}}>
+              Você pode montar seu pedido e finalizar quando reabrirmos.
+            </div>
+          </div>
+        </div>
+      )}
       {err&&<p style={{color:'var(--red)',fontSize:13,marginBottom:8}}>{err}</p>}
-      <button className="confirm-btn" onClick={submit} disabled={loading}>
-        {loading ? 'Enviando...' : `Confirmar via WhatsApp • ${view.total}`}
+      <button className="confirm-btn" onClick={submit} disabled={loading || lojaFechada}
+        style={lojaFechada?{opacity:0.6,cursor:'not-allowed'}:undefined}>
+        {lojaFechada ? '🔒 Loja fechada no momento' : (loading ? 'Enviando...' : `Confirmar via WhatsApp • ${view.total}`)}
       </button>
     </div>
   );

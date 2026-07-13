@@ -8,6 +8,7 @@ import { useCategories } from '../hooks/useCategories.js';
 import { useProducts } from '../hooks/useProducts.js';
 import { useAdicionais } from '../hooks/useAdicionais.js';
 import { useCart } from '../hooks/useCart.js';
+import { useBusinessHours } from '../hooks/useBusinessHours.js';   // REF-BUSINESS-HOURS-01: horario oficial (fonte unica)
 import { Spinner } from '../components/ui/Spinner.jsx';
 import { StoreMenu } from '../components/menu/StoreMenu.jsx'; // LOGIN-ARCH-02: menu lateral (drawer) + login
 import { ProductCard } from '../components/ProductCard.jsx';
@@ -42,14 +43,11 @@ export function StoreApp({ onAdmin }) {
     discount: parseInt(localStorage.getItem(STORAGE_KEYS.LOYALTY_DISCOUNT)||'50'),
   }));
   const loyaltyReward = loyaltyCount >= loyaltyConfig.required;
-  const [storeOpen,      setStoreOpen]       = useState(()=>{
-    /* Ler do localStorage — Admin pode alterar */
-    const saved = localStorage.getItem(STORAGE_KEYS.STORE_STATUS);
-    if (saved) return saved === 'open';
-    /* Fallback: horário automático 09h–22h */
-    const h = new Date().getHours();
-    return h >= 9 && h < 22;
-  });
+  /* REF-BUSINESS-HOURS-01: status vem do horário oficial (fonte única, services/businessHours) — sem
+     heurística de horário aqui. O hook reavalia sozinho na virada de período/dia e aplica o override
+     manual do Admin (STORE_STATUS='closed' força fechado). */
+  const horario = useBusinessHours();
+  const storeOpen = horario.aberto;
   const cart = useCart();
 
   /* REF-CLIENTE-02 Onda 4: "Pedir novamente" — re-adiciona os itens do pedido antigo resolvendo pelo
@@ -118,8 +116,13 @@ export function StoreApp({ onAdmin }) {
             <div className="status-actions">
               <div className={`header-status-pill ${storeOpen?'open':'closed'}`}>
                 <span className={`status-dot ${storeOpen?'open':'closed'}`}/>
-                {storeOpen ? 'Aberto agora' : 'Fechado agora'}
+                {horario.rotuloCurto}
               </div>
+              {horario.detalhe && (
+                <span style={{fontSize:11,fontWeight:600,color:'rgba(255,255,255,.78)',whiteSpace:'nowrap'}}>
+                  {horario.detalhe}
+                </span>
+              )}
               {!storeOpen && (
                 <button className="btn-agendar" onClick={()=>alert('Agendamento em breve!')}>
                   📅 Agendar
