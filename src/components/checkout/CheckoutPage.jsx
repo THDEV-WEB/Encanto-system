@@ -3,14 +3,26 @@
    (Onda 5.2): consome buildOrderArgs/buildWhatsAppMessage/buildCheckoutView de utils/orderPayload.js e
    DS.savePedido de services/DataService.js. NAO importa pricing/addons/format direto (G-CK2). newRequestId
    (utils/ids) e STORAGE_KEYS (constants) sao dependencias PRE-EXISTENTES do submit (idempotency key/localStorage). */
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { useAuth } from '../../hooks/useAuth.js';
 import { STORAGE_KEYS } from '../../constants/storage.js';
 import { newRequestId } from '../../utils/ids.js';
 import { buildOrderArgs, buildWhatsAppMessage, buildCheckoutView } from '../../utils/orderPayload.js';
 import { DS } from '../../services/DataService.js';
 
 export function CheckoutPage({ cart, onBack, onSuccess }) {
+  /* REF-CLIENTE-02 (vinculo pedido<->conta): create_order reusa o customer POR TELEFONE e nunca toca
+     auth_user_id. Logo o pedido so aparece em "Meus Pedidos" se o telefone do checkout casar com o do
+     cadastro (que carrega o auth_user_id). Para o cliente LOGADO, a identidade vem da conta e o telefone
+     fica TRAVADO (=identidade, ja coletada no 1o acesso) — garante o vinculo, sem re-orfanar o pedido.
+     Guest (nao logado) segue 100% editavel: guest checkout intocado. */
+  const { isLogged, customer } = useAuth();
+  const identidadeTravada = isLogged && !!customer?.phone;
   const [form, setForm] = useState({nome:'',telefone:'',endereco:'',pagamento:'dinheiro',troco:'',obs:''});
+  useEffect(() => {
+    if (!isLogged || !customer) return;   // guest: nao pre-preenche nada
+    setForm(f => ({ ...f, nome: f.nome || customer.name || '', telefone: customer.phone || f.telefone }));
+  }, [isLogged, customer]);
   const [loading, setLoading] = useState(false);
   const [err,     setErr]     = useState('');   // feedback inline (mesmo padrão do AdminLogin)
   const submittingRef = useRef(false);   // trava reentrância (duplo clique / envio simultâneo)
@@ -99,7 +111,13 @@ export function CheckoutPage({ cart, onBack, onSuccess }) {
       </div>
       <div className="form-group">
         <label className="form-label">WhatsApp *</label>
-        <input className="form-input" placeholder="(38) 99999-9999" value={form.telefone} onChange={e=>upd('telefone',e.target.value)}/>
+        <input className="form-input" placeholder="(38) 99999-9999" value={form.telefone} onChange={e=>upd('telefone',e.target.value)}
+          disabled={identidadeTravada} style={identidadeTravada?{opacity:0.75,cursor:'not-allowed'}:undefined}/>
+        {identidadeTravada && (
+          <span style={{fontSize:12,color:'var(--gray-500)',marginTop:4,display:'block'}}>
+            Telefone da sua conta — usado para vincular o pedido ao seu histórico.
+          </span>
+        )}
       </div>
       <div className="form-group">
         <label className="form-label">Endereço de entrega *</label>
