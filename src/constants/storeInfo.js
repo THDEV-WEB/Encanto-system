@@ -8,11 +8,13 @@ export const STORE_INFO = {
   telefoneDigits: '5538992203620',      // usado em tel:/wa.me
   email: 'contato@encantoacai.com.br',  // placeholder — ajustar
   endereco: {                            // estrutura preparada (preencher no futuro)
-    linha1: '',
-    linha2: '',
+    linha1: 'Rua João Schlay, 77',
+    linha2: 'Casa 02',
     cidade: 'Timbó',
     preparado: true,
   },
+  /* REF-CHECKOUT-ADDRESS-01: endereco de RETIRADA na loja (fonte unica — usado no header e no checkout). */
+  retirada: 'Rua João Schlay, 77 Casa 02',
   social: {
     instagram: 'https://instagram.com/',  // placeholder — ajustar URL
     facebook:  'https://facebook.com/',   // placeholder — ajustar URL

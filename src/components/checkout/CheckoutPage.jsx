@@ -11,20 +11,28 @@ import { newRequestId } from '../../utils/ids.js';
 import { buildOrderArgs, buildWhatsAppMessage, buildCheckoutView } from '../../utils/orderPayload.js';
 import { DS } from '../../services/DataService.js';
 import { LOYALTY_EVENT } from '../../services/loyalty/index.js';   // REF-LOYALTY-01: avisa a loja p/ re-buscar o estado oficial
+import { STORE_INFO } from '../../constants/storeInfo.js';
+import { useAddress, AddressSummary } from '../../address/index.js';   // REF-CHECKOUT-ADDRESS-01: FONTE UNICA do endereco
 
-export function CheckoutPage({ cart, onBack, onSuccess }) {
+export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode }) {
   /* REF-CLIENTE-02 (vinculo pedido<->conta): create_order reusa o customer POR TELEFONE e nunca toca
      auth_user_id. Logo o pedido so aparece em "Meus Pedidos" se o telefone do checkout casar com o do
      cadastro (que carrega o auth_user_id). Para o cliente LOGADO, a identidade vem da conta e o telefone
      fica TRAVADO (=identidade, ja coletada no 1o acesso) — garante o vinculo, sem re-orfanar o pedido.
      Guest (nao logado) segue 100% editavel: guest checkout intocado. */
   const { isLogged, customer } = useAuth();
+  /* REF-CHECKOUT-ADDRESS-01: o endereco de entrega vem da FONTE UNICA (dominio Address, mesmo objeto do
+     header). O checkout NAO tem mais um endereco proprio; edita o mesmo objeto pelo mesmo AddressModal
+     (abrirModal). Retirada nao usa endereco de entrega — usa o endereco da loja. */
+  const { endereco, temEndereco, abrirModal } = useAddress();
+  const retirada = deliveryMode === 'retirada';
+  const enderecoEntrega = retirada ? ('Retirada na loja — ' + STORE_INFO.retirada) : (endereco?.label || '');
   /* REF-BUSINESS-HOURS-01: fora do horário oficial o cliente navega/vê preços normalmente, mas NÃO
      finaliza pedido. Mesma fonte de verdade do header (services/businessHours via useBusinessHours). */
   const horario = useBusinessHours();
   const lojaFechada = !horario.aberto;
   const identidadeTravada = isLogged && !!customer?.phone;
-  const [form, setForm] = useState({nome:'',telefone:'',endereco:'',pagamento:'dinheiro',troco:'',obs:''});
+  const [form, setForm] = useState({nome:'',telefone:'',pagamento:'dinheiro',troco:'',obs:''});
   useEffect(() => {
     if (!isLogged || !customer) return;   // guest: nao pre-preenche nada
     setForm(f => ({ ...f, nome: f.nome || customer.name || '', telefone: customer.phone || f.telefone }));
@@ -47,11 +55,13 @@ export function CheckoutPage({ cart, onBack, onSuccess }) {
     /* GATE de horário (REF-BUSINESS-HOURS-01): fora do expediente NÃO cria pedido — interrompe antes de
        validar/persistir e informa o próximo horário correto. Guest e logado passam pelo mesmo gate. */
     if (lojaFechada) { setErr(horario.mensagemFechado || 'Estamos fechados no momento.'); return; }
-    if (!form.nome||!form.telefone||!form.endereco) { setErr('Preencha nome, telefone e endereço.'); return; }
+    if (!form.nome||!form.telefone) { setErr('Preencha nome e telefone.'); return; }
     /* Validação de telefone alinhada ao servidor (normalize_phone): DDD + número = ≥10 dígitos.
        Impede que telefone inválido chegue à RPC create_order (que rejeitaria com rollback). */
     const digits = form.telefone.replace(/\D/g, '');
     if (digits.length < 10) { setErr('Informe um telefone válido com DDD (mínimo 10 dígitos).'); return; }
+    /* REF-CHECKOUT-ADDRESS-01: entrega exige endereco da fonte unica; retirada usa o endereco da loja. */
+    if (!retirada && !temEndereco) { setErr('Selecione seu endereço de entrega.'); return; }
     if (cart.items.length === 0) { console.warn('[ENCANTO] Carrinho vazio ao finalizar!'); }
     submittingRef.current = true;
     setLoading(true);
@@ -62,7 +72,7 @@ export function CheckoutPage({ cart, onBack, onSuccess }) {
     /* Montagem do pedido no order-domain (Onda 5.2 · Trilha B): buildOrderArgs concentra a
        lógica pura que antes vivia inline aqui (precoUnitario por item, product_id uuid/null,
        contratos null). Σ(price*quantity) reconcilia com orders.total. */
-    const { customer, order, items } = buildOrderArgs(cart, form, requestIdRef.current);
+    const { customer, order, items } = buildOrderArgs(cart, form, enderecoEntrega, requestIdRef.current);
     /* GATE (fonte única de verdade): a persistência bem-sucedida é o evento que autoriza TODAS as ações
        seguintes. savePedido devolve o order_id em sucesso, ou null em falha (validação/rollback/timeout). */
     const orderId = await DS.savePedido(customer, order, items, requestIdRef.current);
@@ -80,7 +90,7 @@ export function CheckoutPage({ cart, onBack, onSuccess }) {
        selo — apenas avisa a loja para re-buscar o estado oficial (get_my_loyalty) e refletir o novo
        selo do proprio cliente logado. Guest acumula na conta do telefone e ve ao logar depois. */
     try { window.dispatchEvent(new Event(LOYALTY_EVENT)); } catch (e) {}
-    const msg = buildWhatsAppMessage(cart, form);
+    const msg = buildWhatsAppMessage(cart, form, enderecoEntrega);
     setLoading(false);
     submittingRef.current = false;
     requestIdRef.current = null;   // próximo pedido recebe nova idempotency key
@@ -120,9 +130,15 @@ export function CheckoutPage({ cart, onBack, onSuccess }) {
         )}
       </div>
       <div className="form-group">
-        <label className="form-label">Endereço de entrega *</label>
-        <textarea className="form-input obs-textarea" placeholder="Rua, número, bairro..."
-          value={form.endereco} onChange={e=>upd('endereco',e.target.value)}/>
+        <label className="form-label">{retirada ? 'Retirada na loja' : 'Endereço de entrega *'}</label>
+        {/* REF-CHECKOUT-ADDRESS-01: resumo editavel da FONTE UNICA (mesmo objeto/modal do header). O que
+            aparece aqui e exatamente o que sera confirmado e persistido no pedido. */}
+        <AddressSummary
+          endereco={endereco}
+          retirada={retirada}
+          retiradaLabel={STORE_INFO.retirada}
+          onEditar={abrirModal}
+        />
       </div>
       <div className="form-group">
         <label className="form-label">Forma de pagamento</label>

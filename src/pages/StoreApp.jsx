@@ -4,6 +4,7 @@ import { fmt } from '../utils/format.js';
 import { resolverAdicionais, selecionarFonteAdicionais } from '../utils/addons.js';
 import { prodInCat, getProdCatIds } from '../utils/catalog.js';
 import { STORAGE_KEYS } from '../constants/storage.js';
+import { STORE_INFO } from '../constants/storeInfo.js';   // REF-CHECKOUT-ADDRESS-01: endereco de retirada (fonte unica)
 import { useCategories } from '../hooks/useCategories.js';
 import { useProducts } from '../hooks/useProducts.js';
 import { useAdicionais } from '../hooks/useAdicionais.js';
@@ -16,7 +17,7 @@ import { ProductCard } from '../components/ProductCard.jsx';
 import { ProductModal } from '../components/ProductModal/index.jsx';
 import { CartSidebar } from '../components/CartSidebar.jsx';
 import { SearchBar } from '../components/SearchBar.jsx';
-import { AddressModal, useAddress } from '../address/index.js'; // REF-ADDRESS-01: dominio proprio de endereco
+import { AddressProvider, useAddress } from '../address/index.js'; // REF-CHECKOUT-ADDRESS-01: fonte unica do endereco (provider)
 import { LazySection } from '../components/ui/LazySection.jsx';
 import { SuccessPage } from '../components/checkout/SuccessPage.jsx';
 import { CheckoutPage } from '../components/checkout/CheckoutPage.jsx';
@@ -24,6 +25,17 @@ import { DS } from '../services/DataService.js';                       // REF-CL
 import { montarRecompra } from '../components/pedidos/recompra.js';   // REF-CLIENTE-02 Onda 4 (regras puras)
 
 export function StoreApp({ onAdmin }) {
+  /* REF-CHECKOUT-ADDRESS-01: a loja inteira (Header + Checkout) vive sob o AddressProvider — FONTE UNICA
+     do endereco de entrega. O AddressModal e renderizado uma unica vez pelo provider (overlay sobre o
+     Header ou o Checkout). App.jsx nao ganha responsabilidade: o provider e escopo da loja. */
+  return (
+    <AddressProvider>
+      <StoreAppContent onAdmin={onAdmin} />
+    </AddressProvider>
+  );
+}
+
+function StoreAppContent({ onAdmin }) {
   const [page,          setPage]         = useState('home');
   const [selCat,        setSelCat]        = useState(null);
   const [search,        setSearch]        = useState('');
@@ -32,10 +44,10 @@ export function StoreApp({ onAdmin }) {
   const [waMsg,         setWaMsg]         = useState('');
   /* Estado visual do header — não afeta lógica */
   const [deliveryMode,   setDeliveryMode]   = useState('entrega');
-  /* REF-ADDRESS-01: endereco de entrega + persistencia pertencem ao dominio Address (useAddress).
-     O StoreApp so CONSOME (nao le/escreve localStorage de endereco nem monta strings). */
-  const { endereco: deliveryAddress, selecionar: selecionarEndereco } = useAddress();
-  const [showAddressModal,setShowAddressModal] = useState(false);
+  /* REF-CHECKOUT-ADDRESS-01: FONTE UNICA do endereco (contexto). O header apenas EXIBE o rotulo e abre
+     o modal (abrirEndereco); a edicao/persistencia e do provider. Sem estado paralelo de endereco. */
+  const { endereco: enderecoObj, abrirModal: abrirEndereco } = useAddress();
+  const deliveryAddress = enderecoObj?.label || '';
   const [showLoyalty,    setShowLoyalty]     = useState(false);
   /* ── Programa de Fidelidade (REF-LOYALTY-01) ── fonte unica: Supabase (get_my_loyalty), por CLIENTE.
      O visitante nao-logado ve zeros (fidelidade nao pertence ao navegador). O cliente logado ve o
@@ -78,7 +90,7 @@ export function StoreApp({ onAdmin }) {
     _catIds: getProdCatIds(p),
   })),[rawProds,catMap]);
 
-  if (page==='checkout') return <CheckoutPage cart={cart} onBack={()=>setPage('home')} onSuccess={msg=>{setWaMsg(msg);setPage('success');}}/>;
+  if (page==='checkout') return <CheckoutPage cart={cart} deliveryMode={deliveryMode} onBack={()=>setPage('home')} onSuccess={msg=>{setWaMsg(msg);setPage('success');}}/>;
   if (page==='success')  return <SuccessPage  msg={waMsg} cart={cart} onBack={()=>setPage('home')}/>;
 
   return (
@@ -177,7 +189,7 @@ export function StoreApp({ onAdmin }) {
         {deliveryMode==='entrega' ? (
           <button
             className={`delivery-address-btn ${deliveryAddress?'filled':''}`}
-            onClick={()=>setShowAddressModal(true)}>
+            onClick={abrirEndereco}>
             📍 {deliveryAddress
               ? <span style={{maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'inline-block'}}>
                   {deliveryAddress}
@@ -190,7 +202,7 @@ export function StoreApp({ onAdmin }) {
             fontSize:12,color:'var(--gray-600)',fontWeight:600,
           }}>
             <span>🏪</span>
-            <span>Rua João Schlay, 77 Casa 02</span>
+            <span>{STORE_INFO.retirada}</span>
           </div>
         )}
       </div>
@@ -625,16 +637,8 @@ export function StoreApp({ onAdmin }) {
       </div>
       </div>{/* /app-content */}
 
-      {/* ── Modal de Seleção de Endereço ── */}
-      {showAddressModal && (
-        <AddressModal
-          onClose={()=>setShowAddressModal(false)}
-          onSelect={(addr, meta)=>{
-            selecionarEndereco(addr, meta);   // dominio Address: grava endereco (+meta com lat)
-            setShowAddressModal(false);
-          }}
-        />
-      )}
+      {/* ── Modal de Seleção de Endereço ── REF-CHECKOUT-ADDRESS-01: renderizado uma unica vez pelo
+          AddressProvider (fonte unica); o header so o ABRE via abrirEndereco. */}
 
       {/* ── Modal Programa de Fidelidade ── */}
       {showLoyalty&&(

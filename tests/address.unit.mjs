@@ -9,6 +9,7 @@ import {
   normalizarEndereco, chaveDedupe, sugestaoMain, sugestaoSub, curtaSugestao, curtaGps, curtaCep,
   linhaReversaMapa, linhaConfirmarMapa,
 } from '../src/address/utils/addressFormat.js';
+import { montarEndereco, enderecoPreenchido, ENDERECO_VAZIO } from '../src/address/utils/addressModel.js';
 
 let fail = 0;
 const check = (m, fn) => { try { fn(); console.error('  ok ' + m); } catch (e) { fail++; console.error('  x  ' + m + ' — ' + (e?.message ?? e)); } };
@@ -101,5 +102,24 @@ check('linhaReversaMapa x linhaConfirmarMapa (diferença suburb||neighbourhood v
   assert.equal(linhaConfirmarMapa(c), 'R, 1, C');    // só suburb (ausente) -> pulado
 });
 
-console.log(fail === 0 ? '\nOK address.unit — validators + utils congelados (equivalência ao original)' : '\nFALHA address.unit — ' + fail + ' caso(s)');
+/* ── addressModel (REF-CHECKOUT-ADDRESS-01): objeto canônico da FONTE ÚNICA ── */
+check('montarEndereco: (label, meta) -> objeto canônico completo', () => {
+  const meta = { rua: 'Rua A', numero: '100', bairro: 'Centro', cidade: 'Timbó', estado: 'SC', cep: '89120-000', complemento: 'Casa 2', lat: -26.7, lng: -49.2, full: 'Rua A, 100, Centro, Timbó' };
+  assert.deepEqual(montarEndereco('Rua A, 100', meta), { label: 'Rua A, 100', ...meta });
+});
+check('montarEndereco: meta ausente -> defaults ("" e lat/lng null)', () => {
+  assert.deepEqual(montarEndereco('X'), { label: 'X', rua: '', numero: '', bairro: '', cidade: '', estado: '', cep: '', complemento: '', lat: null, lng: null, full: '' });
+});
+check('montarEndereco: sem label -> ENDERECO_VAZIO (null)', () => {
+  assert.equal(montarEndereco('', { rua: 'x' }), ENDERECO_VAZIO);
+  assert.equal(montarEndereco(null), ENDERECO_VAZIO);
+  assert.equal(ENDERECO_VAZIO, null);
+});
+check('enderecoPreenchido: só true com label', () => {
+  assert.equal(enderecoPreenchido(null), false);
+  assert.equal(enderecoPreenchido({ label: '' }), false);
+  assert.equal(enderecoPreenchido({ label: 'Rua A' }), true);
+});
+
+console.log(fail === 0 ? '\nOK address.unit — validators + utils + model congelados (equivalência ao original + fonte única)' : '\nFALHA address.unit — ' + fail + ' caso(s)');
 process.exit(fail ? 1 : 0);

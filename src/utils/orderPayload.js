@@ -12,10 +12,12 @@ import { precoUnitario, precoLinha } from './pricing.js';
 import { fmt } from './format.js';
 import { isUuid } from './ids.js';
 
-export function buildOrderArgs(cart, form, requestId) {
+export function buildOrderArgs(cart, form, endereco, requestId) {
   const customer = { name: form.nome, phone: form.telefone };
+  /* REF-CHECKOUT-ADDRESS-01: o endereco vem da FONTE UNICA (dominio Address), passado explicitamente —
+     nunca mais de um form.endereco paralelo. O que e persistido no pedido e EXATAMENTE o exibido/confirmado. */
   const order = { total: cart.total, status: 'recebido', payment_method: form.pagamento,
-                  address: form.endereco, observacoes: form.obs || null };
+                  address: endereco, observacoes: form.obs || null };
   const items = cart.items.map(i => {
     const pu = precoUnitario(i);
     return {
@@ -31,9 +33,9 @@ export function buildOrderArgs(cart, form, requestId) {
   return { customer, order, items, requestId };
 }
 
-export function buildWhatsAppMessage(cart, form) {
+export function buildWhatsAppMessage(cart, form, endereco) {
   let msg = `*🛍️ Novo Pedido - Encanto*\n\n`;
-  msg += `*Cliente:* ${form.nome}\n*Telefone:* ${form.telefone}\n*Endereço:* ${form.endereco}\n\n*📋 Itens:*\n`;
+  msg += `*Cliente:* ${form.nome}\n*Telefone:* ${form.telefone}\n*Endereço:* ${endereco}\n\n*📋 Itens:*\n`;
   cart.items.forEach(i => {
     msg += `• ${i.nome} x${i.qty} — ${fmt(precoLinha(i))}\n`;
     if (i.adicionais?.length) msg += `  ↳ ${i.adicionais.map(a => a.nome).join(', ')}\n`;

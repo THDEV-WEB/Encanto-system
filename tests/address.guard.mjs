@@ -44,28 +44,44 @@ check('(2) services preservam as URLs externas EXATAS', () => {
   assert.ok(mapsvc.includes('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'), 'tiles OSM');
 });
 
-/* (3) StoreApp perdeu a responsabilidade de endereço */
-check('(3) StoreApp consome o domínio e não toca mais no localStorage de endereço', () => {
+/* (3) StoreApp perdeu a responsabilidade de endereço (REF-CHECKOUT-ADDRESS-01: consome o provider) */
+check('(3) StoreApp consome o provider e não toca no localStorage de endereço', () => {
   const store = strip(read('pages/StoreApp.jsx'));
   assert.ok(!/components\/AddressModal/.test(store), 'StoreApp não deve importar o AddressModal antigo');
-  assert.ok(/\.\.\/address\/index\.js/.test(store), 'StoreApp deve importar o domínio address (barrel)');
-  assert.ok(/useAddress/.test(store), 'StoreApp deve usar o hook useAddress');
-  assert.ok(!/DELIVERY_ADDRESS/.test(store), 'StoreApp não deve referenciar DELIVERY_ADDRESS (movido p/ useAddress)');
-  assert.ok(!/DELIVERY_META/.test(store), 'StoreApp não deve referenciar DELIVERY_META (movido p/ useAddress)');
+  assert.ok(/AddressProvider/.test(store), 'StoreApp deve envolver a loja no AddressProvider (fonte única)');
+  assert.ok(/useAddress/.test(store), 'StoreApp deve consumir useAddress');
+  assert.ok(!/<AddressModal/.test(store), 'StoreApp não deve renderizar o AddressModal (agora é do provider)');
+  assert.ok(!/DELIVERY_ADDRESS/.test(store) && !/DELIVERY_META/.test(store), 'StoreApp não referencia chaves de endereço');
 });
 
-/* (4) persistência no hook useAddress */
-check('(4) useAddress é dono da persistência do endereço (DELIVERY_ADDRESS/META)', () => {
+/* (4) FONTE ÚNICA: persistência no AddressProvider (chave única) + useAddress = consumidor de contexto */
+check('(4) AddressProvider é dono da persistência (chave única DELIVERY) e useAddress só consome contexto', () => {
+  const prov = strip(read('address/AddressProvider.jsx'));
+  assert.ok(/STORAGE_KEYS\.DELIVERY\b/.test(prov), 'provider persiste na chave única DELIVERY');
+  assert.ok(/AddressContext/.test(prov) && /Provider/.test(prov), 'provider expõe o AddressContext');
+  assert.ok(/DELIVERY_ADDRESS/.test(prov) && /removeItem/.test(prov), 'provider migra e remove os legados (uma fonte)');
   const h = strip(read('address/hooks/useAddress.js'));
-  assert.ok(/DELIVERY_ADDRESS/.test(h) && /DELIVERY_META/.test(h), 'useAddress deve persistir as duas chaves');
-  assert.ok(/localStorage/.test(h), 'useAddress usa localStorage (persistência local, não fonte de verdade)');
+  assert.ok(/useContext\(AddressContext\)/.test(h), 'useAddress deve consumir o AddressContext');
+  assert.ok(!/useState|localStorage/.test(h), 'useAddress NÃO pode ter estado/persistência próprios (senão vira 2ª fonte)');
 });
 
 /* (5) barrel = fronteira única */
-check('(5) barrel expõe AddressModal + useAddress', () => {
+check('(5) barrel expõe AddressProvider + AddressModal + AddressSummary + useAddress', () => {
   const idx = strip(read('address/index.js'));
-  assert.ok(/AddressModal/.test(idx), 'barrel exporta AddressModal');
-  assert.ok(/useAddress/.test(idx), 'barrel exporta useAddress');
+  for (const ex of ['AddressProvider', 'AddressModal', 'AddressSummary', 'useAddress']) {
+    assert.ok(new RegExp(ex).test(idx), `barrel deve exportar ${ex}`);
+  }
+});
+
+/* (8) FONTE ÚNICA no checkout: consome useAddress, sem textarea próprio; pedido usa o endereço do domínio */
+check('(8) CheckoutPage consome a fonte única e não tem endereço próprio (sem textarea/form.endereco)', () => {
+  const ck = strip(read('components/checkout/CheckoutPage.jsx'));
+  assert.ok(/useAddress/.test(ck), 'CheckoutPage deve consumir useAddress (fonte única)');
+  assert.ok(!/upd\('endereco'/.test(ck) && !/form\.endereco/.test(ck), 'CheckoutPage não pode ter endereço próprio no form');
+  assert.ok(!/obs-textarea[^>]*endereco|endereco[^>]*obs-textarea/.test(ck), 'sem textarea de endereço no checkout');
+  const od = strip(read('utils/orderPayload.js'));
+  assert.ok(/address:\s*endereco\b/.test(od), 'order-domain: address vem do parâmetro endereco (fonte única)');
+  assert.ok(!/address:\s*form\.endereco/.test(od), 'order-domain: address NÃO pode vir de form.endereco');
 });
 
 /* (6) validators/utils puros */

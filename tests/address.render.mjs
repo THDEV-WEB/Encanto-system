@@ -22,6 +22,7 @@ const { AddressActions } = await import('../src/address/components/AddressAction
 const { AddressForm } = await import('../src/address/components/AddressForm.jsx');
 const { AddressMap } = await import('../src/address/components/AddressMap.jsx');
 const { AddressSearch } = await import('../src/address/components/AddressSearch.jsx');
+const { AddressSummary } = await import('../src/address/components/AddressSummary.jsx');
 
 const noop = () => {};
 const cepData = { logradouro: 'Rua das Flores', bairro: 'Centro', localidade: 'Timbó', uf: 'SC', cep: '89120-000' };
@@ -44,6 +45,17 @@ const GOLDEN_MAP =
 const GOLDEN_SEARCH_NOTFOUND =
 `<input class="addr-search-input" placeholder="Rua, número, bairro ou local..." value="xyz"/><button class="addr-gps-btn"><span>🎯</span> Usar minha localização atual</button><div class="addr-not-found"><div style="font-size:28px;margin-bottom:6px">🔍</div><p><b>Endereço não encontrado.</b><br/>Tente buscar pelo CEP ou marque no mapa.</p><div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:10px"><button class="addr-map-btn">📮 Buscar por CEP</button><button class="addr-map-btn">🗺️ Ver no mapa</button></div></div>`;
 
+/* REF-CHECKOUT-ADDRESS-01: AddressSummary (resumo editável do checkout — 3 estados) */
+const enderecoFix = { label: 'Rua das Flores, 123', bairro: 'Centro', cidade: 'Timbó', complemento: 'Casa 02' };
+const RETIRADA_LABEL = 'Rua João Schlay, 77 Casa 02';
+/* REF-CHECKOUT-ADDRESS-01 (fix adversarial): o cartao mostra SO o label persistido — exibido == persistido. */
+const GOLDEN_SUMMARY_ENTREGA =
+`<div style="display:flex;align-items:center;gap:12px;justify-content:space-between;background:var(--grape-pale);border:1px solid #DDD6FE;border-radius:12px;padding:12px 14px"><div style="flex:1;min-width:0"><div style="font-weight:700;font-size:14px;color:var(--gray-700);line-height:1.4">📍 Rua das Flores, 123</div></div><button type="button" style="flex-shrink:0;border:1px solid var(--grape);background:none;color:var(--grape);font-weight:700;font-size:12px;border-radius:8px;padding:7px 12px;cursor:pointer;font-family:var(--font-body)">Alterar</button></div>`;
+const GOLDEN_SUMMARY_VAZIO =
+`<div style="background:var(--gray-50);border:1px dashed var(--gray-200, #E5E7EB);border-radius:12px;padding:14px;text-align:center"><div style="font-size:12px;color:var(--gray-500);margin-top:0;line-height:1.5">Você ainda não escolheu um endereço de entrega.</div><button type="button" class="addr-confirm-btn" style="margin-top:10px">📍 Selecionar endereço</button></div>`;
+const GOLDEN_SUMMARY_RETIRADA =
+`<div style="display:flex;align-items:center;gap:12px;justify-content:space-between;background:var(--grape-pale);border:1px solid #DDD6FE;border-radius:12px;padding:12px 14px"><div style="flex:1;min-width:0"><div style="font-weight:700;font-size:14px;color:var(--gray-700);line-height:1.4">🏪 Rua João Schlay, 77 Casa 02</div><div style="font-size:12px;color:var(--gray-500);margin-top:2px;line-height:1.5">Você retira o pedido no balcão da loja.</div></div></div>`;
+
 const CASES = [
   { nome: 'AddressModal (aba search = golden do monólito original)', el: () => h(AddressModal, { onClose: noop, onSelect: noop }), snap: GOLDEN_MODAL_SEARCH },
   { nome: 'AddressPreview', el: () => h(AddressPreview, { cepData }), snap: GOLDEN_PREVIEW },
@@ -51,6 +63,9 @@ const CASES = [
   { nome: 'AddressForm(found)', el: () => h(AddressForm, { cepQuery: '89120-000', onCepChange: noop, status: 'found', cepData, cepNumero: '77', onNumeroChange: noop, complemento: 'Casa 02', onComplementoChange: noop, onConfirm: noop }), snap: GOLDEN_FORM_FOUND },
   { nome: 'AddressMap', el: () => h(AddressMap, { mapPin: { lat: -26.795, lng: -49.27 }, mapAddr: 'Rua X, 10', cepNumero: '', onNumeroChange: noop, onConfirm: noop, aoArrastarPino: noop, aoClicarPino: noop }), snap: GOLDEN_MAP },
   { nome: 'AddressSearch(notfound)', el: () => h(AddressSearch, { query: 'xyz', onQueryChange: noop, status: 'notfound', suggestions: [], onGPS: noop, onPick: noop, onGoCep: noop, onGoMap: noop }), snap: GOLDEN_SEARCH_NOTFOUND },
+  { nome: 'AddressSummary(entrega+endereco)', el: () => h(AddressSummary, { endereco: enderecoFix, retirada: false, retiradaLabel: RETIRADA_LABEL, onEditar: noop }), snap: GOLDEN_SUMMARY_ENTREGA },
+  { nome: 'AddressSummary(entrega+vazio)', el: () => h(AddressSummary, { endereco: null, retirada: false, retiradaLabel: RETIRADA_LABEL, onEditar: noop }), snap: GOLDEN_SUMMARY_VAZIO },
+  { nome: 'AddressSummary(retirada)', el: () => h(AddressSummary, { endereco: null, retirada: true, retiradaLabel: RETIRADA_LABEL, onEditar: noop }), snap: GOLDEN_SUMMARY_RETIRADA },
 ];
 
 let fail = 0;

@@ -31,8 +31,8 @@ const check = (m, fn) => { try { fn(); } catch (e) { fail++; console.error('✗'
    O espelho (antes fiel à montagem inline do submit) foi substituído pelo IMPORT REAL; os pins de
    fonte (§B) garantem que a montagem real mora no order-domain. buildRpcPayload segue local (só mapeia
    buildOrderArgs → chaves p_ da RPC create_order de services/DataService.js). */
-function buildRpcPayload(cart, form, requestId) {
-  const { customer, order, items } = buildOrderArgs(cart, form, requestId);
+function buildRpcPayload(cart, form, endereco, requestId) {
+  const { customer, order, items } = buildOrderArgs(cart, form, endereco, requestId);
   return { p_customer: customer, p_order: order, p_items: items, p_request_id: requestId ?? null };
 }
 
@@ -46,7 +46,10 @@ const mkCart = () => {
   ];
   return { items, total: totalCarrinho(items) };
 };
-const FORM = { nome: 'Maria Teste', telefone: '38999990000', endereco: 'Rua A, 100, Centro', pagamento: 'pix', troco: '', obs: 'sem cebola' };
+const FORM = { nome: 'Maria Teste', telefone: '38999990000', pagamento: 'pix', troco: '', obs: 'sem cebola' };
+/* REF-CHECKOUT-ADDRESS-01: o endereco NAO vem mais do form — vem da FONTE UNICA (dominio Address) e e
+   passado explicitamente a buildOrderArgs/buildWhatsAppMessage (o que e exibido = confirmado = persistido). */
+const ENDERECO = 'Rua A, 100, Centro';
 
 const GOLDEN_PAYLOAD = {
   p_customer: { name: 'Maria Teste', phone: '38999990000' },
@@ -68,24 +71,28 @@ const GOLDEN_MSG = [
 
 console.error('— (A) GOLDEN DE DOMÍNIO (payload + mensagem + invariantes)');
 const cart = mkCart();
-check('1. snapshot do payload (byte-a-byte)', () => assert.deepStrictEqual(buildRpcPayload(cart, FORM, REQ), GOLDEN_PAYLOAD));
-check('2. snapshot da mensagem WhatsApp',     () => assert.strictEqual(buildWhatsAppMessage(cart, FORM), GOLDEN_MSG));
+check('1. snapshot do payload (byte-a-byte)', () => assert.deepStrictEqual(buildRpcPayload(cart, FORM, ENDERECO, REQ), GOLDEN_PAYLOAD));
+check('2. snapshot da mensagem WhatsApp',     () => assert.strictEqual(buildWhatsAppMessage(cart, FORM, ENDERECO), GOLDEN_MSG));
 check('3. reconciliação Σ(price×qty)=total',  () => {
-  const p = buildRpcPayload(cart, FORM, REQ);
+  const p = buildRpcPayload(cart, FORM, ENDERECO, REQ);
   const soma = p.p_items.reduce((a, it) => a + it.price * it.quantity, 0);
   assert.strictEqual(soma, p.p_order.total);
   assert.strictEqual(cart.total, totalCarrinho(cart.items));   // total do carrinho = domínio
 });
 check('4. product_id: uuid preservado / mock → null', () => {
-  const p = buildRpcPayload(cart, FORM, REQ);
+  const p = buildRpcPayload(cart, FORM, ENDERECO, REQ);
   assert.strictEqual(p.p_items[0].product_id, '11111111-1111-4111-8111-111111111111');
   assert.strictEqual(p.p_items[1].product_id, null);
 });
-check('5. idempotência: p_request_id passthrough',  () => assert.strictEqual(buildRpcPayload(cart, FORM, REQ).p_request_id, REQ));
-check('5b. requestId ausente → p_request_id null',  () => assert.strictEqual(buildRpcPayload(cart, FORM, undefined).p_request_id, null));
-check('6. pureza/idempotência (2ª montagem = 1ª)',  () => assert.deepStrictEqual(buildRpcPayload(mkCart(), FORM, REQ), buildRpcPayload(mkCart(), FORM, REQ)));
+check('5. idempotência: p_request_id passthrough',  () => assert.strictEqual(buildRpcPayload(cart, FORM, ENDERECO, REQ).p_request_id, REQ));
+check('5b. requestId ausente → p_request_id null',  () => assert.strictEqual(buildRpcPayload(cart, FORM, ENDERECO, undefined).p_request_id, null));
+check('5c. address = FONTE UNICA (arg endereco), nao form', () => {
+  const p = buildRpcPayload(cart, { ...FORM, endereco: 'LIXO-NAO-USAR' }, ENDERECO, REQ);
+  assert.strictEqual(p.p_order.address, ENDERECO);   // ignora qualquer form.endereco residual
+});
+check('6. pureza/idempotência (2ª montagem = 1ª)',  () => assert.deepStrictEqual(buildRpcPayload(mkCart(), FORM, ENDERECO, REQ), buildRpcPayload(mkCart(), FORM, ENDERECO, REQ)));
 check('7. contratos null (adicionais [] / observacoes null / obs → null)', () => {
-  const p = buildRpcPayload(cart, FORM, REQ);
+  const p = buildRpcPayload(cart, FORM, ENDERECO, REQ);
   assert.deepStrictEqual(p.p_items[1].adicionais, []);
   assert.strictEqual(p.p_items[1].observacoes, null);
   assert.strictEqual(p.p_order.observacoes, 'sem cebola');
@@ -113,6 +120,8 @@ const pinSvc = (m, re) => check('pin: ' + m, () => assert.ok(re.test(SVC), 'expr
 pinOD("order.status 'recebido'",        /status:\s*'recebido'/);
 pinOD('order.total = cart.total',       /total:\s*cart\.total/);
 pinOD('order.observacoes = obs||null',  /observacoes:\s*form\.obs\s*\|\|\s*null/);
+pinOD('order.address = endereco (FONTE UNICA — nao form.endereco)', /address:\s*endereco\b/);
+check('pin: order.address NAO vem de form.endereco', () => assert.ok(!/address:\s*form\.endereco/.test(OD), 'address nao pode voltar a sair de form.endereco (fonte unica quebrada)'));
 pinOD('item.product_id = isUuid?id:null', /product_id:\s*isUuid\(i\.id\)\s*\?\s*i\.id\s*:\s*null/);
 pinOD('item.price = pu',                /price:\s*pu/);
 pinOD('item.preco_unitario = pu',       /preco_unitario:\s*pu/);
