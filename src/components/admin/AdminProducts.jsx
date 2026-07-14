@@ -3,6 +3,7 @@ import { DS } from '../../services/DataService.js';
 import { MOCK_CATS, MOCK_PRODS } from '../../data/mockCatalog.js';
 import { precoVitrine } from '../../utils/pricing.js';
 import { fmt } from '../../utils/format.js';
+import { getProdCatIds } from '../../utils/catalog.js';   // REF-ADMIN-CATALOG-01: multiplas categorias
 import { Spinner } from '../ui/Spinner.jsx';
 import { ImageUploader } from './ImageUploader.jsx';
 
@@ -18,8 +19,19 @@ export function AdminProducts() {
   const KEEP = '__KEEP__'; // sentinel: não alterar image_url no banco
   const ef = {nome:'',descricao:'',preco:'',preco_promo:'',categoria_id:'',
     imagem_url: KEEP, // ao criar, começar vazio
-    disponivel:true,destaque:false,adicionais_gratis:0,badge:'',tamanhos:[]};
+    disponivel:true,destaque:false,adicionais_gratis:0,badge:'',tamanhos:[],
+    /* REF-ADMIN-CATALOG-01: categorias EXTRAS (multi-categoria) + ordem de exibicao */
+    categoria_extras:[], ordem:999};
   const [form, setForm] = useState(ef);
+
+  /* REF-ADMIN-CATALOG-01: id da vitrine "Destaques" resolvido por NOME (mesma heuristica da loja em
+     StoreApp: nome.includes('destaque')). Featurar um produto = coloca-lo na categoria Destaques (via
+     categoria_ids) -> ele aparece na vitrine SEM duplicar a linha. Fonte unica = as categorias do produto. */
+  const destaquesId = cats.find(c => (c.nome||'').toLowerCase().includes('destaque'))?.id || null;
+  const toggleExtra = (id) => setForm(f => ({ ...f,
+    categoria_extras: (f.categoria_extras||[]).includes(id)
+      ? (f.categoria_extras||[]).filter(x => x !== id)
+      : [ ...(f.categoria_extras||[]), id ] }));
 
   const load = async () => {
     setLoading(true);
@@ -38,20 +50,26 @@ export function AdminProducts() {
 
   /* Abrir modal de edição — carrega a imagem existente no form */
   const openEdit = (p) => {
+    /* REF-ADMIN-CATALOG-01: deriva categorias atuais do produto (categoria_ids ou [categoria_id]).
+       destaque = flag OU pertence a categoria Destaques. extras = demais categorias (fora principal/Destaques). */
+    const ids = getProdCatIds(p);
+    const primary = p.categoria_id || '';
     setForm({
       nome:             p.nome,
       descricao:        p.descricao || '',
       preco:            p.preco,
       preco_promo:      p.preco_promo || '',
-      categoria_id:     p.categoria_id || '',
+      categoria_id:     primary,
       // CRÍTICO: carregar imagem existente — será preservada se não enviar nova
       imagem_url:       p.imagem_url || KEEP,
       disponivel:       p.disponivel,
-      destaque:         p.destaque || false,
+      destaque:         !!p.destaque || (destaquesId ? ids.includes(destaquesId) : false),
       adicionais_gratis: p.adicionais_gratis || 0,
       badge:            p.badge || '',
       // PRICE-DOMAIN-01: carrega o array de tamanhos (copia profunda 1 nivel p/ nao mutar o produto)
       tamanhos:         Array.isArray(p.tamanhos) ? p.tamanhos.map(t=>({...t})) : [],
+      categoria_extras: ids.filter(id => id !== primary && id !== destaquesId),
+      ordem:            (p.ordem ?? 999),
     });
     setSaveErr('');
     setModal(p);
@@ -59,7 +77,7 @@ export function AdminProducts() {
 
   /* Abrir modal de criação */
   const openNew = () => {
-    setForm({ ...ef, imagem_url: '', categoria_id: cats[0]?.id || '', tamanhos: [] });
+    setForm({ ...ef, imagem_url: '', categoria_id: cats[0]?.id || '', tamanhos: [], categoria_extras: [], ordem: 999 });
     setSaveErr('');
     setModal('new');
   };
@@ -106,12 +124,32 @@ export function AdminProducts() {
       const isNew = modal === 'new';
       const id    = isNew ? null : modal.id;
 
+      /* REF-ADMIN-CATALOG-01: compoe categoria_ids (FONTE UNICA das categorias do produto) a partir da
+         principal + extras + Destaques (se marcado). destaque fica em sincronia com pertencer a Destaques
+         -> nunca contraditorio. ordem controla a posicao na loja. Uma unica linha aparece em N vitrines. */
+      let catIds = [form.categoria_id, ...(form.categoria_extras || [])];
+      /* O toggle Destaque e a UNICA via de entrada/saida da vitrine (c8): removemos c8 vindo de
+         principal/extras e so o re-adicionamos se o toggle estiver ligado -> desmarcar SEMPRE tira
+         o produto da vitrine. */
+      if (destaquesId) {
+        catIds = catIds.filter(id => id !== destaquesId);
+        if (form.destaque) catIds.push(destaquesId);
+      }
+      catIds = [...new Set(catIds.filter(Boolean))];
+      const isDestaque = destaquesId ? catIds.includes(destaquesId) : !!form.destaque;
+      /* Destaques e VITRINE, nunca categoria PRINCIPAL: garante um primary real (jamais c8). */
+      const primaryId = (form.categoria_id && form.categoria_id !== destaquesId)
+        ? form.categoria_id
+        : (catIds.find(id => id !== destaquesId) || null);
+
       const data = {
         nome:             form.nome,
         descricao:        form.descricao || null,
-        categoria_id:     form.categoria_id || null,
+        categoria_id:     primaryId,
+        categoria_ids:    catIds,
         disponivel:       form.disponivel,
-        destaque:         form.destaque,
+        destaque:         isDestaque,
+        ordem:            Number.isFinite(+form.ordem) ? +form.ordem : 999,
         adicionais_gratis: +form.adicionais_gratis || 0,
         badge:            form.badge || null,
       };
@@ -205,6 +243,13 @@ export function AdminProducts() {
                     <span className="badge badge-purple">
                       {p.categorias?.nome || cats.find(c=>c.id===p.categoria_id)?.nome || '-'}
                     </span>
+                    {/* REF-ADMIN-CATALOG-01: indica multi-categoria (+N) e destaque (⭐) de relance */}
+                    {getProdCatIds(p).length > 1 && (
+                      <span style={{fontSize:10,color:'var(--gray-500)',marginLeft:4,fontWeight:700}} title="Aparece em mais de uma categoria">
+                        +{getProdCatIds(p).length - 1}
+                      </span>
+                    )}
+                    {p.destaque && <span title="Na vitrine Destaques" style={{marginLeft:4}}>⭐</span>}
                   </td>
                   <td>
                     <div style={{fontWeight:700,color:'var(--amarelo)'}}>{fmt(precoVitrine(p))}</div>
@@ -312,12 +357,52 @@ export function AdminProducts() {
             </div>
 
             <div className="form-group">
-              <label className="form-label">Categoria</label>
+              <label className="form-label">Categoria principal</label>
               <select className="form-select" value={form.categoria_id}
                 onChange={e=>setForm(f=>({...f,categoria_id:e.target.value}))}>
                 <option value="">Selecione...</option>
-                {cats.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}
+                {/* Destaques e vitrine (controlada pelo toggle), nunca categoria principal */}
+                {cats.filter(c=>c.id!==destaquesId).map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}
               </select>
+            </div>
+
+            {/* REF-ADMIN-CATALOG-01: MULTIPLAS categorias — o produto aparece em TODAS as marcadas com
+                UMA unica identidade (fim das linhas duplicadas). A vitrine Destaques tem o toggle proprio abaixo. */}
+            <div className="form-group">
+              <label className="form-label">
+                Aparece também em
+                <span style={{fontSize:10,color:'var(--gray-400)',fontWeight:400,marginLeft:6}}>
+                  (opcional — o mesmo produto em várias categorias, sem duplicar)
+                </span>
+              </label>
+              <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+                {cats.filter(c=>c.id!==form.categoria_id && c.id!==destaquesId).map(c=>{
+                  const on = (form.categoria_extras||[]).includes(c.id);
+                  return (
+                    <button type="button" key={c.id} onClick={()=>toggleExtra(c.id)} style={{
+                      padding:'6px 12px',borderRadius:20,fontSize:12,fontWeight:600,cursor:'pointer',
+                      fontFamily:'var(--font-body)',
+                      border: on?'1px solid var(--grape)':'1px solid var(--gray-200, #E5E7EB)',
+                      background: on?'var(--grape-pale)':'#fff',
+                      color: on?'var(--grape)':'var(--gray-600)',
+                    }}>{on?'✓ ':''}{c.nome}</button>
+                  );
+                })}
+                {cats.filter(c=>c.id!==form.categoria_id && c.id!==destaquesId).length===0 && (
+                  <span style={{fontSize:12,color:'var(--gray-400)'}}>Nenhuma outra categoria disponível.</span>
+                )}
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">
+                Ordem de exibição
+                <span style={{fontSize:10,color:'var(--gray-400)',fontWeight:400,marginLeft:6}}>
+                  (menor aparece primeiro na loja)
+                </span>
+              </label>
+              <input className="form-input" type="number" step="1" value={form.ordem}
+                onChange={e=>setForm(f=>({...f,ordem:e.target.value}))}/>
             </div>
 
             <div className="form-group">
@@ -364,13 +449,14 @@ export function AdminProducts() {
                 </label>
                 Disponível
               </label>
-              <label style={{display:'flex',alignItems:'center',gap:8,fontSize:14,cursor:'pointer'}}>
+              <label style={{display:'flex',alignItems:'center',gap:8,fontSize:14,cursor:'pointer'}}
+                title="Coloca o produto na vitrine Destaques da loja (sem duplicar a linha)">
                 <label className="toggle-switch">
                   <input type="checkbox" checked={form.destaque}
                     onChange={e=>setForm(f=>({...f,destaque:e.target.checked}))}/>
                   <span className="toggle-slider"/>
                 </label>
-                Destaque
+                ⭐ Destaque (vitrine)
               </label>
             </div>
 
