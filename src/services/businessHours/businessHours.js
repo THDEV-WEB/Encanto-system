@@ -17,16 +17,46 @@ const hhmm = (min) => `${pad2(Math.floor(min / 60))}:${pad2(min % 60)}`;
 /* Extrai dia-da-semana (0-6), minutos-do-dia e a data (YYYY-MM-DD) no fuso da loja. Usa Intl para nao
    depender do fuso do dispositivo — a loja abre/fecha no horario DELA. */
 const WD = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-const FMT = new Intl.DateTimeFormat('en-US', {
-  timeZone: 'America/Sao_Paulo', hourCycle: 'h23',
-  weekday: 'short', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
-});
+
+/* REF-BOOT-01 Onda 2 — BLINDAGEM: a construcao do Intl.DateTimeFormat com timezone IANA roda no IMPORT
+   deste modulo (cadeia main->App->StoreApp->useBusinessHours->aqui). Em engines/WebViews sem base de
+   timezones (Android System WebView antigo, navegadores in-app de WhatsApp/Instagram, ICU reduzido) isso
+   LANCA RangeError durante a avaliacao do bundle e trava o bootstrap inteiro (loader "Carregando Encanto..."
+   eterno). Envolvemos a criacao em try/catch: se falhar, FMT=null e partesLocais usa o fallback abaixo.
+   NENHUMA regra de horario muda — o caminho Intl continua identico quando disponivel. */
+let FMT = null;
+try {
+  FMT = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Sao_Paulo', hourCycle: 'h23',
+    weekday: 'short', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+  });
+} catch { FMT = null; }
+
+/* Fallback SEM Intl: America/Sao_Paulo e UTC-3 FIXO (Brasil sem horario de verao desde 2019). Desloca o
+   instante UTC em -3h e le os campos UTC -> produz EXATAMENTE os mesmos { dia, minutos, ymd } que o caminho
+   Intl. Nao depende da base IANA do dispositivo. (Se o Brasil reintroduzir DST, apenas engines ja sem Intl
+   ficariam 1h off durante o DST — motores capazes seguem pelo caminho Intl, correto.) */
+function partesFallback(date) {
+  const sp = new Date(date.getTime() - 3 * 60 * 60 * 1000);
+  return {
+    dia: sp.getUTCDay(),
+    minutos: sp.getUTCHours() * 60 + sp.getUTCMinutes(),
+    ymd: `${sp.getUTCFullYear()}-${pad2(sp.getUTCMonth() + 1)}-${pad2(sp.getUTCDate())}`,
+  };
+}
+
 export function partesLocais(date) {
-  const p = {};
-  for (const part of FMT.formatToParts(date)) p[part.type] = part.value;
-  const dia = WD[p.weekday];
-  const minutos = (Number(p.hour) % 24) * 60 + Number(p.minute);
-  return { dia, minutos, ymd: `${p.year}-${p.month}-${p.day}` };
+  if (FMT) {
+    try {
+      const p = {};
+      for (const part of FMT.formatToParts(date)) p[part.type] = part.value;
+      const dia = WD[p.weekday];
+      if (dia !== undefined) {
+        return { dia, minutos: (Number(p.hour) % 24) * 60 + Number(p.minute), ymd: `${p.year}-${p.month}-${p.day}` };
+      }
+    } catch { /* formatToParts falhou em runtime -> cai no fallback deterministico */ }
+  }
+  return partesFallback(date);
 }
 
 /* Periodos vigentes de um dia: excecao da data (se houver) sobrescreve o padrao semanal. */

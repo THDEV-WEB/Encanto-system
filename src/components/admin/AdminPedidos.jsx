@@ -1,6 +1,6 @@
 import { useOrders } from '../../hooks/useOrders.js';
 import { DS } from '../../services/DataService.js';
-import { fmt, fmtDate } from '../../utils/format.js';
+import { fmt, fmtDataHoraLoja } from '../../utils/format.js';
 import { Spinner } from '../ui/Spinner.jsx';
 
 export function AdminPedidos() {
@@ -43,7 +43,7 @@ export function AdminPedidos() {
                   </td>
                   <td style={{fontWeight:700}}>{fmt(o.total)}</td>
                   <td><span className={`badge ${SM[o.status]?.cls||'badge-gray'}`}>{SM[o.status]?.label||o.status}</span></td>
-                  <td style={{fontSize:12,color:'var(--gray-500)'}}>{fmtDate(o.created_at)}</td>
+                  <td style={{fontSize:12,color:'var(--gray-500)'}}>{fmtDataHoraLoja(o.created_at)}</td>
                   <td>
                     <select className="status-select" value={o.status||'recebido'}
                       onChange={async e=>{ await DS.setStatus(o.id,e.target.value); refresh(); }}>

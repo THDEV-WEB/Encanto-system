@@ -2,7 +2,7 @@
    Onda 1: resumo. Onda 2: timeline. Onda 3: detalhe de itens. Onda 4: "Pedir novamente" (recompra).
    A recompra usa o catalogo ATUAL (preco atual; nunca o antigo) e abre o carrinho para revisao. */
 import { useState } from 'react';
-import { fmt, fmtDate } from '../../utils/format.js';
+import { fmt, fmtDataHoraLoja } from '../../utils/format.js';
 import { statusInfo } from './pedidoStatus.js';
 import { PedidoTimeline } from './PedidoTimeline.jsx';
 import { PedidoItens } from './PedidoItens.jsx';
@@ -43,7 +43,7 @@ export function PedidoCard({ pedido, onRecomprar, onFechar }) {
           <strong style={{ fontSize: 14 }}>{numeroPedido(pedido.id)}</strong>
           <span style={badge(st)}>{st.icon} {st.label}</span>
         </div>
-        <div style={{ fontSize: 13, color: 'var(--gray-500)', marginTop: 2 }}>{fmtDate(pedido.created_at)}</div>
+        <div style={{ fontSize: 13, color: 'var(--gray-500)', marginTop: 2 }}>{fmtDataHoraLoja(pedido.created_at)}</div>
         <div style={{ fontSize: 13, color: 'var(--gray-700)', marginTop: 6, lineHeight: 1.4 }}>{resumoItens(itens)}</div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 8 }}>
           <span style={{ fontSize: 12, color: 'var(--grape)', fontWeight: 600 }}>

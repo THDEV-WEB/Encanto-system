@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useOrders } from '../../hooks/useOrders.js';
-import { fmt, fmtDate } from '../../utils/format.js';
+import { fmt, fmtDataHoraLoja } from '../../utils/format.js';
 
 export function AdminDashboard() {
   const { orders, refresh } = useOrders();
@@ -83,7 +83,7 @@ export function AdminDashboard() {
                  <td><span className={`badge ${statusMap[o.status]?.cls||'badge-gray'}`}>
                    {statusMap[o.status]?.label||o.status}
                  </span></td>
-                 <td style={{fontSize:12,color:'var(--gray-500)'}}>{fmtDate(o.created_at)}</td>
+                 <td style={{fontSize:12,color:'var(--gray-500)'}}>{fmtDataHoraLoja(o.created_at)}</td>
                </tr>
              ))}</tbody>
            </table>

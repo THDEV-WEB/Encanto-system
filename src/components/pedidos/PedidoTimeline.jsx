@@ -3,7 +3,7 @@
    cada transicao) + orders.status (estado atual). 'cancelado' e mostrado a parte. So leitura. */
 import { useState, useEffect } from 'react';
 import { PedidosClienteService } from '../../services/PedidosClienteService.js';
-import { fmtDate } from '../../utils/format.js';
+import { fmtDataHoraLoja } from '../../utils/format.js';
 import { TIMELINE, statusInfo, STATUS_INFO } from './pedidoStatus.js';
 
 export function PedidoTimeline({ orderId, status }) {
@@ -49,7 +49,7 @@ export function PedidoTimeline({ orderId, status }) {
             </div>
             <div style={{ paddingBottom: 14 }}>
               <div style={{ fontSize: 13, fontWeight: atual ? 800 : 600, color: atingido ? 'var(--gray-800)' : 'var(--gray-400)' }}>{info.icon} {info.label}</div>
-              {ts && <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 1 }}>{fmtDate(ts)}</div>}
+              {ts && <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 1 }}>{fmtDataHoraLoja(ts)}</div>}
             </div>
           </div>
         );
