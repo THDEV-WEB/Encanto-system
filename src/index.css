@@ -346,10 +346,13 @@ img{display:block;max-width:100%}
 /* Tempo de preparo/entrega — peso visual secundario, legivel, nunca cortado */
 .delivery-eta{font-size:13px;color:var(--gray-500);font-weight:500;white-space:nowrap;flex-shrink:0}
 .delivery-eta b{color:var(--gray-900);font-weight:700}
-/* Endereco / selecao — na mesma linha, alinhado a direita do tempo; quebra em 2 linhas, nunca trunca */
+/* Endereco / selecao — INLINE na mesma linha do tempo (seletor + tempo + endereco), alinhado a direita.
+   flex-basis 115px: fica na linha do tempo enquanto houver ~115px livres (cobre >=~375px, inclui o mock);
+   em telas muito estreitas cai LIMPO para a propria linha (nunca quebra por caractere). Quebra o texto em
+   2 linhas (min-width:0 + overflow-wrap), nunca trunca. */
 .delivery-address-btn,
 .delivery-address-store{
-  margin-left:auto;flex:0 1 auto;min-width:0;
+  margin-left:auto;flex:0 1 115px;min-width:0;
   display:inline-flex;align-items:flex-start;gap:6px;
   max-width:62%;text-align:left;
 }
