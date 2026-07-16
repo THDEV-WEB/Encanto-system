@@ -1,10 +1,11 @@
 import { useEffect } from 'react';
 import { useOrders } from '../../hooks/useOrders.js';
-import { fmt, fmtDataHoraLoja } from '../../utils/format.js';
+import { fmt, fmtDataHoraLoja, dataLojaYMD } from '../../utils/format.js';
 
 export function AdminDashboard() {
   const { orders, refresh } = useOrders();
-  const hoje  = orders.filter(o=>new Date(o.created_at).toDateString()===new Date().toDateString());
+  const hojeLoja = dataLojaYMD(new Date());   // "hoje" no fuso da LOJA (America/Sao_Paulo)
+  const hoje  = orders.filter(o=>dataLojaYMD(o.created_at)===hojeLoja);
   const fatHoje  = hoje.reduce((a,o)=>a+Number(o.total||0),0);
   const emPreparo = orders.filter(o=>o.status==='preparo'||o.status==='recebido').length;
   const ticketMed = hoje.length>0 ? fatHoje/hoje.length : 0;

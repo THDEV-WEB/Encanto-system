@@ -21,6 +21,23 @@ export const fmtDataHoraLoja = v => {
     return `${p(sp.getUTCDate())}/${p(sp.getUTCMonth() + 1)}/${sp.getUTCFullYear()}, ${p(sp.getUTCHours())}:${p(sp.getUTCMinutes())}`;
   }
 };
+/* REF-BOOT-01 — chave de DATA (YYYY-MM-DD) no fuso da loja p/ um timestamp de PEDIDO (naive-UTC).
+   Mesma normalizacao do fmtDataHoraLoja (string sem offset = UTC). Serve p/ agrupar "pedidos de hoje"
+   sem depender do fuso do dispositivo (evita contar pedido de fim de noite no dia errado); fallback
+   UTC-3 fixo se o engine nao suportar timeZone IANA. Retorna '' para valor invalido. */
+export const dataLojaYMD = v => {
+  const s = typeof v === 'string' ? v : '';
+  const semTz = s && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(s);
+  const d = new Date(v == null ? NaN : (semTz ? s.replace(' ', 'T') + 'Z' : v));
+  if (isNaN(d.getTime())) return '';
+  try {
+    return d.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });   // en-CA => YYYY-MM-DD
+  } catch {
+    const sp = new Date(d.getTime() - 3 * 60 * 60 * 1000);
+    const p = n => String(n).padStart(2, '0');
+    return `${sp.getUTCFullYear()}-${p(sp.getUTCMonth() + 1)}-${p(sp.getUTCDate())}`;
+  }
+};
 /* Preço de partida — usado no card principal de produtos com múltiplos tamanhos
    (Monte seu Copo, Batidinhas e qualquer produto futuro que siga o mesmo padrão
    de `tamanhos`). Calcula o menor preço entre os tamanhos em vez de assumir que
