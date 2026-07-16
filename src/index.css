@@ -346,13 +346,14 @@ img{display:block;max-width:100%}
 /* Tempo de preparo/entrega — peso visual secundario, legivel, nunca cortado */
 .delivery-eta{font-size:13px;color:var(--gray-500);font-weight:500;white-space:nowrap;flex-shrink:0}
 .delivery-eta b{color:var(--gray-900);font-weight:700}
-/* Endereco / selecao — INLINE na mesma linha do tempo (seletor + tempo + endereco), alinhado a direita.
-   flex-basis 115px: fica na linha do tempo enquanto houver ~115px livres (cobre >=~375px, inclui o mock);
-   em telas muito estreitas cai LIMPO para a propria linha (nunca quebra por caractere). Quebra o texto em
-   2 linhas (min-width:0 + overflow-wrap), nunca trunca. */
+/* Endereco / selecao — AGRUPADO a esquerda, imediatamente ao lado do tempo (seletor + tempo + endereco
+   formam um bloco unico; o restante da largura fica livre a direita no desktop/notebook/tablet). REF-UX-02.2.
+   Tamanho pelo conteudo (flex:0 1 auto): "Selecionar endereco" em 1 linha; retirada em 2 linhas (spans).
+   O empurrao a direita (margin-left:auto) + a caixa compacta (flex-basis:115px) sao aplicados APENAS no
+   mobile (media <=480, layout ja APROVADO). min-width:0 + overflow-wrap garantem quebra sem corte. */
 .delivery-address-btn,
 .delivery-address-store{
-  margin-left:auto;flex:0 1 115px;min-width:0;
+  flex:0 1 auto;min-width:0;
   display:inline-flex;align-items:flex-start;gap:6px;
   max-width:62%;text-align:left;
 }
@@ -373,7 +374,9 @@ img{display:block;max-width:100%}
 @media(max-width:480px){
   .delivery-bar{gap:8px 10px;padding:8px 12px}
   .delivery-eta{font-size:12px}
-  .delivery-address-btn,.delivery-address-store{font-size:11px;max-width:100%}
+  /* REF-UX-02.2: SO no mobile o endereco mantem o layout APROVADO — caixa compacta (115px) alinhada a
+     direita (margin-left:auto). No desktop essas duas regras nao valem -> os 3 itens agrupam a esquerda. */
+  .delivery-address-btn,.delivery-address-store{font-size:11px;max-width:100%;flex:0 1 115px;margin-left:auto}
 }
 
 /* Botão agendar (quando fechado) */
