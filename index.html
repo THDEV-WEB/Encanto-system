@@ -11,8 +11,231 @@
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
 </head>
 <body>
+<!-- ============================================================================================
+     REF-BOOT-02 — INSTRUMENTACAO FORENSE DO BOOTSTRAP (TEMPORARIA / DIAGNOSTICO).
+     Script CLASSICO em ES5 PURO (var/function/concatenacao; SEM arrow, template, ?., ??, const/let).
+     Precisa fazer parse e rodar ATE em WebView que NAO consegue fazer parse do bundle ES2020 do app
+     (onde o React nunca monta e o loader fica eterno). Instala captura global de erros ANTES do modulo,
+     registra a sequencia de boot, persiste em localStorage e, se o app nao montar, mostra uma tela de
+     diagnostico com "Copiar relatorio". NAO altera nenhuma regra de negocio. Remover apos o diagnostico.
+     ============================================================================================ -->
+<script>
+/* eslint-disable */
+(function () {
+  'use strict';
+  var LS_KEY = 'enc_boot_diag';
+  var t0 = (window.performance && performance.now) ? performance.now() : (+new Date());
+  function ms() { return (window.performance && performance.now) ? Math.round(performance.now() - t0) : (+new Date() - t0); }
+  function iso() { try { return new Date().toISOString(); } catch (e) { return '' + new Date(); } }
+
+  var B = {
+    v: 2,
+    ref: 'REF-BOOT-02',
+    startedAt: iso(),
+    steps: [],
+    errors: [],
+    mounted: false,
+    diagShown: false,
+    ua: (navigator && navigator.userAgent) || ''
+  };
+  window.__ENC_BOOT__ = B;
+
+  function persist() { try { localStorage.setItem(LS_KEY, JSON.stringify(B)); } catch (e) {} }
+
+  B.step = function (code, msg) {
+    B.steps.push({ code: code, msg: msg || '', t: ms() });
+    if (B.steps.length > 80) B.steps.shift();
+    persist();
+  };
+  B.markMounted = function () {
+    if (B.mounted) return;
+    B.mounted = true;
+    B.step('BOOT-OK', 'React montou (primeiro commit)');
+    persist();
+  };
+
+  function pushErr(kind, message, extra) {
+    extra = extra || {};
+    B.errors.push({
+      kind: kind,
+      message: String(message == null ? '' : message),
+      file: extra.file || '',
+      line: extra.line || 0,
+      col: extra.col || 0,
+      stack: extra.stack ? String(extra.stack).slice(0, 1400) : '',
+      t: ms()
+    });
+    if (B.errors.length > 25) B.errors.shift();
+    persist();
+    /* erro fatal antes de montar -> antecipa a tela de diagnostico (da folga p/ um mount tardio) */
+    if (!B.mounted) setTimeout(maybeShowDiag, 1200);
+  }
+
+  /* Captura global. capture:true e OBRIGATORIO p/ pegar falha de CARGA de recurso (script/link nao borbulham).
+     Erros de PARSE/eval do modulo e excecoes nao tratadas chegam como evento 'error' na window. */
+  window.addEventListener('error', function (ev) {
+    var tgt = ev && ev.target;
+    if (tgt && tgt !== window && (tgt.tagName === 'SCRIPT' || tgt.tagName === 'LINK' || tgt.tagName === 'IMG')) {
+      pushErr('recurso', tgt.tagName + ' falhou a carregar: ' + (tgt.src || tgt.href || '(sem url)'), {});
+      return;
+    }
+    var err = ev && ev.error;
+    pushErr('erro', (ev && ev.message) || (err && err.message) || 'erro desconhecido', {
+      file: ev && ev.filename, line: ev && ev.lineno, col: ev && ev.colno, stack: err && err.stack
+    });
+  }, true);
+
+  window.addEventListener('unhandledrejection', function (ev) {
+    var r = ev && ev.reason;
+    pushErr('promise', (r && r.message) || String(r == null ? 'promise rejeitada' : r), { stack: r && r.stack });
+  });
+
+  /* Feature-detect da sintaxe/APIs que o bundle EXIGE. new Function faz PARSE sem executar o app:
+     se a engine nao entende '??'/'?.', lanca SyntaxError aqui e marcamos como nao-suportado. */
+  function canParse(src) { try { new Function(src); return true; } catch (e) { return false; } }
+  function has(fn) { try { return !!fn(); } catch (e) { return false; } }
+  B.feat = {
+    esModule: has(function () { return 'noModule' in document.createElement('script'); }),
+    optionalChaining: canParse('var o={a:{}};return o?.a?.b'),
+    nullish: canParse('return null ?? 1'),
+    arrow: canParse('return (function(){return (function(){}); })'),
+    letConst: canParse('const x=1; let y=2; return x+y'),
+    template: canParse('return ["x"].join("")'),
+    asyncAwait: canParse('return (async function(){})'),
+    spread: canParse('return Math.max.apply(null,[1,2])'),
+    classFields: canParse('class C{ x=1 } return new C().x'),
+    intlSaoPaulo: has(function () { new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo' }); return true; }),
+    promise: (typeof Promise !== 'undefined'),
+    fetch: (typeof fetch !== 'undefined'),
+    localStorage: has(function () { localStorage.setItem('__enc_t', '1'); localStorage.removeItem('__enc_t'); return true; })
+  };
+  B.step('BOOT-000', 'instrumentacao inline instalada (ES5)');
+  persist();
+
+  /* ---- helpers de relatorio (ES5) ---- */
+  function m1(re, s) { try { var r = re.exec(s || ''); return r && r[1] ? r[1] : ''; } catch (e) { return ''; } }
+  function reportText() {
+    var last = B.steps.length ? B.steps[B.steps.length - 1] : null;
+    var lines = [];
+    lines.push('ENCANTO — RELATORIO DE BOOT (' + B.ref + ')');
+    lines.push('quando: ' + B.startedAt);
+    lines.push('montou: ' + (B.mounted ? 'SIM' : 'NAO'));
+    lines.push('ultima etapa: ' + (last ? (last.code + ' "' + last.msg + '" (' + last.t + 'ms)') : 'NENHUMA etapa do app — o bundle nao chegou a executar'));
+    var seq = [];
+    for (var i = 0; i < B.steps.length; i++) seq.push(B.steps[i].code + '(' + B.steps[i].t + 'ms)');
+    lines.push('sequencia: ' + (seq.join(' > ') || '(vazia)'));
+    lines.push('');
+    lines.push('erros (' + B.errors.length + '):');
+    if (!B.errors.length) lines.push('  (nenhum evento de erro capturado)');
+    for (var j = 0; j < B.errors.length; j++) {
+      var e = B.errors[j];
+      lines.push('  [' + (j + 1) + '] ' + e.kind + ': ' + e.message + (e.file ? ('  @ ' + e.file + ':' + e.line + ':' + e.col) : '') + '  (' + e.t + 'ms)');
+      if (e.stack) {
+        var st = e.stack.split('\n');
+        for (var k = 0; k < st.length && k < 3; k++) lines.push('      ' + st[k]);
+      }
+    }
+    lines.push('');
+    lines.push('compatibilidade detectada:');
+    var f = B.feat;
+    function yn(b) { return b ? 'sim' : 'NAO'; }
+    lines.push('  ES modules: ' + yn(f.esModule) + ' | optional-chaining ?.: ' + yn(f.optionalChaining) + ' | nullish ??: ' + yn(f.nullish));
+    lines.push('  arrow: ' + yn(f.arrow) + ' | let/const: ' + yn(f.letConst) + ' | async/await: ' + yn(f.asyncAwait) + ' | class-fields: ' + yn(f.classFields));
+    lines.push('  Intl America/Sao_Paulo: ' + yn(f.intlSaoPaulo) + ' | Promise: ' + yn(f.promise) + ' | fetch: ' + yn(f.fetch) + ' | localStorage: ' + yn(f.localStorage));
+    lines.push('');
+    lines.push('navegador: ' + B.ua);
+    lines.push('  Chrome/WebView: ' + (m1(/Chrom(?:e|ium)\/(\d+)/, B.ua) || '?') + ' | Android: ' + (m1(/Android\s+([\d.]+)/, B.ua) || '?') + ' | app-in-app: ' + ((/(FBAN|FBAV|Instagram|WhatsApp|Line|MicroMessenger)/.test(B.ua)) ? m1(/(FBAN|FBAV|Instagram|WhatsApp|Line|MicroMessenger)/, B.ua) : 'nao'));
+    try { lines.push('  tela: ' + (window.screen ? (screen.width + 'x' + screen.height) : '?') + ' dpr' + (window.devicePixelRatio || 1)); } catch (e) {}
+    return lines.join('\n');
+  }
+
+  /* diagnostico provavel a partir das evidencias (curto, em pt-BR, para o usuario/leigo) */
+  function veredictoCurto() {
+    var f = B.feat;
+    if (!f.esModule) return 'Este navegador nao suporta modulos JavaScript modernos (ES modules). O app nao consegue iniciar aqui.';
+    if (!f.nullish || !f.optionalChaining) return 'Este navegador e antigo demais para a versao atual do app (nao entende a sintaxe do codigo). Provavel causa do travamento.';
+    if (B.errors.length) return 'O carregamento falhou com um erro. Veja o relatorio abaixo.';
+    return 'O app demorou demais para carregar e nao respondeu.';
+  }
+
+  function copiar(txt, btn) {
+    function ok(b) { try { btn.textContent = b ? 'Copiado!' : 'Selecione o texto e copie'; } catch (e) {} }
+    var ta = document.getElementById('enc-diag-ta');
+    function fallback() {
+      try { if (ta) { ta.focus(); ta.select(); var r = document.execCommand && document.execCommand('copy'); ok(!!r); return; } } catch (e) {}
+      ok(false);
+    }
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(txt).then(function () { ok(true); }, function () { fallback(); });
+        return;
+      }
+    } catch (e) {}
+    fallback();
+  }
+
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+  function showDiag() {
+    if (B.diagShown) return;
+    B.diagShown = true;
+    B.step('BOOT-DIAG', 'tela de diagnostico exibida');
+    var txt = reportText();
+    var host = document.getElementById('root') || document.body;
+    var box = document.createElement('div');
+    box.setAttribute('id', 'enc-diag');
+    box.setAttribute('style', 'position:fixed;inset:0;z-index:2147483647;background:#fff;color:#1f2937;font-family:sans-serif;padding:18px;overflow:auto;-webkit-overflow-scrolling:touch;');
+    box.innerHTML =
+      '<div style="max-width:720px;margin:0 auto;">' +
+        '<div style="font-size:34px;line-height:1;margin-bottom:6px;">🧩</div>' +
+        '<h1 style="font-size:19px;margin:0 0 6px;color:#6B21A8;">Diagnostico de inicializacao</h1>' +
+        '<p style="font-size:14px;margin:0 0 4px;color:#374151;">O Encanto nao terminou de carregar neste aparelho.</p>' +
+        '<p style="font-size:13px;margin:0 0 12px;color:#6B7280;">' + esc(veredictoCurto()) + '</p>' +
+        '<p style="font-size:12px;margin:0 0 6px;color:#6B7280;">Toque em <b>Copiar relatorio</b> e envie ao suporte — ele mostra exatamente onde parou.</p>' +
+        '<textarea id="enc-diag-ta" readonly style="width:100%;height:230px;box-sizing:border-box;font-family:monospace;font-size:11px;line-height:1.35;color:#111827;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:10px;white-space:pre;">' + esc(txt) + '</textarea>' +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;">' +
+          '<button id="enc-diag-copy" style="flex:1 1 auto;padding:12px 16px;border:none;border-radius:10px;background:#6B21A8;color:#fff;font-weight:700;font-size:14px;">Copiar relatorio</button>' +
+          '<button id="enc-diag-reload" style="flex:1 1 auto;padding:12px 16px;border:1px solid #D1D5DB;border-radius:10px;background:#fff;color:#374151;font-weight:600;font-size:14px;">Recarregar</button>' +
+        '</div>' +
+      '</div>';
+    /* substitui o loader eterno */
+    try { if (host.id === 'root') host.innerHTML = ''; } catch (e) {}
+    (document.body || document.documentElement).appendChild(box);
+    var cbtn = document.getElementById('enc-diag-copy');
+    if (cbtn) cbtn.onclick = function () { copiar(txt, cbtn); };
+    var rbtn = document.getElementById('enc-diag-reload');
+    if (rbtn) rbtn.onclick = function () { try { window.location.reload(); } catch (e) {} };
+    persist();
+  }
+
+  function appMontou() {
+    if (B.mounted) return true;
+    /* sinal secundario: o loader estatico sumiu -> React renderizou por cima */
+    var l = document.getElementById('enc-loader');
+    return !l;
+  }
+  function maybeShowDiag() {
+    if (B.diagShown || appMontou()) return;
+    showDiag();
+  }
+
+  /* Gatilho manual p/ recuperar o ultimo relatorio (mesmo em aparelho que carregou): #enc-diag */
+  try {
+    if (window.location && window.location.hash === '#enc-diag') {
+      var cached = null;
+      try { cached = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch (e) {}
+      if (cached) { for (var kk in cached) if (cached.hasOwnProperty(kk)) B[kk] = cached[kk]; }
+      setTimeout(function () { B.diagShown = false; B.mounted = false; showDiag(); }, 50);
+    }
+  } catch (e) {}
+
+  /* Watchdog de fallback: se em 15s nao montou (e sem erro que ja disparou a tela), mostra o diagnostico.
+     Generoso p/ nao incomodar quem esta so em rede lenta; um mount tardio cancela via appMontou(). */
+  setTimeout(maybeShowDiag, 15000);
+})();
+</script>
 <div id="root">
-  <div style="display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:12px;font-family:sans-serif;color:#6B21A8">
+  <div id="enc-loader" style="display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:12px;font-family:sans-serif;color:#6B21A8">
     <div style="width:40px;height:40px;border:4px solid #E9D5FF;border-top-color:#6B21A8;border-radius:50%;animation:s .8s linear infinite"></div>
     <span>Carregando Encanto...</span>
     <style>@keyframes s{to{transform:rotate(360deg)}}</style>
