@@ -4,12 +4,14 @@ import { MOCK_CATS, MOCK_PRODS } from '../../data/mockCatalog.js';
 import { precoVitrine } from '../../utils/pricing.js';
 import { fmt } from '../../utils/format.js';
 import { getProdCatIds } from '../../utils/catalog.js';   // REF-ADMIN-CATALOG-01: multiplas categorias
+import { gruposDoProduto, MOCK_ADS } from '../../utils/addons.js';   // REF-ADMIN-ADDONS-02: grupos de adicionais por produto (dominio)
 import { Spinner } from '../ui/Spinner.jsx';
 import { ImageUploader } from './ImageUploader.jsx';
 
 export function AdminProducts() {
   const [prods, setProds] = useState([]);
   const [cats,  setCats]  = useState([]);
+  const [ads,   setAds]   = useState([]);   // REF-ADMIN-ADDONS-02: adicionais -> fonte dos grupos disponiveis
   const [loading,  setLoading]  = useState(true);
   const [saving,   setSaving]   = useState(false);
   const [saveErr,  setSaveErr]  = useState('');
@@ -21,7 +23,9 @@ export function AdminProducts() {
     imagem_url: KEEP, // ao criar, começar vazio
     disponivel:true,destaque:false,adicionais_gratis:0,badge:'',tamanhos:[],
     /* REF-ADMIN-CATALOG-01: categorias EXTRAS (multi-categoria) + ordem de exibicao */
-    categoria_extras:[], ordem:999};
+    categoria_extras:[], ordem:999,
+    /* REF-ADMIN-ADDONS-02: grupos de adicionais disponiveis p/ o produto (vazio = sem adicionais) */
+    grupos_ad:[]};
   const [form, setForm] = useState(ef);
 
   /* REF-ADMIN-CATALOG-01: id da vitrine "Destaques" resolvido por NOME (mesma heuristica da loja em
@@ -33,15 +37,40 @@ export function AdminProducts() {
       ? (f.categoria_extras||[]).filter(x => x !== id)
       : [ ...(f.categoria_extras||[]), id ] }));
 
+  /* ── REF-ADMIN-ADDONS-02: grupos de adicionais por produto ────────────────────
+     Rotulo/emoji vivem na UI (regra institucional do dominio addons.js). Grupo
+     desconhecido (futuro: Molhos, Sobremesas...) recebe rotulo derivado da chave -> escalavel. */
+  const GRUPO_AD_LABEL = { acai:'🍇 Adicionais Açaí', marmita:'🍱 Adicionais Marmita', bebida:'🧃 Adicionais Bebida',
+    simples:'🥄 Adicionais Simples', premium:'⭐ Premium', frutas_premium:'🍓 Frutas Premium', chocolates:'🍫 Chocolates' };
+  const GRUPO_AD_ORDEM = ['acai','marmita','bebida','simples','premium','frutas_premium','chocolates'];
+  const labelGrupoAd = (g) => GRUPO_AD_LABEL[g] || String(g).replace(/_/g,' ').replace(/\b\w/g, c=>c.toUpperCase());
+  const toggleGrupoAd = (g) => setForm(f => ({ ...f,
+    grupos_ad: (f.grupos_ad||[]).includes(g)
+      ? (f.grupos_ad||[]).filter(x => x !== g)
+      : [ ...(f.grupos_ad||[]), g ] }));
+  /* Grupos OFERECIVEIS p/ o produto = grupos distintos entre os adicionais aplicaveis a categoria
+     (aplica_categoria_id nulo ou == categoria) UNIAO os ja selecionados (nada marcado fica oculto).
+     Fonte 100% dinamica (a lista cresce sozinha ao cadastrar adicionais em um grupo novo). */
+  const gruposDisponiveis = (() => {
+    const catId = form.categoria_id;
+    const aplic = (ads||[]).filter(a => a.grupo && (!a.aplica_categoria_id || a.aplica_categoria_id === catId));
+    const uniao = [...new Set([ ...aplic.map(a => a.grupo), ...(form.grupos_ad||[]) ])];
+    return uniao.sort((a,b) => {
+      const ia = GRUPO_AD_ORDEM.indexOf(a), ib = GRUPO_AD_ORDEM.indexOf(b);
+      return (ia<0?99:ia) - (ib<0?99:ib) || String(a).localeCompare(String(b));
+    });
+  })();
+
   const load = async () => {
     setLoading(true);
     try {
-      const [p,c] = await Promise.all([DS.getAllProds(), DS.getAllCats()]);
+      const [p,c,a] = await Promise.all([DS.getAllProds(), DS.getAllCats(), DS.getAllAds()]);
       setProds(p ?? MOCK_PRODS);
       setCats(c ?? MOCK_CATS);
+      setAds(a ?? MOCK_ADS);   // REF-ADMIN-ADDONS-02: fallback offline igual ao AdminAdicionais
     } catch(e) {
       console.error('[AdminProducts] load error:', e);
-      setProds(MOCK_PRODS); setCats(MOCK_CATS);
+      setProds(MOCK_PRODS); setCats(MOCK_CATS); setAds(MOCK_ADS);
     } finally {
       setLoading(false);
     }
@@ -70,6 +99,10 @@ export function AdminProducts() {
       tamanhos:         Array.isArray(p.tamanhos) ? p.tamanhos.map(t=>({...t})) : [],
       categoria_extras: ids.filter(id => id !== primary && id !== destaquesId),
       ordem:            (p.ordem ?? 999),
+      /* REF-ADMIN-ADDONS-02: pre-marca os grupos EFETIVOS de hoje (grupos_ad OU fallback da categoria).
+         Copia (spread) p/ nunca mutar o array do produto nem a constante CAT_ADDON_GROUP. Ao salvar,
+         o efetivo vira explicito -> mesmo comportamento visto pelo cliente, sem regressao. */
+      grupos_ad:        [ ...gruposDoProduto(p) ],
     });
     setSaveErr('');
     setModal(p);
@@ -77,7 +110,7 @@ export function AdminProducts() {
 
   /* Abrir modal de criação */
   const openNew = () => {
-    setForm({ ...ef, imagem_url: '', categoria_id: cats[0]?.id || '', tamanhos: [], categoria_extras: [], ordem: 999 });
+    setForm({ ...ef, imagem_url: '', categoria_id: cats[0]?.id || '', tamanhos: [], categoria_extras: [], ordem: 999, grupos_ad: [] });
     setSaveErr('');
     setModal('new');
   };
@@ -152,6 +185,9 @@ export function AdminProducts() {
         ordem:            Number.isFinite(+form.ordem) ? +form.ordem : 999,
         adicionais_gratis: +form.adicionais_gratis || 0,
         badge:            form.badge || null,
+        /* REF-ADMIN-ADDONS-02: grupos de adicionais disponiveis (array explicito).
+           [] = produto sem adicionais; o dominio (gruposDoProduto) le exatamente este campo. */
+        grupos_ad:        Array.isArray(form.grupos_ad) ? form.grupos_ad : [],
       };
 
       if (usaTamanhos) {
@@ -422,6 +458,35 @@ export function AdminProducts() {
               <input className="form-input" type="number" min="0" max="10" placeholder="0"
                 value={form.adicionais_gratis}
                 onChange={e=>setForm(f=>({...f,adicionais_gratis:+e.target.value}))}/>
+            </div>
+
+            {/* ── REF-ADMIN-ADDONS-02: Grupos de adicionais disponiveis para este produto ── */}
+            <div className="form-group">
+              <label className="form-label">
+                Grupos de adicionais disponíveis
+                <span style={{fontSize:10,color:'var(--gray-400)',fontWeight:400,marginLeft:6}}>
+                  (o cliente só vê adicionais dos grupos marcados — nenhum marcado = sem adicionais)
+                </span>
+              </label>
+              <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+                {gruposDisponiveis.map(g => {
+                  const on = (form.grupos_ad||[]).includes(g);
+                  return (
+                    <button type="button" key={g} onClick={()=>toggleGrupoAd(g)} style={{
+                      padding:'6px 12px',borderRadius:20,fontSize:12,fontWeight:600,cursor:'pointer',
+                      fontFamily:'var(--font-body)',
+                      border: on?'1px solid var(--grape)':'1px solid var(--gray-200, #E5E7EB)',
+                      background: on?'var(--grape-pale)':'#fff',
+                      color: on?'var(--grape)':'var(--gray-600)',
+                    }}>{on?'✓ ':''}{labelGrupoAd(g)}</button>
+                  );
+                })}
+                {gruposDisponiveis.length===0 && (
+                  <span style={{fontSize:12,color:'var(--gray-400)'}}>
+                    Nenhum grupo de adicionais cadastrado. Crie adicionais na aba “Adicionais”.
+                  </span>
+                )}
+              </div>
             </div>
 
             {/* ── IMAGEM — componente corrigido ─────────────────── */}

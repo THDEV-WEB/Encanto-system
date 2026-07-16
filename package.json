@@ -26,6 +26,7 @@
     "test:address-render": "node tests/address.render.mjs",
     "test:catalog": "node tests/catalog.golden.mjs",
     "test:admin-catalog": "node tests/admin-catalog.guard.mjs",
+    "test:admin-addons": "node tests/admin-addons.guard.mjs",
     "verify:norm05": "node scripts/norm05-verify.mjs",
     "guard:slug": "node scripts/norm06-f1a-slug-guard.mjs",
     "test:f1b": "node scripts/norm06-f1b-invariants-test.mjs",
