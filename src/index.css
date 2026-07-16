@@ -326,43 +326,51 @@ img{display:block;max-width:100%}
 }
 .header-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
 
-/* ---- BARRA DE ENTREGA (abaixo do header, fundo branco) ---- */
+/* ---- BARRA DE ENTREGA/RETIRADA (abaixo do header, fundo branco) — REF-UX-02 ---- */
 .delivery-bar{
   background:var(--white);border-bottom:1px solid var(--gray-200);
-  padding:10px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:10px 16px;display:flex;align-items:center;gap:10px 14px;flex-wrap:wrap;
 }
-.delivery-mode-select{
-  display:flex;align-items:center;gap:8px;flex-shrink:0;
-}
-.delivery-mode-icon{font-size:20px}
+.delivery-mode-select{display:flex;align-items:center;flex-shrink:0}
+/* Toggle Entrega/Retirada — controle interativo em destaque (borda forte + cor primaria + chevron visivel) */
 .delivery-mode-dropdown{
-  padding:6px 10px;border-radius:8px;border:1.5px solid var(--gray-200);
-  font-size:13px;font-weight:600;color:var(--gray-900);background:var(--white);
+  padding:8px 34px 8px 14px;border-radius:10px;border:2px solid var(--grape);
+  font-size:13px;font-weight:800;color:var(--grape);background:var(--grape-pale);
   cursor:pointer;font-family:var(--font-body);appearance:none;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
-  background-repeat:no-repeat;background-position:right 8px center;
-  padding-right:28px;transition:border-color .2s;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23A62786' stroke-width='3'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 10px center;
+  transition:filter .2s,box-shadow .2s;
 }
-.delivery-mode-dropdown:focus{outline:none;border-color:var(--grape)}
-.delivery-bar-divider{width:1px;height:20px;background:var(--gray-200);flex-shrink:0}
-.delivery-eta{font-size:13px;color:var(--gray-500);font-weight:500;white-space:nowrap}
+.delivery-mode-dropdown:hover{filter:brightness(.97)}
+.delivery-mode-dropdown:focus{outline:none;box-shadow:0 0 0 3px var(--grape-pale)}
+/* Tempo de preparo/entrega — peso visual secundario, legivel, nunca cortado */
+.delivery-eta{font-size:13px;color:var(--gray-500);font-weight:500;white-space:nowrap;flex-shrink:0}
 .delivery-eta b{color:var(--gray-900);font-weight:700}
+/* Endereco / selecao — na mesma linha, alinhado a direita do tempo; quebra em 2 linhas, nunca trunca */
+.delivery-address-btn,
+.delivery-address-store{
+  margin-left:auto;flex:0 1 auto;min-width:0;
+  display:inline-flex;align-items:flex-start;gap:6px;
+  max-width:62%;text-align:left;
+}
 .delivery-address-btn{
-  display:inline-flex;align-items:center;gap:6px;
-  background:var(--grape-pale);border:1.5px solid transparent;
-  color:var(--grape);border-radius:8px;padding:6px 12px;
-  font-size:12px;font-weight:600;cursor:pointer;transition:all .2s;
-  font-family:var(--font-body);white-space:nowrap;max-width:200px;
-  overflow:hidden;text-overflow:ellipsis;
+  background:var(--grape-pale);border:1.5px solid transparent;color:var(--grape);
+  border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;
+  transition:all .2s;font-family:var(--font-body);
 }
-.delivery-address-btn:hover{background:var(--grape-pale);border-color:var(--grape-light)}
-.delivery-address-btn.filled{
-  background:var(--grape);color:var(--white);border-color:var(--grape);
+.delivery-address-btn:hover{border-color:var(--grape-light)}
+.delivery-address-btn.filled{background:var(--grape);color:var(--white);border-color:var(--grape)}
+.delivery-address-store{color:var(--grape);font-size:12px;font-weight:700;padding:2px 0}
+.delivery-address-pin{flex-shrink:0;line-height:1.35}
+.delivery-address-text{
+  display:flex;flex-direction:column;line-height:1.35;
+  overflow-wrap:anywhere;word-break:break-word;
 }
+.delivery-address-line{display:block}
 @media(max-width:480px){
-  .delivery-bar{gap:8px;padding:8px 12px}
+  .delivery-bar{gap:8px 10px;padding:8px 12px}
   .delivery-eta{font-size:12px}
-  .delivery-address-btn{max-width:140px;font-size:11px}
+  .delivery-address-btn,.delivery-address-store{font-size:11px;max-width:100%}
 }
 
 /* Botão agendar (quando fechado) */

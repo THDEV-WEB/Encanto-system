@@ -162,47 +162,42 @@ function StoreAppContent({ onAdmin }) {
 
       </header>
 
-      {/* ── BARRA DE ENTREGA (branca, abaixo do header) ── */}
+      {/* ── BARRA DE ENTREGA/RETIRADA (branca, abaixo do header) — REF-UX-02 ── */}
       <div className="delivery-bar">
         <div className="delivery-mode-select">
-          <span className="delivery-mode-icon">
-            {deliveryMode==='entrega'?'🛵':'🏃'}
-          </span>
           <select
             className="delivery-mode-dropdown"
             value={deliveryMode}
-            onChange={e=>setDeliveryMode(e.target.value)}>
+            onChange={e=>setDeliveryMode(e.target.value)}
+            aria-label="Escolher entre entrega ou retirada">
             <option value="entrega">Entrega</option>
             <option value="retirada">Retirada</option>
           </select>
         </div>
 
-        <div className="delivery-bar-divider"/>
-
         <div className="delivery-eta">
           {deliveryMode==='entrega'
-            ? <>Entrega em até <b>35–45 min</b></>
+            ? <>em até <b>35–45 min</b></>
             : <>Pronto em <b>20 min</b></>}
         </div>
 
-        <div className="delivery-bar-divider"/>
         {deliveryMode==='entrega' ? (
           <button
             className={`delivery-address-btn ${deliveryAddress?'filled':''}`}
             onClick={abrirEndereco}>
-            📍 {deliveryAddress
-              ? <span style={{maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'inline-block'}}>
-                  {deliveryAddress}
-                </span>
-              : 'Selecionar endereço'}
+            <span className="delivery-address-pin">📍</span>
+            <span className="delivery-address-text">
+              {deliveryAddress || 'Selecionar endereço'}
+            </span>
           </button>
         ) : (
-          <div style={{
-            display:'inline-flex',alignItems:'center',gap:5,
-            fontSize:12,color:'var(--gray-600)',fontWeight:600,
-          }}>
-            <span>🏪</span>
-            <span>{STORE_INFO.retirada}</span>
+          <div className="delivery-address-store">
+            <span className="delivery-address-pin">📍</span>
+            <span className="delivery-address-text">
+              {STORE_INFO.retirada.split(',').map((linha, i) => (
+                <span key={i} className="delivery-address-line">{linha.trim()}</span>
+              ))}
+            </span>
           </div>
         )}
       </div>
