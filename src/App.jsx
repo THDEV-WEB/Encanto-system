@@ -98,7 +98,11 @@ import { AuthProvider } from './providers/AuthProvider.jsx'; // AUTH-01: sessao 
 /* StoreApp -> src/pages/StoreApp.jsx (REF-APP-01 Onda 9.1) */
 
 /* ── Root ────────────────────────────────────────────────────── */
+/* REF-BOOT-02 v2: checkpoint de RENDER-PHASE (dispara quando o React de fato renderiza App, ANTES do
+   commit). Se CP-App-render aparece mas BOOT-140-committed nao, o render rodou e o commit nunca flushou. */
+let _cpApp = false;
 function App() {
+  if (!_cpApp) { _cpApp = true; try { if (typeof window !== 'undefined' && window.__ENC_BOOT__ && window.__ENC_BOOT__.step) window.__ENC_BOOT__.step('CP-App-render', 'App() render-phase'); } catch { /* noop */ } }
   const [mode, setMode] = useState(()=>{
     /* Acesso por hash #admin-encanto */
     if (typeof window !== 'undefined' && window.location.hash === '#admin-encanto') {

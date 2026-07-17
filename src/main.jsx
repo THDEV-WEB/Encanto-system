@@ -2,11 +2,12 @@ import { Component } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.jsx';
 
-/* REF-BOOT-02 (instrumentacao TEMPORARIA): registra a sequencia de boot no coletor ES5 do index.html.
-   Guardado: se __ENC_BOOT__ nao existir, vira no-op. Se este modulo NAO fizer parse/eval (WebView antigo),
-   nenhum destes passos e registrado -> a ausencia deles JA e a evidencia (o coletor inline prova a causa). */
+/* REF-BOOT-02 v2 (instrumentacao TEMPORARIA): checkpoints SINCRONOS do bootstrap no coletor ES5 do
+   index.html. Guardado: no-op se __ENC_BOOT__ nao existir. A AUSENCIA de um checkpoint (ex.: BOOT-130
+   presente, BOOT-140 ausente) e, por si so, a evidencia de ONDE o bootstrap parou. Nao muda nenhuma
+   regra de negocio nem o fluxo de init. */
 const boot = (code, msg) => { try { const b = window.__ENC_BOOT__; if (b && b.step) b.step(code, msg); } catch { /* noop */ } };
-boot('BOOT-100', 'main.jsx avaliado (imports do bundle OK)');
+boot('BOOT-100-bundle', 'main.jsx avaliado (todos os imports do bundle OK)');
 
 /* REF-BOOT-01 Onda 2 (defesa em profundidade): captura QUALQUER erro na fase de render para que o usuario
    nunca fique preso no loader "Carregando Encanto...". Transparente quando nao ha erro. Observacao: erros
@@ -15,8 +16,12 @@ boot('BOOT-100', 'main.jsx avaliado (imports do bundle OK)');
 class RootBoundary extends Component {
   constructor(props) { super(props); this.state = { err: null }; }
   static getDerivedStateFromError(err) { return { err }; }
-  componentDidMount() { boot('BOOT-140', 'RootBoundary montou'); try { const b = window.__ENC_BOOT__; if (b && b.markMounted) b.markMounted(); } catch { /* noop */ } }
-  componentDidCatch(err) { try { console.error('[Encanto] erro no bootstrap (render):', err); } catch { /* noop */ } try { const b = window.__ENC_BOOT__; if (b && b.step) b.step('BOOT-ERR-RENDER', String(err && err.message || err)); } catch { /* noop */ } }
+  componentDidMount() {
+    try { const b = window.__ENC_BOOT__; if (b && b.markMounted) b.markMounted(); } catch { /* noop */ }
+    /* primeira pintura real: rAF pos-commit -> separa "montou" de "montou mas nao pintou" */
+    try { requestAnimationFrame(() => { try { const b = window.__ENC_BOOT__; if (b && b.markFirstPaint) b.markFirstPaint(); } catch { /* noop */ } }); } catch { /* noop */ }
+  }
+  componentDidCatch(err) { try { console.error('[Encanto] erro no bootstrap (render):', err); } catch { /* noop */ } boot('BOOT-ERR-RENDER', String(err && err.message || err)); }
   render() {
     if (this.state.err) {
       return (
@@ -35,10 +40,11 @@ class RootBoundary extends Component {
   }
 }
 
-boot('BOOT-110', 'antes de createRoot');
+boot('BOOT-110-pre-createRoot', 'antes de createRoot');
 const _root = createRoot(document.getElementById('root'));
-boot('BOOT-120', 'root criado');
+boot('BOOT-120-post-createRoot', 'root criado');
+boot('BOOT-125-pre-render', 'antes de render()');
 _root.render(
   <RootBoundary><App /></RootBoundary>
 );
-boot('BOOT-130', 'render() chamado (aguardando commit)');
+boot('BOOT-130-render-called', 'render() chamado (commit e assincrono; aguardando)');

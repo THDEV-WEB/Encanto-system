@@ -25,3 +25,5 @@ try {
   console.warn('[Encanto] Supabase init erro:', e && e.message);
   db = null;
 }
+/* REF-BOOT-02 v2 checkpoint (guardado; no-op fora do browser/coletor). Prova que o module-eval passou por aqui. */
+try { if (typeof window !== 'undefined' && window.__ENC_BOOT__ && window.__ENC_BOOT__.step) window.__ENC_BOOT__.step('CP-supabase', db ? 'db client criado' : 'db degradado (null)'); } catch { /* noop */ }

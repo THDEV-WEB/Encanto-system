@@ -24,3 +24,5 @@ try {
   console.warn('[Encanto] dbCliente init erro:', e && e.message);
   dbCliente = null;
 }
+/* REF-BOOT-02 v2 checkpoint (guardado; no-op fora do browser/coletor). */
+try { if (typeof window !== 'undefined' && window.__ENC_BOOT__ && window.__ENC_BOOT__.step) window.__ENC_BOOT__.step('CP-dbcliente', dbCliente ? 'dbCliente criado' : 'dbCliente degradado (null)'); } catch { /* noop */ }

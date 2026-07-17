@@ -31,6 +31,9 @@ try {
     weekday: 'short', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
   });
 } catch { FMT = null; }
+/* REF-BOOT-02 v2 checkpoint (guardado; no-op no Node dos testes e sem coletor). Prova que o module-eval
+   passou pela blindagem do Intl e informa se o caminho Intl ou o fallback esta ativo. */
+try { if (typeof window !== 'undefined' && window.__ENC_BOOT__ && window.__ENC_BOOT__.step) window.__ENC_BOOT__.step('CP-businessHours', FMT ? 'Intl OK' : 'Intl fallback (UTC-3)'); } catch { /* noop */ }
 
 /* Fallback SEM Intl: America/Sao_Paulo e UTC-3 FIXO (Brasil sem horario de verao desde 2019). Desloca o
    instante UTC em -3h e le os campos UTC -> produz EXATAMENTE os mesmos { dia, minutos, ymd } que o caminho

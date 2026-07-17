@@ -22,8 +22,13 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     let vivo = true;
+    /* REF-BOOT-02 v2: checkpoints da sessao (pos-commit). Se getSession-start aparece mas getSession-done
+       nao, a restauracao de sessao travou (ex.: crypto/localStorage do gotrue no WebView). Guardado/no-op. */
+    const cp = (c, m) => { try { if (typeof window !== 'undefined' && window.__ENC_BOOT__ && window.__ENC_BOOT__.step) window.__ENC_BOOT__.step(c, m); } catch { /* noop */ } };
+    cp('CP-auth-getSession-start', 'AuthProvider: getSession()');
     AuthService.getSession().then(async s => {
       if (!vivo) return;
+      cp('CP-auth-getSession-done', s ? 'sessao restaurada' : 'sem sessao (anon)');
       setSession(s); setStatus(s ? 'logged' : 'anon');
       await carregarCustomer(s);
     });
