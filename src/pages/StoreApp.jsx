@@ -3,6 +3,7 @@ import { WHATSAPP, LOGO } from '../lib/supabase.js';
 import { fmt } from '../utils/format.js';
 import { resolverAdicionais, selecionarFonteAdicionais } from '../utils/addons.js';
 import { prodInCat, getProdCatIds } from '../utils/catalog.js';
+import { catSection } from '../utils/catSection.js';   // REF-UI-CATEGORY-01 Fase 1: fonte unica do id de ancora sec-*
 import { STORAGE_KEYS } from '../constants/storage.js';
 import { STORE_INFO } from '../constants/storeInfo.js';   // REF-CHECKOUT-ADDRESS-01: endereco de retirada (fonte unica)
 import { useCategories } from '../hooks/useCategories.js';
@@ -529,38 +530,29 @@ function StoreAppContent({ onAdmin }) {
             const catProds = rawProds.filter(p=>prodInCat(p, cat.id) && p.disponivel!==false);
             if (catProds.length===0) return null;
 
-            /* Estilos especiais por categoria — preservados exatamente como antes */
-            let secId   = `sec-${cat.id}`;
+            /* Estilos especiais por categoria — preservados exatamente como antes.
+               REF-UI-CATEGORY-01 Fase 1: o id de ancora (secId) agora vem da FONTE UNICA
+               catSection(cat) (utils/catSection.js) — mesmo resultado da cadeia if/else-if
+               que existia aqui, porem sem triplicacao. A cadeia abaixo cuida SO de titulo/estilo. */
+            const secId = catSection(cat);
             let title   = cat.nome;
             let bannerStyle = {margin:'0 16px 12px',cursor:'default'};
             let sectionStyle = {paddingTop:20,scrollMarginTop:20};
             let displayProds = catProds;
 
             if (nome.includes('destaque')) {
-              secId = 'sec-destaques'; title = 'Destaques';
+              title = 'Destaques';
               sectionStyle = {paddingTop:12,scrollMarginTop:16};
               bannerStyle = {margin:'0 16px 12px',cursor:'default',
                 background:'linear-gradient(120deg,#B45309 0%,#D97706 100%)',
                 boxShadow:'0 4px 12px rgba(180,83,9,.25)'};
             } else if (nome.includes('combo')) {
-              secId = 'sec-combos'; title = 'Combos';
-              sectionStyle = {paddingTop:20,scrollMarginTop:20};
+              title = 'Combos';
             } else if (nome.includes('fitness')) {
-              secId = 'sec-fitness'; title = '💪 Pedido Fitness';
-              sectionStyle = {paddingTop:20,scrollMarginTop:20};
+              title = '💪 Pedido Fitness';
               bannerStyle = {margin:'0 16px 12px',cursor:'default',
                 background:'linear-gradient(120deg,#15803D 0%,#22C55E 100%)',
                 boxShadow:'0 4px 12px rgba(21,128,61,.25)'};
-            } else if (nome.includes('marmita')) {
-              secId = 'sec-marmitas';
-            } else if (nome.includes('pronto') || (nome.includes('copo') && !nome.includes('monte'))) {
-              secId = 'sec-prontos';
-            } else if (nome.includes('monte')) {
-              secId = 'sec-monte';
-            } else if (nome.includes('batidinha')) {
-              secId = 'sec-batidinha';
-            } else if (nome.includes('bebida')) {
-              secId = 'sec-bebidas';
             }
 
             return (

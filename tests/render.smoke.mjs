@@ -58,7 +58,7 @@ const CASES = [
       catNome: 'Açaí',
       onOpen: () => {},
     }),
-    snap: '<div class="product-card"><div class="product-img"><div class="product-img-placeholder" style="display:flex">🍧</div></div><div class="product-info"><div class="product-name">Produto Teste</div><div class="product-desc">Descrição teste</div><div class="product-footer"><div class="product-price">R$ 19,90</div><button class="add-btn">+</button></div></div></div>',
+    snap: '<div class="product-card" data-prod="pc-fix"><div class="product-img"><div class="product-img-placeholder" style="display:flex">🍧</div></div><div class="product-info"><div class="product-name">Produto Teste</div><div class="product-desc">Descrição teste</div><div class="product-footer"><div class="product-price">R$ 19,90</div><button class="add-btn">+</button></div></div></div>',
   },
   {
     /* sem erro → o boundary renderiza os children */

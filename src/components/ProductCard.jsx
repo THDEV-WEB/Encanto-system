@@ -23,7 +23,7 @@ export const ProductCard = React.memo(function ProductCard({ prod, catNome, onOp
   // Valida URL: aceita apenas http/https, nunca base64 ou string vazia
   const hasValidImg = isHttpUrl(prod.imagem_url);
   return (
-    <div className="product-card" onClick={()=>{console.log('[ENCANTO] Card clicado:', prod.id, prod.nome); onOpen(prod);}}>
+    <div className="product-card" data-prod={prod.id} onClick={()=>{console.log('[ENCANTO] Card clicado:', prod.id, prod.nome); onOpen(prod);}}>
       <div className="product-img">
         {hasValidImg
           ? <img src={prod.imagem_url} alt={prod.nome} loading="lazy"
