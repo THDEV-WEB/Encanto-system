@@ -270,7 +270,7 @@ function StoreAppContent({ onAdmin }) {
                     </svg>
                   ))}
                 </div>
-                <span className="delivery-badge-text">Delivery Rápido</span>
+                <span className="delivery-badge-text">Entrega rápida</span>
               </div>
               <button
                 onClick={()=>alert('Em breve teremos novidades para nossos clientes mais fiéis! ❤️')}
@@ -284,11 +284,11 @@ function StoreAppContent({ onAdmin }) {
                   fontFamily:'var(--font-body)',letterSpacing:'.2px',
                   transition:'all .2s',whiteSpace:'nowrap',
                 }}>
-                {loyaltyReward?'🎁 Recompensa disponível!':'🎁 Ganhe presente aqui'}
+                {loyaltyReward?'🎁 Recompensa disponível!':'🎁 Programa Fidelidade'}
               </button>
             </div>
-            <h1>Açaí & Marmitas<br/>feitos com carinho 💜</h1>
-            <p>Um Encanto de Sabores!</p>
+            <h1>Peça seu açaí ou marmita favorita</h1>
+            <p>Entrega rápida • Ingredientes selecionados • Peça em poucos minutos</p>
           </div>
 
           {/* ── Categorias: COM "Todos", COM scroll para seção ── */}
