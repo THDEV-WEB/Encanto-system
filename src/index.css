@@ -777,11 +777,77 @@ img{display:block;max-width:100%}
 .enc-stickybar-search .search-inner{padding:8px 12px;background:#fff;border:1px solid var(--gray-200)}
 .enc-stickybar-search .search-inner:focus-within{border-color:var(--grape-light);box-shadow:0 0 0 3px rgba(166,39,134,.12)}
 @media(max-width:900px){.enc-stickybar-search{flex-basis:280px}}
-/* spacer: reserva a altura da barra quando ela esta ancorada no topo (busca) — sem cobrir a barra de entrega */
+/* spacer: reserva a altura da chrome fixa quando ancorada no topo (busca) — sem cobrir a barra de
+   entrega. Altura por breakpoint: barra do desktop (~57px) / strip do mobile (48px). */
 .enc-stickybar-spacer{height:58px}
-@media(max-width:767px){.enc-stickybar-spacer{display:none}}
-/* busca do topo: SO no mobile (no desktop a busca vive na barra sticky — D4) */
-@media(min-width:768px){.top-search-mobile{display:none}}
+@media(max-width:767px){.enc-stickybar-spacer{height:50px}}
+
+/* ---- MOBILE CATEGORY STRIP (REF-UI-CATEGORY-01 Fase 4) — abas horizontais + lupa (celular <768px) ----
+   Surge abaixo do header ao rolar (mesma mecanica/gatilho da barra do desktop). Leve, aparencia nativa. */
+.enc-mobile-strip{
+  position:fixed;left:0;right:0;top:var(--header-h,96px);z-index:90;
+  display:flex;align-items:stretch;height:48px;
+  background:rgba(255,255,255,.96);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--gray-100);
+  box-shadow:0 6px 20px -12px rgba(59,7,100,.35);
+  opacity:0;visibility:hidden;transform:translateY(-8px);pointer-events:none;
+  transition:opacity .28s ease, transform .28s ease, visibility 0s linear .28s;
+}
+.enc-mobile-strip.visible{
+  opacity:1;visibility:visible;transform:none;pointer-events:auto;
+  transition:opacity .28s ease, transform .28s ease, visibility 0s;
+}
+@media(min-width:768px){.enc-mobile-strip{display:none}}   /* desktop/tablet usam a barra sticky */
+@media(prefers-reduced-motion:reduce){
+  .enc-mobile-strip{transition:opacity .01s, visibility 0s linear .01s}
+  .enc-mobile-strip.visible{transition:opacity .01s, visibility 0s}
+}
+/* abas com scroll horizontal fluido ao toque */
+.mcs-tabs{
+  flex:1;min-width:0;display:flex;align-items:stretch;
+  overflow-x:auto;overflow-y:hidden;
+  scrollbar-width:none;-ms-overflow-style:none;
+  -webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;
+}
+.mcs-tabs::-webkit-scrollbar{display:none}
+.mcs-tab{
+  flex:0 0 auto;position:relative;height:100%;padding:0 14px;
+  display:inline-flex;align-items:center;white-space:nowrap;
+  font-family:var(--font-body);font-size:14px;font-weight:600;color:var(--gray-500);
+  background:none;border:none;cursor:pointer;transition:color .18s;
+}
+.mcs-tab:first-child{padding-left:16px}
+.mcs-tab.active{color:var(--grape);font-weight:800}
+/* marcador ativo: sublinhado com acento Encanto, discreto */
+.mcs-tab.active::after{
+  content:'';position:absolute;left:14px;right:14px;bottom:6px;height:3px;border-radius:2px;
+  background:linear-gradient(90deg,var(--grape),var(--acai-mid));
+}
+.mcs-tab:first-child.active::after{left:16px}
+/* lupa a direita */
+.mcs-lupa{
+  flex:0 0 auto;width:48px;height:100%;
+  display:flex;align-items:center;justify-content:center;
+  background:none;border:none;border-left:1px solid var(--gray-100);
+  color:var(--gray-600);cursor:pointer;
+}
+.mcs-lupa svg{width:20px;height:20px;display:block}
+.mcs-lupa:active{color:var(--grape)}
+/* modo busca: input nativo ocupa o strip */
+.mcs-search{display:flex;align-items:center;gap:8px;width:100%;padding:0 12px}
+.mcs-search-icon{display:flex;align-items:center;color:var(--gray-400);flex-shrink:0}
+.mcs-search-icon svg{width:18px;height:18px;display:block}
+.mcs-search-input{
+  flex:1;min-width:0;border:none;background:transparent;
+  font-family:var(--font-body);font-size:15px;color:var(--gray-900);font-weight:500;
+}
+.mcs-search-input::placeholder{color:var(--gray-400);font-weight:400}
+.mcs-search-close{
+  flex-shrink:0;display:flex;align-items:center;justify-content:center;
+  width:32px;height:32px;background:none;border:none;cursor:pointer;color:var(--gray-500);
+}
+.mcs-search-close svg{width:18px;height:18px;display:block}
 
 /* ---- PROMO BANNER ---- */
 .promo-banner{

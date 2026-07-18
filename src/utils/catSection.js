@@ -4,9 +4,9 @@
    de chips e o SearchBar (getCatSecId), com risco real de divergencia. Este helper reproduz
    EXATAMENTE a cadeia if/else-if que o CATALOGO ja usava para gerar os ids sec-* (o unico dos
    tres que de fato renderiza os ids no DOM); o catalogo passa a chamar catSection nesta Fase 1.
-   As outras duas copias (chip e SearchBar) hoje sao CODIGO MORTO (so chamam setSelCat, nunca
-   rolam) e serao REMOVIDAS/religadas a este helper na Fase 2 — encerrando a triplicacao.
-   A navegacao por scroll (Fase 2+) usa este MESMO helper para calcular o alvo do scrollIntoView,
+   As outras duas copias foram REMOVIDAS: a grade de chips na Fase 2 e o getCatSecId do SearchBar
+   na Fase 4 (junto com o modelo de filtro por selCat) — triplicacao ENCERRADA, fonte unica de fato.
+   A navegacao por scroll usa este MESMO helper para calcular o alvo do scroll,
    garantindo que o alvo seja identico ao id efetivamente renderizado.
    FOLHA pura (zero imports): apenas operacoes de string. */
 export function catSection(cat) {

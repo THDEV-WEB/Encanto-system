@@ -1,24 +1,28 @@
-/* hooks/useScrollSpy.js — REF-UI-CATEGORY-01 Fase 2 (+ Fase 3). Hook NOVO de navegacao (nao altera
-   hooks existentes de produto/categoria). Observa as secoes sec-* do catalogo e devolve o id da secao
-   "ativa" — a que esta logo abaixo da chrome fixa do topo — para o scroll-spy destacar a categoria atual.
+/* hooks/useScrollSpy.js — REF-UI-CATEGORY-01 Fase 2 (+ F3/F4). Hook NOVO de navegacao (nao altera
+   hooks existentes de produto/categoria). Observa as secoes sec-* e devolve o id da secao "ativa" —
+   a que esta logo abaixo da chrome fixa do topo — para o scroll-spy destacar a categoria atual.
+   rAF-throttled; funciona com secoes lazy (LazySection sempre renderiza o div externo). Puro browser.
 
-   Abordagem: em vez de IntersectionObserver (rootMargin fragil com header de altura variavel), um
-   handler de scroll rAF-throttled calcula, a cada quadro, qual e a ULTIMA secao cujo topo ja passou
-   a "linha de deteccao" (logo abaixo da chrome fixa). E deterministico, barato e suave; funciona com
-   as secoes lazy (LazySection sempre renderiza o div externo, entao getElementById as encontra). Puro
-   browser — nao entra no render.smoke (mesma politica da LazySection).
+   navTopOffset(): FONTE UNICA da altura ocupada pela chrome fixa do topo = header sticky + a chrome de
+   navegacao VISIVEL do breakpoint (barra sticky do desktop OU strip do mobile; so uma existe por vez).
+   Usada aqui (linha do spy) e na rolagem suave (useSmoothScrollToSection), para o titulo pousar logo
+   abaixo da chrome.
 
-   navTopOffset(): FONTE UNICA da altura ocupada pela chrome fixa do topo = header sticky + barra
-   sticky (Fase 3), quando presente/visivel. Usada AQUI (linha do spy) e no CategoryNav (alvo do
-   scrollIntoView), para que rolar ate uma categoria posicione o titulo logo abaixo da barra — sem
-   ficar escondido sob ela. A barra so conta em telas onde ela existe (display != none). */
+   CORRECAO DO MARCADOR (bug "Monte seu Copo"): a linha do spy = navTopOffset + 40, propositalmente
+   ABAIXO do alvo do scroll (navTopOffset + 12). Assim a secao recem-navegada fica DENTRO da banda de
+   deteccao e nunca na fronteira `top-line<=0` (onde um top fracionario a excluia). Escolha pura e
+   testada em utils/scrollSpyPick.js (test:spy). */
 import { useState, useEffect } from 'react';
+import { pickActiveSection } from '../utils/scrollSpyPick.js';
 
 export function navTopOffset() {
   const header = document.querySelector('.header');
-  const bar = document.querySelector('.enc-stickybar');
-  const barVisivel = bar && getComputedStyle(bar).display !== 'none';
-  return (header?.offsetHeight || 0) + (barVisivel ? bar.offsetHeight : 0);
+  let h = header?.offsetHeight || 0;
+  for (const sel of ['.enc-stickybar', '.enc-mobile-strip']) {
+    const bar = document.querySelector(sel);
+    if (bar && getComputedStyle(bar).display !== 'none') h += bar.offsetHeight;
+  }
+  return h;
 }
 
 export function useScrollSpy(ids) {
@@ -29,13 +33,13 @@ export function useScrollSpy(ids) {
     let raf = 0;
     const compute = () => {
       raf = 0;
-      const line = navTopOffset() + 12;   // linha de deteccao logo abaixo da chrome fixa do topo
-      let current = ids[0];
+      const line = navTopOffset() + 40;   // 40 > alvo do scroll (+12): secao recem-navegada fica na banda, nao na fronteira
+      const entries = [];
       for (const id of ids) {
         const el = document.getElementById(id);
-        if (!el) continue;
-        if (el.getBoundingClientRect().top - line <= 0) current = id;   // secao ja cruzou a linha
+        if (el) entries.push({ id, top: el.getBoundingClientRect().top });
       }
+      let current = pickActiveSection(entries, line) ?? ids[0];
       /* perto do fim da pagina: secoes curtas podem nunca cruzar a linha -> forca a ultima. */
       if (window.innerHeight + Math.ceil(window.scrollY) >= document.documentElement.scrollHeight - 2) {
         current = ids[ids.length - 1];

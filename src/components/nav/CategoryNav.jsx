@@ -1,34 +1,18 @@
-/* components/nav/CategoryNav.jsx — REF-UI-CATEGORY-01 Fase 2.
-   Seletor "Categorias v" do DESKTOP/TABLET que SUBSTITUI a antiga grade de chips. Navegacao por
-   SCROLL (nao filtra): clicar rola suavemente ate a secao da categoria; o scroll-spy (useScrollSpy)
-   destaca automaticamente a categoria ativa conforme o usuario rola. Texto puro (sem emoji/icone),
-   identidade Encanto. No MOBILE fica oculto (CSS) — o strip horizontal chega na Fase 4.
-
-   O componente recebe SO as categorias VISIVEIS (que tem secao renderizada) — o pai filtra por
-   disponibilidade, entao a lista nunca oferece um destino inexistente (sem clique morto).
-
-   Fonte unica do alvo: catSection(cat) (o MESMO helper que o catalogo usa p/ gerar os ids sec-*),
-   garantindo que o alvo do scroll == o id efetivamente renderizado.
-
-   Rolagem premium: animacao propria (easeInOutCubic) que RECALCULA o destino a cada quadro. Isso
-   corrige o "undershoot" das secoes lazy (LazySection troca um placeholder de 240px pelo conteudo
-   real durante a rolagem, empurrando o alvo) e evita qualquer salto. Respeita prefers-reduced-motion. */
+/* components/nav/CategoryNav.jsx — REF-UI-CATEGORY-01 Fase 2 (refatorado na F4).
+   Seletor "Categorias v" (desktop/tablet) que substitui a antiga grade. Texto puro, identidade Encanto.
+   A F4 moveu o scroll-spy e a rolagem suave para o hook unico useCatalogNav (StoreApp), evitando
+   3 instancias de scroll-spy: este componente agora RECEBE `activeId` (categoria ativa) e `onSelect`
+   (rola ate a secao) por prop. Mantem apenas a UX do dropdown: abrir/fechar, clique-fora, ESC, setas,
+   foco no item ativo. No MOBILE fica oculto (CSS) — la a navegacao e o strip (MobileCatStrip). */
 import React from 'react';
 import { catSection } from '../../utils/catSection.js';
-import { useScrollSpy, navTopOffset } from '../../hooks/useScrollSpy.js';
 
-const easeInOutCubic = (p) => (p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2);
-
-export function CategoryNav({ cats }) {
+export function CategoryNav({ cats, activeId, onSelect }) {
   const [open, setOpen] = React.useState(false);
   const wrapRef = React.useRef(null);
   const menuRef = React.useRef(null);
   const triggerRef = React.useRef(null);
-  const stopRef = React.useRef(null);   // funcao que encerra a animacao de scroll em curso (se houver)
-  const menuId = React.useId();         // id unico (ha 2 instancias: topo da pagina + barra sticky)
-
-  const ids = React.useMemo(() => cats.map(catSection), [cats]);
-  const activeId = useScrollSpy(ids);
+  const menuId = React.useId();   // id unico (ha 2 instancias: topo da pagina + barra sticky)
 
   /* Fechar ao clicar fora */
   React.useEffect(() => {
@@ -50,77 +34,20 @@ export function CategoryNav({ cats }) {
     return () => document.removeEventListener('keydown', esc);
   }, [open]);
 
-  /* Ao abrir, leva o foco ao item ativo (ou ao primeiro) — teclado/leitor de tela */
+  /* Ao abrir, leva o foco ao item ativo (ou ao primeiro) */
   React.useEffect(() => {
     if (!open || !menuRef.current) return;
     const alvo = menuRef.current.querySelector('.catnav-item.active') || menuRef.current.querySelector('.catnav-item');
     alvo?.focus();
   }, [open]);
 
-  /* Encerra a animacao pendente ao desmontar (restaura o scroll-behavior baseline dentro do stop) */
-  React.useEffect(() => () => { stopRef.current?.(); }, []);
-
-  /* Rolagem suave (com re-alvo por quadro) ate a secao, descontando a altura do header sticky.
-     - RE-alvo por quadro: corrige o crescimento das secoes lazy durante a rolagem (sem undershoot).
-     - CEDE a qualquer input do usuario (wheel/touch/tecla): como o smooth nativo, nao "briga" com
-       quem rola manualmente durante a animacao.
-     - Restaura sempre o scroll-behavior para '' (baseline do CSS) em qualquer saida. */
-  const irPara = (cat) => {
+  const go = (cat) => {
     setOpen(false);
-    triggerRef.current?.focus({ preventScroll: true });   // nao mexe no scroll antes de capturar startY
-    const el = document.getElementById(catSection(cat));
-    if (!el) return;
-
-    stopRef.current?.();   // encerra (e restaura) qualquer animacao anterior antes de comecar outra
-
-    const offset = navTopOffset() + 12;   // header sticky + barra sticky (Fase 3): fonte unica
-    const destino = () => Math.max(0, window.scrollY + el.getBoundingClientRect().top - offset);
-
-    const reduz = typeof window.matchMedia === 'function'
-      && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (reduz) {
-      document.documentElement.style.scrollBehavior = '';   // baseline; media query reduced-motion garante salto
-      window.scrollTo(0, destino());
-      return;
-    }
-
-    /* Sobrepoe o scroll-behavior:smooth global para controlarmos o easing quadro a quadro. */
-    const html = document.documentElement;
-    html.style.scrollBehavior = 'auto';
-    const startY = window.scrollY;
-    const DURACAO = 520;
-    let raf = 0, t0 = null;
-
-    const parar = () => {
-      if (raf) cancelAnimationFrame(raf);
-      raf = 0;
-      html.style.scrollBehavior = '';   // devolve o baseline SEMPRE (conclusao, novo clique, input, desmontagem)
-      window.removeEventListener('wheel', parar);
-      window.removeEventListener('touchstart', parar);
-      window.removeEventListener('keydown', parar);
-      stopRef.current = null;
-    };
-    stopRef.current = parar;
-    /* input do usuario durante a animacao -> cede o controle imediatamente */
-    window.addEventListener('wheel', parar, { passive: true });
-    window.addEventListener('touchstart', parar, { passive: true });
-    window.addEventListener('keydown', parar);
-
-    const passo = (ts) => {
-      if (t0 === null) t0 = ts;
-      const p = Math.min(1, (ts - t0) / DURACAO);
-      window.scrollTo(0, startY + (destino() - startY) * easeInOutCubic(p));
-      if (p < 1) {
-        raf = requestAnimationFrame(passo);
-      } else {
-        window.scrollTo(0, destino());   // snap final exato (apos as secoes lazy expandirem)
-        parar();
-      }
-    };
-    raf = requestAnimationFrame(passo);
+    triggerRef.current?.focus({ preventScroll: true });
+    onSelect(cat);
   };
 
-  /* Navegacao por setas entre os itens do menu */
+  /* Navegacao por setas entre os itens */
   const onMenuKeyDown = (e) => {
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Home' && e.key !== 'End') return;
     const itens = Array.from(menuRef.current?.querySelectorAll('.catnav-item') || []);
@@ -139,7 +66,6 @@ export function CategoryNav({ cats }) {
 
   return (
     <div className="catnav" ref={wrapRef}>
-      {/* anchor: mantem o menu alinhado ao gatilho em qualquer breakpoint (independe do padding do .catnav) */}
       <div className="catnav-anchor">
         <button
           ref={triggerRef}
@@ -170,7 +96,7 @@ export function CategoryNav({ cats }) {
                   role="option"
                   aria-selected={ativo}
                   className={`catnav-item ${ativo ? 'active' : ''}`}
-                  onClick={() => irPara(cat)}>
+                  onClick={() => go(cat)}>
                   <span className="catnav-item-name">{cat.nome}</span>
                   <span className="catnav-item-arrow" aria-hidden="true">›</span>
                 </button>

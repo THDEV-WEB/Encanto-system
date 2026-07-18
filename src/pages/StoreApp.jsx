@@ -17,10 +17,11 @@ import { StoreMenu } from '../components/menu/StoreMenu.jsx'; // LOGIN-ARCH-02: 
 import { ProductCard } from '../components/ProductCard.jsx';
 import { ProductModal } from '../components/ProductModal/index.jsx';
 import { CartSidebar } from '../components/CartSidebar.jsx';
-import { SearchBar } from '../components/SearchBar.jsx';           // REF-UI-CATEGORY-01 Fase 3: busca do topo — SO no mobile (no desktop vive na barra sticky)
-import { CategoryNav } from '../components/nav/CategoryNav.jsx';   // REF-UI-CATEGORY-01 Fase 2: seletor "Categorias v" + scroll-spy (substitui a grade)
+import { CategoryNav } from '../components/nav/CategoryNav.jsx';   // REF-UI-CATEGORY-01 Fase 2: seletor "Categorias v" (desktop/tablet)
 import { StickyBar } from '../components/nav/StickyBar.jsx';       // REF-UI-CATEGORY-01 Fase 3: barra sticky do desktop/tablet
+import { MobileCatStrip } from '../components/nav/MobileCatStrip.jsx'; // REF-UI-CATEGORY-01 Fase 4: strip de categorias + lupa (mobile)
 import { useStickyReveal } from '../hooks/useStickyReveal.js';     // REF-UI-CATEGORY-01 Fase 3: surge apos rolagem + publica --header-h
+import { useCatalogNav } from '../hooks/useCatalogNav.js';         // REF-UI-CATEGORY-01 Fase 4: scroll-spy + rolagem UNICOS (compartilhados)
 import { AddressProvider, useAddress } from '../address/index.js'; // REF-CHECKOUT-ADDRESS-01: fonte unica do endereco (provider)
 import { LazySection } from '../components/ui/LazySection.jsx';
 import { SuccessPage } from '../components/checkout/SuccessPage.jsx';
@@ -43,7 +44,6 @@ export function StoreApp({ onAdmin }) {
 
 function StoreAppContent({ onAdmin }) {
   const [page,          setPage]         = useState('home');
-  const [selCat,        setSelCat]        = useState(null);
   const [search,        setSearch]        = useState('');
   const [modal,         setModal]         = useState(null);
   const [cartOpen,      setCartOpen]      = useState(false);
@@ -85,7 +85,7 @@ function StoreAppContent({ onAdmin }) {
   };
 
   const { cats, src:catSrc }                    = useCategories();
-  const { prods:rawProds, loading, src:prodSrc }= useProducts(selCat, search);
+  const { prods:rawProds, loading, src:prodSrc }= useProducts(null, search);   // REF-UI-CATEGORY-01 Fase 4: selCat aposentado (nav por scroll) -> sempre catalogo completo
   const adicionais = useAdicionais();
 
   const catMap = useMemo(()=>{ const m={}; cats.forEach(c=>{m[c.id]=c;}); return m; },[cats]);
@@ -106,6 +106,9 @@ function StoreAppContent({ onAdmin }) {
   /* Barra visivel SEM ter sido revelada por rolagem (ex.: busca ativa no topo) -> reserva a altura dela
      (spacer) para nao cobrir a barra de entrega. So no desktop/tablet (a barra nao existe no mobile). */
   const dockedAtTop = stickyVisible && !revealed;
+  /* REF-UI-CATEGORY-01 Fase 4: scroll-spy + rolagem suave UNICOS (uma so instancia), compartilhados
+     pelas 3 superficies (dropdown do topo, barra sticky do desktop, strip do mobile) via props. */
+  const { activeId, irParaCategoria } = useCatalogNav(catsVisiveis);
   const prods  = useMemo(()=>rawProds.map(p=>({
     ...p,
     _catNome: catMap[p.categoria_id]?.nome||'',
@@ -189,13 +192,24 @@ function StoreAppContent({ onAdmin }) {
           Fixed -> nao ocupa espaco no fluxo; oculta em <768px (strip mobile e a Fase 4). ── */}
       <StickyBar
         cats={catsVisiveis}
+        activeId={activeId}
+        onSelect={irParaCategoria}
         search={search}
         setSearch={setSearch}
-        setSelCat={setSelCat}
         visible={stickyVisible}
       />
-      {/* Reserva a altura da barra sticky quando ela esta ancorada no topo (busca) — evita cobrir a
-          barra de entrega. Oculto no mobile (a barra nao existe la). */}
+      {/* ── STRIP MOBILE (celular) — REF-UI-CATEGORY-01 Fase 4: abas horizontais + lupa, surge ao rolar.
+          Fixed; oculto em >=768px (la e a barra do desktop). ── */}
+      <MobileCatStrip
+        cats={catsVisiveis}
+        activeId={activeId}
+        onSelect={irParaCategoria}
+        search={search}
+        setSearch={setSearch}
+        visible={stickyVisible}
+      />
+      {/* Reserva a altura da chrome fixa quando ela esta ancorada no topo (busca) — evita cobrir a
+          barra de entrega. Altura por breakpoint (barra desktop / strip mobile). */}
       {dockedAtTop && <div className="enc-stickybar-spacer" aria-hidden="true" />}
 
       {/* ── BARRA DE ENTREGA/RETIRADA (branca, abaixo do header) — REF-UX-02 ── */}
@@ -283,17 +297,9 @@ function StoreAppContent({ onAdmin }) {
       )}
 
       <div className="app-content">
-      {/* REF-UI-CATEGORY-01 Fase 3: no DESKTOP a busca vive na barra sticky (topo = so "Categorias v", D4).
-          No MOBILE ela continua aqui no topo (a barra sticky nao existe no celular ate a Fase 4/lupa) —
-          `.top-search-mobile` some no desktop via CSS. */}
-      <div className="top-search-mobile">
-        <SearchBar
-          cats={cats}
-          search={search}
-          setSearch={setSearch}
-          setSelCat={setSelCat}
-        />
-      </div>
+      {/* REF-UI-CATEGORY-01 Fase 4: a busca do topo saiu tambem do mobile. Agora a navegacao/busca vive
+          na chrome que surge ao rolar: barra sticky (desktop) e strip + lupa (mobile). O topo fica so
+          o banner/hero (D4) em todos os tamanhos. */}
 
       {!search&&(
         <>
@@ -330,12 +336,12 @@ function StoreAppContent({ onAdmin }) {
           </div>
 
           {/* Categorias — navegacao por scroll + scroll-spy (REF-UI-CATEGORY-01 Fase 2) substitui a grade de chips */}
-          {!selCat && <CategoryNav cats={catsVisiveis} />}
+          <CategoryNav cats={catsVisiveis} activeId={activeId} onSelect={irParaCategoria} />
           {/* REF-UI-CATEGORY-01 Fase 3: sentinela — quando rola para debaixo do header, a barra sticky surge */}
           <div ref={sentinelRef} className="catnav-sentinel" aria-hidden="true" />
 
           {/* ── CATÁLOGO — ordem 100% controlada por cats (coluna 'ordem' do Supabase) ── */}
-          {!selCat&&(loading?<Spinner/>:cats.map(cat=>{
+          {(loading?<Spinner/>:cats.map(cat=>{
             const nome = (cat.nome||'').toLowerCase();
             const catProds = rawProds.filter(p=>prodInCat(p, cat.id) && p.disponivel!==false);
             if (catProds.length===0) return null;
@@ -395,40 +401,7 @@ function StoreAppContent({ onAdmin }) {
         </div>
       )}
 
-      {/* ── FILTRO POR CATEGORIA SELECIONADA ── */}
-      {!search&&selCat&&(
-        <div className="products-section" style={{paddingTop:8}}>
-          {/* Título da categoria + botão voltar */}
-          {(()=>{
-            const cat = cats.find(c=>c.id===selCat);
-            const nome = cat?.nome || '';
-            return (
-              <div style={{margin:'0 16px 12px',display:'flex',alignItems:'center',gap:10}}>
-                <div className="promo-banner" style={{flex:1,margin:0,cursor:'default'}}>
-                  <h3>{cat?.icone||'🍽️'} {nome}</h3>
-                </div>
-                <button
-                  onClick={()=>setSelCat(null)}
-                  style={{
-                    flexShrink:0,padding:'8px 14px',borderRadius:10,
-                    background:'var(--gray-100)',color:'var(--gray-600)',
-                    fontSize:13,fontWeight:700,border:'none',cursor:'pointer',
-                    fontFamily:'var(--font-body)',whiteSpace:'nowrap',
-                  }}>
-                  ← Todos
-                </button>
-              </div>
-            );
-          })()}
-          {loading?<Spinner/>:prods.length===0?(
-            <div className="empty-state"><div className="icon">🔍</div><p>Nenhum produto encontrado</p></div>
-          ):(
-            <div className="products-grid">
-              {prods.map(p=><ProductCard key={p.id} prod={p} catNome={p._catNome} onOpen={setModal}/>)}
-            </div>
-          )}
-        </div>
-      )}
+      {/* REF-UI-CATEGORY-01 Fase 4: caminho de FILTRO por selCat REMOVIDO (navegacao agora e 100% por scroll). */}
 
       <div style={{padding:'32px 16px',textAlign:'center',color:'var(--gray-400)',fontSize:13}}>
         <p>Plataforma desenvolvida por TH System</p>

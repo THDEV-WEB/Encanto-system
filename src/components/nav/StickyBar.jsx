@@ -13,7 +13,7 @@ import { LOGO } from '../../lib/supabase.js';
 import { CategoryNav } from './CategoryNav.jsx';
 import { SearchBar } from '../SearchBar.jsx';
 
-export function StickyBar({ cats, search, setSearch, setSelCat, visible }) {
+export function StickyBar({ cats, activeId, onSelect, search, setSearch, visible }) {
   return (
     <div className={`enc-stickybar ${visible ? 'visible' : ''}`} aria-hidden={!visible}>
       <div className="enc-stickybar-inner">
@@ -23,14 +23,12 @@ export function StickyBar({ cats, search, setSearch, setSelCat, visible }) {
           {LOGO && <img src={LOGO} alt="Encanto" className="enc-stickybar-logo" loading="lazy" />}
         </div>
 
-        {!search && <CategoryNav cats={cats} />}
+        {!search && <CategoryNav cats={cats} activeId={activeId} onSelect={onSelect} />}
 
         <div className="enc-stickybar-search">
           <SearchBar
             search={search}
             setSearch={setSearch}
-            setSelCat={setSelCat}
-            showCategorias={false}
             placeholder="Busque um item na loja"
           />
         </div>
