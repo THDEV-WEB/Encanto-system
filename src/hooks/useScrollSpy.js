@@ -3,10 +3,11 @@
    a que esta logo abaixo da chrome fixa do topo — para o scroll-spy destacar a categoria atual.
    rAF-throttled; funciona com secoes lazy (LazySection sempre renderiza o div externo). Puro browser.
 
-   navTopOffset(): FONTE UNICA da altura ocupada pela chrome fixa do topo = header sticky + a chrome de
-   navegacao VISIVEL do breakpoint (barra sticky do desktop OU strip do mobile; so uma existe por vez).
-   Usada aqui (linha do spy) e na rolagem suave (useSmoothScrollToSection), para o titulo pousar logo
-   abaixo da chrome.
+   navTopOffset(): FONTE UNICA da altura ocupada pela chrome fixa do topo. Com o header NAO-sticky
+   (refino UX — o header rola junto e sai da viewport), a unica chrome fixa e a navegacao de categorias
+   VISIVEL do breakpoint (barra sticky do desktop OU strip do mobile; so uma existe por vez) — o header
+   NAO entra mais nesta conta. Usada aqui (linha do spy) e na rolagem suave (useSmoothScrollToSection),
+   para o titulo pousar logo abaixo da chrome.
 
    CORRECAO DO MARCADOR (bug "Monte seu Copo"): a linha do spy = navTopOffset + 40, propositalmente
    ABAIXO do alvo do scroll (navTopOffset + 12). Assim a secao recem-navegada fica DENTRO da banda de
@@ -16,8 +17,9 @@ import { useState, useEffect } from 'react';
 import { pickActiveSection } from '../utils/scrollSpyPick.js';
 
 export function navTopOffset() {
-  const header = document.querySelector('.header');
-  let h = header?.offsetHeight || 0;
+  /* Header nao entra: rola junto com a pagina (nao e mais sticky). Conta so a barra de categorias
+     fixa e VISIVEL do breakpoint atual (desktop OU mobile). display:none -> nao conta. */
+  let h = 0;
   for (const sel of ['.enc-stickybar', '.enc-mobile-strip']) {
     const bar = document.querySelector(sel);
     if (bar && getComputedStyle(bar).display !== 'none') h += bar.offsetHeight;

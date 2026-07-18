@@ -1,7 +1,7 @@
-/* components/nav/StickyBar.jsx — REF-UI-CATEGORY-01 Fase 3.
-   Barra sticky do DESKTOP/TABLET que SURGE abaixo do header (top:var(--header-h)) apos a rolagem.
-   Leve, altura minima, entrada/saida discreta (classe .visible + transicao no CSS). O header original
-   fica INTACTO. Oculta em telas <768px (o strip mobile e a Fase 4).
+/* components/nav/StickyBar.jsx — REF-UI-CATEGORY-01 Fase 3 (refino UX).
+   Barra sticky do DESKTOP/TABLET que SURGE no TOPO (top:0) apos a rolagem. Com o header nao-sticky
+   (rola junto e sai da viewport), esta barra e o UNICO elemento fixo do topo. Leve, altura minima,
+   entrada/saida discreta (classe .visible + transicao no CSS). Oculta em telas <768px (strip mobile, Fase 4).
 
    Conteudo (D4 + plano): identidade REDUZIDA do Encanto (logo + nome) | "Categorias v" (CategoryNav,
    mesmo componente/scroll da Fase 2) | busca (SearchBar em modo somente-busca — a busca migrou do topo

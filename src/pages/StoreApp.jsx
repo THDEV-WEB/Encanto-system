@@ -20,7 +20,7 @@ import { CartSidebar } from '../components/CartSidebar.jsx';
 import { CategoryNav } from '../components/nav/CategoryNav.jsx';   // REF-UI-CATEGORY-01 Fase 2: seletor "Categorias v" (desktop/tablet)
 import { StickyBar } from '../components/nav/StickyBar.jsx';       // REF-UI-CATEGORY-01 Fase 3: barra sticky do desktop/tablet
 import { MobileCatStrip } from '../components/nav/MobileCatStrip.jsx'; // REF-UI-CATEGORY-01 Fase 4: strip de categorias + lupa (mobile)
-import { useStickyReveal } from '../hooks/useStickyReveal.js';     // REF-UI-CATEGORY-01 Fase 3: surge apos rolagem + publica --header-h
+import { useStickyReveal } from '../hooks/useStickyReveal.js';     // REF-UI-CATEGORY-01 Fase 3: barra de categorias surge apos rolagem (header nao-sticky)
 import { useCatalogNav } from '../hooks/useCatalogNav.js';         // REF-UI-CATEGORY-01 Fase 4: scroll-spy + rolagem UNICOS (compartilhados)
 import { AddressProvider, useAddress } from '../address/index.js'; // REF-CHECKOUT-ADDRESS-01: fonte unica do endereco (provider)
 import { LazySection } from '../components/ui/LazySection.jsx';
@@ -103,9 +103,13 @@ function StoreAppContent({ onAdmin }) {
   const sentinelRef = useRef(null);
   const revealed = useStickyReveal(sentinelRef, !!search);   // booleano: re-sincroniza SO na transicao catalogo<->resultados (nao a cada tecla)
   const stickyVisible = revealed || !!search;
-  /* Barra visivel SEM ter sido revelada por rolagem (ex.: busca ativa no topo) -> reserva a altura dela
-     (spacer) para nao cobrir a barra de entrega. So no desktop/tablet (a barra nao existe no mobile). */
-  const dockedAtTop = stickyVisible && !revealed;
+  /* Durante a BUSCA a barra fica ancorada no topo (top:0) sem ter sido revelada por rolagem. Com o
+     header agora estatico, reservamos a altura da barra num spacer (1o filho de .app, ANTES do header)
+     para ela nao cobrir o header. Depende SO de `search`: na busca a sentinela desmonta e `revealed`
+     acaba falso de qualquer forma, mas `revealed` lagga 1 frame (useEffect) — usar `!!search` reserva o
+     spacer no MESMO commit em que a busca ativa, sem flash do header coberto nem salto. Vale desktop e
+     mobile (altura do spacer por breakpoint). */
+  const dockedAtTop = !!search;
   /* REF-UI-CATEGORY-01 Fase 4: scroll-spy + rolagem suave UNICOS (uma so instancia), compartilhados
      pelas 3 superficies (dropdown do topo, barra sticky do desktop, strip do mobile) via props. */
   const { activeId, irParaCategoria } = useCatalogNav(catsVisiveis);
@@ -121,6 +125,12 @@ function StoreAppContent({ onAdmin }) {
 
   return (
     <div className="app">
+      {/* Reserva a altura da barra fixa quando ela esta ancorada no topo por BUSCA (sem ter sido revelada
+          por rolagem). Como o header agora NAO e sticky e a barra fica em top:0, o spacer vem ANTES do
+          header: empurra a pagina inteira para baixo da barra, evitando que a barra cubra o header.
+          Altura por breakpoint (barra desktop ~57px / strip mobile ~50px). */}
+      {dockedAtTop && <div className="enc-stickybar-spacer" aria-hidden="true" />}
+
       {/* ── HEADER PRINCIPAL (roxo) ── */}
       <header className="header">
 
@@ -150,8 +160,11 @@ function StoreAppContent({ onAdmin }) {
             <span className="brand-name" style={{display:'flex',alignItems:'baseline',gap:7}}>
               Encanto
               <span style={{
-                fontSize:12,fontWeight:600,color:'rgba(255,255,255,.55)',
+                /* REF-UI-CATEGORY-01 (refino UX): cidade — secundaria, porem legivel sobre a foto do
+                   banner (saiu de .55 "lavado" p/ .9 + text-shadow). Sem virar destaque. */
+                fontSize:12,fontWeight:600,color:'rgba(255,255,255,.9)',
                 letterSpacing:'.5px',textTransform:'uppercase',
+                textShadow:'0 1px 6px rgba(0,0,0,.6)',
               }}>Timbó</span>
             </span>
             <span className="brand-sub">Marmita e Açaí</span>
@@ -161,7 +174,8 @@ function StoreAppContent({ onAdmin }) {
                 {horario.rotuloCurto}
               </div>
               {horario.detalhe && (
-                <span style={{fontSize:11,fontWeight:600,color:'rgba(255,255,255,.78)',whiteSpace:'nowrap'}}>
+                /* REF-UI-CATEGORY-01 (refino UX): detalhe do horario — legivel sobre a foto (.78 -> .95 + sombra) */
+                <span style={{fontSize:11,fontWeight:600,color:'rgba(255,255,255,.95)',whiteSpace:'nowrap',textShadow:'0 1px 6px rgba(0,0,0,.6)'}}>
                   {horario.detalhe}
                 </span>
               )}
@@ -188,8 +202,9 @@ function StoreAppContent({ onAdmin }) {
 
       </header>
 
-      {/* ── BARRA STICKY (desktop/tablet) — REF-UI-CATEGORY-01 Fase 3: surge abaixo do header ao rolar.
-          Fixed -> nao ocupa espaco no fluxo; oculta em <768px (strip mobile e a Fase 4). ── */}
+      {/* ── BARRA STICKY (desktop/tablet) — REF-UI-CATEGORY-01 Fase 3 (refino UX): surge no TOPO (top:0)
+          ao rolar; com o header nao-sticky ela e o unico elemento fixo. Fixed -> nao ocupa espaco no
+          fluxo; oculta em <768px (strip mobile e a Fase 4). ── */}
       <StickyBar
         cats={catsVisiveis}
         activeId={activeId}
@@ -208,10 +223,6 @@ function StoreAppContent({ onAdmin }) {
         setSearch={setSearch}
         visible={stickyVisible}
       />
-      {/* Reserva a altura da chrome fixa quando ela esta ancorada no topo (busca) — evita cobrir a
-          barra de entrega. Altura por breakpoint (barra desktop / strip mobile). */}
-      {dockedAtTop && <div className="enc-stickybar-spacer" aria-hidden="true" />}
-
       {/* ── BARRA DE ENTREGA/RETIRADA (branca, abaixo do header) — REF-UX-02 ── */}
       <div className="delivery-bar">
         <div className="delivery-mode-select">
@@ -335,8 +346,10 @@ function StoreAppContent({ onAdmin }) {
             <p>Entrega rápida • Ingredientes selecionados • Peça em poucos minutos</p>
           </div>
 
-          {/* Categorias — navegacao por scroll + scroll-spy (REF-UI-CATEGORY-01 Fase 2) substitui a grade de chips */}
-          <CategoryNav cats={catsVisiveis} activeId={activeId} onSelect={irParaCategoria} />
+          {/* Categorias — navegacao por scroll + scroll-spy (REF-UI-CATEGORY-01 Fase 2) substitui a grade de chips.
+              refino UX: quando a barra sticky assume o topo (revealed), este "Categorias" da pagina some
+              (cross-fade, sem reflow via visibility) para nunca haver DOIS "Categorias" na tela ao mesmo tempo. */}
+          <CategoryNav cats={catsVisiveis} activeId={activeId} onSelect={irParaCategoria} className={revealed ? 'catnav-docked' : ''} />
           {/* REF-UI-CATEGORY-01 Fase 3: sentinela — quando rola para debaixo do header, a barra sticky surge */}
           <div ref={sentinelRef} className="catnav-sentinel" aria-hidden="true" />
 

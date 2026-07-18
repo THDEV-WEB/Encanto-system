@@ -2,12 +2,14 @@
    Seletor "Categorias v" (desktop/tablet) que substitui a antiga grade. Texto puro, identidade Encanto.
    A F4 moveu o scroll-spy e a rolagem suave para o hook unico useCatalogNav (StoreApp), evitando
    3 instancias de scroll-spy: este componente agora RECEBE `activeId` (categoria ativa) e `onSelect`
-   (rola ate a secao) por prop. Mantem apenas a UX do dropdown: abrir/fechar, clique-fora, ESC, setas,
-   foco no item ativo. No MOBILE fica oculto (CSS) — la a navegacao e o strip (MobileCatStrip). */
+   (rola ate a secao) por prop, alem de um `className` opcional (a instancia da PAGINA recebe
+   'catnav-docked' para sumir quando a barra sticky assume o topo — evita dois "Categorias" na tela).
+   Mantem apenas a UX do dropdown: abrir/fechar, clique-fora, ESC, setas, foco no item ativo. No MOBILE
+   fica oculto (CSS) — la a navegacao e o strip (MobileCatStrip). */
 import React from 'react';
 import { catSection } from '../../utils/catSection.js';
 
-export function CategoryNav({ cats, activeId, onSelect }) {
+export function CategoryNav({ cats, activeId, onSelect, className = '' }) {
   const [open, setOpen] = React.useState(false);
   const wrapRef = React.useRef(null);
   const menuRef = React.useRef(null);
@@ -65,7 +67,7 @@ export function CategoryNav({ cats, activeId, onSelect }) {
   if (!cats.length) return null;
 
   return (
-    <div className="catnav" ref={wrapRef}>
+    <div className={`catnav ${className}`.trim()} ref={wrapRef}>
       <div className="catnav-anchor">
         <button
           ref={triggerRef}

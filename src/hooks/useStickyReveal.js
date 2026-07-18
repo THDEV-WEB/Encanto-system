@@ -1,37 +1,26 @@
-/* hooks/useStickyReveal.js — REF-UI-CATEGORY-01 Fase 3. Hook de navegacao NOVO.
-   (1) Mede a altura do header sticky e publica em --header-h (so quando muda): a barra sticky se
-       posiciona logo ABAIXO do header via top:var(--header-h). Cobre mudanca por conteudo (pill de
-       status) via ResizeObserver E por resize/orientacao via o proprio compute (para WebViews antigos
-       sem ResizeObserver — alvo do projeto).
-   (2) Devolve `revealed` = true quando o `anchorRef` (sentinela no topo do catalogo, logo apos o
-       "Categorias v" da pagina) rolou para debaixo do header — gatilho de "surgir apos a rolagem".
-       Histerese de 48px evita piscar no limiar. `trigger` (ex.: o estado de busca) re-sincroniza o
-       calculo quando a sentinela monta/desmonta entre as visoes catalogo<->resultados.
-   rAF-throttled. Puro browser (fora do render.smoke, como LazySection/scroll-spy). */
+/* hooks/useStickyReveal.js — REF-UI-CATEGORY-01 Fase 3 (revisado no refino UX: header nao-sticky).
+   Devolve `revealed` = true quando o `anchorRef` (sentinela no topo do catalogo, logo apos o
+   "Categorias v" da pagina) chega ao topo da viewport — gatilho de "a barra de categorias assume o
+   topo". Como o header agora ROLA JUNTO (nao e mais sticky, nem publica altura), o limiar e medido
+   contra a altura da PROPRIA barra que vai surgir (navTopOffset), nao mais contra o header — assim o
+   surgimento coincide com o momento em que o "Categorias v" da pagina cruza o topo, sem salto.
+   Histerese (~48px) evita piscar no limiar. `trigger` (ex.: estado de busca) re-sincroniza quando a
+   sentinela monta/desmonta entre catalogo<->resultados. rAF-throttled. Puro browser. */
 import { useState, useEffect } from 'react';
+import { navTopOffset } from './useScrollSpy.js';
 
 export function useStickyReveal(anchorRef, trigger) {
   const [revealed, setRevealed] = useState(false);
   useEffect(() => {
-    const header = document.querySelector('.header');
-    let lastH = -1;
-    const setHeaderVar = () => {
-      const h = header?.offsetHeight || 0;
-      if (h !== lastH) { lastH = h; document.documentElement.style.setProperty('--header-h', h + 'px'); }
-    };
-    const ro = (header && typeof ResizeObserver === 'function') ? new ResizeObserver(setHeaderVar) : null;
-    if (ro) ro.observe(header);
-
     let raf = 0;
     const compute = () => {
       raf = 0;
-      setHeaderVar();                                   // cobre resize/orientacao (sem ResizeObserver)
       const el = anchorRef.current;
-      const headerH = header?.offsetHeight || 0;
       setRevealed(prev => {
         if (!el) return false;                          // sentinela ausente (visao de resultados)
         const top = el.getBoundingClientRect().top;
-        const next = prev ? (top <= headerH + 48) : (top <= headerH);   // histerese
+        const base = navTopOffset();                    // altura da barra que assume o topo (~57/48)
+        const next = prev ? (top <= base + 56) : (top <= base + 8);   // histerese ~48px
         return prev === next ? prev : next;
       });
     };
@@ -43,7 +32,6 @@ export function useStickyReveal(anchorRef, trigger) {
       window.removeEventListener('scroll', onScrollResize);
       window.removeEventListener('resize', onScrollResize);
       if (raf) cancelAnimationFrame(raf);
-      ro?.disconnect();
     };
   }, [anchorRef, trigger]);
   return revealed;
