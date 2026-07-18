@@ -18,6 +18,7 @@ import { ProductCard } from '../components/ProductCard.jsx';
 import { ProductModal } from '../components/ProductModal/index.jsx';
 import { CartSidebar } from '../components/CartSidebar.jsx';
 import { SearchBar } from '../components/SearchBar.jsx';
+import { CategoryNav } from '../components/nav/CategoryNav.jsx';   // REF-UI-CATEGORY-01 Fase 2: seletor "Categorias v" + scroll-spy (substitui a grade)
 import { AddressProvider, useAddress } from '../address/index.js'; // REF-CHECKOUT-ADDRESS-01: fonte unica do endereco (provider)
 import { LazySection } from '../components/ui/LazySection.jsx';
 import { SuccessPage } from '../components/checkout/SuccessPage.jsx';
@@ -86,6 +87,14 @@ function StoreAppContent({ onAdmin }) {
   const adicionais = useAdicionais();
 
   const catMap = useMemo(()=>{ const m={}; cats.forEach(c=>{m[c.id]=c;}); return m; },[cats]);
+  /* REF-UI-CATEGORY-01 Fase 2: categorias VISIVEIS = as que tem >=1 produto disponivel (mesmo criterio
+     do catalogo, que pula categoria vazia com `if (catProds.length===0) return null`). O CategoryNav
+     recebe SO estas -> a lista nunca oferece um destino sem secao (sem clique morto) e o scroll-spy
+     nunca destaca uma secao inexistente. Preserva a ordem de `cats` (coluna 'ordem'). */
+  const catsVisiveis = useMemo(
+    ()=>cats.filter(c=>rawProds.some(p=>prodInCat(p,c.id) && p.disponivel!==false)),
+    [cats,rawProds]
+  );
   const prods  = useMemo(()=>rawProds.map(p=>({
     ...p,
     _catNome: catMap[p.categoria_id]?.nome||'',
@@ -292,237 +301,8 @@ function StoreAppContent({ onAdmin }) {
             <p>Entrega rápida • Ingredientes selecionados • Peça em poucos minutos</p>
           </div>
 
-          {/* ── Categorias: COM "Todos", COM scroll para seção ── */}
-          <div className="categories-section">
-            <div className="section-title">Categorias</div>
-            <div className="categories-scroll">
-
-              {/* ── Todos — primeiro item, volta ao topo ── */}
-              <div
-                className={`cat-chip ${!selCat?'active':''}`}
-                onClick={()=>{
-                  setSelCat(null);
-                  window.scrollTo({top:0, behavior:'smooth'});
-                }}>
-                <div className="cat-icon" style={{
-                  boxShadow: !selCat ? '0 6px 18px #6B21A840' : undefined,
-                  background: !selCat ? '#6B21A8' : '#fff',
-                }}>
-                  {/* Ícone apps/grid moderno — 4 quadrados iguais */}
-                  <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="7"  y="7"  width="14" height="14" rx="4"
-                      fill={!selCat?'#fff':'#6B21A8'}/>
-                    <rect x="27" y="7"  width="14" height="14" rx="4"
-                      fill={!selCat?'rgba(255,255,255,.75)':'#7C3AED'}/>
-                    <rect x="7"  y="27" width="14" height="14" rx="4"
-                      fill={!selCat?'rgba(255,255,255,.75)':'#7C3AED'}/>
-                    <rect x="27" y="27" width="14" height="14" rx="4"
-                      fill={!selCat?'rgba(255,255,255,.55)':'#A855F7'}/>
-                  </svg>
-                </div>
-                <span className="cat-name" style={{
-                  color: !selCat ? 'var(--grape)' : undefined,
-                  fontWeight: !selCat ? 700 : undefined,
-                }}>Todos</span>
-              </div>
-
-              {/* ── Chips por categoria (com scroll) ── */}
-              {cats.map(c => {
-                const ativo = selCat === c.id;
-                const nome  = (c.nome||'').toLowerCase();
-                const activeShadow = ativo ? `0 6px 18px ${c.cor||'#6B21A8'}40` : undefined;
-
-                /* Mapeia categoria → id da seção para scroll */
-                const secId = (() => {
-                  if (nome.includes('combo'))     return 'sec-combos';
-                  if (nome.includes('fitness'))   return 'sec-fitness';
-                  if (nome.includes('batidinha')) return 'sec-batidinha';
-                  if (nome.includes('destaque'))  return 'sec-destaques';
-                  if (nome.includes('monte'))     return 'sec-monte';
-                  if (nome.includes('pronto'))    return 'sec-prontos';
-                  if (nome.includes('marmita'))   return 'sec-marmitas';
-                  if (nome.includes('açaí') || nome.includes('acai')) return 'sec-acai';
-                  if (nome.includes('bebida'))    return 'sec-bebidas';
-                  return null;
-                })();
-
-                const handleClick = () => {
-                  setSelCat(c.id);
-                };
-
-                const icon = (() => {
-                  if (nome.includes('combo')) return (
-                    <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <rect x="4" y="33" width="40" height="5" rx="2.5" fill="#D97706"/>
-                      <rect x="6" y="31" width="36" height="4" rx="2" fill="#F59E0B"/>
-                      <rect x="10" y="21" width="18" height="10" rx="3" fill="#92400E"/>
-                      <rect x="9"  y="19" width="20" height="4"  rx="2" fill="#F97316"/>
-                      <rect x="10" y="23" width="18" height="2"  rx="1" fill="#FDE68A"/>
-                      <ellipse cx="19" cy="19" rx="10" ry="5" fill="#D97706"/>
-                      <ellipse cx="19" cy="18" rx="10" ry="5" fill="#F59E0B"/>
-                      <ellipse cx="15" cy="16" rx="1.5" ry=".8" fill="#FEF3C7" transform="rotate(-20 15 16)"/>
-                      <ellipse cx="20" cy="15" rx="1.5" ry=".8" fill="#FEF3C7" transform="rotate(10 20 15)"/>
-                      <ellipse cx="24" cy="17" rx="1.5" ry=".8" fill="#FEF3C7" transform="rotate(-15 24 17)"/>
-                      <path d="M32 14 L35 31 H29 Z" fill="#BFDBFE"/>
-                      <path d="M32 14 L35 31 H29 Z" fill="#3B82F6" opacity=".35"/>
-                      <rect x="29" y="31" width="6" height="2" rx="1" fill="#1D4ED8"/>
-                      <rect x="30" y="8"  width="4" height="6" rx="1" fill="#6B7280"/>
-                      <rect x="28" y="13" width="8" height="2" rx="1" fill="#9CA3AF"/>
-                    </svg>
-                  );
-                  if (nome.includes('monte')) return (
-                    <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M13 12 L16 40 H32 L35 12 Z" fill="#EDE9FE"/>
-                      <path d="M16 26 L17 40 H31 L32 26 Z" fill="#5B21B6"/>
-                      <ellipse cx="20" cy="25" rx="2.5" ry="1.2" fill="#FDE68A"/>
-                      <ellipse cx="25" cy="24" rx="2"   ry="1"   fill="#FDE68A"/>
-                      <ellipse cx="29" cy="25" rx="1.8" ry=".9"  fill="#FDE68A"/>
-                      <circle cx="19" cy="23" r="2" fill="#EF4444"/>
-                      <circle cx="24" cy="22" r="2" fill="#EF4444"/>
-                      <circle cx="29" cy="23" r="1.5" fill="#F59E0B"/>
-                      <rect x="30" y="6" width="3" height="20" rx="1.5" fill="#F472B6"/>
-                      <rect x="11" y="10" width="26" height="4" rx="2" fill="#8B5CF6"/>
-                    </svg>
-                  );
-                  if (nome.includes('pronto') || (nome.includes('copo') && !nome.includes('monte'))) return (
-                    <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M10 20 L12 42 H36 L38 20 Z" fill="#EDE9FE"/>
-                      <path d="M12 30 L13 42 H35 L36 30 Z" fill="#4C1D95"/>
-                      <ellipse cx="24" cy="30" rx="10" ry="2.5" fill="#92400E" opacity=".6"/>
-                      <rect x="9"  y="16" width="30" height="6" rx="3" fill="#A78BFA"/>
-                      <rect x="11" y="17" width="26" height="4" rx="2" fill="#C4B5FD" opacity=".7"/>
-                      <rect x="19" y="13" width="10" height="5" rx="2.5" fill="#7C3AED"/>
-                      <rect x="11" y="39" width="26" height="3" rx="1.5" fill="#6D28D9"/>
-                      <path d="M37 10 Q42 10 42 15 Q42 18 39 19 L38 42" stroke="#9CA3AF" strokeWidth="2" strokeLinecap="round" fill="none"/>
-                      <ellipse cx="39.5" cy="13" rx="3" ry="3.5" fill="#D1D5DB"/>
-                    </svg>
-                  );
-                  if (nome.includes('marmita')) return (
-                    <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <ellipse cx="24" cy="39" rx="20" ry="4" fill="#E5E7EB"/>
-                      <ellipse cx="24" cy="38" rx="20" ry="3" fill="#F3F4F6"/>
-                      <ellipse cx="24" cy="32" rx="18" ry="8" fill="#fff" stroke="#E5E7EB" strokeWidth="1.2"/>
-                      <ellipse cx="24" cy="32" rx="14" ry="6" fill="#F9FAFB"/>
-                      <ellipse cx="17" cy="31" rx="6"   ry="4"   fill="#FEFCE8"/>
-                      <ellipse cx="16" cy="31" rx="1.5" ry="1"   fill="#78350F" opacity=".9"/>
-                      <ellipse cx="19" cy="32" rx="1.3" ry=".9"  fill="#92400E" opacity=".9"/>
-                      <ellipse cx="31" cy="31" rx="7"   ry="5"   fill="#92400E"/>
-                      <ellipse cx="30" cy="30" rx="4"   ry="2.5" fill="#B45309"/>
-                      <circle cx="24" cy="27" r="2.5" fill="#16A34A"/>
-                      <circle cx="22" cy="25" r="2"   fill="#22C55E"/>
-                      <circle cx="26" cy="25" r="2"   fill="#16A34A"/>
-                      <path d="M6 20 Q6 10 24 10 Q42 10 42 20" stroke="#D1D5DB" strokeWidth="2" fill="#F9FAFB"/>
-                      <rect x="20" y="6" width="8" height="5" rx="2.5" fill="#9CA3AF"/>
-                    </svg>
-                  );
-                  if (nome.includes('açaí') || nome.includes('acai')) return (
-                    <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M10 20 L12 42 H36 L38 20 Z" fill="#F3E8FF"/>
-                      <path d="M12 30 L14 42 H34 L36 30 Z" fill="#4C1D95"/>
-                      <path d="M14 30 Q16 26 18 29 Q20 25 21 28 Q22 24 24 27 Q26 24 27 28 Q28 25 30 29 Q32 26 34 30 Z" fill="#fff" opacity=".9"/>
-                      <circle cx="19" cy="27" r="2" fill="#EF4444"/>
-                      <circle cx="24" cy="26" r="2" fill="#EF4444"/>
-                      <circle cx="29" cy="27" r="1.8" fill="#F59E0B"/>
-                      <rect x="31" y="8"  width="3" height="18" rx="1.5" fill="#F472B6"/>
-                      <rect x="9"  y="17" width="30" height="5" rx="2.5" fill="#7C3AED"/>
-                      <rect x="11" y="39" width="26" height="3" rx="1.5" fill="#6D28D9"/>
-                    </svg>
-                  );
-                  if (nome.includes('bebida')) return (
-                    <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M11 14 L14 43 H34 L37 14 Z" fill="#E0F2FE"/>
-                      <path d="M13 22 L15 43 H33 L35 22 Z" fill="#FED7AA"/>
-                      <path d="M13 22 L15 43 H33 L35 22 Z" fill="#F97316" opacity=".35"/>
-                      <rect x="15" y="24" width="7" height="6" rx="2" fill="#BAE6FD" opacity=".8"/>
-                      <rect x="24" y="27" width="6" height="5" rx="2" fill="#BAE6FD" opacity=".8"/>
-                      <rect x="9"  y="11" width="30" height="5" rx="2.5" fill="#0284C7"/>
-                      <circle cx="36" cy="13" r="5.5" fill="#FEF08A" stroke="#EAB308" strokeWidth="1"/>
-                      <circle cx="36" cy="13" r="3.5" fill="#FDE047"/>
-                      <line x1="36" y1="9.5" x2="36" y2="16.5" stroke="#CA8A04" strokeWidth=".7"/>
-                      <line x1="32.5" y1="13" x2="39.5" y2="13" stroke="#CA8A04" strokeWidth=".7"/>
-                      <rect x="30" y="4" width="3.5" height="22" rx="1.75" fill="#F472B6"/>
-                      <rect x="13" y="16" width="3" height="22" rx="1.5" fill="#fff" opacity=".3"/>
-                    </svg>
-                  );
-                  /* ── PEDIDO FITNESS ── */
-                  if (nome.includes('fitness')) return (
-                    <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      {/* Haltere profissional */}
-                      <rect x="4"  y="20" width="8"  height="8"  rx="3" fill={ativo?'#fff':'#16A34A'} opacity={ativo?1:.9}/>
-                      <rect x="36" y="20" width="8"  height="8"  rx="3" fill={ativo?'#fff':'#16A34A'} opacity={ativo?1:.9}/>
-                      <rect x="8"  y="22" width="32" height="4"  rx="2" fill={ativo?'rgba(255,255,255,.7)':'#4ADE80'}/>
-                      <rect x="12" y="17" width="6"  height="14" rx="2.5" fill={ativo?'#D1FAE5':'#22C55E'}/>
-                      <rect x="30" y="17" width="6"  height="14" rx="2.5" fill={ativo?'#D1FAE5':'#22C55E'}/>
-                      {/* Folha / saúde */}
-                      <path d="M24 8 Q28 4 34 6 Q32 14 24 14 Q16 14 14 6 Q20 4 24 8Z"
-                        fill={ativo?'#BBF7D0':'#16A34A'} opacity=".8"/>
-                      <path d="M24 8 L24 14" stroke={ativo?'#fff':'#15803D'} strokeWidth="1.5" strokeLinecap="round"/>
-                      {/* Coração fitness */}
-                      <path d="M22 39 Q20 36 18 37 Q16 38 18 41 L22 45 L26 41 Q28 38 26 37 Q24 36 22 39Z"
-                        fill={ativo?'#FCA5A5':'#EF4444'} opacity=".9"/>
-                    </svg>
-                  );
-
-                  /* ── BATIDINHA DE AÇAÍ ── */
-                  if (nome.includes('batidinha')) return (
-                    <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      {/* Copo com shake */}
-                      <path d="M12 14 L15 42 H33 L36 14 Z" fill="#EDE9FE"/>
-                      <path d="M14 26 L16 42 H32 L34 26 Z" fill="#6B21A8"/>
-                      {/* Chantilly/espuma */}
-                      <path d="M14 26 Q16 21 18 24 Q20 19 21 23 Q22 18 24 22 Q26 18 27 23 Q28 19 30 24 Q32 21 34 26 Z"
-                        fill="#fff" opacity=".95"/>
-                      {/* Frutas no topo */}
-                      <circle cx="18" cy="20" r="2.5" fill="#EF4444"/>
-                      <circle cx="24" cy="18" r="2.5" fill="#EF4444"/>
-                      <circle cx="30" cy="20" r="2.5" fill="#F59E0B"/>
-                      {/* Canudo */}
-                      <rect x="32" y="6" width="3" height="20" rx="1.5" fill="#F472B6"/>
-                      {/* Borda superior e base */}
-                      <rect x="10" y="12" width="28" height="4" rx="2" fill="#7C3AED"/>
-                      <rect x="14" y="39" width="20" height="3" rx="1.5" fill="#6D28D9"/>
-                      {/* Brilho */}
-                      <rect x="13" y="16" width="3" height="20" rx="1.5" fill="#fff" opacity=".25"/>
-                    </svg>
-                  );
-
-                  /* ── DESTAQUES ── */
-                  if (nome.includes('destaque')) return (
-                    <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      {/* Estrela dourada profissional */}
-                      <path d="M24 6 L28.5 17.5 H41 L30.5 24.5 L34.5 36 L24 29 L13.5 36 L17.5 24.5 L7 17.5 H19.5 Z"
-                        fill={ativo?'#FDE68A':'#FBBF24'} stroke={ativo?'#F59E0B':'#D97706'} strokeWidth="1.2"
-                        strokeLinejoin="round"/>
-                      {/* Brilhos */}
-                      <circle cx="24" cy="21" r="3" fill={ativo?'#FEF9C3':'#FEF3C7'} opacity=".7"/>
-                      <circle cx="32" cy="11" r="2" fill="#FEF3C7" opacity=".6"/>
-                      <circle cx="16" cy="11" r="1.5" fill="#FEF3C7" opacity=".5"/>
-                    </svg>
-                  );
-                  return (
-                    <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <circle cx="24" cy="28" r="14" fill="#F3F4F6" stroke="#E5E7EB" strokeWidth="1.5"/>
-                      <ellipse cx="24" cy="29" rx="7" ry="5" fill="#FDE68A"/>
-                      <circle cx="21" cy="27" r="2"   fill="#F97316"/>
-                      <circle cx="26" cy="29" r="1.5" fill="#EF4444"/>
-                    </svg>
-                  );
-                })();
-
-                return (
-                  <div key={c.id}
-                    className={`cat-chip ${ativo?'active':''}`}
-                    onClick={handleClick}>
-                    <div className="cat-icon" style={{boxShadow:activeShadow}}>
-                      {icon}
-                    </div>
-                    <span className="cat-name">{c.nome}</span>
-                  </div>
-                );
-              })}
-
-            </div>
-          </div>
+          {/* Categorias — navegacao por scroll + scroll-spy (REF-UI-CATEGORY-01 Fase 2) substitui a grade de chips */}
+          {!selCat && <CategoryNav cats={catsVisiveis} />}
 
           {/* ── CATÁLOGO — ordem 100% controlada por cats (coluna 'ordem' do Supabase) ── */}
           {!selCat&&(loading?<Spinner/>:cats.map(cat=>{

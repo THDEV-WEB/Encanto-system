@@ -1,5 +1,8 @@
 
 html{scroll-behavior:smooth;background:transparent}
+/* REF-UI-CATEGORY-01 Fase 2: respeita usuarios que pedem menos movimento (a navegacao por categoria
+   ja salta instantaneamente no JS quando reduced-motion) */
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
   /* Nova Paleta Encanto */
@@ -666,6 +669,57 @@ img{display:block;max-width:100%}
   .cat-icon svg{width:40px;height:40px}
   .cat-name{font-size:11px}
 }
+
+/* ---- CATEGORY NAV (REF-UI-CATEGORY-01 Fase 2) — seletor "Categorias v" desktop/tablet ----
+   Substitui a grade de chips. Navegacao por scroll + scroll-spy. Texto puro, identidade Encanto.
+   MOBILE (<768px): oculto — o strip horizontal chega na Fase 4 (topo mobile fica so o banner). */
+.catnav{position:relative;z-index:60;padding:20px 16px 6px}
+@media(max-width:767px){.catnav{display:none}}
+@media(min-width:1024px){.catnav{padding:22px 0 6px}}
+.catnav-anchor{position:relative;display:inline-block}
+.catnav-trigger{
+  display:inline-flex;align-items:center;gap:9px;
+  background:var(--grape-pale);color:var(--grape);
+  border:1.5px solid transparent;border-radius:12px;
+  padding:11px 18px;font-size:15px;font-weight:800;
+  font-family:var(--font-body);cursor:pointer;letter-spacing:.2px;
+  transition:border-color .2s,background .2s,box-shadow .2s,transform .12s;
+}
+.catnav-trigger:hover{border-color:var(--grape-light);box-shadow:0 6px 18px -8px rgba(166,39,134,.45)}
+.catnav-trigger:active{transform:translateY(1px)}
+.catnav-trigger:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(166,39,134,.22)}
+.catnav-chevron{font-size:16px;line-height:1;transition:transform .22s ease}
+.catnav-chevron.open{transform:rotate(180deg)}
+.catnav-menu{
+  position:absolute;top:calc(100% + 6px);left:0;min-width:264px;max-width:min(92vw,340px);
+  max-height:min(70vh,460px);overflow-y:auto;
+  background:var(--white);border-radius:14px;
+  box-shadow:0 14px 40px rgba(59,7,100,.18),0 2px 8px rgba(0,0,0,.06);
+  border:1px solid var(--gray-100);padding:6px;
+  animation:catnavPop .16s ease;
+}
+@keyframes catnavPop{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+.catnav-item{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;
+  padding:11px 14px;border-radius:10px;background:transparent;border:none;cursor:pointer;
+  font-family:var(--font-body);font-size:14.5px;font-weight:600;color:var(--gray-700);
+  text-align:left;transition:background .14s,color .14s;position:relative;
+}
+.catnav-item:hover{background:var(--grape-pale);color:var(--grape)}
+.catnav-item-name{flex:1;min-width:0}
+.catnav-item-arrow{color:var(--gray-300);font-size:16px;flex-shrink:0;transition:color .14s,transform .14s}
+.catnav-item:hover .catnav-item-arrow{color:var(--grape);transform:translateX(2px)}
+/* categoria ATIVA (scroll-spy): identidade Encanto — grape + fundo suave + sublinhado discreto + barra de acento */
+.catnav-item.active{background:var(--grape-pale);color:var(--grape);font-weight:800}
+.catnav-item.active .catnav-item-name{
+  text-decoration:underline;text-decoration-color:var(--grape);
+  text-underline-offset:4px;text-decoration-thickness:2px;
+}
+.catnav-item.active::before{
+  content:'';position:absolute;left:4px;top:8px;bottom:8px;width:3px;border-radius:2px;
+  background:linear-gradient(180deg,var(--grape),var(--acai-mid));
+}
+.catnav-item.active .catnav-item-arrow{color:var(--grape)}
 
 /* ---- PROMO BANNER ---- */
 .promo-banner{
