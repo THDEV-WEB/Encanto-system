@@ -4,7 +4,7 @@ import React from 'react';
    REF-UI-CATEGORY-01 Fase 3: showCategorias=false => modo SOMENTE-BUSCA (sem o dropdown de
    categorias nem o chevron), usado dentro da barra sticky, onde o seletor de categorias e o
    proprio CategoryNav ("Categorias v"). Default true preserva o comportamento anterior. */
-export function SearchBar({ cats, search, setSearch, setSelCat, showCategorias = true }) {
+export function SearchBar({ cats, search, setSearch, setSelCat, showCategorias = true, placeholder = 'Buscar açaí, marmitas, combos...' }) {
   const [open, setOpen]     = React.useState(false);
   const wrapRef             = React.useRef(null);
 
@@ -54,9 +54,14 @@ export function SearchBar({ cats, search, setSearch, setSelCat, showCategorias =
     <div className="search-bar" ref={wrapRef}>
       <div className="search-wrapper">
         <div className="search-inner" onClick={()=>{ if(showCategorias && !search) setOpen(o=>!o); }}>
-          <span className="search-icon">🔍</span>
+          <span className="search-icon" aria-hidden="true">
+            {/* icone vetorial (estilo Lucide "search") — sem emoji, sem imagem; stroke = currentColor */}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+            </svg>
+          </span>
           <input
-            placeholder={showCategorias && open && !search ? 'Escolha uma categoria ou busque...' : 'Buscar açaí, marmitas, combos...'}
+            placeholder={showCategorias && open && !search ? 'Escolha uma categoria ou busque...' : placeholder}
             value={search}
             onChange={e=>{
               setSearch(e.target.value);

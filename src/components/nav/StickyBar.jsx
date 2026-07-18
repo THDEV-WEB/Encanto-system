@@ -17,9 +17,10 @@ export function StickyBar({ cats, search, setSearch, setSelCat, visible }) {
   return (
     <div className={`enc-stickybar ${visible ? 'visible' : ''}`} aria-hidden={!visible}>
       <div className="enc-stickybar-inner">
+        {/* REF-UI-CATEGORY-01 Fase 3.1: identidade reduzida = SO a logo (o nome "Encanto" ja esta no
+            header principal; repeti-lo so ocupava espaco). */}
         <div className="enc-stickybar-brand">
           {LOGO && <img src={LOGO} alt="Encanto" className="enc-stickybar-logo" loading="lazy" />}
-          <span className="enc-stickybar-name">Encanto</span>
         </div>
 
         {!search && <CategoryNav cats={cats} />}
@@ -30,6 +31,7 @@ export function StickyBar({ cats, search, setSearch, setSelCat, visible }) {
             setSearch={setSearch}
             setSelCat={setSelCat}
             showCategorias={false}
+            placeholder="Busque um item na loja"
           />
         </div>
       </div>
