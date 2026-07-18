@@ -12,7 +12,7 @@
 </head>
 <body>
 <!-- ================================================================================================
-     REF-BOOT-02 v2 — COLETOR FORENSE DO BOOTSTRAP (TEMPORARIO / DIAGNOSTICO).
+     REF-BOOT-02 v3 — COLETOR FORENSE DO BOOTSTRAP + BEACON REMOTO (TEMPORARIO / DIAGNOSTICO).
      Script CLASSICO em ES5 PURO. Objetivo unico: registrar, de forma SINCRONA e PERSISTENTE, qual foi a
      ultima etapa executada antes de um travamento — INCLUSIVE quando a main thread bloqueia (caso em que
      nenhum watchdog assincrono conseguiria exibir nada). Por isso: cada checkpoint e gravado no localStorage
@@ -25,7 +25,7 @@
 (function () {
   'use strict';
   var LS_KEY = 'enc_boot_diag';
-  var BUILD = 'boot02-v2';                 /* marcador de build: inspecao remota distingue HTML novo de cache */
+  var BUILD = 'boot02-v3';                 /* marcador de build: inspecao remota distingue HTML novo de cache */
   var t0 = (window.performance && performance.now) ? performance.now() : (+new Date());
   function ms() { return Math.round((window.performance && performance.now) ? (performance.now() - t0) : (+new Date() - t0)); }
   function iso() { try { return new Date().toISOString(); } catch (e) { return '' + new Date(); } }
@@ -40,7 +40,7 @@
     runId: (prev && prev.runId ? prev.runId : 0) + 1,
     startedAt: iso(),
     steps: [], errors: [],
-    mounted: false, firstPaint: false,
+    mounted: false, firstPaint: false, mcAlive: false,
     hbT: 0, hbCount: 0,
     diagShown: false,
     ua: (navigator && navigator.userAgent) || ''
@@ -52,7 +52,7 @@
     if (!o) return null;
     return {
       v: o.v, build: o.build, runId: o.runId, startedAt: o.startedAt, ua: o.ua, feat: o.feat,
-      steps: o.steps, errors: o.errors, mounted: o.mounted, firstPaint: o.firstPaint,
+      steps: o.steps, errors: o.errors, mounted: o.mounted, firstPaint: o.firstPaint, mcAlive: o.mcAlive,
       hbT: o.hbT, hbCount: o.hbCount, diagShown: o.diagShown
     };
   }
@@ -63,8 +63,8 @@
     if (B.steps.length > 120) B.steps.shift();
     persist();
   };
-  B.markMounted = function () { if (B.mounted) return; B.mounted = true; B.step('BOOT-140-committed', 'React fez o 1o commit'); };
-  B.markFirstPaint = function () { if (B.firstPaint) return; B.firstPaint = true; B.step('BOOT-150-first-paint', 'primeira pintura (rAF pos-commit)'); };
+  B.markMounted = function () { if (B.mounted) return; B.mounted = true; B.step('BOOT-140-committed', 'React fez o 1o commit'); sendSnap('mounted'); };
+  B.markFirstPaint = function () { if (B.firstPaint) return; B.firstPaint = true; B.step('BOOT-150-first-paint', 'primeira pintura (rAF pos-commit)'); sendSnap('first-paint'); };
 
   function pushErr(kind, message, extra) {
     extra = extra || {};
@@ -75,6 +75,7 @@
     });
     if (B.errors.length > 30) B.errors.shift();
     persist();
+    sendSnap('error');
     if (!B.mounted) setTimeout(maybeShowDiag, 1200);
   }
 
@@ -112,13 +113,84 @@
     fetch: (typeof fetch !== 'undefined'),
     localStorage: has(function () { localStorage.setItem('__enc_t', '1'); localStorage.removeItem('__enc_t'); return true; })
   };
-  B.step('BOOT-000-inline', 'coletor ES5 v2 instalado (build ' + BUILD + ')');
+  /* ================= REF-BOOT-02 v3 — BEACON REMOTO (TEMPORARIO / DIAGNOSTICO) =================
+     Canal OFICIAL de telemetria = XHR ASSINCRONO (nao-bloqueante; NUNCA sync XHR, que mudaria o
+     timing do boot). O sendBeacon do pagehide e APENAS best-effort auxiliar (nao aceita os headers
+     apikey/Authorization/Prefer do XHR) -> sua falha NAO e erro de coleta nem evidencia negativa.
+     NAO altera o fluxo de init do React/Scheduler; sem polyfill. Config via placeholders VITE (env do
+     build) COM GUARDA -> no-op se nao substituido. Remover junto com o coletor apos o diagnostico. */
+  var SUPA_URL = '%VITE_SUPABASE_URL%';
+  var SUPA_KEY = '%VITE_SUPABASE_KEY%';
+  var WATCHDOG_MS = 6000;                              /* registrado no payload (watchdog_delay) */
+  var BEACON_OK = (SUPA_URL.indexOf('http') === 0 && SUPA_KEY.indexOf('%') !== 0 && SUPA_KEY.length > 8);
+  var ENDPOINT = BEACON_OK ? (SUPA_URL + '/rest/v1/boot_diag') : '';
+  var _sent = {}, _finalSent = false;
+
+  function uuid() {
+    try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID(); } catch (e) {}
+    var s = ''; for (var i = 0; i < 32; i++) { s += Math.floor(Math.random() * 16).toString(16); }
+    return s.slice(0, 8) + '-' + s.slice(8, 12) + '-4' + s.slice(13, 16) + '-a' + s.slice(17, 20) + '-' + s.slice(20, 32);
+  }
+  var DEV_ID = '';
+  try { DEV_ID = localStorage.getItem('enc_device_id') || ''; } catch (e) {}
+  if (!DEV_ID) { DEV_ID = uuid(); try { localStorage.setItem('enc_device_id', DEV_ID); } catch (e) {} }
+
+  /* cap SO em listas potencialmente grandes (ultimos steps/errors); preserva o diagnostico */
+  function capArr(a, n) { return (a && a.length > n) ? a.slice(a.length - n) : a; }
+  function beaconSnap(o) { var s = snap(o); if (s) { s.steps = capArr(s.steps, 40); s.errors = capArr(s.errors, 8); } return s; }
+  function beaconRow(phase) {
+    var last = ultimoStep(B);
+    return {
+      event_id: uuid(),                               /* id unico por evento -> dedup/analise no SQL */
+      device_id: DEV_ID, run_id: B.runId, build: B.build, phase: phase, ua: B.ua,
+      mounted: B.mounted, first_paint: B.firstPaint, mc_alive: !!B.mcAlive,
+      last_step: last ? (last.code + '@' + last.t) : null, hb_count: B.hbCount,
+      payload: { cur: beaconSnap(B), prev: beaconSnap(B.prev), watchdog_delay: WATCHDOG_MS }
+    };
+  }
+  /* CANAL OFICIAL: XHR assincrono. Dedup por fase (cada fase envia 1x). */
+  function sendSnap(phase) {
+    if (!BEACON_OK || _sent[phase]) return; _sent[phase] = 1;
+    var body; try { body = JSON.stringify(beaconRow(phase)); } catch (e) { return; }
+    try {
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', ENDPOINT, true);               /* async: NAO bloqueia a main thread */
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.setRequestHeader('apikey', SUPA_KEY);
+      xhr.setRequestHeader('Authorization', 'Bearer ' + SUPA_KEY);
+      xhr.setRequestHeader('Prefer', 'return=minimal');
+      xhr.send(body);
+    } catch (e) {}
+  }
+  /* AUXILIAR best-effort (pagehide): sem headers customizados -> apikey na query. Falha aqui e IGNORADA. */
+  function sendBeaconFinal() {
+    if (!BEACON_OK || _finalSent) return; _finalSent = true;
+    var body; try { body = JSON.stringify(beaconRow('pagehide')); } catch (e) { return; }
+    try { if (navigator.sendBeacon) { navigator.sendBeacon(ENDPOINT + '?apikey=' + encodeURIComponent(SUPA_KEY), new Blob([body], { type: 'application/json' })); } } catch (e) {}
+  }
+
+  B.step('BOOT-000-inline', 'coletor ES5 v3 instalado (build ' + BUILD + ')');
+  sendSnap('install');   /* 1o beacon: disparado no install -> sai mesmo que a thread congele depois */
+  /* sonda que testa DIRETAMENTE a H-A (transporte do scheduler): se onmessage disparar, o canal esta VIVO */
+  try {
+    if (typeof MessageChannel !== 'undefined') {
+      var _mc = new MessageChannel();
+      _mc.port1.onmessage = function () { if (!B.mcAlive) { B.mcAlive = true; B.step('MC-alive', 'MessageChannel entregou (transporte do scheduler vivo)'); sendSnap('mc-alive'); } };
+      _mc.port2.postMessage(1);
+    } else { B.step('MC-absent', 'MessageChannel indisponivel (scheduler cairia no setTimeout)'); }
+  } catch (e) {}
 
   /* marca no loader que o COLETOR rodou (separa "HTML novo mas coletor nao rodou" de "tudo ok") */
   try { var tag = document.getElementById('enc-build'); if (tag) tag.textContent = BUILD + '·ok'; } catch (e) {}
 
   /* heartbeat: se a main thread bloquear, o ultimo hbT persistido diz QUANDO travou (vs. checkpoint) */
   try { setInterval(function () { B.hbT = ms(); B.hbCount++; persist(); }, 1000); } catch (e) {}
+
+  /* REF-BOOT-02 v3: beacon final AUXILIAR (best-effort) na saida/ocultacao da pagina */
+  try {
+    window.addEventListener('pagehide', sendBeaconFinal);
+    window.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') sendBeaconFinal(); });
+  } catch (e) {}
 
   /* ---------- relatorio (ES5) ---------- */
   function m1(re, s) { try { var r = re.exec(s || ''); return r && r[1] ? r[1] : ''; } catch (e) { return ''; } }
@@ -154,7 +226,7 @@
   }
   function fullReport() {
     var L = [];
-    L.push('ENCANTO — RELATORIO DE BOOT (REF-BOOT-02 v2)');
+    L.push('ENCANTO — RELATORIO DE BOOT (REF-BOOT-02 v3)');
     L.push('navegador: ' + B.ua);
     L.push('  Chrome/WebView:' + (m1(/Chrom(?:e|ium)\/(\d+)/, B.ua) || '?') + ' | Android:' + (m1(/Android\s+([\d.]+)/, B.ua) || '?') + ' | in-app:' + ((/(FBAN|FBAV|Instagram|WhatsApp|Line|MiuiBrowser|MicroMessenger)/.test(B.ua)) ? m1(/(FBAN|FBAV|Instagram|WhatsApp|Line|MiuiBrowser|MicroMessenger)/, B.ua) : 'nao'));
     try { L.push('  tela:' + (window.screen ? (screen.width + 'x' + screen.height) : '?') + ' dpr' + (window.devicePixelRatio || 1)); } catch (e) {}
@@ -235,6 +307,10 @@
   /* gatilho manual: #enc-diag mostra o relatorio completo (atual + anterior) */
   try { if (window.location && window.location.hash === '#enc-diag') setTimeout(showDiag, 50); } catch (e) {}
 
+  /* REF-BOOT-02 v3: watchdog REMOTO — se nao montou ate WATCHDOG_MS, envia o estado travado (canal oficial XHR).
+     Na H-A (transporte do scheduler morto), setTimeout/setInterval seguem vivos, entao este beacon dispara. */
+  setTimeout(function () { if (!B.mounted) sendSnap('watchdog'); }, WATCHDOG_MS);
+
   /* watchdog de fallback (execucao ATUAL viva mas nunca monta): 15s. Um mount tardio cancela via appMontou. */
   setTimeout(maybeShowDiag, 15000);
 })();
@@ -243,7 +319,7 @@
   <div id="enc-loader" style="display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:10px;font-family:sans-serif;color:#6B21A8">
     <div style="width:40px;height:40px;border:4px solid #E9D5FF;border-top-color:#6B21A8;border-radius:50%;animation:s .8s linear infinite"></div>
     <span>Carregando Encanto...</span>
-    <span id="enc-build" style="font-size:9px;opacity:.3;letter-spacing:.5px">boot02-v2</span>
+    <span id="enc-build" style="font-size:9px;opacity:.3;letter-spacing:.5px">boot02-v3</span>
     <style>@keyframes s{to{transform:rotate(360deg)}}</style>
   </div>
 </div>
