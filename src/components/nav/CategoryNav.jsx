@@ -15,7 +15,7 @@
    real durante a rolagem, empurrando o alvo) e evita qualquer salto. Respeita prefers-reduced-motion. */
 import React from 'react';
 import { catSection } from '../../utils/catSection.js';
-import { useScrollSpy } from '../../hooks/useScrollSpy.js';
+import { useScrollSpy, navTopOffset } from '../../hooks/useScrollSpy.js';
 
 const easeInOutCubic = (p) => (p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2);
 
@@ -25,6 +25,7 @@ export function CategoryNav({ cats }) {
   const menuRef = React.useRef(null);
   const triggerRef = React.useRef(null);
   const stopRef = React.useRef(null);   // funcao que encerra a animacao de scroll em curso (se houver)
+  const menuId = React.useId();         // id unico (ha 2 instancias: topo da pagina + barra sticky)
 
   const ids = React.useMemo(() => cats.map(catSection), [cats]);
   const activeId = useScrollSpy(ids);
@@ -72,7 +73,7 @@ export function CategoryNav({ cats }) {
 
     stopRef.current?.();   // encerra (e restaura) qualquer animacao anterior antes de comecar outra
 
-    const offset = ((document.querySelector('.header')?.offsetHeight) || 0) + 12;
+    const offset = navTopOffset() + 12;   // header sticky + barra sticky (Fase 3): fonte unica
     const destino = () => Math.max(0, window.scrollY + el.getBoundingClientRect().top - offset);
 
     const reduz = typeof window.matchMedia === 'function'
@@ -146,7 +147,7 @@ export function CategoryNav({ cats }) {
           className="catnav-trigger"
           aria-haspopup="listbox"
           aria-expanded={open}
-          aria-controls="catnav-menu"
+          aria-controls={menuId}
           onClick={() => setOpen(o => !o)}>
           <span className="catnav-trigger-label">Categorias</span>
           <span className={`catnav-chevron ${open ? 'open' : ''}`} aria-hidden="true">⌄</span>
@@ -154,7 +155,7 @@ export function CategoryNav({ cats }) {
 
         {open && (
           <div
-            id="catnav-menu"
+            id={menuId}
             ref={menuRef}
             className="catnav-menu"
             role="listbox"

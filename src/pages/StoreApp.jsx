@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { WHATSAPP, LOGO } from '../lib/supabase.js';
 import { fmt } from '../utils/format.js';
 import { resolverAdicionais, selecionarFonteAdicionais } from '../utils/addons.js';
@@ -17,8 +17,10 @@ import { StoreMenu } from '../components/menu/StoreMenu.jsx'; // LOGIN-ARCH-02: 
 import { ProductCard } from '../components/ProductCard.jsx';
 import { ProductModal } from '../components/ProductModal/index.jsx';
 import { CartSidebar } from '../components/CartSidebar.jsx';
-import { SearchBar } from '../components/SearchBar.jsx';
+import { SearchBar } from '../components/SearchBar.jsx';           // REF-UI-CATEGORY-01 Fase 3: busca do topo — SO no mobile (no desktop vive na barra sticky)
 import { CategoryNav } from '../components/nav/CategoryNav.jsx';   // REF-UI-CATEGORY-01 Fase 2: seletor "Categorias v" + scroll-spy (substitui a grade)
+import { StickyBar } from '../components/nav/StickyBar.jsx';       // REF-UI-CATEGORY-01 Fase 3: barra sticky do desktop/tablet
+import { useStickyReveal } from '../hooks/useStickyReveal.js';     // REF-UI-CATEGORY-01 Fase 3: surge apos rolagem + publica --header-h
 import { AddressProvider, useAddress } from '../address/index.js'; // REF-CHECKOUT-ADDRESS-01: fonte unica do endereco (provider)
 import { LazySection } from '../components/ui/LazySection.jsx';
 import { SuccessPage } from '../components/checkout/SuccessPage.jsx';
@@ -95,6 +97,15 @@ function StoreAppContent({ onAdmin }) {
     ()=>cats.filter(c=>rawProds.some(p=>prodInCat(p,c.id) && p.disponivel!==false)),
     [cats,rawProds]
   );
+  /* REF-UI-CATEGORY-01 Fase 3: a barra sticky (desktop/tablet) surge quando a sentinela do topo
+     (logo apos o "Categorias v" da pagina) rola para debaixo do header. Durante uma busca ela fica
+     visivel de qualquer forma (abriga o campo de busca, que migrou do topo). */
+  const sentinelRef = useRef(null);
+  const revealed = useStickyReveal(sentinelRef, !!search);   // booleano: re-sincroniza SO na transicao catalogo<->resultados (nao a cada tecla)
+  const stickyVisible = revealed || !!search;
+  /* Barra visivel SEM ter sido revelada por rolagem (ex.: busca ativa no topo) -> reserva a altura dela
+     (spacer) para nao cobrir a barra de entrega. So no desktop/tablet (a barra nao existe no mobile). */
+  const dockedAtTop = stickyVisible && !revealed;
   const prods  = useMemo(()=>rawProds.map(p=>({
     ...p,
     _catNome: catMap[p.categoria_id]?.nome||'',
@@ -173,6 +184,19 @@ function StoreAppContent({ onAdmin }) {
         </div>
 
       </header>
+
+      {/* ── BARRA STICKY (desktop/tablet) — REF-UI-CATEGORY-01 Fase 3: surge abaixo do header ao rolar.
+          Fixed -> nao ocupa espaco no fluxo; oculta em <768px (strip mobile e a Fase 4). ── */}
+      <StickyBar
+        cats={catsVisiveis}
+        search={search}
+        setSearch={setSearch}
+        setSelCat={setSelCat}
+        visible={stickyVisible}
+      />
+      {/* Reserva a altura da barra sticky quando ela esta ancorada no topo (busca) — evita cobrir a
+          barra de entrega. Oculto no mobile (a barra nao existe la). */}
+      {dockedAtTop && <div className="enc-stickybar-spacer" aria-hidden="true" />}
 
       {/* ── BARRA DE ENTREGA/RETIRADA (branca, abaixo do header) — REF-UX-02 ── */}
       <div className="delivery-bar">
@@ -259,13 +283,17 @@ function StoreAppContent({ onAdmin }) {
       )}
 
       <div className="app-content">
-      {/* ── Barra de busca com dropdown de categorias ── */}
-      <SearchBar
-        cats={cats}
-        search={search}
-        setSearch={setSearch}
-        setSelCat={setSelCat}
-      />
+      {/* REF-UI-CATEGORY-01 Fase 3: no DESKTOP a busca vive na barra sticky (topo = so "Categorias v", D4).
+          No MOBILE ela continua aqui no topo (a barra sticky nao existe no celular ate a Fase 4/lupa) —
+          `.top-search-mobile` some no desktop via CSS. */}
+      <div className="top-search-mobile">
+        <SearchBar
+          cats={cats}
+          search={search}
+          setSearch={setSearch}
+          setSelCat={setSelCat}
+        />
+      </div>
 
       {!search&&(
         <>
@@ -303,6 +331,8 @@ function StoreAppContent({ onAdmin }) {
 
           {/* Categorias — navegacao por scroll + scroll-spy (REF-UI-CATEGORY-01 Fase 2) substitui a grade de chips */}
           {!selCat && <CategoryNav cats={catsVisiveis} />}
+          {/* REF-UI-CATEGORY-01 Fase 3: sentinela — quando rola para debaixo do header, a barra sticky surge */}
+          <div ref={sentinelRef} className="catnav-sentinel" aria-hidden="true" />
 
           {/* ── CATÁLOGO — ordem 100% controlada por cats (coluna 'ordem' do Supabase) ── */}
           {!selCat&&(loading?<Spinner/>:cats.map(cat=>{

@@ -1,0 +1,38 @@
+/* components/nav/StickyBar.jsx — REF-UI-CATEGORY-01 Fase 3.
+   Barra sticky do DESKTOP/TABLET que SURGE abaixo do header (top:var(--header-h)) apos a rolagem.
+   Leve, altura minima, entrada/saida discreta (classe .visible + transicao no CSS). O header original
+   fica INTACTO. Oculta em telas <768px (o strip mobile e a Fase 4).
+
+   Conteudo (D4 + plano): identidade REDUZIDA do Encanto (logo + nome) | "Categorias v" (CategoryNav,
+   mesmo componente/scroll da Fase 2) | busca (SearchBar em modo somente-busca — a busca migrou do topo
+   para ca). Durante uma busca ativa o "Categorias v" some (nao ha secoes p/ rolar): sobra logo + busca.
+
+   position:fixed -> nao empurra o layout; o desconto dessa altura no scroll-to fica no navTopOffset. */
+import React from 'react';
+import { LOGO } from '../../lib/supabase.js';
+import { CategoryNav } from './CategoryNav.jsx';
+import { SearchBar } from '../SearchBar.jsx';
+
+export function StickyBar({ cats, search, setSearch, setSelCat, visible }) {
+  return (
+    <div className={`enc-stickybar ${visible ? 'visible' : ''}`} aria-hidden={!visible}>
+      <div className="enc-stickybar-inner">
+        <div className="enc-stickybar-brand">
+          {LOGO && <img src={LOGO} alt="Encanto" className="enc-stickybar-logo" loading="lazy" />}
+          <span className="enc-stickybar-name">Encanto</span>
+        </div>
+
+        {!search && <CategoryNav cats={cats} />}
+
+        <div className="enc-stickybar-search">
+          <SearchBar
+            search={search}
+            setSearch={setSearch}
+            setSelCat={setSelCat}
+            showCategorias={false}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}

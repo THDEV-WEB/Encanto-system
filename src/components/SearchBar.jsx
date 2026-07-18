@@ -1,7 +1,10 @@
 import React from 'react';
 
-/* ── SearchBar: dropdown de categorias robusto ──────────── */
-export function SearchBar({ cats, search, setSearch, setSelCat }) {
+/* ── SearchBar: campo de busca (+ dropdown de categorias opcional) ──────────
+   REF-UI-CATEGORY-01 Fase 3: showCategorias=false => modo SOMENTE-BUSCA (sem o dropdown de
+   categorias nem o chevron), usado dentro da barra sticky, onde o seletor de categorias e o
+   proprio CategoryNav ("Categorias v"). Default true preserva o comportamento anterior. */
+export function SearchBar({ cats, search, setSearch, setSelCat, showCategorias = true }) {
   const [open, setOpen]     = React.useState(false);
   const wrapRef             = React.useRef(null);
 
@@ -50,17 +53,17 @@ export function SearchBar({ cats, search, setSearch, setSelCat }) {
   return (
     <div className="search-bar" ref={wrapRef}>
       <div className="search-wrapper">
-        <div className="search-inner" onClick={()=>{ if(!search) setOpen(o=>!o); }}>
+        <div className="search-inner" onClick={()=>{ if(showCategorias && !search) setOpen(o=>!o); }}>
           <span className="search-icon">🔍</span>
           <input
-            placeholder={open && !search ? 'Escolha uma categoria ou busque...' : 'Buscar açaí, marmitas, combos...'}
+            placeholder={showCategorias && open && !search ? 'Escolha uma categoria ou busque...' : 'Buscar açaí, marmitas, combos...'}
             value={search}
             onChange={e=>{
               setSearch(e.target.value);
               setSelCat(null);
               setOpen(false);
             }}
-            onFocus={()=>{ if(!search) setOpen(true); }}
+            onFocus={()=>{ if(showCategorias && !search) setOpen(true); }}
           />
           {search && (
             <button
@@ -69,7 +72,7 @@ export function SearchBar({ cats, search, setSearch, setSelCat }) {
               ✕
             </button>
           )}
-          {!search && (
+          {showCategorias && !search && (
             <span style={{
               fontSize:18,color:'var(--gray-400)',transition:'transform .2s',
               transform: open ? 'rotate(180deg)' : 'rotate(0)',
@@ -79,7 +82,7 @@ export function SearchBar({ cats, search, setSearch, setSelCat }) {
         </div>
 
         {/* Dropdown — permanece aberto até clicar fora ou pressionar ESC */}
-        {open && !search && (
+        {showCategorias && open && !search && (
           <div className="cat-dropdown" role="listbox" aria-label="Categorias">
             <div style={{
               padding:'8px 16px 6px',fontSize:11,fontWeight:700,

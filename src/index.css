@@ -720,6 +720,52 @@ img{display:block;max-width:100%}
   background:linear-gradient(180deg,var(--grape),var(--acai-mid));
 }
 .catnav-item.active .catnav-item-arrow{color:var(--grape)}
+/* sentinela invisivel: quando cruza o header, dispara o surgimento da barra sticky (Fase 3) */
+.catnav-sentinel{height:0;width:100%;pointer-events:none}
+
+/* ---- STICKY BAR (REF-UI-CATEGORY-01 Fase 3) — barra leve que surge abaixo do header ao rolar ----
+   Desktop/tablet (>=768px). Header original intacto. position:fixed em top:var(--header-h) (publicado
+   pelo useStickyReveal). Entrada/saida discreta (opacity + leve translateY). Oculta em <768px. */
+.enc-stickybar{
+  position:fixed;left:0;right:0;top:var(--header-h,120px);z-index:90;
+  background:rgba(255,255,255,.94);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--gray-100);
+  box-shadow:0 6px 20px -12px rgba(59,7,100,.35);
+  opacity:0;visibility:hidden;transform:translateY(-8px);pointer-events:none;
+  transition:opacity .28s ease, transform .28s ease, visibility 0s linear .28s;
+}
+.enc-stickybar.visible{
+  opacity:1;visibility:visible;transform:none;pointer-events:auto;
+  transition:opacity .28s ease, transform .28s ease, visibility 0s;
+}
+@media(max-width:767px){.enc-stickybar{display:none}}   /* celular: strip horizontal e a Fase 4 */
+@media(prefers-reduced-motion:reduce){
+  .enc-stickybar{transition:opacity .01s, visibility 0s linear .01s}
+  .enc-stickybar.visible{transition:opacity .01s, visibility 0s}
+}
+.enc-stickybar-inner{
+  display:flex;align-items:center;gap:16px;min-height:38px;   /* barra ~52px c/ padding: leve, altura minima */
+  max-width:1200px;margin:0 auto;padding:7px 16px;
+}
+@media(min-width:1024px){.enc-stickybar-inner{padding:7px 32px}}
+@media(min-width:1400px){.enc-stickybar-inner{max-width:1400px}}
+.enc-stickybar-brand{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.enc-stickybar-logo{height:34px;width:auto;max-width:60px;object-fit:contain;display:block}
+.enc-stickybar-name{font-family:var(--font-head);font-size:16px;font-weight:800;color:var(--grape);letter-spacing:.3px}
+/* dentro da barra: o CategoryNav perde o padding proprio (a barra ja tem o seu) e fica compacto */
+.enc-stickybar .catnav{padding:0}
+.enc-stickybar .catnav-trigger{padding:8px 14px;font-size:14px}
+/* busca compacta, empurrada para a direita */
+.enc-stickybar-search{flex:1 1 auto;min-width:0;max-width:420px;margin-left:auto}
+.enc-stickybar-search .search-bar{padding:0;background:transparent;border:none}
+.enc-stickybar-search .search-inner{padding:8px 12px}
+@media(max-width:900px){.enc-stickybar-search{max-width:300px}}
+/* spacer: reserva a altura da barra quando ela esta ancorada no topo (busca) — sem cobrir a barra de entrega */
+.enc-stickybar-spacer{height:52px}
+@media(max-width:767px){.enc-stickybar-spacer{display:none}}
+/* busca do topo: SO no mobile (no desktop a busca vive na barra sticky — D4) */
+@media(min-width:768px){.top-search-mobile{display:none}}
 
 /* ---- PROMO BANNER ---- */
 .promo-banner{
