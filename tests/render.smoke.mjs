@@ -32,6 +32,7 @@ const Spinner         = (await import('../src/components/ui/Spinner.jsx')).Spinn
 const ProductCard     = (await import('../src/components/ProductCard.jsx')).ProductCard;
 const ProductModalBoundary = (await import('../src/components/ProductModal/ProductModalBoundary.jsx')).ProductModalBoundary;
 const CartSidebar     = (await import('../src/components/CartSidebar.jsx')).CartSidebar;
+const DeliveryBar     = (await import('../src/components/DeliveryBar.jsx')).DeliveryBar;   // REF-UI-HEADER-02
 
 /* Casos: props FIXAS + snapshot CONGELADO (Onda 4 acrescenta as folhas visuais AQUI) */
 const CASES = [
@@ -76,6 +77,33 @@ const CASES = [
       onCheckout: () => {},
     }),
     snap: '<div class="cart-overlay"></div><div class="cart-sidebar"><div class="cart-header"><h2>🛒 Seu Pedido</h2><button class="cart-close">✕</button></div><div class="cart-empty"><div class="icon">🛒</div><p>Seu carrinho está vazio.<br/>Adicione itens para continuar!</p></div><div class="cart-footer"><div class="cart-total-row"><span>Subtotal</span><span>R$ 0,00</span></div><div class="cart-total-row"><span>Entrega</span><span style="color:var(--green);font-weight:600">A combinar</span></div><div class="cart-total-row grand"><span>Total</span><span>R$ 0,00</span></div><button class="checkout-btn" disabled="">Finalizar Pedido →</button></div></div>',
+  },
+  {
+    /* REF-UI-HEADER-02: barra Entrega/Retirada — entrega SEM endereco (link "Selecionar endereço") */
+    nome: 'DeliveryBar(entrega, sem endereço)',
+    el: () => h(DeliveryBar, {
+      deliveryMode:'entrega', setDeliveryMode:()=>{}, endereco:null, temEndereco:false,
+      onEditar:()=>{}, onLimpar:()=>{}, retiradaLabel:'Rua João Schley, 77 Casa 02',
+    }),
+    snap: '<div class="delivery-bar"><div class="delivery-mode-select"><select class="delivery-mode-dropdown" aria-label="Escolher entre entrega ou retirada"><option value="entrega" selected="">Entrega</option><option value="retirada">Retirada</option></select></div><div class="delivery-info"><div class="delivery-eta">Entregar em, até <b>35–45 min</b></div><div class="delivery-place"><button type="button" class="delivery-addr-link">Selecionar endereço</button></div></div></div>',
+  },
+  {
+    /* REF-UI-HEADER-02: entrega COM endereco (valor + par Alterar/Limpar) */
+    nome: 'DeliveryBar(entrega, com endereço)',
+    el: () => h(DeliveryBar, {
+      deliveryMode:'entrega', setDeliveryMode:()=>{}, endereco:{label:'Rua das Flores, 123 - Centro'}, temEndereco:true,
+      onEditar:()=>{}, onLimpar:()=>{}, retiradaLabel:'Rua João Schley, 77 Casa 02',
+    }),
+    snap: '<div class="delivery-bar"><div class="delivery-mode-select"><select class="delivery-mode-dropdown" aria-label="Escolher entre entrega ou retirada"><option value="entrega" selected="">Entrega</option><option value="retirada">Retirada</option></select></div><div class="delivery-info"><div class="delivery-eta">Entregar em, até <b>35–45 min</b></div><div class="delivery-place"><span class="delivery-addr-current" title="Rua das Flores, 123 - Centro">Rua das Flores, 123 - Centro</span><span class="delivery-addr-actions"><button type="button" class="delivery-addr-action" aria-label="Alterar endereço de entrega">Alterar</button><span class="delivery-addr-sep" aria-hidden="true">·</span><button type="button" class="delivery-addr-action" aria-label="Remover endereço selecionado">Limpar</button></span></div></div></div>',
+  },
+  {
+    /* REF-UI-HEADER-02: retirada (endereco fixo da loja, so leitura) */
+    nome: 'DeliveryBar(retirada)',
+    el: () => h(DeliveryBar, {
+      deliveryMode:'retirada', setDeliveryMode:()=>{}, endereco:null, temEndereco:false,
+      onEditar:()=>{}, onLimpar:()=>{}, retiradaLabel:'Rua João Schley, 77 Casa 02',
+    }),
+    snap: '<div class="delivery-bar"><div class="delivery-mode-select"><select class="delivery-mode-dropdown" aria-label="Escolher entre entrega ou retirada"><option value="entrega">Entrega</option><option value="retirada" selected="">Retirada</option></select></div><div class="delivery-info"><div class="delivery-eta">Retirar em, até <b>20 min</b></div><div class="delivery-place"><span class="delivery-addr-store">Rua João Schley, 77 Casa 02</span></div></div></div>',
   },
 ];
 

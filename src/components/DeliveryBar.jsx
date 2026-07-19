@@ -5,7 +5,8 @@
    cinza-escuro + chevron roxo, sem emoji/icone); (2) um bloco com hierarquia — ETA em cima e, embaixo, o
    endereco como ACAO DE TEXTO leve (nao mais o botao roxo chapado):
      - entrega sem endereco  -> "Selecionar endereco" (link roxo) abre o modal;
-     - entrega com endereco  -> o endereco (link, clicar = Alterar/reabrir modal) + acao discreta "Limpar";
+     - entrega com endereco  -> valor do endereco (texto neutro) + par de acoes "Alterar"/"Limpar"
+                                (mesma familia de link roxo, consistentes entre si);
      - retirada              -> endereco fixo da loja (so leitura).
    O bloco usa flex:1 + min-width:0 + ellipsis, entao o texto encolhe sem "escapar" da area util em
    qualquer largura (correcao de responsividade). Nao altera regra de negocio (deliveryMode segue no
@@ -36,20 +37,14 @@ export function DeliveryBar({ deliveryMode, setDeliveryMode, endereco, temEndere
           {entrega ? (
             temEndereco ? (
               <>
-                <button
-                  type="button"
-                  className="delivery-addr-link"
-                  onClick={onEditar}
-                  title="Alterar endereço de entrega">
-                  {endereco.label}
-                </button>
-                <button
-                  type="button"
-                  className="delivery-addr-clear"
-                  onClick={onLimpar}
-                  aria-label="Remover endereço selecionado">
-                  Limpar
-                </button>
+                <span className="delivery-addr-current" title={endereco.label}>{endereco.label}</span>
+                <span className="delivery-addr-actions">
+                  <button type="button" className="delivery-addr-action" onClick={onEditar}
+                    aria-label="Alterar endereço de entrega">Alterar</button>
+                  <span className="delivery-addr-sep" aria-hidden="true">·</span>
+                  <button type="button" className="delivery-addr-action" onClick={onLimpar}
+                    aria-label="Remover endereço selecionado">Limpar</button>
+                </span>
               </>
             ) : (
               <button type="button" className="delivery-addr-link" onClick={onEditar}>

@@ -19,7 +19,7 @@ html{scroll-behavior:smooth;background:transparent}
   --green:#15803D;--green-pale:#F0FDF4;
   --red:#DC2626;--red-pale:#FEF2F2;
   --gray-50:#FAF2E1;--gray-100:#F3EAD8;--gray-200:#E8DCC8;--gray-300:#D4C4AA;
-  --gray-400:#9C8870;--gray-500:#6B5D50;--gray-600:#4A3D30;--gray-700:#3A2E24;--gray-900:#1E150E;
+  --gray-400:#9C8870;--gray-500:#6B5D50;--gray-600:#4A3D30;--gray-700:#3A2E24;--gray-800:#2C2219;--gray-900:#1E150E;
   --white:#FFFFFF;
   --font-head:'Poppins',sans-serif;--font-body:'Poppins',sans-serif;
   --radius-sm:10px;--radius-md:16px;--radius-lg:22px;--radius-xl:32px;
@@ -161,14 +161,6 @@ img{display:block;max-width:100%}
 }
 .product-card{
   contain:layout style paint;
-}
-/* Scroll suave e overscroll nativo no mobile */
-.categories-scroll{
-  -webkit-overflow-scrolling:touch;
-  overscroll-behavior-x:contain;
-}
-.cat-dropdown{
-  overscroll-behavior:contain;
 }
 /* empurrar o float acima da barra quando carrinho visível */
 .has-sticky-cart .wa-float{bottom:82px}
@@ -354,24 +346,26 @@ img{display:block;max-width:100%}
 /* Bloco de informacao (ETA + endereco): ocupa a largura restante e encolhe sem estourar. */
 .delivery-info{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:1px}
 .delivery-eta{font-size:12.5px;color:var(--gray-500);font-weight:500;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.delivery-eta b{color:var(--gray-700);font-weight:700}   /* token DEFINIDO (--gray-800 nao existe na paleta): destaque escuro, porem secundario ao link roxo */
-.delivery-place{display:flex;align-items:center;gap:12px;min-width:0}
-/* Endereco como ACAO DE TEXTO (sem fundo/bloco roxo): link leve, boa area de clique, ellipsis. */
-.delivery-addr-link{
-  flex:0 1 auto;min-width:0;max-width:100%;
-  background:none;border:none;margin:0;padding:4px 0;cursor:pointer;text-align:left;
-  font-family:var(--font-body);font-size:14px;font-weight:700;color:var(--grape);line-height:1.3;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+.delivery-eta b{color:var(--gray-700);font-weight:700}   /* destaque escuro do tempo, porem secundario ao link roxo do endereco */
+.delivery-place{display:flex;align-items:center;gap:10px;min-width:0}
+/* Endereco como ACAO DE TEXTO (sem fundo/bloco roxo). FAMILIA de links roxos consistente entre os
+   estados: "Selecionar endereco" (vazio) e o par "Alterar"/"Limpar" (preenchido). O valor atual fica
+   em texto neutro (nao-link) e encolhe com ellipsis; as acoes ficam a direita e nunca encolhem. */
+.delivery-addr-link,
+.delivery-addr-action{
+  background:none;border:none;margin:0;cursor:pointer;text-align:left;
+  font-family:var(--font-body);font-weight:700;color:var(--grape);line-height:1.3;
 }
-.delivery-addr-link:hover{text-decoration:underline}
-.delivery-addr-link:focus-visible{outline:none;text-decoration:underline;box-shadow:0 0 0 3px rgba(166,39,134,.18);border-radius:6px}
-/* Acao discreta "Limpar" (REF-UI-HEADER-02): volta ao estado inicial sem endereco. */
-.delivery-addr-clear{
-  flex-shrink:0;background:none;border:none;padding:4px 0;cursor:pointer;
-  font-family:var(--font-body);font-size:12px;font-weight:600;color:var(--gray-400);
-}
-.delivery-addr-clear:hover{color:var(--grape);text-decoration:underline}
-.delivery-addr-clear:focus-visible{outline:none;color:var(--grape);text-decoration:underline}
+.delivery-addr-link:hover,.delivery-addr-action:hover{text-decoration:underline}
+.delivery-addr-link:focus-visible,.delivery-addr-action:focus-visible{outline:none;text-decoration:underline;box-shadow:0 0 0 3px rgba(166,39,134,.18);border-radius:6px}
+/* "Selecionar endereco" (vazio): link roxo, encolhe/ellipsis, boa area de clique. */
+.delivery-addr-link{flex:0 1 auto;min-width:0;max-width:100%;padding:4px 0;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Valor atual do endereco (preenchido): texto neutro legivel, encolhe/ellipsis. */
+.delivery-addr-current{flex:0 1 auto;min-width:0;font-size:14px;font-weight:700;color:var(--gray-700);line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Acoes "Alterar" / "Limpar": par consistente (mesmo link roxo), sempre visivel (flex-shrink:0). */
+.delivery-addr-actions{flex-shrink:0;display:inline-flex;align-items:center;gap:8px}
+.delivery-addr-action{padding:4px 3px;font-size:13px}
+.delivery-addr-sep{color:var(--gray-300);font-size:12px;user-select:none}
 /* Retirada: endereco fixo da loja (so leitura). */
 .delivery-addr-store{
   min-width:0;max-width:100%;font-size:13px;color:var(--gray-700);font-weight:600;line-height:1.35;
@@ -380,7 +374,8 @@ img{display:block;max-width:100%}
 @media(max-width:480px){
   .delivery-bar{gap:10px;padding:8px 12px}
   .delivery-eta{font-size:12px}
-  .delivery-addr-link{font-size:13px}
+  .delivery-addr-link,.delivery-addr-current{font-size:13px}
+  .delivery-addr-action{font-size:12px}
   .delivery-addr-store{font-size:12px}
 }
 
@@ -513,32 +508,8 @@ img{display:block;max-width:100%}
   margin:14px 0 6px;
 }
 
-/* ---- DROPDOWN DE CATEGORIES NA BUSCA ---- */
+/* wrapper do campo de busca (contexto de posicionamento/stacking do input) */
 .search-wrapper{position:relative;z-index:50}
-.cat-dropdown{
-  position:absolute;top:calc(100% + 6px);left:0;right:0;
-  background:var(--white);border-radius:var(--radius-md);
-  box-shadow:0 8px 32px rgba(0,0,0,.14),0 2px 8px rgba(0,0,0,.08);
-  border:1px solid var(--gray-100);
-  overflow:hidden;
-  animation:dropFade .15s ease;
-  max-height:340px;overflow-y:auto;
-}
-@keyframes dropFade{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
-.cat-drop-item{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:11px 16px;cursor:pointer;
-  border-bottom:1px solid var(--gray-100);
-  transition:background .12s;
-  font-size:14px;font-weight:500;color:var(--gray-800);
-  gap:10px;
-}
-.cat-drop-item:last-child{border-bottom:none}
-.cat-drop-item:hover,.cat-drop-item:focus{background:var(--grape-pale);color:var(--grape);outline:none}
-.cat-drop-item:hover .cat-drop-arrow{color:var(--grape)}
-.cat-drop-icon{font-size:18px;flex-shrink:0}
-.cat-drop-name{flex:1}
-.cat-drop-arrow{color:var(--gray-300);font-size:16px;flex-shrink:0}
 
 /* scroll-margin para seções com header sticky */
 [id^="sec-"]{scroll-margin-top:16px}
@@ -552,7 +523,6 @@ img{display:block;max-width:100%}
   }
   /* Grids maiores no desktop */
   .products-grid{grid-template-columns:repeat(4,1fr)}
-  .categories-scroll{padding:0 0}
   .promo-banner{margin-left:0;margin-right:0}
   /* Search bar sem padding extra */
   .search-bar{padding:12px 0}
@@ -617,63 +587,11 @@ img{display:block;max-width:100%}
   line-height:1;
 }
 
-/* ---- CATEGORIES ---- */
-.categories-section{padding:24px 0 8px}
+/* ---- TITULO DE SECAO (usado nos resultados de busca) ---- */
 .section-title{
   font-family:var(--font-head);font-size:22px;font-weight:700;
   padding:0 16px;margin-bottom:16px;color:var(--gray-900);
   letter-spacing:.3px;line-height:1.2;
-}
-.categories-scroll{
-  display:flex;gap:12px;padding:0 16px 4px;overflow-x:auto;
-  scrollbar-width:none;-ms-overflow-style:none;
-  scroll-snap-type:x mandatory;
-}
-.categories-scroll::-webkit-scrollbar{display:none}
-.cat-chip{
-  flex-shrink:0;scroll-snap-align:start;
-  width:84px; /* mesmo tamanho/alinhamento para todos os cards, independente do tamanho do nome */
-  display:flex;flex-direction:column;align-items:center;gap:8px;
-  cursor:pointer;
-}
-.cat-icon{
-  width:80px;height:80px;border-radius:18px;
-  background:#ffffff;
-  display:flex;align-items:center;justify-content:center;
-  transition:transform .2s ease,box-shadow .2s ease;
-  box-shadow:0 4px 12px rgba(0,0,0,.08);
-  padding:16px;
-  position:relative;overflow:hidden;
-}
-.cat-icon::before{
-  content:'';position:absolute;inset:0;border-radius:18px;
-  opacity:0;background:rgba(0,0,0,.04);transition:opacity .2s;
-}
-.cat-chip:hover .cat-icon{
-  transform:translateY(-2px);
-  box-shadow:0 6px 16px rgba(0,0,0,.12);
-}
-.cat-chip:hover .cat-icon::before{opacity:1}
-.cat-icon svg{width:48px;height:48px;flex-shrink:0;display:block}
-.cat-chip.active .cat-icon{
-  transform:scale(1.06);
-  box-shadow:0 6px 18px rgba(0,0,0,.15);
-}
-.cat-chip.active .cat-name{color:var(--grape);font-weight:700}
-.cat-name{
-  width:100%;
-  font-size:11.5px;font-weight:600;color:var(--gray-600,#4B5563);
-  letter-spacing:.1px;text-align:center;line-height:1.25;
-  /* Altura fixa (2 linhas) para todos os nomes — mesmo espaçamento vertical
-     mesmo quando o nome da categoria é curto ("Açaí") ou longo ("Cardápio de Marmitas") */
-  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;-webkit-box-pack:center;
-  overflow:hidden;min-height:2.5em;
-}
-@media(max-width:480px){
-  .cat-chip{width:74px}
-  .cat-icon{width:70px;height:70px;padding:13px}
-  .cat-icon svg{width:40px;height:40px}
-  .cat-name{font-size:11px}
 }
 
 /* ---- CATEGORY NAV (REF-UI-CATEGORY-01 Fase 2) — seletor "Categorias v" desktop/tablet ----
