@@ -55,6 +55,15 @@ export function AddressProvider({ children }) {
     return e;
   }, []);
 
+  /* REF-UI-HEADER-02: volta ao estado inicial (sem endereco). Ate aqui NAO existia forma de remover um
+     endereco ja escolhido — `selecionar` so define enderecos preenchidos. Remove tambem a persistencia
+     para nao ser restaurado no proximo carregamento (ENDERECO_VAZIO=null; o efeito de consolidacao ja
+     ignora null via `if (endereco)`). */
+  const limpar = useCallback(() => {
+    setEndereco(ENDERECO_VAZIO);
+    try { localStorage.removeItem(STORAGE_KEYS.DELIVERY); } catch { /* storage indisponivel: segue em memoria */ }
+  }, []);
+
   const abrirModal = useCallback(() => setModalAberto(true), []);
   const fecharModal = useCallback(() => setModalAberto(false), []);
 
@@ -62,8 +71,9 @@ export function AddressProvider({ children }) {
     endereco,
     temEndereco: enderecoPreenchido(endereco),
     selecionar,
+    limpar,
     abrirModal,
-  }), [endereco, selecionar, abrirModal]);
+  }), [endereco, selecionar, limpar, abrirModal]);
 
   return (
     <AddressContext.Provider value={value}>

@@ -17,6 +17,7 @@ import { StoreMenu } from '../components/menu/StoreMenu.jsx'; // LOGIN-ARCH-02: 
 import { ProductCard } from '../components/ProductCard.jsx';
 import { ProductModal } from '../components/ProductModal/index.jsx';
 import { CartSidebar } from '../components/CartSidebar.jsx';
+import { DeliveryBar } from '../components/DeliveryBar.jsx';       // REF-UI-HEADER-02: barra Entrega/Retirada extraida (seletor + ETA + endereco-link)
 import { CategoryNav } from '../components/nav/CategoryNav.jsx';   // REF-UI-CATEGORY-01 Fase 2: seletor "Categorias v" (desktop/tablet)
 import { StickyBar } from '../components/nav/StickyBar.jsx';       // REF-UI-CATEGORY-01 Fase 3: barra sticky do desktop/tablet
 import { MobileCatStrip } from '../components/nav/MobileCatStrip.jsx'; // REF-UI-CATEGORY-01 Fase 4: strip de categorias + lupa (mobile)
@@ -52,8 +53,7 @@ function StoreAppContent({ onAdmin }) {
   const [deliveryMode,   setDeliveryMode]   = useState('entrega');
   /* REF-CHECKOUT-ADDRESS-01: FONTE UNICA do endereco (contexto). O header apenas EXIBE o rotulo e abre
      o modal (abrirEndereco); a edicao/persistencia e do provider. Sem estado paralelo de endereco. */
-  const { endereco: enderecoObj, abrirModal: abrirEndereco } = useAddress();
-  const deliveryAddress = enderecoObj?.label || '';
+  const { endereco: enderecoObj, temEndereco, abrirModal: abrirEndereco, limpar: limparEndereco } = useAddress();
   const [showLoyalty,    setShowLoyalty]     = useState(false);
   /* ── Programa de Fidelidade (REF-LOYALTY-01) ── fonte unica: Supabase (get_my_loyalty), por CLIENTE.
      O visitante nao-logado ve zeros (fidelidade nao pertence ao navegador). O cliente logado ve o
@@ -223,45 +223,19 @@ function StoreAppContent({ onAdmin }) {
         setSearch={setSearch}
         visible={stickyVisible}
       />
-      {/* ── BARRA DE ENTREGA/RETIRADA (branca, abaixo do header) — REF-UX-02 ── */}
-      <div className="delivery-bar">
-        <div className="delivery-mode-select">
-          <select
-            className="delivery-mode-dropdown"
-            value={deliveryMode}
-            onChange={e=>setDeliveryMode(e.target.value)}
-            aria-label="Escolher entre entrega ou retirada">
-            <option value="entrega">Entrega</option>
-            <option value="retirada">Retirada</option>
-          </select>
-        </div>
-
-        <div className="delivery-eta">
-          {deliveryMode==='entrega'
-            ? <>em até <b>35–45 min</b></>
-            : <>Pronto em <b>20 min</b></>}
-        </div>
-
-        {deliveryMode==='entrega' ? (
-          <button
-            className={`delivery-address-btn ${deliveryAddress?'filled':''}`}
-            onClick={abrirEndereco}>
-            <span className="delivery-address-pin">📍</span>
-            <span className="delivery-address-text">
-              {deliveryAddress || 'Selecionar endereço'}
-            </span>
-          </button>
-        ) : (
-          <div className="delivery-address-store">
-            <span className="delivery-address-pin">📍</span>
-            <span className="delivery-address-text">
-              {STORE_INFO.retirada.split(',').map((linha, i) => (
-                <span key={i} className="delivery-address-line">{linha.trim()}</span>
-              ))}
-            </span>
-          </div>
-        )}
-      </div>
+      {/* ── BARRA DE ENTREGA/RETIRADA (branca, abaixo do header) — REF-UX-02 / REF-UI-HEADER-02 ──
+          Extraida para <DeliveryBar/> (apresentacional). deliveryMode segue aqui (vai ao checkout); o
+          endereco vem da fonte unica (AddressProvider): editar = abrirEndereco (mesmo modal), limpar =
+          volta ao estado inicial. */}
+      <DeliveryBar
+        deliveryMode={deliveryMode}
+        setDeliveryMode={setDeliveryMode}
+        endereco={enderecoObj}
+        temEndereco={temEndereco}
+        onEditar={abrirEndereco}
+        onLimpar={limparEndereco}
+        retiradaLabel={STORE_INFO.retirada}
+      />
 
       {/* ── Progresso de fidelidade mini (abaixo da barra de entrega) — so p/ cliente logado c/ programa ativo ── */}
       {temCadastro && loyaltyEnabled && loyaltyCount>0 && !loyaltyReward && (
