@@ -136,6 +136,22 @@ export const DS = {
   async setStatus(id,status) {
     await this.run(d=>d.from('orders').update({status}).eq('id',id));
   },
+  /* REF-ORDER-01 · Parte 2 — historico de status de UM pedido (visao admin: is_admin ve tudo).
+     select('*') e proposital: sobrevive a migration que adiciona a coluna `ator` (antes: ausente; depois:
+     presente) sem quebrar o front. O registro de eventos em cada troca de status e feito por TRIGGER no
+     banco (SECURITY DEFINER) — fonte unica, cobre qualquer canal que altere orders.status. */
+  async getEventos(orderId) {
+    if (!orderId) return [];
+    const r = await this.run(d=>d.from('order_events').select('*').eq('order_id',orderId).order('created_at',{ascending:true}));
+    return r.data ?? [];
+  },
+  /* REF-ORDER-01 · Parte 1 — total de pedidos ja realizados por um cliente (contagem HEAD, sem trazer linhas).
+     Usado na comanda ("Pedidos realizados: N"). Retorna null quando indisponivel (nunca fabrica 0). */
+  async countPedidosByCustomer(customerId) {
+    if (!customerId) return null;
+    const r = await this.run(d=>d.from('orders').select('id',{count:'exact',head:true}).eq('customer_id',customerId));
+    return typeof r.count === 'number' ? r.count : null;
+  },
   /* HARDEN-06: snapshot de saúde (orders_health) p/ o painel admin. */
   async getHealth() {
     const r = await this.run(d=>d.rpc('orders_health'));
