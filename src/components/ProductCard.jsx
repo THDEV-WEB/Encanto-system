@@ -25,12 +25,25 @@ export const ProductCard = React.memo(function ProductCard({ prod, catNome, onOp
   return (
     <div className="product-card" data-prod={prod.id} onClick={()=>{console.log('[ENCANTO] Card clicado:', prod.id, prod.nome); onOpen(prod);}}>
       <div className="product-img">
-        {hasValidImg
-          ? <img src={prod.imagem_url} alt={prod.nome} loading="lazy"
-              style={{opacity:0,transition:'opacity .2s'}}
+        {hasValidImg && (
+          <>
+            {/* REF-IMG-01: backdrop borrado (mesma imagem em COVER) preenche as bordas quando a imagem
+                principal (contain) nao cobre 100% -> nada de faixa vazia feia. Mesmo src => reutiliza o
+                cache do browser (1 request). aria-hidden: puramente decorativo. */}
+            <img className="product-img-bg" src={prod.imagem_url} alt="" aria-hidden="true" loading="lazy"
+              onError={e=>{ e.target.style.display='none'; }}/>
+            {/* Imagem principal: INTEIRA (object-fit:contain no CSS), centralizada, sem corte/distorcao.
+                Fade-in por opacity (transicao no CSS, para nao anular o transform do hover). */}
+            <img className="product-img-main" src={prod.imagem_url} alt={prod.nome} loading="lazy"
+              style={{opacity:0}}
               onLoad={e=>{ e.target.style.opacity='1'; }}
-              onError={e=>{ e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }}/>
-          : null}
+              onError={e=>{
+                const box=e.target.closest('.product-img');
+                if(box){ box.querySelectorAll('img').forEach(im=>{ im.style.display='none'; });
+                  const ph=box.querySelector('.product-img-placeholder'); if(ph) ph.style.display='flex'; }
+              }}/>
+          </>
+        )}
         {/* Placeholder — visível quando sem imagem ou imagem com erro */}
         <div className="product-img-placeholder" style={{display: hasValidImg ? 'none' : 'flex'}}>
           {catEmoji(catNome||prod.nome)}

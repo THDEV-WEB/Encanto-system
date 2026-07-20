@@ -26,6 +26,7 @@ import { useStickyReveal } from '../hooks/useStickyReveal.js';     // REF-UI-CAT
 import { useCatalogNav } from '../hooks/useCatalogNav.js';         // REF-UI-CATEGORY-01 Fase 4: scroll-spy + rolagem UNICOS (compartilhados)
 import { useSearchSuggestions } from '../hooks/useSearchSuggestions.js'; // REF-UI-SEARCH-01: motor de sugestoes (dados)
 import { useScrollToProduct } from '../hooks/useScrollToProduct.js';     // REF-UI-SEARCH-01: navegacao ate o produto + realce
+import { useDeliveryEta } from '../hooks/useDeliveryEta.js';             // REF-DELIVERY-01: tempo de entrega (config unica Supabase)
 import { AddressProvider, useAddress } from '../address/index.js'; // REF-CHECKOUT-ADDRESS-01: fonte unica do endereco (provider)
 import { LazySection } from '../components/ui/LazySection.jsx';
 import { SuccessPage } from '../components/checkout/SuccessPage.jsx';
@@ -124,9 +125,12 @@ function StoreAppContent({ onAdmin }) {
   const scrollToProduct = useScrollToProduct();
   const onPickCategoria = useCallback((c) => irParaCategoria(c.cat), [irParaCategoria]);
   const onPickProduto   = useCallback((p) => scrollToProduct(p.prod.id, p.secId), [scrollToProduct]);
+  /* REF-DELIVERY-01: tempo estimado de entrega (config unica no Supabase). Lido UMA vez aqui e distribuido
+     por props aos consumidores (DeliveryBar + SuccessPage) -> Single Source of Truth, sem duplicacao. */
+  const deliveryEta = useDeliveryEta();
 
   if (page==='checkout') return <CheckoutPage cart={cart} deliveryMode={deliveryMode} onBack={()=>setPage('home')} onSuccess={msg=>{setWaMsg(msg);setPage('success');}}/>;
-  if (page==='success')  return <SuccessPage  msg={waMsg} cart={cart} onBack={()=>setPage('home')}/>;
+  if (page==='success')  return <SuccessPage  msg={waMsg} cart={cart} onBack={()=>setPage('home')} deliveryEta={deliveryEta} deliveryMode={deliveryMode}/>;
 
   return (
     <div className="app">
@@ -174,19 +178,24 @@ function StoreAppContent({ onAdmin }) {
             </span>
             <span className="brand-sub">Marmita e Açaí</span>
             <div className="status-actions">
-              <div className={`header-status-pill ${storeOpen?'open':'closed'}`}>
-                <span className={`status-dot ${storeOpen?'open':'closed'}`}/>
-                {horario.rotuloCurto}
+              {/* REF-UI-HERO-03: status + horario ficam JUNTOS numa linha; o CTA desce para logo ABAIXO. */}
+              <div className="status-line">
+                <div className={`header-status-pill ${storeOpen?'open':'closed'}`}>
+                  <span className={`status-dot ${storeOpen?'open':'closed'}`}/>
+                  {horario.rotuloCurto}
+                </div>
+                {horario.detalhe && (
+                  /* REF-UI-CATEGORY-01 (refino UX): detalhe do horario — legivel sobre a foto (.78 -> .95 + sombra) */
+                  <span style={{fontSize:11,fontWeight:600,color:'rgba(255,255,255,.95)',whiteSpace:'nowrap',textShadow:'0 1px 6px rgba(0,0,0,.6)'}}>
+                    {horario.detalhe}
+                  </span>
+                )}
               </div>
-              {horario.detalhe && (
-                /* REF-UI-CATEGORY-01 (refino UX): detalhe do horario — legivel sobre a foto (.78 -> .95 + sombra) */
-                <span style={{fontSize:11,fontWeight:600,color:'rgba(255,255,255,.95)',whiteSpace:'nowrap',textShadow:'0 1px 6px rgba(0,0,0,.6)'}}>
-                  {horario.detalhe}
-                </span>
-              )}
+              {/* REF-UI-HERO-03: "Agendar Pedido" imediatamente abaixo da info de horario (CTA junto do
+                  operacional, sem competir com o resto do Hero). So aparece com a loja fechada. */}
               {!storeOpen && (
                 <button className="btn-agendar" onClick={()=>alert('Agendamento em breve!')}>
-                  📅 Agendar
+                  📅 Agendar Pedido
                 </button>
               )}
             </div>
@@ -246,6 +255,7 @@ function StoreAppContent({ onAdmin }) {
         onEditar={abrirEndereco}
         onLimpar={limparEndereco}
         retiradaLabel={STORE_INFO.retirada}
+        deliveryEta={deliveryEta}
       />
 
       {/* ── Progresso de fidelidade mini (abaixo da barra de entrega) — so p/ cliente logado c/ programa ativo ── */}

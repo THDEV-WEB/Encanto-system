@@ -64,6 +64,16 @@ const CASES = [
     snap: '<div class="product-card" data-prod="pc-fix"><div class="product-img"><div class="product-img-placeholder" style="display:flex">🍧</div></div><div class="product-info"><div class="product-name">Produto Teste</div><div class="product-desc">Descrição teste</div><div class="product-footer"><div class="product-price">R$ 19,90</div><button class="add-btn">+</button></div></div></div>',
   },
   {
+    /* REF-IMG-01: prod COM imagem valida -> backdrop borrado (cover) + imagem principal (contain) */
+    nome: 'ProductCard(com imagem)',
+    el: () => h(ProductCard, {
+      prod: { id:'pc-img', nome:'Produto Teste', descricao:'Descrição teste', preco:19.9, preco_promo:null, badge:null, disponivel:true, imagem_url:'https://ex.com/p.jpg' },
+      catNome: 'Açaí',
+      onOpen: () => {},
+    }),
+    snap: '<div class="product-card" data-prod="pc-img"><div class="product-img"><img class="product-img-bg" src="https://ex.com/p.jpg" alt="" aria-hidden="true" loading="lazy"/><img class="product-img-main" src="https://ex.com/p.jpg" alt="Produto Teste" loading="lazy" style="opacity:0"/><div class="product-img-placeholder" style="display:none">🍧</div></div><div class="product-info"><div class="product-name">Produto Teste</div><div class="product-desc">Descrição teste</div><div class="product-footer"><div class="product-price">R$ 19,90</div><button class="add-btn">+</button></div></div></div>',
+  },
+  {
     /* sem erro → o boundary renderiza os children */
     nome: 'ProductModalBoundary(children)',
     el: () => h(ProductModalBoundary, { onClose: () => {} }, h('span', null, 'ok')),
@@ -85,18 +95,18 @@ const CASES = [
     nome: 'DeliveryBar(entrega, sem endereço)',
     el: () => h(DeliveryBar, {
       deliveryMode:'entrega', setDeliveryMode:()=>{}, endereco:null, temEndereco:false,
-      onEditar:()=>{}, onLimpar:()=>{}, retiradaLabel:'Rua João Schley, 77 Casa 02',
+      onEditar:()=>{}, onLimpar:()=>{}, retiradaLabel:'Rua João Schley, 77 Casa 02', deliveryEta:45,
     }),
-    snap: '<div class="delivery-bar"><div class="delivery-mode-select"><select class="delivery-mode-dropdown" aria-label="Escolher entre entrega ou retirada"><option value="entrega" selected="">Entrega</option><option value="retirada">Retirada</option></select></div><div class="delivery-info"><div class="delivery-eta">Entregar em, até <b>35–45 min</b></div><div class="delivery-place"><button type="button" class="delivery-addr-link">Selecionar endereço</button></div></div></div>',
+    snap: '<div class="delivery-bar"><div class="delivery-mode-select"><select class="delivery-mode-dropdown" aria-label="Escolher entre entrega ou retirada"><option value="entrega" selected="">Entrega</option><option value="retirada">Retirada</option></select></div><div class="delivery-info"><div class="delivery-eta">Entregar em, até <b>45 min</b></div><div class="delivery-place"><button type="button" class="delivery-addr-link">Selecionar endereço</button></div></div></div>',
   },
   {
     /* REF-UI-HEADER-02: entrega COM endereco (valor + par Alterar/Limpar) */
     nome: 'DeliveryBar(entrega, com endereço)',
     el: () => h(DeliveryBar, {
       deliveryMode:'entrega', setDeliveryMode:()=>{}, endereco:{label:'Rua das Flores, 123 - Centro'}, temEndereco:true,
-      onEditar:()=>{}, onLimpar:()=>{}, retiradaLabel:'Rua João Schley, 77 Casa 02',
+      onEditar:()=>{}, onLimpar:()=>{}, retiradaLabel:'Rua João Schley, 77 Casa 02', deliveryEta:45,
     }),
-    snap: '<div class="delivery-bar"><div class="delivery-mode-select"><select class="delivery-mode-dropdown" aria-label="Escolher entre entrega ou retirada"><option value="entrega" selected="">Entrega</option><option value="retirada">Retirada</option></select></div><div class="delivery-info"><div class="delivery-eta">Entregar em, até <b>35–45 min</b></div><div class="delivery-place"><span class="delivery-addr-current" title="Rua das Flores, 123 - Centro">Rua das Flores, 123 - Centro</span><span class="delivery-addr-actions"><button type="button" class="delivery-addr-action" aria-label="Alterar endereço de entrega">Alterar</button><span class="delivery-addr-sep" aria-hidden="true">·</span><button type="button" class="delivery-addr-action" aria-label="Remover endereço selecionado">Limpar</button></span></div></div></div>',
+    snap: '<div class="delivery-bar"><div class="delivery-mode-select"><select class="delivery-mode-dropdown" aria-label="Escolher entre entrega ou retirada"><option value="entrega" selected="">Entrega</option><option value="retirada">Retirada</option></select></div><div class="delivery-info"><div class="delivery-eta">Entregar em, até <b>45 min</b></div><div class="delivery-place"><span class="delivery-addr-current" title="Rua das Flores, 123 - Centro">Rua das Flores, 123 - Centro</span><span class="delivery-addr-actions"><button type="button" class="delivery-addr-action" aria-label="Alterar endereço de entrega">Alterar</button><span class="delivery-addr-sep" aria-hidden="true">·</span><button type="button" class="delivery-addr-action" aria-label="Remover endereço selecionado">Limpar</button></span></div></div></div>',
   },
   {
     /* REF-UI-HEADER-02: retirada (endereco fixo da loja, so leitura) */

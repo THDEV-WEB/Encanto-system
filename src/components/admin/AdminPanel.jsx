@@ -5,6 +5,7 @@ import { AdminProducts } from './AdminProducts.jsx';
 import { AdminCategorias } from './AdminCategorias.jsx';
 import { AdminAdicionais } from './AdminAdicionais.jsx';
 import { AdminStatus } from './AdminStatus.jsx';
+import { AdminDeliveryEta } from './AdminDeliveryEta.jsx';   // REF-DELIVERY-01: config do tempo de entrega
 import { AdminFidelidade } from './AdminFidelidade.jsx';
 import { AdminHealth } from './AdminHealth.jsx';
 
@@ -50,7 +51,7 @@ export function AdminPanel({ onExit }) {
           {tab==='products'   && <AdminProducts/>}
           {tab==='categorias' && <AdminCategorias/>}
           {tab==='adicionais' && <AdminAdicionais/>}
-          {tab==='status'     && <AdminStatus/>}
+          {tab==='status'     && <><AdminStatus/><AdminDeliveryEta/></>}
           {tab==='fidelidade' && <AdminFidelidade/>}
           {tab==='saude'      && <AdminHealth/>}
         </div>

@@ -11,7 +11,7 @@
    O bloco usa flex:1 + min-width:0 + ellipsis, entao o texto encolhe sem "escapar" da area util em
    qualquer largura (correcao de responsividade). Nao altera regra de negocio (deliveryMode segue no
    StoreApp e vai ao checkout; endereco e a fonte unica do dominio Address). */
-export function DeliveryBar({ deliveryMode, setDeliveryMode, endereco, temEndereco, onEditar, onLimpar, retiradaLabel }) {
+export function DeliveryBar({ deliveryMode, setDeliveryMode, endereco, temEndereco, onEditar, onLimpar, retiradaLabel, deliveryEta }) {
   const entrega = deliveryMode === 'entrega';
   return (
     <div className="delivery-bar">
@@ -29,7 +29,7 @@ export function DeliveryBar({ deliveryMode, setDeliveryMode, endereco, temEndere
       <div className="delivery-info">
         <div className="delivery-eta">
           {entrega
-            ? <>Entregar em, até <b>35–45 min</b></>
+            ? <>Entregar em, até <b>{deliveryEta} min</b></>   /* REF-DELIVERY-01: valor da config (SSoT) */
             : <>Retirar em, até <b>20 min</b></>}
         </div>
 

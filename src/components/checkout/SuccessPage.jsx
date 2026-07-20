@@ -4,10 +4,11 @@
 import { useState } from 'react';
 import { WHATSAPP } from '../../lib/supabase.js';
 
-export function SuccessPage({ msg, cart, onBack }) {
+export function SuccessPage({ msg, cart, onBack, deliveryEta, deliveryMode }) {
   const open = () => window.open(`https://wa.me/${WHATSAPP}?text=${encodeURIComponent(msg)}`,'_blank');
-  /* Tempo estimado dinâmico */
-  const [tempo, setTempo] = useState(()=>30+Math.floor(Math.random()*20));
+  /* REF-DELIVERY-01: tempo estimado vem da CONFIG unica (deliveryEta), nao mais de um valor aleatorio.
+     Consciente do modo (igual a DeliveryBar): entrega usa a config; retirada usa o tempo fixo de retirada. */
+  const retirada = deliveryMode === 'retirada';
   const [statusIdx, setStatusIdx] = useState(0);
   const steps = [
     {label:'Recebido',   icon:'📥'},
@@ -31,10 +32,10 @@ export function SuccessPage({ msg, cart, onBack }) {
       }}>
         <div>
           <div style={{fontSize:12,color:'var(--amarelo)',fontWeight:600,marginBottom:2}}>
-            🕐 Tempo estimado de entrega
+            🕐 {retirada ? 'Tempo estimado para retirada' : 'Tempo estimado de entrega'}
           </div>
           <div style={{fontFamily:'var(--font-head)',fontSize:24,fontWeight:800,color:'var(--amarelo)'}}>
-            {tempo}–{tempo+10} min
+            {retirada ? 20 : deliveryEta} min
           </div>
         </div>
         <div style={{fontSize:11,color:'var(--gray-500)',textAlign:'right',lineHeight:1.4}}>
