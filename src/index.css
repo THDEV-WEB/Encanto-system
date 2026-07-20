@@ -564,8 +564,8 @@ img{display:block;max-width:100%}
   padding:10px 16px 6px;
 }
 .store-chip{
-  display:inline-flex;align-items:center;justify-content:center;gap:6px;
-  padding:6px 12px;border-radius:999px;border:1px solid transparent;
+  display:inline-flex;align-items:center;justify-content:center;gap:5px;
+  padding:6px 10px;border-radius:999px;border:1px solid transparent;
   font-family:var(--font-body);font-size:12px;font-weight:700;
   letter-spacing:.1px;line-height:1;white-space:nowrap;
 }
@@ -575,7 +575,7 @@ img{display:block;max-width:100%}
    Estrelas menores + padding lateral curto -> chip bem mais ESTREITO (largura ~ do texto), o que deixa o
    chip "Programa Fidelidade" ao lado sem quebrar no mobile. Cores/borda preservadas. */
 .store-chip--stars{
-  flex-direction:column;gap:3px;padding:5px 12px;
+  flex-direction:column;gap:3px;padding:5px 10px;
   background:var(--amarelo-pale);color:#7A4E00;border-color:#F3E2B0;
 }
 .store-chip-stars{display:flex;align-items:center;gap:1.5px;line-height:1}
