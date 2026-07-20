@@ -16,8 +16,11 @@ export function useDeliveryEta() {
     window.addEventListener(ETA_EVENT, onCache);
     window.addEventListener('focus', onFoco);
     document.addEventListener('visibilitychange', onFoco);
+    // aba aberta e parada (nunca perde foco): converge sozinha em ate 60s quando o admin muda o valor.
+    const timer = setInterval(puxar, 60000);
     return () => {
       vivo = false;
+      clearInterval(timer);
       window.removeEventListener(ETA_EVENT, onCache);
       window.removeEventListener('focus', onFoco);
       document.removeEventListener('visibilitychange', onFoco);

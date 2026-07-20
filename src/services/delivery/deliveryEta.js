@@ -42,29 +42,23 @@ export async function sincronizarEta() {
   } catch { return cache; }
 }
 
-/* Grava (set_delivery_eta) — FONTE OFICIAL, global p/ todos os dispositivos. Otimista: reflete no cache +
-   notifica na hora; se a chamada falhar, LE o valor real do servidor e reconcilia (se o servidor ja tem
-   'n', a escrita valeu apesar da resposta perdida). Valida tambem no cliente. So ADMIN passa (is_admin). */
+/* Grava (set_delivery_eta) — FONTE OFICIAL, global. TRUTHFUL: so reporta ok se o SERVIDOR confirmar (RPC
+   sem erro devolve o v_min salvo, o que so acontece com is_admin() true + upsert efetivado). Qualquer erro
+   -> ok:false com a mensagem REAL (nada de "salvo" falso). Sem otimismo pre-escrita: o cache so muda com o
+   valor CONFIRMADO pelo servidor -> a UI nunca mostra um valor que nao persistiu. Valida tambem no cliente. */
 export async function definirEta(min) {
   const n = Math.round(Number(min));
   if (!valido(n)) return { ok: false, error: `Use um valor entre ${ETA_MIN} e ${ETA_MAX} minutos.` };
-  const anterior = cache;
+  if (!db) return { ok: false, error: 'Sem conexão. Tente novamente.' };
   const gen = ++geracao;                                     // marca esta escrita (invalida leituras em voo)
-  cache = n; notificar();                                    // otimista: reflete localmente ja
-  if (!db) { cache = anterior; notificar(); return { ok: false, error: 'offline' }; }
   try {
     const { data, error } = await db.rpc('set_delivery_eta', { p_min: n });
-    if (error) {
-      const oficial = await sincronizarEta();                // reconcilia com a verdade do servidor
-      if (oficial === n) return { ok: true, eta: n };         // commitou apesar do erro de resposta
-      return { ok: false, eta: oficial, error: error.message || 'falha ao salvar' };
-    }
-    const salvo = parseInt(data, 10);
-    if (geracao === gen && valido(salvo) && salvo !== cache) { cache = salvo; notificar(); } // so aplica se ninguem escreveu depois
-    return { ok: true, eta: valido(salvo) ? salvo : n };
+    if (error) return { ok: false, error: error.message || 'Não foi possível salvar.' };
+    const salvo = parseInt(data, 10);                        // o servidor RETURN v_min (valor salvo)
+    const eta = valido(salvo) ? salvo : n;
+    if (geracao === gen) { cache = eta; notificar(); }        // aplica o valor CONFIRMADO (nao stale)
+    return { ok: true, eta };
   } catch (e) {
-    const oficial = await sincronizarEta();                  // resposta perdida? adota o valor REAL do servidor
-    if (oficial === n) return { ok: true, eta: n };
-    return { ok: false, eta: oficial, error: e?.message || 'falha ao salvar' };
+    return { ok: false, error: e?.message || 'Não foi possível salvar.' };
   }
 }
