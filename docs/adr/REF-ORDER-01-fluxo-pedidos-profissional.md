@@ -97,7 +97,17 @@ View `order_status_durations` (`security_invoker=true` → respeita RLS): por pe
 
 ---
 
-## 4. Migration (aplicar 1x no SQL editor)
+## 3.1 Errata pós-introspecção do banco (2026-07-20 — migration APLICADA via Management API)
+
+Ao ganhar acesso SQL, a introspeção do banco real corrigiu 3 pressupostos e **simplificou** a migration:
+
+- **Histórico já existia:** `trg_order_audit()` já grava `order_events` (PEDIDO_CRIADO / STATUS_ALTERADO / PEDIDO_ENTREGUE / PEDIDO_CANCELADO) com `status_anterior/status_novo/created_at` — com timestamps reais. A coluna de ator já se chama **`usuario`**. → A migration **NÃO** cria trigger de histórico (evitaria duplicar eventos) e **NÃO** adiciona coluna `ator`; `PedidoHistorico` lê `usuario` e filtra a trilha de status (`status_novo` != null).
+- **`pronto` estava bloqueado:** o CHECK real é `orders_status_valid` e **não** listava `pronto` → "Avançar: Pronto" falhava silenciosamente em produção. A migration adiciona `pronto` ao CHECK (correção essencial).
+- **Extensões disponíveis:** `pg_net`, `pg_cron`, `supabase_vault` presentes → o envio real do WhatsApp roda **na própria base** (REF-ORDER-01b), sem depender de deploy de Edge Function.
+
+A migration final faz só: `pronto` no CHECK + `notification_outbox` (fila) + `enc_enqueue_notification` + `enc_claim_notifications` (claim atômico) + **trigger só de notificação** (`trg_enc_order_notify`, sem histórico) + view de métricas. Aplicada e verificada (enqueue testado com rollback). A Edge Function permanece no repo como worker de produção alternativo.
+
+## 4. Migration (aplicada via Management API; reaplicável no SQL editor)
 
 `REF-ORDER-01-order-ops.sql` — idempotente, reversível, 1 transação:
 

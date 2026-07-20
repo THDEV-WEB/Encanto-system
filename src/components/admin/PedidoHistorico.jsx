@@ -1,34 +1,30 @@
 /* components/admin/PedidoHistorico.jsx — REF-ORDER-01 · Parte 2 (Historico de status no admin).
-   Le os order_events de UM pedido (DS.getEventos) e mostra a trilha de transicoes: status, data/hora e
-   quem realizou (ator). SOMENTE LEITURA. Os eventos sao gravados por TRIGGER no banco (fonte unica) —
-   ver migration REF-ORDER-01. Antes da migration aplicada, mostra apenas o evento de criacao (ou vazio).
-   Reusa STATUS_INFO (fonte unica de rotulo/cor de status) para nao duplicar copy. */
+   Le os order_events de UM pedido (DS.getEventos) e mostra a TRILHA DE STATUS com horarios reais e o ator.
+   Os eventos ja sao gravados pelo audit do banco (trg_order_audit): PEDIDO_CRIADO/STATUS_ALTERADO/
+   PEDIDO_ENTREGUE/PEDIDO_CANCELADO (todos com status_novo) + a coluna `usuario` (ator). Filtramos para a
+   trilha de STATUS (status_novo != null) — eventos de edicao de dados (CLIENTE_ATUALIZADO/ITEM_ALTERADO)
+   nao poluem a trilha. SOMENTE LEITURA. Reusa STATUS_INFO (fonte unica de rotulo/cor). */
 import { useEffect, useState } from 'react';
 import { DS } from '../../services/DataService.js';
 import { fmtDataHoraLoja } from '../../utils/format.js';
 import { statusInfo } from '../pedidos/pedidoStatus.js';
 
-const TIPO_LABEL = {
-  PEDIDO_CRIADO: 'Pedido recebido',
-  STATUS_ALTERADO: 'Status alterado',
-  CLIENTE_ATUALIZADO: 'Cliente atualizado',
-};
-
-/* Rotulo de UM evento: transicao de status vence (mais informativo); senao usa o tipo. */
-function rotuloEvento(ev) {
-  if (ev?.status_novo) return statusInfo(ev.status_novo).label;
-  return TIPO_LABEL[ev?.tipo] || ev?.tipo || 'Evento';
-}
-function corEvento(ev) {
-  return ev?.status_novo ? statusInfo(ev.status_novo).cor : '#6B7280';
-}
+/* Rotulo de UM evento de status: usa o rotulo do status_novo (sempre presente na trilha). */
+const rotuloEvento = (ev) => statusInfo(ev?.status_novo).label;
+const corEvento = (ev) => statusInfo(ev?.status_novo).cor;
+/* Ator: a coluna real e `usuario` (o audit grava 'postgres'/etc; null nas transicoes de status). */
+const atorEvento = (ev) => ev?.usuario || ev?.ator || null;
 
 export function PedidoHistorico({ orderId }) {
   const [eventos, setEventos] = useState(null);   // null = carregando
   useEffect(() => {
     let vivo = true;
     setEventos(null);
-    DS.getEventos(orderId).then((e) => { if (vivo) setEventos(Array.isArray(e) ? e : []); });
+    DS.getEventos(orderId).then((e) => {
+      // trilha de STATUS = eventos com status_novo (PEDIDO_CRIADO/STATUS_ALTERADO/ENTREGUE/CANCELADO)
+      const trilha = (Array.isArray(e) ? e : []).filter((x) => x && x.status_novo);
+      if (vivo) setEventos(trilha);
+    });
     return () => { vivo = false; };
   }, [orderId]);
 
@@ -56,7 +52,7 @@ export function PedidoHistorico({ orderId }) {
             <div style={{ paddingBottom: 12 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--gray-800)' }}>{rotuloEvento(ev)}</div>
               <div style={{ fontSize: 11, color: 'var(--gray-500)', marginTop: 1 }}>
-                {fmtDataHoraLoja(ev.created_at)}{ev.ator ? ` · ${ev.ator}` : ''}
+                {fmtDataHoraLoja(ev.created_at)}{atorEvento(ev) ? ` · ${atorEvento(ev)}` : ''}
               </div>
             </div>
           </div>
