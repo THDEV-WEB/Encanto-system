@@ -555,23 +555,28 @@ img{display:block;max-width:100%}
    a paleta quente do projeto. `.store-chip--stars` e informativo; `.store-chip--loyalty` e um <button>
    (mesma acao do botao antigo) com realce dourado `.store-chip--reward` quando ha recompensa. */
 .store-chips{
-  display:flex;flex-wrap:wrap;align-items:center;gap:8px;
-  /* padding-bottom carrega o "respiro" ate o proximo bloco: no desktop e o "Categorias" (.catnav),
-     no mobile (onde .catnav e display:none) e direto a 1a secao — assim o gap fica igual nos dois. */
-  padding:14px 16px 10px;              /* alinha com o padding lateral do catalogo (16px) */
+  /* REF-UI-TOPBAR-02: os 2 chips = UMA composicao. align-items:stretch -> mesma altura; conteudo de cada
+     um centralizado (mesmo eixo). Nenhum chip cresce (flex-grow 0) -> cada um so a largura do conteudo.
+     16px horizontais em TODOS os tamanhos -> a coluna dos chips = a do "Categorias" e a da barra roxa do
+     titulo (mobile=16px; desktop=32px do .app-content + 16px). padding-bottom = "respiro" ate o proximo
+     bloco (desktop: "Categorias"; mobile, onde .catnav e display:none: direto a 1a secao). */
+  display:flex;flex-wrap:wrap;align-items:stretch;gap:8px;
+  padding:12px 16px 8px;
 }
-@media(min-width:1024px){.store-chips{padding:16px 0 10px}}  /* no desktop o .app-content ja da o inset lateral (32px) */
 .store-chip{
-  display:inline-flex;align-items:center;gap:7px;
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;
   padding:7px 13px;border-radius:999px;border:1px solid transparent;
   font-family:var(--font-body);font-size:12.5px;font-weight:700;
   letter-spacing:.2px;line-height:1;white-space:nowrap;
 }
 .store-chip-label{line-height:1}
-/* estrelas — sinal de qualidade/entrega (informativo) */
-.store-chip--stars{background:var(--amarelo-pale);color:#7A4E00;border-color:#F3E2B0}
+/* estrelas EMPILHADAS sobre o texto (compacto na horizontal); cores/tipografia/borda preservadas */
+.store-chip--stars{
+  flex-direction:column;gap:2px;padding:4px 14px;
+  background:var(--amarelo-pale);color:#7A4E00;border-color:#F3E2B0;
+}
 .store-chip-stars{display:inline-flex;align-items:center;gap:2px}
-.store-chip-stars svg{width:13px;height:13px;fill:var(--amarelo);display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,.12))}
+.store-chip-stars svg{width:12px;height:12px;fill:var(--amarelo);display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,.12))}
 /* fidelidade — acao (preserva o clique do botao antigo do banner) */
 .store-chip--loyalty{
   background:var(--grape-pale);color:var(--grape);border-color:#EBD3E5;cursor:pointer;
@@ -599,12 +604,14 @@ img{display:block;max-width:100%}
 /* ---- CATEGORY NAV (REF-UI-CATEGORY-01 Fase 2) — seletor "Categorias v" desktop/tablet ----
    Substitui a grade de chips. Navegacao por scroll + scroll-spy. Texto puro, identidade Encanto.
    MOBILE (<768px): oculto — o strip horizontal chega na Fase 4 (topo mobile fica so o banner). */
-/* REF-UI-TOPBAR-01: "Categorias" e a PORTA DE ENTRADA do cardapio — quase colado na 1a secao abaixo
-   (top curto; o "respiro" acima vem do padding-bottom dos chips; a 1a secao tem paddingTop reduzido em
-   StoreApp). NB: em <768px .catnav e display:none (o "respiro" ate a 1a secao vem so dos chips). */
+/* REF-UI-TOPBAR-01/02: "Categorias" e a PORTA DE ENTRADA do cardapio. 16px horizontais em TODOS os
+   tamanhos -> a borda ESQUERDA do botao alinha EXATO com a barra roxa do 1o titulo e com os cards (mesma
+   coluna do catalogo: mobile=16px; desktop=32px do .app-content + 16px). Sem override desktop de padding
+   lateral (senao voltaria a 32px e desalinharia da barra roxa, que tem margin-left:16px inline). Top
+   curto; o "respiro" acima vem do padding-bottom dos chips; a 1a secao tem paddingTop reduzido em
+   StoreApp. NB: em <768px .catnav e display:none (o "respiro" ate a 1a secao vem so dos chips). */
 .catnav{position:relative;z-index:60;padding:4px 16px 4px;transition:opacity .28s ease}
 @media(max-width:767px){.catnav{display:none}}
-@media(min-width:1024px){.catnav{padding:6px 0 4px}}
 /* refino UX: enquanto a barra sticky assume o topo (revealed), o "Categorias" da PAGINA some sem
    reflow (visibility preserva o box -> a sentinela nao se move -> sem loop no scroll-spy). Cross-fade
    com a barra: nunca ha DOIS "Categorias" visiveis. So >=768px (no mobile .catnav ja e display:none). */

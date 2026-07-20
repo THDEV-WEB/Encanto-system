@@ -349,7 +349,7 @@ function StoreAppContent({ onAdmin }) {
             /* REF-UI-TOPBAR-01: a 1a secao renderizada "cola" em "Categorias" (porta de entrada do
                cardapio) — paddingTop curto SO nela; as demais mantem o ritmo normal entre secoes.
                scrollMarginTop preservado (offset de navegacao com a barra sticky). */
-            if (cat.id === catsVisiveis[0]?.id) sectionStyle = { ...sectionStyle, paddingTop:6 };
+            if (cat.id === catsVisiveis[0]?.id) sectionStyle = { ...sectionStyle, paddingTop:4 };
 
             return (
               <LazySection key={cat.id} id={secId} style={sectionStyle}>
