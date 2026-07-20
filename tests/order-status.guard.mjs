@@ -2,7 +2,7 @@
    Trava o modelo de status do pedido (components/pedidos/pedidoStatus.js) apos a insercao de 'pronto':
    ordem canonica da timeline, presenca dos 6 estados em STATUS_INFO, fallback do statusInfo. Puro/Node. */
 import assert from 'node:assert/strict';
-import { STATUS_INFO, statusInfo, TIMELINE } from '../src/components/pedidos/pedidoStatus.js';
+import { STATUS_INFO, statusInfo, TIMELINE, fluxoDoTipo, proximoStatus, FLUXO_ENTREGA, FLUXO_RETIRADA } from '../src/components/pedidos/pedidoStatus.js';
 
 let fail = 0;
 const check = (m, fn) => { try { fn(); console.error('  ok ' + m); } catch (e) { fail++; console.error('  x  ' + m + ' — ' + (e?.message ?? e)); } };
@@ -29,5 +29,28 @@ check("'pronto' e 'entregue' sao visualmente distintos (icone e cor)", () => {
   assert.notEqual(STATUS_INFO.pronto.cor, STATUS_INFO.entregue.cor);
 });
 
-console.log(fail === 0 ? '\nOK order-status.guard — modelo de status estavel (com pronto)' : `\nFALHA order-status.guard — ${fail} caso(s)`);
+/* ── FLUXO OPERACIONAL (integracao) ── */
+check('fluxoDoTipo: retirada NAO tem "entrega"; entrega tem os 5 passos', () => {
+  assert.deepEqual(fluxoDoTipo('entrega'), FLUXO_ENTREGA);
+  assert.deepEqual(fluxoDoTipo('retirada'), FLUXO_RETIRADA);
+  assert.ok(!FLUXO_RETIRADA.includes('entrega'));
+  assert.deepEqual(FLUXO_ENTREGA, ['recebido', 'preparo', 'pronto', 'entrega', 'entregue']);
+});
+check('proximoStatus (entrega): recebido->preparo->pronto->entrega->entregue->null', () => {
+  assert.equal(proximoStatus('recebido', 'entrega'), 'preparo');
+  assert.equal(proximoStatus('preparo', 'entrega'), 'pronto');
+  assert.equal(proximoStatus('pronto', 'entrega'), 'entrega');
+  assert.equal(proximoStatus('entrega', 'entrega'), 'entregue');
+  assert.equal(proximoStatus('entregue', 'entrega'), null);
+});
+check('proximoStatus (retirada): pronto PULA entrega -> entregue', () => {
+  assert.equal(proximoStatus('pronto', 'retirada'), 'entregue');
+  assert.equal(proximoStatus('entregue', 'retirada'), null);
+});
+check('proximoStatus: status fora da trilha (cancelado) -> null', () => {
+  assert.equal(proximoStatus('cancelado', 'entrega'), null);
+  assert.equal(proximoStatus('cancelado', 'retirada'), null);
+});
+
+console.log(fail === 0 ? '\nOK order-status.guard — modelo de status + fluxo operacional estaveis' : `\nFALHA order-status.guard — ${fail} caso(s)`);
 process.exit(fail ? 1 : 0);

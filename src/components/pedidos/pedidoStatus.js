@@ -16,3 +16,17 @@ export const statusInfo = (s) => STATUS_INFO[s] || { label: s || '—', cor: '#6
    Pronto -> Saiu para entrega -> Entregue). 'cancelado' e tratado a parte (nao entra na trilha feliz).
    Retirada segue a mesma trilha e conclui em 'entregue' (o passo 'entrega' fica implicito p/ retirada). */
 export const TIMELINE = ['recebido', 'preparo', 'pronto', 'entrega', 'entregue'];
+
+/* ── FLUXO OPERACIONAL (REF-ORDER-01 · integracao) ──────────────────────────────────────────────
+   Trilha por TIPO: retirada NAO tem "Saiu para entrega" (nao ha entregador) -> conclui de 'pronto'
+   direto em 'entregue'. Puro/sem imports (folha). Usado pelos botoes de avancar status no admin. */
+export const FLUXO_ENTREGA  = ['recebido', 'preparo', 'pronto', 'entrega', 'entregue'];
+export const FLUXO_RETIRADA = ['recebido', 'preparo', 'pronto', 'entregue'];
+export const fluxoDoTipo = (tipo) => (tipo === 'retirada' ? FLUXO_RETIRADA : FLUXO_ENTREGA);
+
+/* Proximo status na trilha do tipo (ou null no fim / status fora da trilha, ex.: 'cancelado'). */
+export const proximoStatus = (status, tipo) => {
+  const f = fluxoDoTipo(tipo);
+  const i = f.indexOf(status);
+  return i >= 0 && i < f.length - 1 ? f[i + 1] : null;
+};

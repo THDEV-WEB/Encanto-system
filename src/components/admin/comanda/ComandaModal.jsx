@@ -1,8 +1,8 @@
 /* components/admin/comanda/ComandaModal.jsx — REF-ORDER-01 · Parte 1.
-   Modal do painel admin: PREVIEW fiel (iframe srcDoc com o MESMO HTML da impressao — WYSIWYG) + botao
-   Imprimir. Chrome do modal em estilo inline (nao depende do index.css, que esta sob outra frente).
+   Modal do painel admin: PREVIEW fiel (iframe srcDoc com o MESMO HTML da impressao — WYSIWYG) + selecao
+   de largura (80mm/58mm) + Imprimir/Reimprimir. Chrome do modal em estilo inline (nao depende do index.css).
    Sem estado de dados: deriva tudo do pedido via o dominio puro (buildComanda -> comandaHTML). */
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { buildComanda } from './comandaModel.js';
 import { comandaHTML } from './comandaHtml.js';
 import { printComanda } from './printComanda.js';
@@ -12,7 +12,7 @@ const overlay = {
   display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
 };
 const card = {
-  background: '#fff', borderRadius: 16, width: 'min(420px, 96vw)', maxHeight: '92vh',
+  background: '#fff', borderRadius: 16, width: 'min(430px, 96vw)', maxHeight: '92vh',
   display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 18px 50px rgba(0,0,0,.35)',
 };
 const head = {
@@ -23,11 +23,17 @@ const btn = (bg, fg) => ({
   border: 'none', borderRadius: 10, padding: '10px 16px', fontSize: 14, fontWeight: 700,
   cursor: 'pointer', background: bg, color: fg, fontFamily: 'inherit',
 });
+const paperBtn = (on) => ({
+  border: on ? '2px solid #A62786' : '1.5px solid #E8DCC8', borderRadius: 8, padding: '5px 12px',
+  fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+  background: on ? '#f9edf6' : '#fff', color: on ? '#A62786' : '#6B5D50',
+});
 
 export function ComandaModal({ order, numero, totalPedidos, onClose }) {
+  const [paper, setPaper] = useState('80mm');
   const html = useMemo(
-    () => comandaHTML(buildComanda(order, { numero, totalPedidosCliente: totalPedidos })),
-    [order, numero, totalPedidos],
+    () => comandaHTML(buildComanda(order, { numero, totalPedidosCliente: totalPedidos }), { paper }),
+    [order, numero, totalPedidos, paper],
   );
   if (!order) return null;
   return (
@@ -35,7 +41,11 @@ export function ComandaModal({ order, numero, totalPedidos, onClose }) {
       <div style={card} onClick={(e) => e.stopPropagation()}>
         <div style={head}>
           <strong style={{ fontSize: 15 }}>🧾 Comanda</strong>
-          <button style={btn('transparent', '#6B5D50')} onClick={onClose} aria-label="Fechar">✕</button>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <span style={{ fontSize: 11, color: '#9C8870', marginRight: 2 }}>Largura</span>
+            <button style={paperBtn(paper === '80mm')} onClick={() => setPaper('80mm')}>80mm</button>
+            <button style={paperBtn(paper === '58mm')} onClick={() => setPaper('58mm')}>58mm</button>
+          </div>
         </div>
         <div style={{ background: '#EFE7DA', padding: 14, overflow: 'auto', flex: 1 }}>
           <iframe
@@ -46,7 +56,7 @@ export function ComandaModal({ order, numero, totalPedidos, onClose }) {
         </div>
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', padding: '12px 16px', borderTop: '1px solid #E8DCC8' }}>
           <button style={btn('#F1EADF', '#6B5D50')} onClick={onClose}>Fechar</button>
-          <button style={btn('#A62786', '#fff')} onClick={() => printComanda(html)}>🖨️ Imprimir</button>
+          <button style={btn('#A62786', '#fff')} onClick={() => printComanda(html)}>🖨️ Imprimir / Reimprimir</button>
         </div>
       </div>
     </div>

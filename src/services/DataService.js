@@ -152,6 +152,16 @@ export const DS = {
     const r = await this.run(d=>d.from('orders').select('id',{count:'exact',head:true}).eq('customer_id',customerId));
     return typeof r.count === 'number' ? r.count : null;
   },
+  /* REF-ORDER-01 · Parte 3 — estado das notificacoes de UM pedido (fila notification_outbox, so admin via RLS).
+     Observabilidade no painel: mostra o que foi/sera enviado por status. ANTES da migration aplicada a
+     tabela nao existe -> a query falha e devolvemos [] (degrada sem quebrar a UI). */
+  async getNotificacoes(orderId) {
+    if (!orderId) return [];
+    const r = await this.run(d=>d.from('notification_outbox')
+      .select('id, status, state, to_phone, message, last_error, attempts, created_at, sent_at')
+      .eq('order_id', orderId).order('created_at',{ascending:true}));
+    return r.error ? [] : (r.data ?? []);
+  },
   /* HARDEN-06: snapshot de saúde (orders_health) p/ o painel admin. */
   async getHealth() {
     const r = await this.run(d=>d.rpc('orders_health'));
