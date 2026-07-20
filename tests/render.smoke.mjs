@@ -33,6 +33,7 @@ const ProductCard     = (await import('../src/components/ProductCard.jsx')).Prod
 const ProductModalBoundary = (await import('../src/components/ProductModal/ProductModalBoundary.jsx')).ProductModalBoundary;
 const CartSidebar     = (await import('../src/components/CartSidebar.jsx')).CartSidebar;
 const DeliveryBar     = (await import('../src/components/DeliveryBar.jsx')).DeliveryBar;   // REF-UI-HEADER-02
+const SearchSuggestions = (await import('../src/components/search/SearchSuggestions.jsx')).SearchSuggestions;   // REF-UI-SEARCH-01
 
 /* Casos: props FIXAS + snapshot CONGELADO (Onda 4 acrescenta as folhas visuais AQUI) */
 const CASES = [
@@ -104,6 +105,26 @@ const CASES = [
       onEditar:()=>{}, onLimpar:()=>{}, retiradaLabel:'Rua João Schley, 77 Casa 02',
     }),
     snap: '<div class="delivery-bar"><div class="delivery-mode-select"><select class="delivery-mode-dropdown" aria-label="Escolher entre entrega ou retirada"><option value="entrega">Entrega</option><option value="retirada" selected="">Retirada</option></select></div><div class="delivery-info"><div class="delivery-eta">Retirar em, até <b>20 min</b></div><div class="delivery-place"><span class="delivery-addr-store">Rua João Schley, 77 Casa 02</span></div></div></div>',
+  },
+  {
+    /* REF-UI-SEARCH-01: painel de sugestoes agrupado (categoria + produto) com realce do trecho casado */
+    nome: 'SearchSuggestions(agrupado)',
+    el: () => h(SearchSuggestions, {
+      categorias: [{ cat: { id: 'c1', nome: 'Marmitas' }, parts: { before: '', hit: 'Marm', after: 'itas' } }],
+      produtos: [{ prod: { id: 'p1', nome: 'Marmita Fitness' }, catNome: 'Marmitas', nomeParts: { before: '', hit: 'Marm', after: 'ita Fitness' }, sub: 'Marmitas', subParts: null }],
+      total: 2, tooShort: false, active: -1,
+      onHover: () => {}, onPickCategory: () => {}, onPickProduct: () => {}, onLimpar: () => {},
+    }),
+    snap: '<div class="enc-suggest" role="listbox" aria-label="Sugestões de busca"><div class="enc-suggest-group"><div class="enc-suggest-group-title">Categorias</div><button type="button" role="option" aria-selected="false" class="enc-suggest-item "><span class="enc-suggest-ico" aria-hidden="true">🍱</span><span class="enc-suggest-txt"><span class="enc-suggest-name"><mark class="enc-suggest-hl">Marm</mark>itas</span></span><span class="enc-suggest-arrow" aria-hidden="true">›</span></button></div><div class="enc-suggest-group"><div class="enc-suggest-group-title">Produtos</div><button type="button" role="option" aria-selected="false" class="enc-suggest-item "><span class="enc-suggest-ico" aria-hidden="true">🍱</span><span class="enc-suggest-txt"><span class="enc-suggest-name"><mark class="enc-suggest-hl">Marm</mark>ita Fitness</span><span class="enc-suggest-sub">Marmitas</span></span></button></div></div>',
+  },
+  {
+    /* REF-UI-SEARCH-01: feedback sem resultados (req 7) */
+    nome: 'SearchSuggestions(sem resultados)',
+    el: () => h(SearchSuggestions, {
+      categorias: [], produtos: [], total: 0, tooShort: false, active: -1,
+      onHover: () => {}, onPickCategory: () => {}, onPickProduct: () => {}, onLimpar: () => {},
+    }),
+    snap: '<div class="enc-suggest" role="listbox" aria-label="Sugestões de busca"><div class="enc-suggest-empty"><div class="enc-suggest-empty-ico" aria-hidden="true">🔍</div><p class="enc-suggest-empty-msg">Nenhum produto encontrado.</p><button type="button" class="enc-suggest-empty-btn">Limpar busca</button></div></div>',
   },
 ];
 

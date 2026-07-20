@@ -1,13 +1,15 @@
-/* components/nav/MobileCatStrip.jsx — REF-UI-CATEGORY-01 Fase 4.
-   Navegacao DEFINITIVA do MOBILE (<768px): substitui completamente a busca+dropdown antigos do topo.
-   Barra horizontal, leve, que surge abaixo do header ao rolar (mesmo gatilho da barra do desktop):
-   - abas de categoria em texto puro, com scroll horizontal fluido ao toque (aparencia nativa);
-   - categoria ativa destacada (sublinhado + acento Encanto), sincronizada com o scroll-spy;
-   - a aba ativa se auto-centraliza no strip conforme o usuario rola a pagina;
-   - lupa a direita: abre a busca (input nativo) no proprio strip; fechar volta as abas.
-   Reaproveita activeId/onSelect do hook unico useCatalogNav (via StoreApp). Oculto no desktop (CSS). */
+/* components/nav/MobileCatStrip.jsx — REF-UI-CATEGORY-01 Fase 4 (+ REF-UI-SEARCH-01).
+   Navegacao DEFINITIVA do MOBILE (<768px): abas horizontais + lupa que surgem abaixo do topo ao rolar.
+   - abas de categoria (texto puro, scroll horizontal fluido, aba ativa auto-centralizada pelo scroll-spy);
+   - lupa abre o modo BUSCA no proprio strip: input + dropdown de SUGESTOES inteligentes (REF-UI-SEARCH-01,
+     mesmo motor da barra do desktop via useSearchField/SearchSuggestions). Escolher uma sugestao rola ate
+     o produto/secao no catalogo e VOLTA para as abas (encerra a busca). Oculto no desktop (CSS). */
 import React from 'react';
 import { catSection } from '../../utils/catSection.js';
+import { useSearchField } from '../../hooks/useSearchField.js';
+import { SearchSuggestions } from '../search/SearchSuggestions.jsx';
+
+const VAZIO = { categorias: [], produtos: [], total: 0, tooShort: true };
 
 const IconeBusca = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -20,11 +22,18 @@ const IconeFechar = () => (
   </svg>
 );
 
-export function MobileCatStrip({ cats, activeId, onSelect, search, setSearch, visible }) {
+export function MobileCatStrip({ cats, activeId, onSelect, search, setSearch, visible,
+  suggestions = VAZIO, onPickCategory = () => {}, onPickProduct = () => {} }) {
   const [searchOpen, setSearchOpen] = React.useState(false);
   const stripRef = React.useRef(null);
-  const inputRef = React.useRef(null);
   const showSearch = searchOpen || !!search;
+
+  const fecharBusca = () => { setSearch(''); setSearchOpen(false); };
+  const field = useSearchField({
+    query: search, setQuery: setSearch, suggestions,
+    onPickCategory, onPickProduct,
+    onClosed: () => setSearchOpen(false),   // ao escolher: volta para as abas (o texto ja foi limpo)
+  });
 
   /* Centraliza a aba ativa no strip conforme o scroll-spy muda (sem mexer no scroll da pagina). */
   React.useEffect(() => {
@@ -38,27 +47,23 @@ export function MobileCatStrip({ cats, activeId, onSelect, search, setSearch, vi
     else strip.scrollLeft = left;   // fallback p/ WebViews antigos (scrollTo objeto indisponivel)
   }, [activeId, showSearch]);
 
-  /* Foca o input ao abrir a busca. */
-  React.useEffect(() => { if (showSearch) inputRef.current?.focus(); }, [showSearch]);
-
-  const fecharBusca = () => { setSearch(''); setSearchOpen(false); };
-
   return (
     <div className={`enc-mobile-strip ${visible ? 'visible' : ''}`} aria-hidden={!visible}>
       {showSearch ? (
-        <div className="mcs-search">
-          <span className="mcs-search-icon"><IconeBusca /></span>
+        <div className="mcs-search" ref={field.wrapRef}>
+          <span className="mcs-search-icon" aria-hidden="true"><IconeBusca /></span>
           <input
-            ref={inputRef}
+            {...field.inputProps}
+            autoFocus
             className="mcs-search-input"
             type="text"
             placeholder="Busque um item na loja"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            aria-label="Buscar na loja"
           />
           <button type="button" className="mcs-search-close" aria-label="Fechar busca" onClick={fecharBusca}>
             <IconeFechar />
           </button>
+          {field.boxVisible && <SearchSuggestions {...field.suggestProps} />}
         </div>
       ) : (
         <>

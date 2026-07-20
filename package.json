@@ -27,6 +27,7 @@
     "test:catalog": "node tests/catalog.golden.mjs",
     "test:catnav": "node tests/catsection.golden.mjs",
     "test:spy": "node tests/scrollspy.golden.mjs",
+    "test:searchtext": "node tests/searchtext.golden.mjs",
     "test:admin-catalog": "node tests/admin-catalog.guard.mjs",
     "test:admin-addons": "node tests/admin-addons.guard.mjs",
     "verify:norm05": "node scripts/norm05-verify.mjs",

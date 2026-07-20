@@ -13,7 +13,7 @@ import { LOGO } from '../../lib/supabase.js';
 import { CategoryNav } from './CategoryNav.jsx';
 import { SearchBar } from '../SearchBar.jsx';
 
-export function StickyBar({ cats, activeId, onSelect, search, setSearch, visible }) {
+export function StickyBar({ cats, activeId, onSelect, search, setSearch, visible, suggestions, onPickCategory, onPickProduct }) {
   return (
     <div className={`enc-stickybar ${visible ? 'visible' : ''}`} aria-hidden={!visible}>
       <div className="enc-stickybar-inner">
@@ -30,6 +30,9 @@ export function StickyBar({ cats, activeId, onSelect, search, setSearch, visible
             search={search}
             setSearch={setSearch}
             placeholder="Busque um item na loja"
+            suggestions={suggestions}
+            onPickCategory={onPickCategory}
+            onPickProduct={onPickProduct}
           />
         </div>
       </div>

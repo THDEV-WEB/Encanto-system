@@ -1,8 +1,8 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useCallback } from 'react';
 import { WHATSAPP, LOGO } from '../lib/supabase.js';
 import { fmt } from '../utils/format.js';
 import { resolverAdicionais, selecionarFonteAdicionais } from '../utils/addons.js';
-import { prodInCat, getProdCatIds } from '../utils/catalog.js';
+import { prodInCat } from '../utils/catalog.js';
 import { catSection } from '../utils/catSection.js';   // REF-UI-CATEGORY-01 Fase 1: fonte unica do id de ancora sec-*
 import { STORAGE_KEYS } from '../constants/storage.js';
 import { STORE_INFO } from '../constants/storeInfo.js';   // REF-CHECKOUT-ADDRESS-01: endereco de retirada (fonte unica)
@@ -23,6 +23,8 @@ import { StickyBar } from '../components/nav/StickyBar.jsx';       // REF-UI-CAT
 import { MobileCatStrip } from '../components/nav/MobileCatStrip.jsx'; // REF-UI-CATEGORY-01 Fase 4: strip de categorias + lupa (mobile)
 import { useStickyReveal } from '../hooks/useStickyReveal.js';     // REF-UI-CATEGORY-01 Fase 3: barra de categorias surge apos rolagem (header nao-sticky)
 import { useCatalogNav } from '../hooks/useCatalogNav.js';         // REF-UI-CATEGORY-01 Fase 4: scroll-spy + rolagem UNICOS (compartilhados)
+import { useSearchSuggestions } from '../hooks/useSearchSuggestions.js'; // REF-UI-SEARCH-01: motor de sugestoes (dados)
+import { useScrollToProduct } from '../hooks/useScrollToProduct.js';     // REF-UI-SEARCH-01: navegacao ate o produto + realce
 import { AddressProvider, useAddress } from '../address/index.js'; // REF-CHECKOUT-ADDRESS-01: fonte unica do endereco (provider)
 import { LazySection } from '../components/ui/LazySection.jsx';
 import { SuccessPage } from '../components/checkout/SuccessPage.jsx';
@@ -85,7 +87,7 @@ function StoreAppContent({ onAdmin }) {
   };
 
   const { cats, src:catSrc }                    = useCategories();
-  const { prods:rawProds, loading, src:prodSrc }= useProducts(null, search);   // REF-UI-CATEGORY-01 Fase 4: selCat aposentado (nav por scroll) -> sempre catalogo completo
+  const { prods:rawProds, loading, src:prodSrc }= useProducts(null, '');   // REF-UI-SEARCH-01: catalogo SEMPRE completo — a busca virou dropdown de sugestoes (nao filtra mais a lista)
   const adicionais = useAdicionais();
 
   const catMap = useMemo(()=>{ const m={}; cats.forEach(c=>{m[c.id]=c;}); return m; },[cats]);
@@ -101,24 +103,26 @@ function StoreAppContent({ onAdmin }) {
      (logo apos o "Categorias v" da pagina) rola para debaixo do header. Durante uma busca ela fica
      visivel de qualquer forma (abriga o campo de busca, que migrou do topo). */
   const sentinelRef = useRef(null);
-  const revealed = useStickyReveal(sentinelRef, !!search);   // booleano: re-sincroniza SO na transicao catalogo<->resultados (nao a cada tecla)
+  const revealed = useStickyReveal(sentinelRef, !!search);   // trigger !!search re-sincroniza a revelacao ao alternar o contexto de busca (nao a cada tecla)
   const stickyVisible = revealed || !!search;
-  /* Durante a BUSCA a barra fica ancorada no topo (top:0) sem ter sido revelada por rolagem. Com o
-     header agora estatico, reservamos a altura da barra num spacer (1o filho de .app, ANTES do header)
-     para ela nao cobrir o header. Depende SO de `search`: na busca a sentinela desmonta e `revealed`
-     acaba falso de qualquer forma, mas `revealed` lagga 1 frame (useEffect) — usar `!!search` reserva o
-     spacer no MESMO commit em que a busca ativa, sem flash do header coberto nem salto. Vale desktop e
-     mobile (altura do spacer por breakpoint). */
-  const dockedAtTop = !!search;
+  /* REF-UI-SEARCH-01: o catalogo (e a sentinela) agora ficam SEMPRE montados — a busca virou dropdown,
+     nao troca mais a tela. Com o header estatico, o spacer (1o filho de .app, ANTES do header) so precisa
+     reservar a altura da barra quando ela esta ancorada no topo SEM ter sido revelada por rolagem (busca
+     ativa perto do inicio). Se ja rolado/revelado, o header ja saiu (nada a cobrir) e inserir/remover o
+     spacer causaria um SALTO de conteudo em navegadores sem scroll-anchoring (Safari) — por isso o gate
+     `&& !revealed`. Como a sentinela agora persiste, `revealed` e preciso (sem lag). Altura por breakpoint. */
+  const dockedAtTop = !!search && !revealed;
   /* REF-UI-CATEGORY-01 Fase 4: scroll-spy + rolagem suave UNICOS (uma so instancia), compartilhados
      pelas 3 superficies (dropdown do topo, barra sticky do desktop, strip do mobile) via props. */
   const { activeId, irParaCategoria } = useCatalogNav(catsVisiveis);
-  const prods  = useMemo(()=>rawProds.map(p=>({
-    ...p,
-    _catNome: catMap[p.categoria_id]?.nome||'',
-    /* _catIds: array de todas as categorias do produto (para uso interno) */
-    _catIds: getProdCatIds(p),
-  })),[rawProds,catMap]);
+  /* REF-UI-SEARCH-01: motor de sugestoes (dados) + navegacao ate o produto. As sugestoes derivam do
+     catalogo ja carregado (rawProds) e das categorias VISIVEIS (as que realmente renderizam secao) —
+     mesma fonte que o catalogo desenha, sem estado paralelo. Escolher uma categoria rola ate a secao
+     (irParaCategoria) e um produto rola ate o card + realce (scrollToProduct). */
+  const suggestions = useSearchSuggestions(search, rawProds, catsVisiveis);
+  const scrollToProduct = useScrollToProduct();
+  const onPickCategoria = useCallback((c) => irParaCategoria(c.cat), [irParaCategoria]);
+  const onPickProduto   = useCallback((p) => scrollToProduct(p.prod.id, p.secId), [scrollToProduct]);
 
   if (page==='checkout') return <CheckoutPage cart={cart} deliveryMode={deliveryMode} onBack={()=>setPage('home')} onSuccess={msg=>{setWaMsg(msg);setPage('success');}}/>;
   if (page==='success')  return <SuccessPage  msg={waMsg} cart={cart} onBack={()=>setPage('home')}/>;
@@ -212,6 +216,9 @@ function StoreAppContent({ onAdmin }) {
         search={search}
         setSearch={setSearch}
         visible={stickyVisible}
+        suggestions={suggestions}
+        onPickCategory={onPickCategoria}
+        onPickProduct={onPickProduto}
       />
       {/* ── STRIP MOBILE (celular) — REF-UI-CATEGORY-01 Fase 4: abas horizontais + lupa, surge ao rolar.
           Fixed; oculto em >=768px (la e a barra do desktop). ── */}
@@ -222,6 +229,9 @@ function StoreAppContent({ onAdmin }) {
         search={search}
         setSearch={setSearch}
         visible={stickyVisible}
+        suggestions={suggestions}
+        onPickCategory={onPickCategoria}
+        onPickProduct={onPickProduto}
       />
       {/* ── BARRA DE ENTREGA/RETIRADA (branca, abaixo do header) — REF-UX-02 / REF-UI-HEADER-02 ──
           Extraida para <DeliveryBar/> (apresentacional). deliveryMode segue aqui (vai ao checkout); o
@@ -286,8 +296,9 @@ function StoreAppContent({ onAdmin }) {
           na chrome que surge ao rolar: barra sticky (desktop) e strip + lupa (mobile). O topo fica so
           o banner/hero (D4) em todos os tamanhos. */}
 
-      {!search&&(
-        <>
+      {/* REF-UI-SEARCH-01: catalogo SEMPRE renderizado (o modelo de sugestoes substituiu a pagina de
+          resultados). A busca abre um dropdown na barra/strip e navega ate o produto/secao aqui mesmo. */}
+      <>
           <div className="hero">
             {/* Badge estrelas + botão fidelidade lado a lado */}
             <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginBottom:12,position:'relative',zIndex:1}}>
@@ -372,23 +383,6 @@ function StoreAppContent({ onAdmin }) {
             );
           }))}
         </>
-      )}
-
-      {/* ── RESULTADOS DE BUSCA ── */}
-      {search&&(
-        <div className="products-section" style={{paddingTop:20}}>
-          <div className="section-title">🔍 Resultados para "{search}"</div>
-          {loading?<Spinner/>:prods.length===0?(
-            <div className="empty-state"><div className="icon">🔍</div><p>Nenhum produto encontrado</p></div>
-          ):(
-            <div className="products-grid">
-              {prods.map(p=><ProductCard key={p.id} prod={p} catNome={p._catNome} onOpen={setModal}/>)}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* REF-UI-CATEGORY-01 Fase 4: caminho de FILTRO por selCat REMOVIDO (navegacao agora e 100% por scroll). */}
 
       <div style={{padding:'32px 16px',textAlign:'center',color:'var(--gray-400)',fontSize:13}}>
         <p>Plataforma desenvolvida por TH System</p>

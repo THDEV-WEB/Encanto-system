@@ -1,12 +1,21 @@
-/* ── SearchBar: campo de busca (somente-busca) ──────────────────────────────
-   REF-UI-CATEGORY-01 Fase 4: o dropdown de categorias que existia aqui foi APOSENTADO junto com o
-   modelo de filtro por selCat — a navegacao de categorias agora e 100% por scroll (CategoryNav /
-   MobileCatStrip). Este componente ficou reduzido ao essencial: input nativo + limpar + icone SVG.
-   Usado na barra sticky do desktop (StickyBar). Placeholder configuravel por prop. */
-export function SearchBar({ search, setSearch, placeholder = 'Buscar açaí, marmitas, combos...' }) {
+/* ── SearchBar: campo de busca + sugestoes (REF-UI-SEARCH-01) ───────────────────────────────
+   REF-UI-CATEGORY-01 F4 reduziu ao input; REF-UI-SEARCH-01 acopla a busca inteligente: enquanto digita,
+   um dropdown de sugestoes agrupadas surge abaixo do input (via useSearchField + SearchSuggestions).
+   Presentacional/fino: todo o comportamento vive nos hooks; aqui so o input + o dropdown. Usado na barra
+   sticky do desktop/tablet (StickyBar). O input recebe os props prontos de useSearchField. */
+import { useSearchField } from '../hooks/useSearchField.js';
+import { SearchSuggestions } from './search/SearchSuggestions.jsx';
+
+const VAZIO = { categorias: [], produtos: [], total: 0, tooShort: true };
+
+export function SearchBar({ search, setSearch, placeholder = 'Buscar açaí, marmitas, combos...',
+  suggestions = VAZIO, onPickCategory = () => {}, onPickProduct = () => {} }) {
+  const { inputProps, boxVisible, suggestProps, wrapRef, limpar } = useSearchField({
+    query: search, setQuery: setSearch, suggestions, onPickCategory, onPickProduct,
+  });
   return (
     <div className="search-bar">
-      <div className="search-wrapper">
+      <div className="search-wrapper" ref={wrapRef}>
         <div className="search-inner">
           <span className="search-icon" aria-hidden="true">
             {/* icone vetorial (estilo Lucide "search") — sem emoji, sem imagem; stroke = currentColor */}
@@ -16,18 +25,19 @@ export function SearchBar({ search, setSearch, placeholder = 'Buscar açaí, mar
           </span>
           <input
             placeholder={placeholder}
-            value={search}
-            onChange={e=>setSearch(e.target.value)}
+            aria-label="Buscar na loja"
+            {...inputProps}
           />
           {search && (
             <button
-              onClick={()=>setSearch('')}
+              onClick={limpar}
               aria-label="Limpar busca"
               style={{color:'var(--gray-400)',fontSize:18,background:'none',border:'none',cursor:'pointer'}}>
               ✕
             </button>
           )}
         </div>
+        {boxVisible && <SearchSuggestions {...suggestProps} />}
       </div>
     </div>
   );
