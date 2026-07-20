@@ -555,28 +555,31 @@ img{display:block;max-width:100%}
    a paleta quente do projeto. `.store-chip--stars` e informativo; `.store-chip--loyalty` e um <button>
    (mesma acao do botao antigo) com realce dourado `.store-chip--reward` quando ha recompensa. */
 .store-chips{
-  /* REF-UI-TOPBAR-02: os 2 chips = UMA composicao. align-items:stretch -> mesma altura; conteudo de cada
-     um centralizado (mesmo eixo). Nenhum chip cresce (flex-grow 0) -> cada um so a largura do conteudo.
-     16px horizontais em TODOS os tamanhos -> a coluna dos chips = a do "Categorias" e a da barra roxa do
-     titulo (mobile=16px; desktop=32px do .app-content + 16px). padding-bottom = "respiro" ate o proximo
-     bloco (desktop: "Categorias"; mobile, onde .catnav e display:none: direto a 1a secao). */
+  /* REF-UI-TOPBAR-02/03: os 2 chips = UMA composicao. align-items:stretch -> mesma altura; conteudo de
+     cada um centralizado (mesmo eixo). Nenhum chip cresce (flex-grow 0) -> cada um so a largura do
+     conteudo. 16px horizontais em TODOS os tamanhos -> a coluna dos chips = a do "Categorias" e a da barra
+     roxa do titulo (mobile=16px; desktop=32px do .app-content + 16px). padding-bottom = "respiro" ate o
+     proximo bloco (desktop: "Categorias"; mobile, onde .catnav e display:none: direto a 1a secao). */
   display:flex;flex-wrap:wrap;align-items:stretch;gap:8px;
-  padding:12px 16px 8px;
+  padding:10px 16px 6px;
 }
 .store-chip{
-  display:inline-flex;align-items:center;justify-content:center;gap:7px;
-  padding:7px 13px;border-radius:999px;border:1px solid transparent;
-  font-family:var(--font-body);font-size:12.5px;font-weight:700;
-  letter-spacing:.2px;line-height:1;white-space:nowrap;
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  padding:6px 12px;border-radius:999px;border:1px solid transparent;
+  font-family:var(--font-body);font-size:12px;font-weight:700;
+  letter-spacing:.1px;line-height:1;white-space:nowrap;
 }
 .store-chip-label{line-height:1}
-/* estrelas EMPILHADAS sobre o texto (compacto na horizontal); cores/tipografia/borda preservadas */
+/* REF-UI-TOPBAR-03: chip de estrelas com layout EMPILHADO (5 estrelas EM CIMA / texto EMBAIXO) — o
+   flex-direction:column atua sobre os 2 filhos SEPARADOS do JSX (.store-chip-stars e .store-chip-label).
+   Estrelas menores + padding lateral curto -> chip bem mais ESTREITO (largura ~ do texto), o que deixa o
+   chip "Programa Fidelidade" ao lado sem quebrar no mobile. Cores/borda preservadas. */
 .store-chip--stars{
-  flex-direction:column;gap:2px;padding:4px 14px;
+  flex-direction:column;gap:3px;padding:5px 12px;
   background:var(--amarelo-pale);color:#7A4E00;border-color:#F3E2B0;
 }
-.store-chip-stars{display:inline-flex;align-items:center;gap:2px}
-.store-chip-stars svg{width:12px;height:12px;fill:var(--amarelo);display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,.12))}
+.store-chip-stars{display:flex;align-items:center;gap:1.5px;line-height:1}
+.store-chip-stars svg{width:11px;height:11px;fill:var(--amarelo);display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,.12))}
 /* fidelidade — acao (preserva o clique do botao antigo do banner) */
 .store-chip--loyalty{
   background:var(--grape-pale);color:var(--grape);border-color:#EBD3E5;cursor:pointer;
@@ -610,7 +613,7 @@ img{display:block;max-width:100%}
    lateral (senao voltaria a 32px e desalinharia da barra roxa, que tem margin-left:16px inline). Top
    curto; o "respiro" acima vem do padding-bottom dos chips; a 1a secao tem paddingTop reduzido em
    StoreApp. NB: em <768px .catnav e display:none (o "respiro" ate a 1a secao vem so dos chips). */
-.catnav{position:relative;z-index:60;padding:4px 16px 4px;transition:opacity .28s ease}
+.catnav{position:relative;z-index:60;padding:2px 16px 2px;transition:opacity .28s ease}
 @media(max-width:767px){.catnav{display:none}}
 /* refino UX: enquanto a barra sticky assume o topo (revealed), o "Categorias" da PAGINA some sem
    reflow (visibility preserva o box -> a sentinela nao se move -> sem loop no scroll-spy). Cross-fade
