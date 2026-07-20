@@ -1,7 +1,9 @@
-/* services/delivery/deliveryEta.js — REF-DELIVERY-01.
+/* services/delivery/deliveryEta.js — REF-DELIVERY-01 (+01a).
    Tempo estimado de ENTREGA (minutos) — FONTE UNICA no Supabase (tabela reutilizada public.settings,
-   chave 'delivery_eta_min'). Leitura publica via get_setting (RPC ja existente); escrita via set_delivery_eta
-   (so ADMIN; valida 10..180 no servidor). Espelha o padrao de businessHours/override.js (store_mode).
+   chave 'delivery_eta_min'). Leitura via get_delivery_eta() e escrita via set_delivery_eta(int) — AMBOS RPC
+   SECURITY DEFINER dedicados (espelham get_store_mode/set_store_mode). NAO usar get_setting no cliente: a
+   RLS de public.settings e TRANCADA, entao get_setting chamado do BROWSER nunca enxerga a linha e devolve o
+   FALLBACK (bug REF-DELIVERY-01a). O leitor DEFINER get_delivery_eta le settings direto (ignora a RLS).
 
    CACHE: apenas EM MEMORIA (modulo/sessao) — SEM localStorage. Evita flash entre consumidores sem criar uma
    fonte paralela nova (o Supabase segue sendo a unica fonte de verdade). Quando o admin salva, dispara
@@ -12,7 +14,6 @@ export const ETA_EVENT = 'encanto:delivery-eta';
 export const ETA_MIN = 10;
 export const ETA_MAX = 180;
 export const ETA_DEFAULT = 45;
-const CHAVE = 'delivery_eta_min';
 
 let cache = ETA_DEFAULT;   // cache em memoria (NAO e a fonte de verdade; reconciliado por sincronizarEta)
 
@@ -27,13 +28,13 @@ let geracao = 0;
 /* Leitura SINCRONA do cache — usada pelo hook p/ pintar na hora, antes do fetch autoritativo resolver. */
 export function lerEtaCache() { return cache; }
 
-/* Le o valor OFICIAL no Supabase (get_setting) e atualiza o cache. Em offline/erro, devolve o cache atual.
-   So aplica ao cache se nenhuma escrita ocorreu desde o inicio desta leitura. */
+/* Le o valor OFICIAL no Supabase (get_delivery_eta, SECURITY DEFINER) e atualiza o cache. Em offline/erro,
+   devolve o cache atual. So aplica ao cache se nenhuma escrita ocorreu desde o inicio desta leitura. */
 export async function sincronizarEta() {
   if (!db) return cache;
   const gen = geracao;
   try {
-    const { data, error } = await db.rpc('get_setting', { p_chave: CHAVE, p_default: String(ETA_DEFAULT) });
+    const { data, error } = await db.rpc('get_delivery_eta');
     if (error) return cache;
     const n = parseInt(data, 10);
     const oficial = valido(n) ? n : cache;
