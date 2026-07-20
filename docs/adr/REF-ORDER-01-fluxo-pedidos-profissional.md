@@ -107,6 +107,18 @@ Ao ganhar acesso SQL, a introspeção do banco real corrigiu 3 pressupostos e **
 
 A migration final faz só: `pronto` no CHECK + `notification_outbox` (fila) + `enc_enqueue_notification` + `enc_claim_notifications` (claim atômico) + **trigger só de notificação** (`trg_enc_order_notify`, sem histórico) + view de métricas. Aplicada e verificada (enqueue testado com rollback). A Edge Function permanece no repo como worker de produção alternativo.
 
+### 3.2 Sender real na base — REF-ORDER-01b (pg_net + pg_cron + Vault)
+
+Como o ambiente de trabalho aplica SQL mas não faz deploy de Edge Function, o **envio real** foi implementado **na própria base** (o que também elimina qualquer dependência de servidor externo ligado):
+
+- `enc_render_message(status, vars)` — render dos templates em SQL (**espelho** de `messageTemplates.js`; o preview do admin usa o `.js`).
+- `enc_normalize_phone_br(text)` — espelho de `WhatsAppService.normalizePhoneBR`.
+- `enc_dispatch_notifications()` — **(1)** confirma os `sending` já respondidos (lê `net._http_response` → `sent`/`failed`); **(2)** faz o claim atômico dos `pending`, renderiza e envia via `net.http_post` para a Cloud API, guardando `net_request_id`.
+- **pg_cron** `enc-dispatch-whatsapp` roda a cada **30s** (ativo). Sem os secrets, o dispatcher é **no-op** (`whatsapp_not_configured`) e a fila fica `pending` — nada perdido.
+- **Credenciais isoladas no Vault** do Supabase: `whatsapp_token`, `whatsapp_phone_number_id` (+ opcional `whatsapp_api_version`). É o único ponto onde entram as credenciais da Meta.
+
+Fluxo vivo: muda status → `trg_enc_order_notify` enfileira → cron drena → Cloud API → cliente recebe → confirmação grava `sent`/`failed` (visível no admin em 💬 Mensagens). Falta só inserir os 2 secrets do Vault (credenciais da Meta).
+
 ## 4. Migration (aplicada via Management API; reaplicável no SQL editor)
 
 `REF-ORDER-01-order-ops.sql` — idempotente, reversível, 1 transação:
