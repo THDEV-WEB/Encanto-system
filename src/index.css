@@ -548,44 +548,46 @@ img{display:block;max-width:100%}
 .search-icon{color:var(--gray-400);display:flex;align-items:center;flex-shrink:0}
 .search-icon svg{width:18px;height:18px;display:block}
 
-/* ---- HERO BANNER ---- */
-.hero{
-  /* REF-UI-HERO-02: card premium com a FOTO do banner (public/hero-banner.jpg).
-     Camadas de background (topo->base): (1) overlay roxo p/ manter os textos da ESQUERDA legiveis;
-     (2) a foto, ancorada a direita p/ preservar os produtos e o espaco negativo a esquerda;
-     (3) o gradiente roxo original como FALLBACK caso a imagem falte/nao carregue.
-     Nao altera estrutura HTML, altura, responsividade nem posicao do hero no fluxo. */
-  background:
-    linear-gradient(90deg, rgba(107,31,93,.88) 0%, rgba(107,31,93,.64) 30%, rgba(107,31,93,.20) 52%, rgba(107,31,93,0) 72%),
-    url('/hero-banner.jpg') center right / cover no-repeat,
-    linear-gradient(135deg,var(--acai) 0%,var(--grape) 60%,var(--acai-mid) 100%);
-  padding:24px 16px 28px;color:var(--white);position:relative;overflow:hidden;
-  border-radius:20px;                                  /* cantos generosos, sem exagero */
-  margin:0 12px;                                        /* card: inset horizontal (nao muda posicao/altura) */
-  box-shadow:0 12px 28px -14px rgba(107,31,93,.55);    /* elevacao premium sutil */
+/* ---- STORE HIGHLIGHTS (REF-UI-TOPBAR-01) — chips de "quick info" que SUBSTITUEM o banner .hero ----
+   O antigo banner promocional (foto + titulo + subtitulo + fundo roxo) saiu para o catalogo aparecer mais
+   cedo. Sobram apenas os DOIS diferenciais, agora como chips leves e horizontais (idioma dos apps de
+   delivery): pouca altura, cantos arredondados (pill, como a antiga delivery-badge), alta legibilidade e
+   a paleta quente do projeto. `.store-chip--stars` e informativo; `.store-chip--loyalty` e um <button>
+   (mesma acao do botao antigo) com realce dourado `.store-chip--reward` quando ha recompensa. */
+.store-chips{
+  display:flex;flex-wrap:wrap;align-items:center;gap:8px;
+  /* padding-bottom carrega o "respiro" ate o proximo bloco: no desktop e o "Categorias" (.catnav),
+     no mobile (onde .catnav e display:none) e direto a 1a secao — assim o gap fica igual nos dois. */
+  padding:14px 16px 10px;              /* alinha com o padding lateral do catalogo (16px) */
 }
-/* REF-UI-HERO-02: circulos decorativos ocultos — poluiam a foto do banner. */
-.hero::before,.hero::after{content:none;display:none}
-/* ---- DELIVERY BADGE (substitui hero-tag) ---- */
-.hero h1{font-family:var(--font-head);font-size:24px;font-weight:700;margin-bottom:6px;position:relative;z-index:1;line-height:1.3;letter-spacing:0}
-.hero p{font-size:14px;color:rgba(255,255,255,.78);position:relative;z-index:1;font-weight:400;line-height:1.5}
-.delivery-badge{
-  display:inline-flex;flex-direction:column;align-items:center;gap:4px;
-  background:var(--orange);color:var(--white);
-  padding:8px 20px;border-radius:999px;margin-bottom:12px;
-  position:relative;z-index:1;
+@media(min-width:1024px){.store-chips{padding:16px 0 10px}}  /* no desktop o .app-content ja da o inset lateral (32px) */
+.store-chip{
+  display:inline-flex;align-items:center;gap:7px;
+  padding:7px 13px;border-radius:999px;border:1px solid transparent;
+  font-family:var(--font-body);font-size:12.5px;font-weight:700;
+  letter-spacing:.2px;line-height:1;white-space:nowrap;
 }
-.delivery-badge-stars{
-  display:flex;align-items:center;gap:3px;
+.store-chip-label{line-height:1}
+/* estrelas — sinal de qualidade/entrega (informativo) */
+.store-chip--stars{background:var(--amarelo-pale);color:#7A4E00;border-color:#F3E2B0}
+.store-chip-stars{display:inline-flex;align-items:center;gap:2px}
+.store-chip-stars svg{width:13px;height:13px;fill:var(--amarelo);display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,.12))}
+/* fidelidade — acao (preserva o clique do botao antigo do banner) */
+.store-chip--loyalty{
+  background:var(--grape-pale);color:var(--grape);border-color:#EBD3E5;cursor:pointer;
+  transition:border-color .18s,box-shadow .18s,transform .12s;
 }
-.delivery-badge-stars svg{
-  width:16px;height:16px;fill:#FFD700;stroke:#FFD700;stroke-width:0;
-  filter:drop-shadow(0 1px 2px rgba(0,0,0,.18));
-}
-.delivery-badge-text{
-  font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;
-  line-height:1;
-}
+.store-chip--loyalty .store-chip-ico{font-size:14px;line-height:1}
+.store-chip--loyalty:hover{border-color:var(--grape-light);box-shadow:0 2px 10px -6px rgba(166,39,134,.4)}
+.store-chip--loyalty:active{transform:translateY(1px)}
+/* elemento NOVO -> anel de foco de teclado bem visivel (grape solido com folga branca): legivel tanto no
+   chip grape-pale quanto no estado dourado de recompensa (>=3:1 nos dois). Os seletores mais antigos do
+   topo (.catnav-trigger/.delivery-mode-dropdown) seguem a convencao antiga, mais fraca — um passe de
+   acessibilidade app-wide fica para depois; aqui melhoro so o botao que este refino introduz. */
+.store-chip--loyalty:focus-visible{outline:none;box-shadow:0 0 0 2px var(--white),0 0 0 4px var(--grape)}
+/* recompensa disponivel — realce dourado (mesma semantica do estado antigo do banner) */
+.store-chip--reward{background:#FBBF24;color:#78350F;border-color:#F59E0B}
+.store-chip--reward:hover{border-color:#D97706;box-shadow:0 2px 10px -6px rgba(217,119,6,.5)}
 
 /* ---- TITULO DE SECAO (usado nos resultados de busca) ---- */
 .section-title{
@@ -597,9 +599,12 @@ img{display:block;max-width:100%}
 /* ---- CATEGORY NAV (REF-UI-CATEGORY-01 Fase 2) — seletor "Categorias v" desktop/tablet ----
    Substitui a grade de chips. Navegacao por scroll + scroll-spy. Texto puro, identidade Encanto.
    MOBILE (<768px): oculto — o strip horizontal chega na Fase 4 (topo mobile fica so o banner). */
-.catnav{position:relative;z-index:60;padding:20px 16px 6px;transition:opacity .28s ease}
+/* REF-UI-TOPBAR-01: "Categorias" e a PORTA DE ENTRADA do cardapio — quase colado na 1a secao abaixo
+   (top curto; o "respiro" acima vem do padding-bottom dos chips; a 1a secao tem paddingTop reduzido em
+   StoreApp). NB: em <768px .catnav e display:none (o "respiro" ate a 1a secao vem so dos chips). */
+.catnav{position:relative;z-index:60;padding:4px 16px 4px;transition:opacity .28s ease}
 @media(max-width:767px){.catnav{display:none}}
-@media(min-width:1024px){.catnav{padding:22px 0 6px}}
+@media(min-width:1024px){.catnav{padding:6px 0 4px}}
 /* refino UX: enquanto a barra sticky assume o topo (revealed), o "Categorias" da PAGINA some sem
    reflow (visibility preserva o box -> a sentinela nao se move -> sem loop no scroll-spy). Cross-fade
    com a barra: nunca ha DOIS "Categorias" visiveis. So >=768px (no mobile .catnav ja e display:none). */

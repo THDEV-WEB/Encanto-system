@@ -34,6 +34,7 @@ const ProductModalBoundary = (await import('../src/components/ProductModal/Produ
 const CartSidebar     = (await import('../src/components/CartSidebar.jsx')).CartSidebar;
 const DeliveryBar     = (await import('../src/components/DeliveryBar.jsx')).DeliveryBar;   // REF-UI-HEADER-02
 const SearchSuggestions = (await import('../src/components/search/SearchSuggestions.jsx')).SearchSuggestions;   // REF-UI-SEARCH-01
+const StoreHighlights = (await import('../src/components/StoreHighlights.jsx')).StoreHighlights;   // REF-UI-TOPBAR-01
 
 /* Casos: props FIXAS + snapshot CONGELADO (Onda 4 acrescenta as folhas visuais AQUI) */
 const CASES = [
@@ -125,6 +126,18 @@ const CASES = [
       onHover: () => {}, onPickCategory: () => {}, onPickProduct: () => {}, onLimpar: () => {},
     }),
     snap: '<div class="enc-suggest" role="listbox" aria-label="Sugestões de busca"><div class="enc-suggest-empty"><div class="enc-suggest-empty-ico" aria-hidden="true">🔍</div><p class="enc-suggest-empty-msg">Nenhum produto encontrado.</p><button type="button" class="enc-suggest-empty-btn">Limpar busca</button></div></div>',
+  },
+  {
+    /* REF-UI-TOPBAR-01: chips de destaque (substituem o banner .hero) — estado normal */
+    nome: 'StoreHighlights(normal)',
+    el: () => h(StoreHighlights, { loyaltyReward: false, onLoyalty: () => {} }),
+    snap: '<div class="store-chips"><div class="store-chip store-chip--stars"><span class="store-chip-stars" aria-hidden="true"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg></span><span class="store-chip-label">Entrega Rápida</span></div><button type="button" class="store-chip store-chip--loyalty"><span class="store-chip-ico" aria-hidden="true">🎁</span><span class="store-chip-label">Programa Fidelidade</span></button></div>',
+  },
+  {
+    /* REF-UI-TOPBAR-01: estado de recompensa (realce dourado + texto) — preserva a semantica do banner */
+    nome: 'StoreHighlights(recompensa)',
+    el: () => h(StoreHighlights, { loyaltyReward: true, onLoyalty: () => {} }),
+    snap: '<div class="store-chips"><div class="store-chip store-chip--stars"><span class="store-chip-stars" aria-hidden="true"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg></span><span class="store-chip-label">Entrega Rápida</span></div><button type="button" class="store-chip store-chip--loyalty store-chip--reward"><span class="store-chip-ico" aria-hidden="true">🎁</span><span class="store-chip-label">Recompensa disponível!</span></button></div>',
   },
 ];
 

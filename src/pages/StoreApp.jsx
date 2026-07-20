@@ -18,6 +18,7 @@ import { ProductCard } from '../components/ProductCard.jsx';
 import { ProductModal } from '../components/ProductModal/index.jsx';
 import { CartSidebar } from '../components/CartSidebar.jsx';
 import { DeliveryBar } from '../components/DeliveryBar.jsx';       // REF-UI-HEADER-02: barra Entrega/Retirada extraida (seletor + ETA + endereco-link)
+import { StoreHighlights } from '../components/StoreHighlights.jsx'; // REF-UI-TOPBAR-01: chips de destaque (substituem o banner .hero)
 import { CategoryNav } from '../components/nav/CategoryNav.jsx';   // REF-UI-CATEGORY-01 Fase 2: seletor "Categorias v" (desktop/tablet)
 import { StickyBar } from '../components/nav/StickyBar.jsx';       // REF-UI-CATEGORY-01 Fase 3: barra sticky do desktop/tablet
 import { MobileCatStrip } from '../components/nav/MobileCatStrip.jsx'; // REF-UI-CATEGORY-01 Fase 4: strip de categorias + lupa (mobile)
@@ -293,43 +294,19 @@ function StoreAppContent({ onAdmin }) {
 
       <div className="app-content">
       {/* REF-UI-CATEGORY-01 Fase 4: a busca do topo saiu tambem do mobile. Agora a navegacao/busca vive
-          na chrome que surge ao rolar: barra sticky (desktop) e strip + lupa (mobile). O topo fica so
-          o banner/hero (D4) em todos os tamanhos. */}
+          na chrome que surge ao rolar: barra sticky (desktop) e strip + lupa (mobile).
+          REF-UI-TOPBAR-01: o topo deixou de ter banner promocional — sobram so os chips de destaque
+          (StoreHighlights) e, logo abaixo, "Categorias" como porta de entrada do cardapio. */}
 
       {/* REF-UI-SEARCH-01: catalogo SEMPRE renderizado (o modelo de sugestoes substituiu a pagina de
           resultados). A busca abre um dropdown na barra/strip e navega ate o produto/secao aqui mesmo. */}
       <>
-          <div className="hero">
-            {/* Badge estrelas + botão fidelidade lado a lado */}
-            <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginBottom:12,position:'relative',zIndex:1}}>
-              <div className="delivery-badge" style={{marginBottom:0}}>
-                <div className="delivery-badge-stars">
-                  {[1,2,3,4,5].map(i=>(
-                    <svg key={i} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                    </svg>
-                  ))}
-                </div>
-                <span className="delivery-badge-text">Entrega rápida</span>
-              </div>
-              <button
-                onClick={()=>alert('Em breve teremos novidades para nossos clientes mais fiéis! ❤️')}
-                style={{
-                  display:'inline-flex',alignItems:'center',gap:6,
-                  background:loyaltyReward?'#FBBF24':'rgba(255,255,255,.18)',
-                  border:'1.5px solid '+(loyaltyReward?'#F59E0B':'rgba(255,255,255,.35)'),
-                  color:loyaltyReward?'#78350F':'#fff',
-                  borderRadius:999,padding:'5px 14px',
-                  fontSize:12,fontWeight:700,cursor:'pointer',
-                  fontFamily:'var(--font-body)',letterSpacing:'.2px',
-                  transition:'all .2s',whiteSpace:'nowrap',
-                }}>
-                {loyaltyReward?'🎁 Recompensa disponível!':'🎁 Programa Fidelidade'}
-              </button>
-            </div>
-            <h1>Peça seu açaí ou marmita favorita</h1>
-            <p>Entrega rápida • Ingredientes selecionados • Peça em poucos minutos</p>
-          </div>
+          {/* REF-UI-TOPBAR-01: chips leves com os diferenciais da loja — preservam a acao do antigo botao
+              de fidelidade (inclusive o estado de recompensa). Sem banner/foto/titulo. */}
+          <StoreHighlights
+            loyaltyReward={loyaltyReward}
+            onLoyalty={()=>alert('Em breve teremos novidades para nossos clientes mais fiéis! ❤️')}
+          />
 
           {/* Categorias — navegacao por scroll + scroll-spy (REF-UI-CATEGORY-01 Fase 2) substitui a grade de chips.
               refino UX: quando a barra sticky assume o topo (revealed), este "Categorias" da pagina some
@@ -368,6 +345,11 @@ function StoreAppContent({ onAdmin }) {
                 background:'linear-gradient(120deg,#15803D 0%,#22C55E 100%)',
                 boxShadow:'0 4px 12px rgba(21,128,61,.25)'};
             }
+
+            /* REF-UI-TOPBAR-01: a 1a secao renderizada "cola" em "Categorias" (porta de entrada do
+               cardapio) — paddingTop curto SO nela; as demais mantem o ritmo normal entre secoes.
+               scrollMarginTop preservado (offset de navegacao com a barra sticky). */
+            if (cat.id === catsVisiveis[0]?.id) sectionStyle = { ...sectionStyle, paddingTop:6 };
 
             return (
               <LazySection key={cat.id} id={secId} style={sectionStyle}>
