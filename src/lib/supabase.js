@@ -3,14 +3,13 @@
    Regra-trava: createClient ÚNICO (nunca repetir — senão 2 sessões auth); modo degradado db=null preservado.
    `export let db` = binding vivo: o try/catch reatribui no load do módulo; importadores enxergam o valor final. */
 import { createClient } from '@supabase/supabase-js';
-import { ENCANTO_LOGO } from '../logo.js';
 
 /* -- Config (via variaveis de ambiente VITE_*) -- */
 export const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
 export const SUPA_KEY = import.meta.env.VITE_SUPABASE_KEY;
 export const WHATSAPP = import.meta.env.VITE_WHATSAPP || '5538992203620';
 export const RPC_TIMEOUT = Number(import.meta.env.VITE_RPC_TIMEOUT) || 12000; /* ms; configurável, fallback seguro */
-export const LOGO     = ENCANTO_LOGO || '';
+export const LOGO     = '/logo.jpg'; /* REF-AUDIT-01: era base64 em logo.js (inflava o bundle JS ~46KB) -> arquivo em /public, cacheavel */
 
 /* -- Cliente Supabase -- */
 export let db = null;
