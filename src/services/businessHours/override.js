@@ -30,24 +30,38 @@ let geracao = 0;
    fetch autoritativo resolver. Nunca e a fonte de verdade; e reconciliada por sincronizarModo(). */
 export function lerModoCache() { return lerCache(); }
 
-/* Busca o modo OFICIAL no Supabase (get_store_mode) e atualiza o cache. Retorna o modo; em offline/erro,
-   devolve o cache atual (degradacao graciosa). So aplica se nenhuma escrita ocorreu desde o dispatch. */
-export async function sincronizarModo() {
-  if (!db) return lerCache();
-  const gen = geracao;
+/* Le o modo OFICIAL no servidor (get_store_mode). Sucesso -> modo normalizado; erro/offline -> null.
+   NAO cai no cache aqui de proposito: quem chama decide o que fazer com a incerteza. E isto que torna a
+   reconciliacao de definirModo TRUTHFUL — um cache contaminado pela pintura otimista nunca vira "sucesso". */
+async function lerModoServidor() {
+  if (!db) return null;
   try {
     const { data, error } = await db.rpc('get_store_mode');
-    if (error || data == null) return lerCache();
-    const modo = normalizar(data);
-    if (geracao === gen && modo !== lerCache()) { gravarCache(modo); notificar(); }
-    return modo;
-  } catch { return lerCache(); }
+    if (error || data == null) return null;
+    return normalizar(data);
+  } catch { return null; }
 }
 
-/* Grava o modo no Supabase (set_store_mode) — FONTE OFICIAL, global p/ todos os dispositivos. Otimista:
-   atualiza o cache + notifica na hora. Reconciliacao robusta: se a chamada falhar, LE o valor real do
-   servidor; se o servidor ja tem 'alvo', a escrita valeu (resposta perdida) -> ok:true (sem falso erro).
-   Se falhou de fato, adota o valor oficial e devolve o erro. So ADMIN passa (is_admin() no servidor). */
+/* Busca o modo OFICIAL no Supabase e atualiza o cache. Retorna o modo; em offline/erro, devolve o cache
+   atual (degradacao graciosa — aqui cair no cache e ok, pois so PINTA; nao decide sucesso de escrita).
+   So aplica se nenhuma escrita ocorreu desde o dispatch. */
+export async function sincronizarModo() {
+  const gen = geracao;
+  const modo = await lerModoServidor();
+  if (modo == null) return lerCache();
+  if (geracao === gen && modo !== lerCache()) { gravarCache(modo); notificar(); }
+  return modo;
+}
+
+/* Grava o modo no Supabase (set_store_mode) — FONTE OFICIAL, global p/ todos os dispositivos. Pinta otimista
+   (reflete localmente na hora), mas o VEREDITO de sucesso depende SO da confirmacao do servidor:
+     - RPC sem erro (RETURN v_mode) -> ok:true (servidor confirmou).
+     - RPC com erro/resposta perdida -> reconciliarFalha LE o valor REAL do servidor (lerModoServidor, que
+       NAO cai no cache); ok:true SO se o servidor realmente ja tem 'alvo' (resposta perdida apos commit).
+   BUG corrigido (auditoria REF-AUDIT-01): antes a reconciliacao usava sincronizarModo, que no erro devolvia
+   o CACHE — ja contaminado pela pintura otimista (=alvo) -> falso ok:true numa queda TOTAL de rede (a RPC e
+   a leitura falhando juntas). Mesmo padrao ja corrigido em services/delivery/deliveryEta.js. So ADMIN passa
+   (is_admin() no servidor). */
 export async function definirModo(modo) {
   const alvo = normalizar(modo);
   const anterior = lerCache();
@@ -56,17 +70,26 @@ export async function definirModo(modo) {
   if (!db) { gravarCache(anterior); notificar(); return { ok: false, modo: anterior, error: 'offline' }; }
   try {
     const { data, error } = await db.rpc('set_store_mode', { p_mode: alvo });
-    if (error) {
-      const oficial = await sincronizarModo();             // reconcilia com a verdade do servidor
-      if (oficial === alvo) return { ok: true, modo: alvo }; // commitou apesar do erro de resposta
-      return { ok: false, modo: oficial, error: error.message || 'falha ao salvar' };
-    }
-    const salvo = normalizar(data ?? alvo);
+    if (error) return reconciliarFalha(alvo, anterior, gen, error.message);
+    const salvo = normalizar(data ?? alvo);                // servidor CONFIRMOU (RETURN v_mode)
     if (geracao === gen && salvo !== lerCache()) { gravarCache(salvo); notificar(); } // so aplica se ninguem escreveu depois
     return { ok: true, modo: salvo };
   } catch (e) {
-    const oficial = await sincronizarModo();               // resposta perdida? adota o valor REAL do servidor
-    if (oficial === alvo) return { ok: true, modo: alvo };  // commitou apesar da resposta perdida (sem falso erro)
-    return { ok: false, modo: oficial, error: e?.message || 'falha ao salvar' };
+    return reconciliarFalha(alvo, anterior, gen, e?.message);
   }
+}
+
+/* Reconciliacao TRUTHFUL apos a RPC nao confirmar (erro ou resposta perdida). LE o valor REAL do servidor
+   SEM cair no cache: so ha sucesso se o servidor REALMENTE ja tem 'alvo'. Senao, reverte a pintura otimista
+   para o melhor valor conhecido (oficial do servidor, ou o estado anterior) e devolve erro honesto — nunca
+   um "salvo" falso. O guard geracao===gen evita sobrescrever uma escrita mais nova. */
+async function reconciliarFalha(alvo, anterior, gen, msg) {
+  const oficial = await lerModoServidor();                 // null se a leitura tambem falhou
+  if (oficial === alvo) {                                  // resposta perdida apos commit: o write valeu
+    if (geracao === gen && lerCache() !== alvo) { gravarCache(alvo); notificar(); }
+    return { ok: true, modo: alvo };
+  }
+  const real = oficial ?? anterior;                        // desconhecido -> reverte ao estado anterior
+  if (geracao === gen && lerCache() !== real) { gravarCache(real); notificar(); }
+  return { ok: false, modo: real, error: msg || 'falha ao salvar' };
 }
