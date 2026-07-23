@@ -204,7 +204,7 @@ function StoreAppContent({ onAdmin }) {
 
         {/* Direita: carrinho + engrenagem + menu ☰ (LOGIN-ARCH-02) */}
         <div className="header-actions">
-          <button className="header-cart-btn" onClick={()=>setCartOpen(true)}>
+          <button className="header-cart-btn" data-testid="header-cart-btn" onClick={()=>setCartOpen(true)}>
             🛒{cart.count>0&&<span> {fmt(cart.total)}</span>}
             {cart.count>0&&<span className="cart-badge">{cart.count}</span>}
           </button>

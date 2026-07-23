@@ -12,7 +12,7 @@ export function CartSidebar({ cart, catMap, onClose, onCheckout }) {
       <div className="cart-sidebar">
         <div className="cart-header">
           <h2>🛒 Seu Pedido</h2>
-          <button className="cart-close" onClick={onClose}>✕</button>
+          <button className="cart-close" data-testid="cart-close" onClick={onClose}>✕</button>
         </div>
         {items.length===0 ? (
           <div className="cart-empty">
@@ -25,7 +25,7 @@ export function CartSidebar({ cart, catMap, onClose, onCheckout }) {
               const unit  = precoUnitario(item);
               const cNome = catMap[item.categoria_id]?.nome||'';
               return (
-                <div key={item._key} className="cart-item">
+                <div key={item._key} className="cart-item" data-prod={item.id}>
                   <div className="cart-item-img">
                     {isHttpUrl(item.imagem_url)
                       ? <img loading="lazy" src={item.imagem_url} alt={item.nome}

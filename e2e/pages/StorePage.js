@@ -20,12 +20,8 @@ export class StorePage {
     return this.page.locator(`[data-prod="${prodId}"]`);
   }
 
-  async addToCartFromCard(prodId) {
-    // botão "+" do card — hoje só existe como `.add-btn` (sem texto/aria); ao introduzir a 1ª spec
-    // de carrinho, promover para data-testid="product-card-add" (ver auditoria, tabela de seletores).
-    await this.productCard(prodId).locator('.add-btn').click();
-  }
-
+  /** O botão "+" do card e o clique no card em si chamam o MESMO onOpen (ProductCard.jsx) — nenhum
+      dos dois adiciona direto ao carrinho; ambos abrem o ProductModal (ver ProductModal.page.js). */
   async openProduct(prodId) {
     await this.productCard(prodId).click();
   }
@@ -66,11 +62,12 @@ export class StorePage {
     await this.page.getByRole('option', { name: nomeCategoria }).click();
   }
 
-  /** TODO(REF-E2E-01 · Onda cart): `.header-cart-btn` não tem aria-label nem data-testid — o texto
-      visível muda conforme o carrinho (🛒 vazio vs 🛒 R$ x,xx). Promover para
-      data-testid="header-cart-btn" no commit que introduzir o 1º spec de carrinho. */
   get cartButton() {
-    return this.page.locator('.header-cart-btn');
+    return this.page.getByTestId('header-cart-btn');
+  }
+
+  get cartBadge() {
+    return this.cartButton.locator('.cart-badge');
   }
 
   async openCart() {

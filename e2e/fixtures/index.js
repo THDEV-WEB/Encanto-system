@@ -9,6 +9,7 @@
    e2e/support/*.js quando essa Onda começar. */
 import { test as base, expect } from '@playwright/test';
 import { StorePage } from '../pages/StorePage.js';
+import { ProductModalPage } from '../pages/ProductModal.page.js';
 import { CartSidebarPage } from '../pages/CartSidebar.page.js';
 import { CheckoutPagePO } from '../pages/CheckoutPage.page.js';
 import { LoginModalPage } from '../pages/LoginModal.page.js';
@@ -18,6 +19,7 @@ import { mockViaCep, mockNominatim } from '../support/network-stubs.js';
 
 export const test = base.extend({
   storePage:      async ({ page }, use) => { await use(new StorePage(page)); },
+  productModal:   async ({ page }, use) => { await use(new ProductModalPage(page)); },
   cartSidebar:    async ({ page }, use) => { await use(new CartSidebarPage(page)); },
   checkoutPage:   async ({ page }, use) => { await use(new CheckoutPagePO(page)); },
   loginModal:     async ({ page }, use) => { await use(new LoginModalPage(page)); },
