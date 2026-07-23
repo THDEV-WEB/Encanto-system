@@ -94,6 +94,18 @@ export class StorePage {
     await this.page.getByRole('button', { name: 'Login', exact: true }).click();
   }
 
+  /** Abre "Minha Conta" (SideDrawer.jsx, item só visível quando logado) — REF-E2E-02 Onda 3. */
+  async abrirMinhaConta() {
+    await this.openMenu();
+    await this.page.getByRole('button', { name: 'Minha Conta' }).click();
+  }
+
+  /** Abre "Meus pedidos" (SideDrawer.jsx, item só visível quando logado) — REF-E2E-02 Onda 3. */
+  async abrirMeusPedidos() {
+    await this.openMenu();
+    await this.page.getByRole('button', { name: 'Meus pedidos' }).click();
+  }
+
   /** Select real com aria-label já existente (DeliveryBar.jsx) — nada a adicionar. "retirada" evita
       a spec de checkout precisar do fluxo de endereço/geocoding (fora do escopo desta Onda). */
   get deliveryModeSelect() {

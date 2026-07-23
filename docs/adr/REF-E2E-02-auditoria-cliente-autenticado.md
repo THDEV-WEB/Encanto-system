@@ -1,6 +1,6 @@
 # REF-E2E-02 — Cobertura E2E do cliente autenticado — Auditoria
 
-**Status:** 🟢 Auditoria aprovada (2026-07-23; cenário de "conta virgem"/1º acesso ficou fora do escopo, por decisão do dono). Onda 1 (mecânica de login, mock) e Onda 2 (sessão real) aplicadas — ver §Divisão em ondas e §Ajustes encontrados na execução (Onda 2).
+**Status:** 🟢 Auditoria aprovada (2026-07-23; cenário de "conta virgem"/1º acesso ficou fora do escopo, por decisão do dono). Ondas 1-3 aplicadas (mecânica de login mock; sessão real; Minha Conta + Meus Pedidos vazio) — ver §Divisão em ondas e §Ajustes encontrados na execução.
 **Depende de:** REF-E2E-01 (infraestrutura Playwright, projeto Supabase dedicado `encanto-e2e`, Page Object Model, fixtures, `support/*`), AUTH-01/LOGIN-ARCH-02.1/02.2 (autenticação híbrida do cliente), REF-CLIENTE-02/03 (Meus Pedidos/Minha Conta), REF-LOYALTY-01/01a (fidelidade + hardening anti-roubo de identidade), REF-CHECKOUT-ADDRESS-01 (endereço fonte única).
 **Relacionado:** preenche as pastas `e2e/tests/auth/` e `e2e/tests/cliente/` já esboçadas (vazias) no diagrama de arquitetura da auditoria da E2E-01, e estende `e2e/tests/checkout/` com o caminho autenticado.
 
@@ -140,20 +140,27 @@ e2e/tests/checkout/
 - `session-restore.spec.js`, `session-persist-reload.spec.js`, `logout.spec.js`, `session-invalida.spec.js`.
 - Só toca o usuário de Auth do fixture — nenhuma tabela de negócio (`customers`/`orders`) ainda.
 
-**Onda 3 — Cliente autenticado: Minha Conta + Fidelidade (leitura) + Meus Pedidos (vazio)**
+**Onda 3 — Cliente autenticado: Minha Conta + Meus Pedidos (vazio)**
 - `cleanup.js` dividido (proposta acima) — pré-requisito desta onda.
 - `MinhaContaPage.page.js` novo.
 - `minha-conta.spec.js` (ver dados, editar e restaurar, trocar e-mail até "enviado").
-- `fidelidade.spec.js` parte 1 (estado zerado exibido corretamente).
 - `meus-pedidos.spec.js` parte 1 (estado vazio).
 - Describes que mutam o fixture rodam serializados; estado do fixture idêntico ao início ao final da run.
+- **Ajuste de escopo (achado ao implementar):** Fidelidade **saiu** desta onda. O chip sempre visível
+  "Programa Fidelidade" (`StoreHighlights.jsx`, home) está hoje ligado a um `alert()` de placeholder,
+  não ao modal interativo real (`showLoyalty` em `StoreApp.jsx`) — esse modal só abre a partir de um
+  banner de progresso que só renderiza quando `loyaltyCount>0`. Ou seja: um cliente logado com **0**
+  selos não tem, hoje, nenhum caminho de UI até o modal real — não é uma limitação do teste, é uma
+  lacuna real da produção atual (fora do escopo desta REF corrigir; o dono foi avisado e optou por só
+  ajustar o escopo dos testes). Fidelidade de verdade só é alcançável depois de existir 1 pedido real
+  (1º selo) — por isso passou inteira para a Onda 4, junto do checkout logado.
 
-**Onda 4 — Checkout autenticado + vínculo pedido↔conta + Meus Pedidos com pedido real + resgate de fidelidade**
+**Onda 4 — Checkout autenticado + vínculo pedido↔conta + Meus Pedidos com pedido real + fidelidade (0→1 selo)**
 - `MeusPedidosPage.page.js` novo.
 - `checkout-logado.spec.js`: sessão real, telefone travado, nome pré-preenchido, pedido concluído; verificação de vínculo por query direta (`orders.customer_id === customer.id` do fixture).
 - `meus-pedidos.spec.js` parte 2 (pedido aparece, timeline/itens expandem).
-- `fidelidade.spec.js` parte 2 (contador incrementa após o pedido; resgate testado e revertido).
-- Reusa `forcarStoreMode('OPEN')` e o novo `limparPedidosDeTeste()` no `afterEach`.
+- `fidelidade.spec.js` (única parte, movida da Onda 3): após o pedido, o banner de progresso passa a existir e abre o modal real; contador em 1 de N; resgate testado (quando aplicável) e revertido.
+- Reusa `forcarStoreMode('OPEN')` e o `limparPedidosDoFixture()` (novo nome pós-split) no `afterEach`.
 
 ## Critérios objetivos de aprovação (por onda)
 
@@ -172,6 +179,12 @@ A auditoria previu corretamente os riscos, mas 3 achados só apareceram ao rodar
 3. **2º ajuste de produção, não previsto na lista original (só 4 `data-testid` do `LoginScreen.jsx`):** o botão do topo do drawer (`SideDrawer.jsx`, abre a tela de login/conta) não tinha `aria-label` — seu nome acessível é o texto visível, que **muda com o estado** (anônimo: "Entre ou cadastre-se"; logado: nome+e-mail do cliente concatenados). Isso torna qualquer seletor por texto inerentemente instável entre os dois estados que os testes de sessão precisam alternar. Adicionado `aria-label="Login"` (mesmo padrão já usado no botão "Menu" ao lado) — nome estável, não colide com o item de menu separado "👤 Minha Conta" (tela diferente, só visível quando logado). Aditivo, sem mudança visual.
 
 Nenhum dos 3 achados exigiu reabrir a arquitetura aprovada — são correções de execução dentro do espírito da auditoria (seletores estáveis, ambiente dedicado, idempotência).
+
+## Ajustes encontrados na execução (Onda 3, 2026-07-23)
+
+1. **`cleanup.js` dividido conforme proposto no §Ajustes de infraestrutura** — `limparPedidosDoFixture()` (nova, nunca apaga `customers`) vs. `limparDadosDeTeste()` (mantida, só para convidado `E2E_TEST_%`, apaga tudo). Sem surpresas — execução seguiu o plano.
+2. **Fidelidade removida da Onda 3** (ver §Ajuste de escopo, atualizado): o chip sempre visível "Programa Fidelidade" (`StoreHighlights.jsx`) está ligado a um `alert()` de placeholder, não ao modal real — que só é alcançável quando `loyaltyCount>0`. Sem nenhum pedido, não há caminho de UI até lá. Passou inteira para a Onda 4 (depois que existir 1 pedido real). O dono foi avisado do gap de produto e optou por só ajustar o escopo dos testes, sem investigação à parte.
+3. **Troca de e-mail: 2 erros reais encontrados ao rodar contra o backend de verdade, ambos ligados ao mesmo recurso escasso já identificado para o OTP.** Primeiro, e-mails com domínio `.local` (convenção de **todos** os fixtures deste projeto) são rejeitados pela validação de domínio do próprio Supabase (`email_address_invalid`) — só descoberto ao trocar o alvo para um domínio válido (`example.com`) é que apareceu o segundo erro: `over_email_send_rate_limit` (plano free, sem SMTP customizado). Ou seja, a troca de e-mail real esbarraria no MESMO limite compartilhado que already motivou mockar o OTP (auditoria original só previu isso para o OTP, não para a troca de e-mail). Mitigação: novo `mockEmailChangeAuth` (`network-stubs.js`) intercepta só o `PUT /auth/v1/user` — mesmo padrão de `mockEmailOtpAuth`; o teste cobre a mecânica da UI (chega em "confirmação enviada"), não o envio real.
 
 ## Pergunta aberta ao dono
 

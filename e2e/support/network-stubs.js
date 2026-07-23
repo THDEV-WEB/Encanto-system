@@ -84,3 +84,23 @@ export async function mockGoogleOAuthTrigger(page) {
   });
   return { foiChamado: () => chamado };
 }
+
+/* Stub da troca de e-mail (Minha Conta, REF-E2E-02 Onda 3) — intercepta só o PUT em `/auth/v1/user`
+   (endpoint que `auth.updateUser({email})` usa; GET no mesmo path — ex.: restauração de sessão —
+   passa direto via `route.continue()`). Achado ao rodar o spec real pela 1ª vez: e-mails `.local`
+   (convenção de todos os fixtures deste projeto) são rejeitados pela validação de domínio do próprio
+   Supabase (`email_address_invalid`), e mesmo com um domínio válido (`example.com`) o envio de verdade
+   esbarra rápido no rate limit de e-mail do plano free (`over_email_send_rate_limit`, sem SMTP
+   customizado) — o MESMO recurso escasso que já motivou mockar o OTP por e-mail (ver
+   docs/adr/REF-E2E-01-auditoria-playwright.md §Estratégia de autenticação). O teste cobre a mecânica
+   da UI (chega em "confirmação enviada"), não o envio real. */
+export async function mockEmailChangeAuth(page) {
+  await page.route('**/auth/v1/user', (route) => {
+    if (route.request().method() !== 'PUT') return route.continue();
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ id: 'e2e-fixture-user-id', email: 'e2e-cliente@teste.encanto.local', app_metadata: {}, user_metadata: {} }),
+    });
+  });
+}

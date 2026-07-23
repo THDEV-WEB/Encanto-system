@@ -125,8 +125,18 @@ workflow chamando `npm ci && npx playwright install --with-deps && npm run test:
   `e2e/support/fixture-customer.js` (garante o cliente fixture vinculado com telefone, senão o modal
   "Complete seu cadastro" aparece por cima de qualquer tela); `aria-label="Login"` adicionado ao botão
   do topo do drawer (`SideDrawer.jsx` — nome acessível antes mudava com o estado de login).
-- **Próximas ondas:** cliente autenticado (Minha Conta/Meus Pedidos/Fidelidade) e checkout autenticado
-  + vínculo pedido↔conta — ver divisão completa na auditoria.
+- **Onda 3 (cliente autenticado, `e2e/tests/cliente/`):** FEITO. `minha-conta.spec.js` (ver dados,
+  editar nome/telefone com restauração do baseline, solicitar troca de e-mail) e `meus-pedidos.spec.js`
+  (estado vazio). `e2e/support/cleanup.js` dividido: `limparPedidosDoFixture()` (nunca apaga a linha
+  `customers` do fixture, só dados transacionais) vs. `limparDadosDeTeste()` (guest efêmero, apaga
+  tudo). Novo `MinhaContaPage.page.js`. Achados: e-mail `.local` é rejeitado pela validação de domínio
+  do Supabase e o envio real esbarra no rate limit do plano free — troca de e-mail passou a usar
+  `mockEmailChangeAuth` (novo em `network-stubs.js`), mesmo racional do OTP mockado. **Ajuste de
+  escopo:** Fidelidade saiu desta onda — o chip "Programa Fidelidade" da home está ligado a um `alert()`
+  de placeholder, não ao modal real (que só abre com `loyaltyCount>0`); sem pedido nenhum, não há
+  caminho de UI até lá. Fidelidade de verdade entra inteira na Onda 4 (ver ADR).
+- **Próximas ondas:** checkout autenticado + vínculo pedido↔conta + Meus Pedidos com pedido real +
+  fidelidade (0→1 selo) — ver divisão completa na auditoria.
 
 ### Nota sobre `set_store_mode` (Onda 4)
 
