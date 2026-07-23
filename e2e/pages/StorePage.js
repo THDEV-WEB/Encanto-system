@@ -34,12 +34,31 @@ export class StorePage {
     return this.page.getByLabel('Buscar na loja'); // aria-label já existe (SearchBar.jsx) — nada a adicionar
   }
 
+  /** A busca só existe na barra sticky (StickyBar.jsx), que fica aria-hidden até "surgir ao rolar"
+      (useStickyReveal). Rolar a página é o próprio fluxo real do usuário, não um atalho de teste. */
+  async revelarBuscaSticky() {
+    // espera o catálogo ter renderizado (altura da página estável) ANTES de rolar — senão a página
+    // ainda está curta (Spinner) e o scrollTo(600) clampa aquém do limiar de revelação da sticky bar.
+    await this.page.locator('[data-prod]').first().waitFor({ state: 'visible' });
+    await this.page.evaluate(() => window.scrollTo(0, 600));
+    await this.searchInput.waitFor({ state: 'visible' }); // espera, não afirma — a asserção fica no spec
+  }
+
   async search(termo) {
     await this.searchInput.fill(termo);
   }
 
+  get suggestionsListbox() {
+    return this.page.getByRole('listbox', { name: 'Sugestões de busca' });
+  }
+
+  /** Dropdown "Categorias" do TOPO da página (StoreApp.jsx). Só é a única instância acessível
+      ANTES de rolar — a cópia dentro da barra sticky (StickyBar.jsx) fica aria-hidden até "surgir
+      ao rolar" (useStickyReveal); depois de rolar, as duas coexistem na árvore de acessibilidade
+      (mesmo texto "Categorias"). Specs que precisarem reabrir o dropdown DEPOIS de rolar precisam
+      escopar por `.enc-stickybar` para não colidir com esta instância. */
   get categoryMenuTrigger() {
-    return this.page.getByRole('button', { name: 'Categorias' }); // texto estável do catnav-trigger (CategoryNav.jsx)
+    return this.page.getByRole('button', { name: 'Categorias' });
   }
 
   async selectCategory(nomeCategoria) {

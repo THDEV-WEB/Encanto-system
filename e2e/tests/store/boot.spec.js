@@ -5,7 +5,7 @@
    (src/data/mockCatalog.js) — determinístico, sem rede, sem tocar nenhum Supabase. @read-only. */
 import { test, expect } from '../../fixtures/index.js';
 
-test.describe('boot da loja', () => {
+test.describe('boot da loja', { tag: '@read-only' }, () => {
   test('carrega sem erro e sai do loader inicial', async ({ page }) => {
     const erros = [];
     page.on('pageerror', (err) => erros.push(err));
