@@ -41,7 +41,12 @@
     "test:orders-rls": "node scripts/harden-orders-rls-test.mjs",
     "test:auth-rls": "node scripts/auth-rls-test.mjs",
     "bench:pricing": "node scripts/bench/pricing.bench.mjs",
-    "bench:addons": "node scripts/bench/addons.bench.mjs"
+    "bench:addons": "node scripts/bench/addons.bench.mjs",
+    "test:e2e": "playwright test --config=e2e/playwright.config.js --project=chromium",
+    "test:e2e:all-browsers": "playwright test --config=e2e/playwright.config.js",
+    "test:e2e:ui": "playwright test --ui --config=e2e/playwright.config.js --project=chromium",
+    "test:e2e:headed": "playwright test --headed --config=e2e/playwright.config.js --project=chromium",
+    "test:e2e:report": "playwright show-report e2e/playwright-report"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.39.3",
@@ -49,6 +54,7 @@
     "react-dom": "18.2.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@vitejs/plugin-react": "^4.3.4",
     "vite": "^5.4.11"
   }

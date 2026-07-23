@@ -9,3 +9,11 @@ dist-ssr
 
 # Local Netlify folder
 .netlify
+
+# REF-E2E-01 — Playwright (e2e/)
+.env.e2e
+e2e/playwright-report
+e2e/test-results
+e2e/.auth
+blob-report
+playwright/.cache
