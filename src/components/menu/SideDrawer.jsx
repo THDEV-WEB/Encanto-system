@@ -29,7 +29,7 @@ export function SideDrawer({ onClose, onNavigate }) {
         </div>
 
         {/* Topo — entrar / conta */}
-        <button style={{ ...item, background: 'var(--grape-pale)' }} onClick={() => onNavigate('login')}>
+        <button aria-label="Login" style={{ ...item, background: 'var(--grape-pale)' }} onClick={() => onNavigate('login')}>
           {isLogged
             ? (avatarUrl
                 ? <img src={avatarUrl} alt="" referrerPolicy="no-referrer" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />

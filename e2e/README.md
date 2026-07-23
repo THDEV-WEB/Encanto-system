@@ -117,9 +117,16 @@ workflow chamando `npm ci && npx playwright install --with-deps && npm run test:
   incompleto/inválido, sucesso — backend stubado via `network-stubs.js`); `login-google-trigger.spec.js`
   (disparo do `signInWithOAuth`, sem automatizar a tela real do Google). `StorePage.abrirLogin()` novo
   (abre menu → "Entre ou cadastre-se").
-- **Próximas ondas:** sessão real (persistência/restauração/logout/sessão inválida via `storageState`),
-  cliente autenticado (Minha Conta/Meus Pedidos/Fidelidade) e checkout autenticado + vínculo
-  pedido↔conta — ver divisão completa na auditoria.
+- **Onda 2 (sessão real, `e2e/tests/auth/`):** FEITO. `session-restore.spec.js`, `session-persist-reload.spec.js`,
+  `logout.spec.js` (sessão real do cliente fixture via `storageState`/`authSession.js`) e
+  `session-invalida.spec.js` (sessão forjada/expirada — prova a queda graciosa para anônimo, sem
+  travar o boot). Achados durante a execução (ver ADR §Ajustes encontrados na execução): corrigido um
+  bug pré-existente no formato do `storageState` em `authSession.js` (nunca antes exercitado); criado
+  `e2e/support/fixture-customer.js` (garante o cliente fixture vinculado com telefone, senão o modal
+  "Complete seu cadastro" aparece por cima de qualquer tela); `aria-label="Login"` adicionado ao botão
+  do topo do drawer (`SideDrawer.jsx` — nome acessível antes mudava com o estado de login).
+- **Próximas ondas:** cliente autenticado (Minha Conta/Meus Pedidos/Fidelidade) e checkout autenticado
+  + vínculo pedido↔conta — ver divisão completa na auditoria.
 
 ### Nota sobre `set_store_mode` (Onda 4)
 

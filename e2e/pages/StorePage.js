@@ -83,12 +83,15 @@ export class StorePage {
     await this.menuButton.click();
   }
 
-  /** Abre a tela de login (StoreMenu.jsx: topo do drawer -> "Entre ou cadastre-se" / já-logado vira
-      "Minha conta"). Regex tolera os dois rótulos (texto acessível concatena os 2 <div> do botão, sem
-      aria-label próprio) — REF-E2E-02. */
+  /** Abre a tela de login (StoreMenu.jsx: topo do drawer, SideDrawer.jsx). O rótulo visível varia com
+      o estado (anônimo: "Entre ou cadastre-se"; logado: nome/e-mail do cliente, concatenados) — por
+      isso o botão ganhou `aria-label="Login"` fixo (REF-E2E-02), igual ao padrão já usado no botão
+      "Menu": nome estável independente do estado de login. `exact:true` evita colidir com o item de
+      menu "👤 Minha Conta" (só visível quando logado, navega direto para MinhaContaScreen — tela
+      diferente desta). */
   async abrirLogin() {
     await this.openMenu();
-    await this.page.getByRole('button', { name: /Entre ou cadastre-se|Minha conta/ }).click();
+    await this.page.getByRole('button', { name: 'Login', exact: true }).click();
   }
 
   /** Select real com aria-label já existente (DeliveryBar.jsx) — nada a adicionar. "retirada" evita

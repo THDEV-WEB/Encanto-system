@@ -1,6 +1,6 @@
 # REF-E2E-02 — Cobertura E2E do cliente autenticado — Auditoria
 
-**Status:** 🟢 Auditoria aprovada (2026-07-23; cenário de "conta virgem"/1º acesso ficou fora do escopo, por decisão do dono). Onda 1 (mecânica de login, mock) aplicada — ver §Divisão em ondas.
+**Status:** 🟢 Auditoria aprovada (2026-07-23; cenário de "conta virgem"/1º acesso ficou fora do escopo, por decisão do dono). Onda 1 (mecânica de login, mock) e Onda 2 (sessão real) aplicadas — ver §Divisão em ondas e §Ajustes encontrados na execução (Onda 2).
 **Depende de:** REF-E2E-01 (infraestrutura Playwright, projeto Supabase dedicado `encanto-e2e`, Page Object Model, fixtures, `support/*`), AUTH-01/LOGIN-ARCH-02.1/02.2 (autenticação híbrida do cliente), REF-CLIENTE-02/03 (Meus Pedidos/Minha Conta), REF-LOYALTY-01/01a (fidelidade + hardening anti-roubo de identidade), REF-CHECKOUT-ADDRESS-01 (endereço fonte única).
 **Relacionado:** preenche as pastas `e2e/tests/auth/` e `e2e/tests/cliente/` já esboçadas (vazias) no diagrama de arquitetura da auditoria da E2E-01, e estende `e2e/tests/checkout/` com o caminho autenticado.
 
@@ -162,6 +162,16 @@ e2e/tests/checkout/
 - Zero dado remanescente do cliente fixture ao final da run (pedidos/loyalty zerados; nome/telefone nos valores originais).
 - Nenhuma notificação WhatsApp real disparada (ambiente `encanto-e2e` já não tem os secrets, herda a garantia da E2E-01).
 - `e2e/README.md` e este ADR atualizados a cada onda.
+
+## Ajustes encontrados na execução (Onda 2, 2026-07-23)
+
+A auditoria previu corretamente os riscos, mas 3 achados só apareceram ao rodar os specs pela 1ª vez contra o backend real — registrados aqui porque mudam o plano original:
+
+1. **Bug real, pré-existente, em `authSession.js` (desde a Onda 1 da E2E-01) — nunca antes exercitado.** `sessaoClienteFixture()` devolvia `{origin, localStorage}` diretamente, mas o formato que `browser.newContext({storageState})` exige é `{cookies, origins:[{origin, localStorage}]}` — o `origins` é um **array**. Sem o array por fora, o Playwright ignora o valor **silenciosamente** (sem erro nenhum): o contexto nasce sem sessão, e o app mostra o estado anônimo normalmente. Como nenhum spec da E2E-01 chegou a usar esse helper de verdade, o bug ficou latente por 4 ondas. Corrigido no próprio `authSession.js` (formato certo) — nenhuma spec precisou mudar, porque o defeito era só na forma como o storageState era construído.
+2. **`fixture-customer.js` adiantado da Onda 3 para a Onda 2.** O plano original assumia que testes de sessão "pura" (restaurar/persistir/logout) não precisavam de uma linha `customers` vinculada. Na prática, sem ela `precisaTelefone=true` e o modal "Complete seu cadastro" (`CompletarCadastro.jsx`) aparece **automaticamente por cima de qualquer tela**, bloqueando o clique no topo do drawer mesmo em specs que não têm nada a ver com Minha Conta. Criado `e2e/support/fixture-customer.js` (`garantirClienteFixtureVinculado()`) já na Onda 2, chamado em `beforeAll` dos 3 specs que abrem uma sessão real. Idempotente, mesma RPC que a UI usa (`link_customer_to_auth`), login como o próprio fixture (não usa `service_role`).
+3. **2º ajuste de produção, não previsto na lista original (só 4 `data-testid` do `LoginScreen.jsx`):** o botão do topo do drawer (`SideDrawer.jsx`, abre a tela de login/conta) não tinha `aria-label` — seu nome acessível é o texto visível, que **muda com o estado** (anônimo: "Entre ou cadastre-se"; logado: nome+e-mail do cliente concatenados). Isso torna qualquer seletor por texto inerentemente instável entre os dois estados que os testes de sessão precisam alternar. Adicionado `aria-label="Login"` (mesmo padrão já usado no botão "Menu" ao lado) — nome estável, não colide com o item de menu separado "👤 Minha Conta" (tela diferente, só visível quando logado). Aditivo, sem mudança visual.
+
+Nenhum dos 3 achados exigiu reabrir a arquitetura aprovada — são correções de execução dentro do espírito da auditoria (seletores estáveis, ambiente dedicado, idempotência).
 
 ## Pergunta aberta ao dono
 
