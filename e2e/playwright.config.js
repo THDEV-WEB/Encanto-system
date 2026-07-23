@@ -20,7 +20,16 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: CI,               // trava test.only esquecido em CI, sem incomodar localmente
   retries: CI ? 2 : 0,           // flake vira sinal localmente; em CI ganha 2 tentativas antes de reprovar
-  workers: CI ? 1 : undefined,   // CI: 1 worker (evita contencao/flake em runner compartilhado); local: auto
+  /* REF-E2E-02 Onda 4 (achado real, nao so hipotetico): varios specs @writes (checkout-logado,
+     Meus Pedidos, Fidelidade, Minha Conta, sessao) mutam o MESMO cliente fixture (orders/loyalty),
+     nao so `store_mode`. Cada spec serializa a SI MESMO (mode:'serial' no proprio describe), mas
+     ISSO NAO impede 2 arquivos diferentes de rodar em workers separados ao mesmo tempo — confirmado
+     na pratica: com workers>1, o afterEach de um arquivo (limpa pedidos/fidelidade do fixture) as
+     vezes apagava o estado que OUTRO arquivo tinha acabado de armar, momentos antes. 1 worker sempre
+     (local e CI) elimina a classe inteira de corrida sem exigir uma 2a identidade de fixture por
+     arquivo (decisao original da auditoria: 1 so cliente fixture, como o admin). Suite pequena o
+     bastante (~50 specs) para o custo de tempo ser aceitavel frente a determinismo. */
+  workers: 1,
   reporter: [
     ['list'],
     ['html', { outputFolder: './playwright-report', open: 'never' }],

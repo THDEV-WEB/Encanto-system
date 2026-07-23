@@ -91,10 +91,11 @@ depois `npm run test:e2e:all-browsers` (ou `--project=firefox` / `--project=webk
 
 ## Preparado para CI (GitHub Actions) — ainda não criado
 
-`playwright.config.js` já reage a `process.env.CI` (retries, workers, `reuseExistingServer`) e o
-`webServer` sobe o app sozinho — quando o workflow `.github/workflows/e2e.yml` for criado (fase
-própria, fora do escopo desta Onda), não deve exigir nenhuma refatoração daqui, só o arquivo de
-workflow chamando `npm ci && npx playwright install --with-deps && npm run test:e2e`.
+`playwright.config.js` já reage a `process.env.CI` (retries, `reuseExistingServer`) e o `webServer`
+sobe o app sozinho — quando o workflow `.github/workflows/e2e.yml` for criado (fase própria, fora do
+escopo desta Onda), não deve exigir nenhuma refatoração daqui, só o arquivo de workflow chamando
+`npm ci && npx playwright install --with-deps && npm run test:e2e`. `workers` é `1` sempre (local e
+CI, ver §Onda 4 da REF-E2E-02 abaixo) — não varia mais com `CI`.
 
 ## Onde isto para hoje
 
@@ -135,8 +136,18 @@ workflow chamando `npm ci && npx playwright install --with-deps && npm run test:
   escopo:** Fidelidade saiu desta onda — o chip "Programa Fidelidade" da home está ligado a um `alert()`
   de placeholder, não ao modal real (que só abre com `loyaltyCount>0`); sem pedido nenhum, não há
   caminho de UI até lá. Fidelidade de verdade entra inteira na Onda 4 (ver ADR).
-- **Próximas ondas:** checkout autenticado + vínculo pedido↔conta + Meus Pedidos com pedido real +
-  fidelidade (0→1 selo) — ver divisão completa na auditoria.
+- **Onda 4 (checkout autenticado + vínculo + Meus Pedidos com pedido real + Fidelidade):** FEITO.
+  `checkout-logado.spec.js` (telefone travado, nome pré-preenchido, vínculo pedido↔conta verificado por
+  query direta — não só pela UI). `meus-pedidos.spec.js` ganhou a parte 2 (pedido aparece, timeline/itens
+  expandem). Novo `fidelidade.spec.js` (0→1 selo depois de 1 pedido real; resgate testado e revertido).
+  Novos `support/fixture-order.js` (cria 1 pedido real do fixture via `create_order` direto, sem UI —
+  setup rápido para specs que só leem o resultado) e `MeusPedidosPage.page.js`.
+  **Achado crítico da execução:** com 3 arquivos `@writes` diferentes mutando o MESMO cliente fixture
+  (orders/loyalty), rodar com múltiplos workers (padrão local) causava corrida real entre arquivos —
+  o `afterEach` de um apagava o estado que outro tinha acabado de armar. Cada describe já se serializa
+  consigo mesmo, mas isso nunca protegeu contra outro ARQUIVO rodando em paralelo. Corrigido na raiz:
+  `playwright.config.js` agora fixa `workers: 1` sempre (antes só CI era seguro).
+- **Próximas ondas:** nenhuma pendente na lista original desta REF — ver ADR para o escopo fechado.
 
 ### Nota sobre `set_store_mode` (Onda 4)
 
