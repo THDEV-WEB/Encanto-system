@@ -108,6 +108,19 @@ workflow chamando `npm ci && npx playwright install --with-deps && npm run test:
 - **Próximas ondas** (cada uma seu commit, revisão antes de cada um — ver auditoria): mecânica de
   login + sessão de cliente logado (Minha Conta/Meus Pedidos/Fidelidade), e Admin.
 
+### REF-E2E-02 — cliente autenticado (auditoria em
+[`../docs/adr/REF-E2E-02-auditoria-cliente-autenticado.md`](../docs/adr/REF-E2E-02-auditoria-cliente-autenticado.md))
+
+- **Onda 1 (mecânica de login, mock, `e2e/tests/auth/`):** FEITO. `data-testid` nos 4 CTAs de
+  `LoginScreen.jsx` (`login-google-btn`/`login-email-btn`/`login-send-code-btn`/`login-confirm-code-btn`
+  — único ajuste de produção desta REF); `login-email-otp.spec.js` (validação, cooldown, código
+  incompleto/inválido, sucesso — backend stubado via `network-stubs.js`); `login-google-trigger.spec.js`
+  (disparo do `signInWithOAuth`, sem automatizar a tela real do Google). `StorePage.abrirLogin()` novo
+  (abre menu → "Entre ou cadastre-se").
+- **Próximas ondas:** sessão real (persistência/restauração/logout/sessão inválida via `storageState`),
+  cliente autenticado (Minha Conta/Meus Pedidos/Fidelidade) e checkout autenticado + vínculo
+  pedido↔conta — ver divisão completa na auditoria.
+
 ### Nota sobre `set_store_mode` (Onda 4)
 
 A RPC oficial `set_store_mode` exige `is_admin()=true` (checagem explícita no corpo da função, não é

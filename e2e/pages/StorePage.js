@@ -83,6 +83,14 @@ export class StorePage {
     await this.menuButton.click();
   }
 
+  /** Abre a tela de login (StoreMenu.jsx: topo do drawer -> "Entre ou cadastre-se" / já-logado vira
+      "Minha conta"). Regex tolera os dois rótulos (texto acessível concatena os 2 <div> do botão, sem
+      aria-label próprio) — REF-E2E-02. */
+  async abrirLogin() {
+    await this.openMenu();
+    await this.page.getByRole('button', { name: /Entre ou cadastre-se|Minha conta/ }).click();
+  }
+
   /** Select real com aria-label já existente (DeliveryBar.jsx) — nada a adicionar. "retirada" evita
       a spec de checkout precisar do fluxo de endereço/geocoding (fora do escopo desta Onda). */
   get deliveryModeSelect() {

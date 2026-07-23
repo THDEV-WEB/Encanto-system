@@ -113,10 +113,10 @@ export function LoginScreen({ onClose }) {
       {modo === 'opcoes' && (
         <>
           <p style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 14 }}>Login é opcional — você pode comprar como visitante e criar conta quando quiser.</p>
-          <button style={{ ...btn, background: 'var(--white)', border: '1px solid var(--gray-300)', color: 'var(--gray-800)' }} disabled={busy} onClick={google}>
+          <button data-testid="login-google-btn" style={{ ...btn, background: 'var(--white)', border: '1px solid var(--gray-300)', color: 'var(--gray-800)' }} disabled={busy} onClick={google}>
             <span style={{ fontWeight: 800, color: '#4285F4', fontSize: 17 }}>G</span> Continuar com Google
           </button>
-          <button style={{ ...btn, background: 'var(--grape)', border: 'none', color: '#fff' }} disabled={busy} onClick={() => { setErro(''); setModo('email'); }}>
+          <button data-testid="login-email-btn" style={{ ...btn, background: 'var(--grape)', border: 'none', color: '#fff' }} disabled={busy} onClick={() => { setErro(''); setModo('email'); }}>
             ✉️ Continuar com e-mail
           </button>
           {erro && <p style={erroStyle}>{erro}</p>}
@@ -130,7 +130,7 @@ export function LoginScreen({ onClose }) {
           <input className="form-input" type="email" inputMode="email" autoFocus placeholder="seu@email.com"
             value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === 'Enter' && enviar()} />
           {erro && <p style={erroStyle}>{erro}</p>}
-          <button style={{ ...btn, background: 'var(--grape)', color: '#fff', border: 'none', marginTop: 10 }} disabled={busy} onClick={enviar}>{busy ? 'Enviando...' : 'Enviar código'}</button>
+          <button data-testid="login-send-code-btn" style={{ ...btn, background: 'var(--grape)', color: '#fff', border: 'none', marginTop: 10 }} disabled={busy} onClick={enviar}>{busy ? 'Enviando...' : 'Enviar código'}</button>
           <button style={semConta} onClick={onClose}>Continuar sem uma conta</button>
         </>
       )}
@@ -141,7 +141,7 @@ export function LoginScreen({ onClose }) {
           <p style={{ fontSize: 14, fontWeight: 700, marginBottom: 8, ...oneLine }}>{email}</p>
           <CodigoInput valor={codigo} onChange={setCodigo} onEnter={confirmar} />
           {erro && <p style={erroStyle}>{erro}</p>}
-          <button style={{ ...btn, background: 'var(--grape)', color: '#fff', border: 'none', marginTop: 10 }} disabled={busy} onClick={confirmar}>{busy ? 'Verificando...' : 'Confirmar'}</button>
+          <button data-testid="login-confirm-code-btn" style={{ ...btn, background: 'var(--grape)', color: '#fff', border: 'none', marginTop: 10 }} disabled={busy} onClick={confirmar}>{busy ? 'Verificando...' : 'Confirmar'}</button>
           <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
             <button style={{ ...linkBtn, opacity: cooldown > 0 || busy ? 0.5 : 1, cursor: cooldown > 0 || busy ? 'default' : 'pointer' }} disabled={cooldown > 0 || busy} onClick={reenviar}>
               {cooldown > 0 ? `Reenviar em ${cooldown}s` : 'Reenviar código'}
