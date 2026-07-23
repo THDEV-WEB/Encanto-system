@@ -117,11 +117,11 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode }) {
       </div>
       <div className="form-group">
         <label className="form-label">Nome completo *</label>
-        <input className="form-input" placeholder="Seu nome" value={form.nome} onChange={e=>upd('nome',e.target.value)}/>
+        <input className="form-input" data-testid="checkout-nome" placeholder="Seu nome" value={form.nome} onChange={e=>upd('nome',e.target.value)}/>
       </div>
       <div className="form-group">
         <label className="form-label">WhatsApp *</label>
-        <input className="form-input" placeholder="(38) 99999-9999" value={form.telefone} onChange={e=>upd('telefone',e.target.value)}
+        <input className="form-input" data-testid="checkout-telefone" placeholder="(38) 99999-9999" value={form.telefone} onChange={e=>upd('telefone',e.target.value)}
           disabled={identidadeTravada} style={identidadeTravada?{opacity:0.75,cursor:'not-allowed'}:undefined}/>
         {identidadeTravada && (
           <span style={{fontSize:12,color:'var(--gray-500)',marginTop:4,display:'block'}}>
@@ -159,7 +159,7 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode }) {
       )}
       <div className="form-group">
         <label className="form-label">Observações gerais</label>
-        <textarea className="form-input obs-textarea" placeholder="Alguma observação..."
+        <textarea className="form-input obs-textarea" data-testid="checkout-obs" placeholder="Alguma observação..."
           value={form.obs} onChange={e=>upd('obs',e.target.value)}/>
       </div>
       {lojaFechada && (
@@ -181,8 +181,8 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode }) {
           </div>
         </div>
       )}
-      {err&&<p style={{color:'var(--red)',fontSize:13,marginBottom:8}}>{err}</p>}
-      <button className="confirm-btn" onClick={submit} disabled={loading || lojaFechada}
+      {err&&<p data-testid="checkout-erro" style={{color:'var(--red)',fontSize:13,marginBottom:8}}>{err}</p>}
+      <button className="confirm-btn" data-testid="checkout-submit" onClick={submit} disabled={loading || lojaFechada}
         style={lojaFechada?{opacity:0.6,cursor:'not-allowed'}:undefined}>
         {lojaFechada ? '🔒 Loja fechada no momento' : (loading ? 'Enviando...' : `Confirmar via WhatsApp • ${view.total}`)}
       </button>

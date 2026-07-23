@@ -82,4 +82,14 @@ export class StorePage {
   async openMenu() {
     await this.menuButton.click();
   }
+
+  /** Select real com aria-label já existente (DeliveryBar.jsx) — nada a adicionar. "retirada" evita
+      a spec de checkout precisar do fluxo de endereço/geocoding (fora do escopo desta Onda). */
+  get deliveryModeSelect() {
+    return this.page.getByLabel('Escolher entre entrega ou retirada');
+  }
+
+  async selecionarRetirada() {
+    await this.deliveryModeSelect.selectOption('retirada');
+  }
 }

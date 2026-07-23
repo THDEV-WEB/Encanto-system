@@ -46,7 +46,9 @@
     "test:e2e:all-browsers": "playwright test --config=e2e/playwright.config.js",
     "test:e2e:ui": "playwright test --ui --config=e2e/playwright.config.js --project=chromium",
     "test:e2e:headed": "playwright test --headed --config=e2e/playwright.config.js --project=chromium",
-    "test:e2e:report": "playwright show-report e2e/playwright-report"
+    "test:e2e:report": "playwright show-report e2e/playwright-report",
+    "e2e:seed": "node scripts/e2e-seed.mjs",
+    "e2e:fixture-accounts": "node scripts/e2e-fixture-accounts.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.39.3",

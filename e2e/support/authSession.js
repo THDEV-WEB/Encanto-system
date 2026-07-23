@@ -8,15 +8,9 @@
    ela veio (ver docs/adr/REF-E2E-01-auditoria-playwright.md §Estrategia de autenticacao).
    Env-gated: sem o projeto de E2E, retorna null (specs que precisam de sessao real devem pular). */
 import { supabaseAdmin, supabaseAnon, E2E_ENV_PRONTO, avisarAmbientePendente } from './supabaseAdmin.js';
+import { CLIENTE_FIXTURE } from './fixture-accounts.js';
 
 const STORAGE_KEY = 'encanto-cliente-auth';   // literal de src/lib/dbCliente.js — nao duplica logica, so o nome da chave
-
-export const CLIENTE_FIXTURE = Object.freeze({
-  email: 'e2e-cliente@teste.encanto.local',
-  senha: 'e2e-fixture-nao-usar-em-prod-9f2b',
-  nome: 'Cliente E2E',
-  telefone: '47999990000',
-});
 
 async function garantirUsuarioFixture(admin) {
   const { error } = await admin.auth.admin.createUser({

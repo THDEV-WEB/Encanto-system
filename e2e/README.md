@@ -21,14 +21,20 @@ npm run test:e2e:all-browsers  # Chromium + Firefox + WebKit — rode antes `npx
 Nenhum destes comandos precisa do `npm run dev` rodando: o `playwright.config.js` sobe o app sozinho
 (`vite --mode e2e`, porta `5183` — nunca colide com o `:5173` do dev normal) e derruba ao final.
 
-### E sem o projeto Supabase de E2E, funciona?
+### Projeto Supabase de E2E
 
-**Sim, para os specs `@read-only`.** Sem `.env.e2e` preenchido, o app roda em modo degradado
-(`db=null`) e usa o catálogo **MOCK** (`src/data/mockCatalog.js`) — determinístico, sem rede, sem
-tocar nenhum Supabase. É assim que a Onda 1 (esta) já roda hoje. Specs `@writes` (checkout real,
-sessão de cliente logado, Admin) **exigem** o projeto dedicado — ver
-"Pré-requisitos manuais" na auditoria; enquanto não existir, essas specs simplesmente ainda não foram
-escritas (não é este README que vai fingir que funcionam).
+Existe um projeto Supabase **dedicado** a E2E (`encanto-e2e`, plano free, nunca produção). `.env.e2e`
+(raiz do projeto, gitignored) já aponta pra ele — os specs `@writes` (checkout, sessão logada, Admin)
+rodam de verdade desde a Onda 4. Setup (idempotente, rodar de novo é seguro):
+
+```powershell
+node scripts/e2e-seed.mjs              # aplica e2e/support/seed-catalog.sql (catálogo fixture)
+node scripts/e2e-fixture-accounts.mjs  # garante as contas fixture (cliente + admin)
+```
+
+Sem `.env.e2e` preenchido (`VITE_SUPABASE_URL`/`KEY` em branco), o app cai no modo degradado
+(`db=null`) e usa o catálogo **MOCK** local (`src/data/mockCatalog.js`) — os specs `@read-only`
+continuam passando nesse modo também (é assim que a Onda 1-3 rodaram antes do projeto existir).
 
 ## Configuração de ambiente (`.env.e2e`)
 
@@ -48,12 +54,18 @@ e2e/
 ├─ fixtures/index.js      # test.extend — importar daqui, não de '@playwright/test' direto
 ├─ support/               # infra Node (nunca importada por src/ nem pelos specs no browser)
 │  ├─ supabaseAdmin.js    # clientes service_role/anon do projeto de E2E (env-gated)
-│  ├─ storeMode.js        # força a loja OPEN/CLOSED (RPC set_store_mode, mesmo mecanismo do Admin/HB-03)
+│  ├─ storeMode.js        # força a loja OPEN/CLOSED (escreve direto em settings — ver Onda 4 abaixo)
 │  ├─ authSession.js      # sessão real de cliente fixture, para storageState (pula a UI de login)
+│  ├─ fixture-accounts.js # credenciais das contas fixture (cliente/admin) — fonte única
+│  ├─ fixture-catalog.js  # ids do catálogo semeado (seed-catalog.sql) — fonte única p/ os specs
+│  ├─ seed-catalog.sql    # catálogo fixo (8 categorias/produtos, espelha mockCatalog.js)
 │  ├─ network-stubs.js    # mocks de ViaCEP/Nominatim/Supabase-auth via page.route — usáveis hoje
 │  └─ cleanup.js          # apaga, no projeto de E2E, os dados que os specs @writes criaram
 ├─ pages/                 # Page Object Model — 1 classe por tela/superfície
 └─ tests/                 # specs, agrupados por domínio (store/cart/checkout/auth/cliente/admin)
+
+scripts/e2e-seed.mjs              # aplica seed-catalog.sql no projeto de E2E (ver acima)
+scripts/e2e-fixture-accounts.mjs  # cria/garante as contas fixture (cliente + admin) via Admin API
 ```
 
 ## Convenções
@@ -84,10 +96,22 @@ depois `npm run test:e2e:all-browsers` (ou `--project=firefox` / `--project=webk
 própria, fora do escopo desta Onda), não deve exigir nenhuma refatoração daqui, só o arquivo de
 workflow chamando `npm ci && npx playwright install --with-deps && npm run test:e2e`.
 
-## Onde isto para hoje (Onda 1 — infra)
+## Onde isto para hoje
 
-Feito: config, estrutura, Page Object Model (skeletons), fixtures, helpers de `support/` (env-gated),
-1ª spec (`tests/store/boot.spec.js`, prova a esteira contra o catálogo mock). **Ainda não feito**
-(próximas ondas, cada uma seu commit, revisão antes de cada um — ver auditoria): specs read-only de
-catálogo/busca/categorias, carrinho, e — só depois que o projeto Supabase de E2E existir — checkout,
-mecânica + sessão de login, e Admin.
+- **Onda 1 (infra):** config, estrutura, Page Object Model, fixtures, helpers de `support/` (env-gated),
+  spec de boot. FEITO.
+- **Onda 2 (catálogo/busca/categorias, `@read-only`):** FEITO.
+- **Onda 3 (carrinho, `@read-only`):** FEITO.
+- **Onda 4 (checkout guest + gate de horário, `@writes`):** projeto de E2E provisionado, schema
+  clonado de produção (`pg_dump --schema-only`), catálogo fixture semeado, contas fixture criadas.
+  FEITO.
+- **Próximas ondas** (cada uma seu commit, revisão antes de cada um — ver auditoria): mecânica de
+  login + sessão de cliente logado (Minha Conta/Meus Pedidos/Fidelidade), e Admin.
+
+### Nota sobre `set_store_mode` (Onda 4)
+
+A RPC oficial `set_store_mode` exige `is_admin()=true` (checagem explícita no corpo da função, não é
+RLS) — um client `service_role` via PostgREST não satisfaz isso sozinho (`auth.uid()` fica nulo sem
+uma sessão real de admin). `support/storeMode.js` escreve direto na tabela `settings` via conexão
+Postgres (mesma infra de `scripts/e2e-seed.mjs`) para o SETUP de teste — efeito idêntico ao da RPC,
+sem forjar uma sessão de admin só pra isso.

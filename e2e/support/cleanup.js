@@ -7,7 +7,7 @@
    projeto; nao existe caminho de codigo aqui que aponte para producao).
    Env-gated: sem o projeto de E2E, {skipped:true} — nada a limpar. */
 import { supabaseAdmin } from './supabaseAdmin.js';
-import { CLIENTE_FIXTURE } from './authSession.js';
+import { CLIENTE_FIXTURE } from './fixture-accounts.js';
 
 export const PREFIXO_TESTE = 'E2E_TEST_';
 

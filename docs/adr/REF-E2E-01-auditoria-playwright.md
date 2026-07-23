@@ -1,6 +1,6 @@
 # REF-E2E-01 — Camada de testes End-to-End (Playwright) — Auditoria
 
-**Status:** 🟢 Auditoria aprovada (2026-07-23) — as 4 decisões abertas foram resolvidas (ver §Decisões tomadas). Bloqueado apenas pelos pré-requisitos manuais listados no fim deste documento (criação do projeto Supabase de E2E + contas de teste).
+**Status:** 🟢 Auditoria aprovada (2026-07-23); Ondas 1-4 aplicadas (infra, catálogo/busca/categorias, carrinho, checkout guest + gate de horário) — ver §Ativação do projeto de E2E para como o ambiente dedicado foi provisionado.
 **Depende de:** REF-APP-01 (arquitetura modular do frontend), AUTH-01 (sessão de cliente `dbCliente`/isolamento do Admin), REF-BUSINESS-HOURS-01/02/03 (override de horário), REF-ORDER-01/ORDER-01b/c (fluxo de pedidos + notificação WhatsApp real).
 **Relacionado:** protege, na prática, o resultado de **todas** as fases anteriores (NORM/REF/AUTH) — é a rede de segurança contra regressão do sistema como um todo.
 **Não implementado ainda.** Este documento é só a Fase 1 (Auditoria) do processo em 7 etapas descrito no pedido de abertura.
@@ -195,12 +195,40 @@ O app lê `VITE_SUPABASE_URL`/`VITE_SUPABASE_KEY` de `.env` em build/dev time (`
 
 Esta auditoria encontrou que os scripts de RLS existentes (`scripts/auth-rls-test.mjs`, `norm06-1-rls-test.mjs`, `harden-orders-rls-test.mjs` etc.) já seguem um padrão: conexão Postgres direta lida de `C:\Users\00thi\.encanto\db.env` (fora do repo, fora de qualquer `.git`). Para o E2E, proponho o mesmo padrão em vez de inventar outro: um arquivo irmão `C:\Users\00thi\.encanto\db.e2e.env` (mesmas chaves `PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE` ou `SUPABASE_DB_URL`, apontando para o projeto de E2E) — usado só pelo script de setup/seed (`scripts/e2e-seed.mjs`, a criar na sub-fase de infra) para aplicar as migrations e criar as contas de teste. Nunca toca o `db.env` de produção.
 
-## Pré-requisitos manuais (bloqueiam a Onda 1 — ação do dono)
+## Ativação do projeto de E2E (EXECUTADA em 2026-07-23, na Onda 4)
 
-Nenhum destes eu consigo fazer sozinho (não tenho acesso ao dashboard/conta Supabase do dono):
+O dono gerou e passou um token de Management API do Supabase no meio da conversa (guardado fora do
+repo, `C:\Users\00thi\.encanto\supabase-management.env`, nunca comitado). Com autorização explícita
+dele a cada passo mais sensível, a ativação saiu de "pré-requisito manual do dono" para "eu mesmo
+provisionei", nesta ordem:
 
-1. **Criar o projeto Supabase de E2E** (novo projeto, plano free serve) e me passar (fora do chat, direto nos arquivos locais abaixo — nunca colados na conversa):
-   - `C:\Users\00thi\.encanto\db.e2e.env` com a conexão Postgres direta (mesmo formato do `db.env` atual) — eu uso para aplicar `migrations/*.sql` e rodar o seed/criação das contas de teste.
-   - `.env.e2e` na raiz do `encanto-react` (gitignored) com `VITE_SUPABASE_URL`/`VITE_SUPABASE_KEY` (anon/publishable) **desse** projeto — eu crio o `.env.e2e.example` (placeholders) e adiciono `.env.e2e` ao `.gitignore` na sub-fase de infra; o dono só precisa preencher os valores reais.
-2. **Confirmar que não há secrets de notificação WhatsApp configurados** nesse projeto novo (ou que a Edge Function `whatsapp-notify` simplesmente não existe/não está agendada lá) — garante que pedidos de teste nunca disparam mensagem real. Por padrão, um projeto Supabase novo já nasce sem isso; fica aqui só como checagem explícita antes de rodar `@writes`.
-3. Depois que 1–2 estiverem prontos, eu assumo a partir daí: aplico as migrations, crio a conta de cliente-fixture e a conta de admin-fixture (+ `INSERT INTO admins`) via script próprio, e sigo para a sub-fase de infra do Playwright (instalação, config, primeiro spec trivial) com revisão antes de cada commit, como de costume.
+1. Confirmado (leitura) 1 única organização (plano **free**) e 1 único projeto existente antes
+   ("Açai" = produção). Criado o 2º projeto, **`encanto-e2e`** (mesma região, free tier, zero custo).
+2. **Achado crítico:** `migrations/*.sql` só tem os incrementos a partir do NORM-05 (27/06/2026) —
+   nenhum arquivo versionado cria as tabelas base (`customers`/`orders`/`order_items`/`products`/
+   `categories`/`adicionais`) nem a RPC `create_order`; foram criadas direto no SQL editor antes dessa
+   convenção existir. Só aplicar `migrations/*.sql` teria falhado (ALTER em objeto inexistente).
+   Decisão do dono (perguntado explicitamente): clonar o **schema** (não os dados) de produção via
+   `pg_dump --schema-only --schema=public` (sem `pg_dump`/Docker instalados na máquina — instalado só
+   o cliente PostgreSQL 17 via winget, sem serviço/servidor local) e restaurar no projeto novo via
+   `psql` (conexão pelo pooler IPv4 — o host direto `db.<ref>.supabase.co` não resolve na rede local).
+3. A senha do Postgres de produção salva em `db.env` estava com um placeholder (`Configurando`, nunca
+   preenchida) — resetada via Management API (`PATCH /v1/projects/{ref}/database/password`) com
+   autorização explícita do dono, ciente do efeito colateral (qualquer outra ferramenta já conectada
+   com a senha antiga precisa ser atualizada). `db.env` já foi atualizado com a senha nova.
+4. Schema restaurado (16 tabelas, 38 funções, 32 RLS policies, todas com `rowsecurity=true`) — dump
+   mantém `GRANT`s (críticos para anon/authenticated) mas usa `--no-owner`; poucos erros esperados e
+   inócuos (`schema public already exists`, `ALTER DEFAULT PRIVILEGES` sem permissão — não afetam os
+   objetos já criados por este dump único).
+5. Catálogo fixture semeado (`e2e/support/seed-catalog.sql` via `npm run e2e:seed`) — espelha nomes/
+   categorias/ordem de `src/data/mockCatalog.js` (mesmas 8 categorias) para os specs `@read-only` das
+   Ondas 2/3 continuarem passando sem alteração agora que `.env.e2e` aponta pro backend real (deixou
+   de existir fallback mock nessas specs a partir daqui). Ids em `e2e/support/fixture-catalog.js`.
+6. Contas fixture criadas via Admin API (`npm run e2e:fixture-accounts`, idempotente): cliente
+   (`e2e/support/fixture-accounts.js`) e admin (registrado em `public.admins`).
+7. `.env.e2e` (raiz do repo, gitignored) populado com a URL/chaves reais do `encanto-e2e`.
+
+**Achado de arquitetura (Onda 4):** a RPC oficial `set_store_mode` exige `is_admin()=true` — checagem
+explícita no corpo da função, não RLS — então um client `service_role` via PostgREST não a satisfaz
+sozinho. `e2e/support/storeMode.js` escreve direto na tabela `settings` via conexão Postgres (mesma
+infra do seed) para o *setup* de teste — efeito idêntico ao da RPC, sem forjar sessão de admin.

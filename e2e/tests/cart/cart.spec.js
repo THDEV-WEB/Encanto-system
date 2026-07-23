@@ -1,50 +1,52 @@
 /* e2e/tests/cart/cart.spec.js — REF-E2E-01 · Onda 3 (@read-only).
-   Carrinho é 100% local (localStorage, src/hooks/useCart.js) — nenhuma chamada ao backend. Roda hoje
-   contra o catálogo mock, igual às Ondas 1/2. Produtos usados (p9 "Marmita P", pac "Agua de Coco")
-   não têm `tamanhos`/`variantes` obrigatórios — "Adicionar" no modal funciona sem seleção prévia
-   (produtos com variante obrigatória ficam fora desta onda, ver ProductModal.page.js). */
+   Carrinho é 100% local (localStorage, src/hooks/useCart.js) — nenhuma chamada ao backend, mas os
+   produtos vêm do catálogo fixture semeado no projeto de E2E (e2e/support/seed-catalog.sql).
+   "Marmita P" e "Agua de Coco" não têm `tamanhos`/`variantes` obrigatórios — "Adicionar" no modal
+   funciona sem seleção prévia (produtos com variante obrigatória ficam fora desta onda, ver
+   ProductModal.page.js). */
 import { test, expect } from '../../fixtures/index.js';
+import { PROD_MARMITA_P, PROD_AGUA_DE_COCO } from '../../support/fixture-catalog.js';
 
 test.describe('carrinho', { tag: '@read-only' }, () => {
   test.beforeEach(async ({ storePage }) => { await storePage.goto(); });
 
   test('adicionar um produto simples atualiza o badge do carrinho no header', async ({ storePage, productModal }) => {
-    await storePage.openProduct('p9');
+    await storePage.openProduct(PROD_MARMITA_P);
     await productModal.adicionar();
     await expect(storePage.cartBadge).toHaveText('1');
   });
 
   test('abre o carrinho e mostra o item com nome e preço corretos', async ({ storePage, productModal, cartSidebar }) => {
-    await storePage.openProduct('p9');
+    await storePage.openProduct(PROD_MARMITA_P);
     await productModal.adicionar();
     await storePage.openCart();
-    await expect(cartSidebar.item('p9')).toBeVisible();
-    await expect(cartSidebar.item('p9')).toContainText('Marmita P');
-    await expect(cartSidebar.item('p9')).toContainText(/R\$\s*15,99/);
+    await expect(cartSidebar.item(PROD_MARMITA_P)).toBeVisible();
+    await expect(cartSidebar.item(PROD_MARMITA_P)).toContainText('Marmita P');
+    await expect(cartSidebar.item(PROD_MARMITA_P)).toContainText(/R\$\s*15,99/);
   });
 
   test('aumentar a quantidade recalcula o preço da linha', async ({ storePage, productModal, cartSidebar }) => {
-    await storePage.openProduct('p9');
+    await storePage.openProduct(PROD_MARMITA_P);
     await productModal.adicionar();
     await storePage.openCart();
-    await cartSidebar.increaseQty('p9');
-    await expect(cartSidebar.qty('p9')).toHaveText('2');
-    await expect(cartSidebar.item('p9')).toContainText(/R\$\s*31,98/); // 15,99 × 2
+    await cartSidebar.increaseQty(PROD_MARMITA_P);
+    await expect(cartSidebar.qty(PROD_MARMITA_P)).toHaveText('2');
+    await expect(cartSidebar.item(PROD_MARMITA_P)).toContainText(/R\$\s*31,98/); // 15,99 × 2
   });
 
   test('diminuir a quantidade não passa de 1', async ({ storePage, productModal, cartSidebar }) => {
-    await storePage.openProduct('p9');
+    await storePage.openProduct(PROD_MARMITA_P);
     await productModal.adicionar();
     await storePage.openCart();
-    await cartSidebar.decreaseQty('p9'); // já está em 1 — updateQty trava no mínimo (useCart.js)
-    await expect(cartSidebar.qty('p9')).toHaveText('1');
+    await cartSidebar.decreaseQty(PROD_MARMITA_P); // já está em 1 — updateQty trava no mínimo (useCart.js)
+    await expect(cartSidebar.qty(PROD_MARMITA_P)).toHaveText('1');
   });
 
   test('remover o único item deixa o carrinho vazio e desabilita o checkout', async ({ storePage, productModal, cartSidebar }) => {
-    await storePage.openProduct('p9');
+    await storePage.openProduct(PROD_MARMITA_P);
     await productModal.adicionar();
     await storePage.openCart();
-    await cartSidebar.removeItem('p9');
+    await cartSidebar.removeItem(PROD_MARMITA_P);
     await expect(cartSidebar.empty).toBeVisible();
     await expect(cartSidebar.checkoutButton).toBeDisabled();
   });
@@ -55,16 +57,16 @@ test.describe('carrinho', { tag: '@read-only' }, () => {
   });
 
   test('adicionar dois produtos diferentes mantém as duas linhas e habilita o checkout', async ({ storePage, productModal, cartSidebar, page }) => {
-    await storePage.openProduct('p9');
+    await storePage.openProduct(PROD_MARMITA_P);
     await productModal.adicionar();
 
-    await page.locator('#sec-bebidas').scrollIntoViewIfNeeded(); // pac (Agua de Coco) é lazy — monta só perto do viewport
-    await storePage.openProduct('pac');
+    await page.locator('#sec-bebidas').scrollIntoViewIfNeeded(); // Agua de Coco é lazy — monta só perto do viewport
+    await storePage.openProduct(PROD_AGUA_DE_COCO);
     await productModal.adicionar();
 
     await storePage.openCart();
-    await expect(cartSidebar.item('p9')).toBeVisible();
-    await expect(cartSidebar.item('pac')).toBeVisible();
+    await expect(cartSidebar.item(PROD_MARMITA_P)).toBeVisible();
+    await expect(cartSidebar.item(PROD_AGUA_DE_COCO)).toBeVisible();
     await expect(cartSidebar.checkoutButton).toBeEnabled();
   });
 });

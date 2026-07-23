@@ -12,7 +12,7 @@ const CATEGORIAS = [
 test.describe('navegação por categorias', { tag: '@read-only' }, () => {
   test.beforeEach(async ({ storePage }) => { await storePage.goto(); });
 
-  test('abre o dropdown e lista todas as categorias visíveis do catálogo mock', async ({ storePage, page }) => {
+  test('abre o dropdown e lista todas as categorias visíveis do catálogo', async ({ storePage, page }) => {
     await storePage.categoryMenuTrigger.click();
     await expect(page.getByRole('listbox', { name: 'Categorias' })).toBeVisible();
     for (const nome of CATEGORIAS) {

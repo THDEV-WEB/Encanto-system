@@ -1,8 +1,11 @@
 /* e2e/tests/store/catalog.spec.js — REF-E2E-01 · Onda 2 (@read-only).
-   Catalogo renderizado a partir do fallback MOCK (src/data/mockCatalog.js) — roda hoje sem o projeto
-   Supabase de E2E (ver e2e/README.md). Cada categoria vira 1 secao (utils/catSection.js define o id
-   de ancora); cada produto vira um card com data-prod estavel (ja usado pelo proprio test:render). */
+   Catálogo semeado no projeto Supabase DEDICADO a E2E (e2e/support/seed-catalog.sql, aplicado via
+   `node scripts/e2e-seed.mjs`) — espelha nomes/categorias/ordem de src/data/mockCatalog.js, então o
+   comportamento observado aqui é idêntico ao que era validado contra o fallback mock (Onda 1-3, antes
+   do .env.e2e ganhar credenciais reais). Cada categoria vira 1 seção (utils/catSection.js define o id
+   de âncora pelo NOME da categoria); cada produto vira um card com data-prod estável. */
 import { test, expect } from '../../fixtures/index.js';
+import { PROD_MARMITA_P, PROD_AGUA_DE_COCO, PROD_ACAI_500ML } from '../../support/fixture-catalog.js';
 
 const SECOES = [
   ['sec-marmitas',   'Cardápio de Marmitas'],
@@ -15,7 +18,7 @@ const SECOES = [
   ['sec-bebidas',    'Bebidas'],
 ];
 
-test.describe('catálogo (fallback mock)', { tag: '@read-only' }, () => {
+test.describe('catálogo (fixture E2E)', { tag: '@read-only' }, () => {
   test.beforeEach(async ({ storePage }) => { await storePage.goto(); });
 
   for (const [id, titulo] of SECOES) {
@@ -27,24 +30,24 @@ test.describe('catálogo (fallback mock)', { tag: '@read-only' }, () => {
     });
   }
 
-  test('mostra nome e preço corretos de produtos conhecidos do catálogo mock', async ({ storePage, page }) => {
+  test('mostra nome e preço corretos de produtos conhecidos do catálogo fixture', async ({ storePage, page }) => {
     // o card de cada produto só monta quando a SEÇÃO (sempre presente no DOM) entra perto do
     // viewport (LazySection) — rolar até a seção primeiro é o que força esse mount.
     await page.locator('#sec-marmitas').scrollIntoViewIfNeeded();
-    await expect(storePage.productCard('p9')).toContainText('Marmita P');
-    await expect(storePage.productCard('p9')).toContainText(/R\$\s*15,99/);
+    await expect(storePage.productCard(PROD_MARMITA_P)).toContainText('Marmita P');
+    await expect(storePage.productCard(PROD_MARMITA_P)).toContainText(/R\$\s*15,99/);
 
     await page.locator('#sec-bebidas').scrollIntoViewIfNeeded();
-    await expect(storePage.productCard('pac')).toContainText('Agua de Coco');
-    await expect(storePage.productCard('pac')).toContainText(/R\$\s*10,00/);
+    await expect(storePage.productCard(PROD_AGUA_DE_COCO)).toContainText('Agua de Coco');
+    await expect(storePage.productCard(PROD_AGUA_DE_COCO)).toContainText(/R\$\s*10,00/);
 
     await page.locator('#sec-destaques').scrollIntoViewIfNeeded();
-    await expect(storePage.productCard('pd2')).toContainText('Açaí 500 ml');
-    await expect(storePage.productCard('pd2')).toContainText(/R\$\s*15,99/);
+    await expect(storePage.productCard(PROD_ACAI_500ML)).toContainText('Açaí 500 ml');
+    await expect(storePage.productCard(PROD_ACAI_500ML)).toContainText(/R\$\s*15,99/);
   });
 
   test('abrir um produto mostra o modal com nome/descrição/preço', async ({ storePage, page }) => {
-    await storePage.openProduct('p9');
+    await storePage.openProduct(PROD_MARMITA_P);
     const modal = page.locator('.modal');
     await expect(modal).toBeVisible();
     await expect(modal.locator('.modal-title')).toHaveText('Marmita P');

@@ -2,8 +2,9 @@
    Busca inteligente (REF-UI-SEARCH-01): dropdown de sugestões agrupadas (Categorias/Produtos),
    tolerante a acento/caixa/parcial (utils/searchText.js: deburr). Vive só na barra sticky — "surge
    ao rolar" (useStickyReveal), por isso cada teste rola a página antes de usar a busca (fluxo real,
-   não atalho). Roda hoje contra o catálogo mock (sem projeto Supabase de E2E). */
+   não atalho). Roda contra o catálogo fixture semeado no projeto de E2E (e2e/support/seed-catalog.sql). */
 import { test, expect } from '../../fixtures/index.js';
+import { PROD_ENCANTO_MINEIRO } from '../../support/fixture-catalog.js';
 
 test.describe('busca inteligente', { tag: '@read-only' }, () => {
   test.beforeEach(async ({ storePage }) => {
@@ -29,7 +30,7 @@ test.describe('busca inteligente', { tag: '@read-only' }, () => {
   test('selecionar uma sugestão de produto rola até o card correspondente', async ({ storePage }) => {
     await storePage.search('Encanto Mineiro');
     await storePage.suggestionsListbox.getByRole('option', { name: /Encanto Mineiro/ }).click();
-    await expect(storePage.productCard('pa1')).toBeInViewport();
+    await expect(storePage.productCard(PROD_ENCANTO_MINEIRO)).toBeInViewport();
   });
 
   test('selecionar uma sugestão de categoria rola até a seção correspondente', async ({ storePage, page }) => {

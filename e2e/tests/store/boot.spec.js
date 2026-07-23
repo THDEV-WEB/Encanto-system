@@ -1,8 +1,8 @@
 /* e2e/tests/store/boot.spec.js — REF-E2E-01 · Onda 1 (infra).
    Spec trivial que prova a esteira inteira (Playwright -> vite --mode e2e -> app real no browser)
-   antes de qualquer spec de negócio. Roda HOJE sem o projeto Supabase de E2E: sem VITE_SUPABASE_URL/
-   KEY em .env.e2e, o app cai no modo degradado (db=null) e usa o catálogo MOCK
-   (src/data/mockCatalog.js) — determinístico, sem rede, sem tocar nenhum Supabase. @read-only. */
+   antes de qualquer spec de negócio. Roda com QUALQUER catálogo (fallback mock local se .env.e2e
+   estiver em branco, ou o catálogo fixture do projeto de E2E — Onda 4 em diante) — a única coisa
+   afirmada aqui é que o boot não quebra e que ALGUM produto renderiza. @read-only. */
 import { test, expect } from '../../fixtures/index.js';
 
 test.describe('boot da loja', { tag: '@read-only' }, () => {
@@ -20,7 +20,7 @@ test.describe('boot da loja', { tag: '@read-only' }, () => {
     expect(erros, `erros JS não capturados durante o boot: ${erros.map(String).join('; ')}`).toHaveLength(0);
   });
 
-  test('renderiza o catálogo (fallback mock quando .env.e2e ainda não aponta para um Supabase)', async ({ storePage, page }) => {
+  test('renderiza ao menos 1 produto do catálogo', async ({ storePage, page }) => {
     await storePage.goto();
     await expect(page.locator('[data-prod]').first()).toBeVisible({ timeout: 15_000 });
   });
