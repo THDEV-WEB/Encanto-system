@@ -32,21 +32,24 @@ export async function criarPedidoFixture() {
   return { ok: true, skipped: false, orderId: data.order_id };
 }
 
-/** REF-E2E-03 · Onda 1. Cria 1 pedido "avulso" (retirada, R$12,50, 1x Marmita P fixture) para um
-    cliente GENÉRICO (nome com PREFIXO_TESTE, telefone gerado por execução) — SEM vínculo com
-    CLIENTE_FIXTURE. Usado por specs de Admin que precisam de um pedido real no backend para provar
-    que uma sessão sem is_admin() NÃO o enxerga (ver docs/adr/REF-E2E-03-auditoria-admin.md §5), sem
-    tocar Meus Pedidos/Fidelidade do cliente fixture (que usam criarPedidoFixture, acima). Limpo por
-    `limparDadosDeTeste()` (já existente, já filtra customers por PREFIXO_TESTE). Retorna o order_id e
-    o telefone gerado. {ok:false, skipped:true} se o ambiente de E2E não estiver configurado. */
-export async function criarPedidoAvulso() {
+/** REF-E2E-03 · Onda 1 (+ Onda 2: parâmetro `endereco`). Cria 1 pedido "avulso" (R$12,50, 1x Marmita P
+    fixture) para um cliente GENÉRICO (nome com PREFIXO_TESTE, telefone gerado por execução) — SEM
+    vínculo com CLIENTE_FIXTURE. Usado por specs de Admin que precisam de um pedido real no backend
+    sem tocar Meus Pedidos/Fidelidade do cliente fixture (que usam criarPedidoFixture, acima). Limpo
+    por `limparDadosDeTeste()` (já existente, já filtra customers por PREFIXO_TESTE). `endereco`
+    controla o TIPO detectado por `comandaModel.js` (tipoDoPedido): o default replica o padrão
+    "Retirada na loja — ..." (retirada); passar um endereço de entrega real produz um pedido tipo
+    'entrega' (ver admin-pedidos-status.spec.js, que precisa dos 2 tipos p/ provar as 2 trilhas).
+    Retorna o order_id e o telefone gerado. {ok:false, skipped:true} se o ambiente de E2E não estiver
+    configurado. */
+export async function criarPedidoAvulso({ endereco = 'Retirada na loja — E2E' } = {}) {
   if (!E2E_ENV_PRONTO) { avisarAmbientePendente('pedido avulso (Admin)'); return { ok: false, skipped: true }; }
   const anon = supabaseAnon();
   const total = 12.5;
   const telefone = `4799${Date.now().toString().slice(-7)}`; // gerado por execucao - nunca colide com CLIENTE_FIXTURE
   const { data, error } = await anon.rpc('create_order', {
     p_customer: { name: `${PREFIXO_TESTE}Avulso`, phone: telefone },
-    p_order: { total, status: 'recebido', payment_method: 'dinheiro', address: 'Retirada na loja — E2E', observacoes: null },
+    p_order: { total, status: 'recebido', payment_method: 'dinheiro', address: endereco, observacoes: null },
     p_items: [{
       product_id: PROD_MARMITA_P, nome_produto: 'Marmita P', quantity: 1,
       price: total, preco_unitario: total, adicionais: [], observacoes: null,

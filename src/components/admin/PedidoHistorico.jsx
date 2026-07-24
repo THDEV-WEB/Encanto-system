@@ -36,7 +36,7 @@ export function PedidoHistorico({ orderId }) {
   }
 
   return (
-    <div style={{ padding: '6px 4px 2px' }}>
+    <div data-testid="pedido-historico" style={{ padding: '6px 4px 2px' }}>
       <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.4px', textTransform: 'uppercase', color: 'var(--gray-400)', marginBottom: 8 }}>
         Histórico de status
       </div>

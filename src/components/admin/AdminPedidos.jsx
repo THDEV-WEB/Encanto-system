@@ -45,7 +45,7 @@ function OrderCard({ order, numero, onChanged, onComanda }) {
   const infoAtual = statusInfo(status);
 
   return (
-    <div style={{ border: '1px solid var(--gray-200,#E8DCC8)', borderRadius: 14, padding: 14, marginBottom: 12, background: 'var(--white,#fff)' }}>
+    <div data-testid={`pedido-card-${order.id}`} style={{ border: '1px solid var(--gray-200,#E8DCC8)', borderRadius: 14, padding: 14, marginBottom: 12, background: 'var(--white,#fff)' }}>
       {/* topo: numero + ref + tipo + status atual */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>

@@ -1,6 +1,6 @@
 # REF-E2E-03 — Cobertura E2E do Painel Administrativo — Auditoria
 
-**Status:** 🟡 Onda 1 (infraestrutura do Admin: login, permissão, sessão, logout) implementada e verificada (2026-07-23) — 7/7 specs verdes + suíte de domínio 100% sem regressão. Aguardando aprovação do dono para commitar e seguir para a Onda 2. Ondas 2-6 seguem a auditoria abaixo, 1 aprovação por onda.
+**Status:** 🟡 Onda 1 commitada (6eb14b9). Onda 2 (Dashboard + Pedidos) implementada e verificada (2026-07-23) — 17/17 specs do Admin + 66/66 da suíte E2E inteira + suíte de domínio 100%, sem regressão. Aguardando aprovação do dono para commitar e seguir para a Onda 3. Ondas 3-6 seguem a auditoria abaixo, 1 aprovação por onda.
 **Depende de:** REF-E2E-01 (infraestrutura Playwright, projeto Supabase dedicado `encanto-e2e`, POM, `support/*`), REF-E2E-02 (padrão de fixture persistente, `workers:1`), AUTH-01 (fundação `is_admin()`/RLS), REF-ORDER-01/01b/01c (fluxo de pedidos + notificação), REF-ADMIN-CATALOG-01/REF-ADMIN-ADDONS-02 (governança do catálogo), REF-BUSINESS-HOURS-02/03, REF-DELIVERY-01, REF-LOYALTY-01.
 **Relacionado:** fecha a lista "Faltam: Admin" deixada em aberto desde a auditoria da E2E-01.
 
@@ -197,6 +197,47 @@ Implementada exatamente como planejada em §6, sem desvio de escopo. Arquivos:
 **Correção de precisão nesta ADR:** o texto original de §1.2 dizia que um F5 "sempre volta para a tela de login" — o comportamento real e verificado é que ele volta para a **loja** (mode padrão `'store'`), não para o login (`mode='login'` só é alcançado ao entrar via `#admin-encanto`). A conclusão prática (sessão de admin nunca é restaurada automaticamente) continua correta; só a tela de destino do fallback estava imprecisa.
 
 Verificação: `npx playwright test --project=chromium e2e/tests/admin` (7/7) e a suíte completa (`npm run test:e2e`, 56/56, incluindo Ondas anteriores) + toda a suíte de domínio (`test:pricing` … `test:whatsapp-svc`) sem regressão.
+
+## Onda 2 — executada (2026-07-23)
+
+Implementada exatamente como planejada em §6 (Dashboard + Pedidos: lista, status, histórico,
+mensagens, comanda). Arquivos:
+
+- `src/components/admin/AdminPedidos.jsx`: `data-testid={`pedido-card-${order.id}`}` no card de cada
+  pedido — único ajuste estrutural; o número exibido (#N) é POSIÇÃO na lista, não estável (achado
+  §1.4), então todo locator escopa por `orderId`, nunca por posição.
+- `src/components/admin/PedidoHistorico.jsx` / `PedidoNotificacoes.jsx`: `data-testid` no painel
+  (`pedido-historico` / `pedido-mensagens`) — só para escopar asserções, sem mudança visual.
+- `e2e/pages/AdminPedidosPage.page.js` (novo) — cards, ações (avançar/cancelar/reabrir/comanda/
+  histórico/mensagens), comanda (diálogo/iframe/papel/imprimir/fechar). Registrado em
+  `e2e/fixtures/index.js` como `adminPedidosPage`.
+- `e2e/support/fixture-order.js`: `criarPedidoAvulso()` ganhou o parâmetro `endereco` (default mantém
+  o comportamento da Onda 1 — retirada; um endereço de entrega real produz o tipo 'entrega', necessário
+  para provar as 2 trilhas do fluxo operacional).
+- 6 specs novos em `e2e/tests/admin/`: `admin-dashboard.spec.js`, `admin-pedidos-lista.spec.js`,
+  `admin-pedidos-status.spec.js`, `admin-pedidos-historico.spec.js`, `admin-pedidos-mensagens.spec.js`,
+  `admin-pedidos-comanda.spec.js` (14 casos de teste).
+
+**Achados confirmados ao rodar (2, ambos consistentes com a auditoria original):**
+1. **Dashboard tem um bug real e pré-existente, não corrigido por esta REF** (fora de escopo — REF
+   é de teste, não de produto): `AdminDashboard.jsx` lê `o.cliente_nome`/`o.cliente_telefone`, campos
+   que NUNCA existem no retorno de `DS.getPedidos()` (o select traz `customers:{name,phone}` aninhado,
+   não colunas soltas com esse nome) — a coluna "Cliente" da tabela "Últimos pedidos" sempre renderiza
+   em branco, para qualquer pedido. Descoberto ao tentar (e falhar) usar o nome do cliente para provar
+   que o "Atualizar" manual funciona — a prova precisou usar o valor numérico do card "Total geral"
+   em vez do nome. `AdminPedidos.jsx` (a aba Pedidos) usa `order.customers?.name`/`phone` — a forma
+   REAL do select — e não tem esse bug.
+2. **Race de teste real (não bug de produto) entre "avançar status" e abrir um painel expansível no
+   mesmo card**: `AdminPedidos` troca a lista inteira por `<Spinner/>` enquanto `useOrders().loading`
+   é `true` (todo `refresh()`, incluindo o disparado por `DS.setStatus`) — isso desmonta e REMONTA
+   cada `OrderCard`, resetando o estado local `aba` (Histórico/Mensagens) para `null`. Clicar em
+   "Histórico" imediatamente após "Avançar", sem esperar o status mudar visualmente primeiro, corre
+   risco real de o clique abrir o painel num card que está prestes a ser substituído. Corrigido no
+   spec (`admin-pedidos-historico.spec.js`): aguardar o texto do novo status (`👨‍🍳 Em preparo`)
+   ficar visível — prova que o ciclo de refresh/remount já assentou — antes de abrir o painel.
+
+Verificação: `npx playwright test --project=chromium e2e/tests/admin` (17/17), suíte completa
+(`npm run test:e2e`, 66/66) e suíte de domínio completa, sem regressão.
 
 ## 8. Critérios objetivos de aprovação (por onda, mesmo padrão das REFs anteriores)
 

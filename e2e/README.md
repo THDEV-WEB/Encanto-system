@@ -176,8 +176,25 @@ fluxos) — reaproveita 100% da infra de E2E-01/02 (Playwright, projeto `encanto
   previsões da auditoria se confirmaram sem ajuste nenhum na 1ª execução — ver ADR "Onda 1 —
   executada" para o detalhe, incluindo uma correção de precisão no texto original da auditoria (o
   fallback do reload é a loja, não uma tela de login).
-- **Próximas ondas:** Dashboard+Pedidos (2), Categorias+Adicionais (3), Produtos (4),
-  Configurações+Fidelidade admin (5), Permissões (matriz completa)+Saúde (6) — ver ADR §6.
+- **Onda 2 (Dashboard + Pedidos):** FEITO. `data-testid={`pedido-card-${order.id}`}` em cada card de
+  `AdminPedidos.jsx` (o número exibido #N é posição na lista, não estável — todo locator escopa por
+  `orderId`) + `data-testid` nos painéis de `PedidoHistorico.jsx`/`PedidoNotificacoes.jsx`. Novo
+  `AdminPedidosPage.page.js` (cards, ações, comanda). `criarPedidoAvulso()` ganhou o parâmetro
+  `endereco` (permite gerar pedidos tipo 'entrega', além do default 'retirada'). `admin-dashboard.spec.js`
+  (5 cards + breakdown, estado vazio, atualizar manual). `admin-pedidos-lista.spec.js` (card reflete
+  cliente/total/tipo reais). `admin-pedidos-status.spec.js` (trilha de retirada pula "Saiu para
+  entrega", trilha de entrega passa por ela, cancelar/reabrir). `admin-pedidos-historico.spec.js` /
+  `admin-pedidos-mensagens.spec.js` (só leitura; mensagens prova a prévia + o estado real "na fila",
+  nunca envio). `admin-pedidos-comanda.spec.js` (abre para o pedido certo, troca de largura, "Imprimir"
+  dispara `window.print` via init script — sem depender de diálogo real de SO). **2 achados
+  confirmados ao rodar:** (a) bug real e pré-existente no Dashboard — `o.cliente_nome`/
+  `o.cliente_telefone` nunca existem no retorno de `DS.getPedidos()`, a coluna "Cliente" da tabela
+  sempre renderiza em branco (fora de escopo corrigir, é achado de produto); (b) race real entre
+  avançar status e abrir um painel expansível no mesmo card — `AdminPedidos` desmonta/remonta todo
+  `OrderCard` enquanto `loading` é `true` (troca por `<Spinner/>`), resetando o painel aberto —
+  corrigido no spec aguardando o novo status assentar antes de interagir. Ver ADR "Onda 2 — executada".
+- **Próximas ondas:** Categorias+Adicionais (3), Produtos (4), Configurações+Fidelidade admin (5),
+  Permissões (matriz completa)+Saúde (6) — ver ADR §6.
 
 ### Nota sobre `set_store_mode` (Onda 4)
 
