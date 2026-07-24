@@ -1,6 +1,6 @@
 # REF-E2E-03 — Cobertura E2E do Painel Administrativo — Auditoria
 
-**Status:** 🟡 Ondas 1 (6eb14b9), 2 (ce19ffa), 3 (836e208, +2 fixes reais de criação) e 4 (4383317) commitadas. Onda 5 (Configurações + Fidelidade admin) implementada e verificada (2026-07-24) — 36/36 specs do Admin + 85/85 da suíte E2E inteira + suíte de domínio 100%, sem regressão. Aguardando aprovação do dono para commitar e seguir para a Onda 6 (fechamento).
+**Status:** 🏁 **REF-E2E-03 FECHADA.** Ondas 1 (6eb14b9), 2 (ce19ffa), 3 (836e208), 4 (4383317) e 5 (657aff0) commitadas. Onda 6 (Permissões + Saúde, fechamento) implementada e verificada (2026-07-24) — 38/38 specs do Admin + 87/87 da suíte E2E inteira + suíte de domínio 100%, sem regressão. Aguardando aprovação do dono para commitar a Onda 6 (último commit da REF).
 **Depende de:** REF-E2E-01 (infraestrutura Playwright, projeto Supabase dedicado `encanto-e2e`, POM, `support/*`), REF-E2E-02 (padrão de fixture persistente, `workers:1`), AUTH-01 (fundação `is_admin()`/RLS), REF-ORDER-01/01b/01c (fluxo de pedidos + notificação), REF-ADMIN-CATALOG-01/REF-ADMIN-ADDONS-02 (governança do catálogo), REF-BUSINESS-HOURS-02/03, REF-DELIVERY-01, REF-LOYALTY-01.
 **Relacionado:** fecha a lista "Faltam: Admin" deixada em aberto desde a auditoria da E2E-01.
 
@@ -408,6 +408,84 @@ Verificação: `npx playwright test --project=chromium e2e/tests/admin` (36/36),
 (`npm run test:e2e`, 85/85) e suíte de domínio completa, sem regressão. Baselines globais
 confirmados por consulta direta ao final: `store_mode=OPEN`, `delivery_eta_min=30`,
 `loyalty_required=10`, `loyalty_discount=50`.
+
+## Onda 6 — executada (2026-07-24) — FECHAMENTO DA REF
+
+Permissões (matriz completa, parte 2) + Saúde, exatamente como planejado em §6. Última onda desta REF.
+
+### Arquivos
+
+- `e2e/tests/admin/admin-permissao.spec.js`: ganhou a "parte 2" (2º `test.describe` no mesmo
+  arquivo) — usuário ANÔNIMO tentando escrever/ler via chamadas diretas (`supabaseAnon()`, o mesmo
+  client que qualquer visitante real usaria), não simulação de role via SQL cru.
+- `e2e/tests/admin/admin-saude.spec.js` (novo) — `AdminHealth.jsx` não precisou de NENHUM
+  `data-testid` (labels e botão já são texto real e estável, mesma categoria de `AdminStatus.jsx`).
+- Nenhum ajuste de produção nesta onda.
+
+### Decisão de escopo: por que "parte 2" é representativa, não exaustiva
+
+A matriz completa de RLS (§1.9) já é provada de forma EXAUSTIVA pelos guards de domínio
+(`test:auth-rls`, `test:orders-rls`, `test:rls`) via `SET LOCAL ROLE` + `BEGIN/ROLLBACK` direto no
+Postgres — mas contra o banco de **produção** (`C:\Users\00thi\.encanto\db.env`), nunca o projeto
+`encanto-e2e`. Repetir a mesma exaustão aqui seria duplicar uma garantia já travada em outro nível
+(violaria o princípio geral desta REF). O valor real desta parte 2 é CONFIRMAR que o clone de schema
+do projeto de E2E preservou as mesmas proteções, usando a MESMA técnica de qualquer visitante real
+(client `anon` do supabase-js) em vez de simulação SQL — por isso só uma amostra representativa (2
+tabelas + 1 RPC), não a matriz inteira.
+
+### Achado real confirmado ao rodar (1, de teste — nenhum bug de produto)
+
+**`notification_outbox` não retorna ERRO para uma leitura anônima — retorna 0 linhas, silenciosamente.**
+A tabela tem RLS habilitada com uma única política (`notification_outbox_admin_read`, `USING
+is_admin()`), mas o GRANT de `SELECT` da tabela em si nunca foi revogado do `anon` (diferente das 3
+RPCs de notificação, endurecidas à parte em `REF-ORDER-01c-notif-grants-harden.sql`, que SÓ revogou
+`EXECUTE` nas funções, não os grants da tabela). A suposição inicial do spec (esperava um erro de
+permissão, como nos outros casos) estava errada — corrigida para o comportamento REAL: `error: null`,
+`data: []`. É o comportamento RLS padrão (row-filtering silencioso quando não há política que libere
+a leitura), não uma falha de proteção — a linha continua efetivamente inacessível ao anon, só não via
+um erro explícito.
+
+Verificação: `npx playwright test --project=chromium e2e/tests/admin` (38/38), suíte completa
+(`npm run test:e2e`, 87/87) e suíte de domínio completa, sem regressão.
+
+## Fechamento da REF-E2E-03
+
+**Escopo original cumprido integralmente, nas 6 ondas negociadas na auditoria:** infraestrutura
+(login/sessão/logout/permissão-leitura), Dashboard+Pedidos, Categorias+Adicionais, Produtos,
+Configurações+Fidelidade admin, Permissões-escrita+Saúde.
+
+**Números finais:** 6 commits (6eb14b9, ce19ffa, 836e208, 4383317, 657aff0, + Onda 6 pendente de
+aprovação) · 38 specs novos em `e2e/tests/admin/` · 87 specs na suíte E2E inteira (era 66 ao fim da
+E2E-02) · 9 Page Objects (`AdminLoginPage`/`AdminPanel`/`AdminPedidosPage`/`AdminCategoriasPage`/
+`AdminAdicionaisPage`/`AdminProductsPage`/`AdminFidelidadePage`, + 2 auxiliares reaproveitados de
+E2E-01/02) · 3 novos helpers de `support/` (`fixture-catalog-admin.js`, `mockImageUpload`, extensão de
+`fixture-order.js`) · suíte de domínio inteira sem regressão em nenhuma onda.
+
+**3 bugs REAIS de produção encontrados e corrigidos** (todos com aprovação explícita do dono,
+fora do princípio geral "só testar" desta REF — ver Onda 3): "+ Nova Categoria" sempre falhava
+silenciosamente (slug NOT NULL sem default nunca enviado); "+ Novo/Editar Adicional" tinha o mesmo
+problema de criação (grupo NOT NULL) + editar Tipo/Grupo de um adicional existente era
+silenciosamente ignorado.
+
+**Gaps de produto documentados, não corrigidos** (fora do pedido do dono): excluir categoria "em
+uso" sucede sem erro, deixando `categoria_ids` órfão (Onda 3); Dashboard nunca mostra nome/telefone
+do cliente na tabela "Últimos pedidos" (campos que não existem no retorno da query, Onda 2); Admin
+não tem busca/filtro na aba Pedidos (achado da auditoria original, §3); sessão do Admin nunca é
+restaurada automaticamente (achado da auditoria original, §1.2, confirmado ao vivo na Onda 1).
+
+**Lições que se repetiram entre ondas** (vale para futuras REFs de E2E): (1) nunca consultar o
+backend direto logo após uma ação assíncrona (`salvar()`, `avançar status`) sem antes esperar uma
+confirmação visível na UI — passa isolado, falha na suíte inteira (Ondas 2 e 4); (2) toggles com o
+padrão CSS `.toggle-switch input{opacity:0}` exigem clicar no elemento visível (`.toggle-slider`),
+nunca o input diretamente (Onda 4); (3) specs que mudam configuração GLOBAL (`store_mode`,
+`delivery_eta_min`, `loyalty_required`/`discount`) devem restaurar o baseline OBSERVADO no início,
+não um valor fixo assumido — o "baseline" às vezes só passa a existir quando a própria suíte
+exercita a RPC pela 1ª vez (Onda 5).
+
+**A REF-E2E-03 mantém o mesmo nível técnico, arquitetural e documental das REF-E2E-01/02** (mandato
+explícito do dono): reuso total da infraestrutura, zero duplicação de Page Objects/fixtures, ajustes
+de produção sempre mínimos e justificados por spec, documentação de cada achado real (não
+hipotético) em toda onda, aprovação explícita do dono antes de cada commit.
 
 ## 8. Critérios objetivos de aprovação (por onda, mesmo padrão das REFs anteriores)
 

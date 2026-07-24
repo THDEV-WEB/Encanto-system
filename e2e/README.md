@@ -244,7 +244,17 @@ fluxos) — reaproveita 100% da infra de E2E-01/02 (Playwright, projeto `encanto
   retroativamente, é preciso rebuscar; (3) `loyalty_required`/`loyalty_discount` não existiam como
   linhas em `settings` antes desta onda (1ª escrita real via `set_loyalty_config` no projeto de E2E).
   Ver ADR "Onda 5 — executada".
-- **Próxima onda:** Permissões (matriz completa) + Saúde (6, fechamento) — ver ADR §6.
+- **Onda 6 (Permissões + Saúde, fechamento):** FEITO — **REF-E2E-03 FECHADA.** `admin-permissao.spec.js`
+  ganhou a parte 2 (usuário anônimo, `supabaseAnon()` real — não simulação de role via SQL cru):
+  representativa (2 tabelas + 1 RPC), não exaustiva — a matriz completa do §1.9 já é provada à
+  exaustão pelos guards de domínio (`test:auth-rls`/`test:orders-rls`/`test:rls`) contra produção;
+  o valor aqui é confirmar que o clone de schema do projeto de E2E preservou as mesmas proteções.
+  Novo `admin-saude.spec.js` (leitura dos agregados, sem nenhum ajuste de produção — `AdminHealth.jsx`
+  já é 100% acessível). **1 achado real:** `notification_outbox` não retorna erro para leitura anônima
+  — RLS filtra silenciosamente para 0 linhas (grant da tabela nunca revogado do anon, só as 3 RPCs de
+  notificação foram endurecidas à parte); comportamento correto, só não via erro explícito como os
+  outros casos testados. Ver ADR "Onda 6 — executada" + "Fechamento da REF-E2E-03" para o resumo
+  completo (números finais, 3 bugs reais corrigidos, gaps documentados, lições recorrentes).
 
 ### Nota sobre `set_store_mode` (Onda 4)
 
