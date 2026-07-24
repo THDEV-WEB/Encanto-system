@@ -47,7 +47,7 @@ do Playwright. Badge de CI no `README.md` raiz. `permissions: contents: read` + 
 - `docs/adr/REF-CI-01-pipeline.md` (novo)
 - Nenhum arquivo de `src/` alterado — zero superfície de regressão em runtime.
 
-## VALIDAÇÃO FINAL
+## VALIDAÇÃO FINAL (local, pré-push)
 
 - ✅ 3/3 ondas concluídas
 - ✅ Documentação atualizada (ADR + progress.md + e2e/README.md + badge)
@@ -57,8 +57,24 @@ do Playwright. Badge de CI no `README.md` raiz. `permissions: contents: read` + 
 - ✅ `npm run test:e2e` (suíte completa, reexecutada após todas as mudanças): **104/104**
 - ✅ `test:rls`/`test:orders-rls`/`test:auth-rls`: 100% verde, zero escrita persistida
 - ✅ Zero regressões (nenhum arquivo de runtime tocado)
-- ⚠️ Workflow NÃO disparado de verdade no GitHub (exigiria push — fora do escopo; validação foi via
-  parsing sintático + execução manual de cada step)
 
-**PRÓXIMO PASSO:** apresentar relatório técnico final. Aguardar revisão do dono amanhã antes de
-qualquer commit/push (REF-ADMIN-03 e REF-CI-01 seguem ambas pendentes de commit nesta sessão).
+## Validação REAL no GitHub Actions (pós-aprovação e push do dono)
+
+**Commits:** `cfbd1a0` (push inicial, 19 commits incl. REF-ADMIN-01/02/03+CI-01) → `a811f02` (reporter
+`github` p/ diagnóstico) → `869caf3` (fix: fallback de URL/key p/ secrets ausentes) → `1c0a908` (commit
+vazio, redispara após dono cadastrar os 3 secrets) → `56cd80b` (fix: 2 flakes revelados só em CI).
+
+| Run | Commit | Build | Domain | E2E | Causa/fix |
+|---|---|---|---|---|---|
+| 30088596312 | cfbd1a0 | ✅ | ✅ | ❌ 17 falhas (21.7min) | secrets ausentes → `createClient('','')` lança sync → `db`/`dbCliente` null |
+| 30092729757 | a811f02 | ✅ | ✅ | ❌ 17 falhas (22.0min) | mesma causa; reporter `github` adicionado só p/ diagnóstico (annotations públicas) |
+| 30095359329 | 869caf3 | ✅ | ✅ | ❌ 10 falhas (15.6min) | fallback de URL/key resolveu os 7 testes de login; restam os que precisam do catálogo REAL (secrets nunca configurados no repo) |
+| 30106607464 | 1c0a908 | ✅ | ✅ | ❌ 2 falhas (6.2min) | dono cadastrou os 3 secrets reais — tempo já bate com local; sobraram 2 flakes genuínos de CI |
+| 30108030526 | 56cd80b | ⏳ em andamento | | | fix dos 2 flakes: `admin-produtos-imagem.spec.js` (corrida onError vs clique "remover", URL fake mockada) + `checkout-guest.spec.js` (timeout de reconciliação 15s→30s) |
+
+**Achado real de edição:** ao aplicar o fix da Onda de imagem, um `Edit` acidentalmente removeu as
+linhas de login/navegação do teste (old_string/new_string mal recortados) — pego imediatamente pela
+própria suíte local (timeout esperando um elemento que nunca apareceria sem login), corrigido antes do
+commit.
+
+**PRÓXIMO PASSO:** aguardar conclusão do run 30108030526 e confirmar pipeline 100% verde.
