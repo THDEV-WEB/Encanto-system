@@ -59,8 +59,12 @@ test.describe('checkout guest', { tag: '@writes' }, () => {
     // useBusinessHours pinta o 1º frame com o cache local (pode ser AUTO/agenda real, ainda "aberto")
     // e só reconcilia com o modo OFICIAL (CLOSED) após o round-trip assíncrono ao Supabase — dá mais
     // margem que o timeout padrão para essa reconciliação acontecer (não é sleep arbitrário: é
-    // retry-até-verdadeiro do próprio Playwright, só com teto maior).
-    await expect(checkoutPage.submitButton).toBeDisabled({ timeout: 15_000 });
+    // retry-até-verdadeiro do próprio Playwright, só com teto maior). 15s bastava localmente, mas
+    // falhou 3x seguidas (incl. 2 retries) num run do CI (runner mais lento/latência maior até o
+    // Supabase) — achado no REF-CI-01 (ver docs/ref/REF-CI-01-progress.md). 30s dá margem sem mascarar
+    // uma reconciliação real que nunca acontece (o retry-até-verdadeiro do Playwright falha do mesmo
+    // jeito se o modo nunca virar CLOSED, só que mais tarde).
+    await expect(checkoutPage.submitButton).toBeDisabled({ timeout: 30_000 });
     await expect(page.getByText('Você pode montar seu pedido e finalizar quando reabrirmos.')).toBeVisible();
   });
 });

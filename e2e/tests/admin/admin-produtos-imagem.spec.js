@@ -65,6 +65,18 @@ test.describe('Upload de imagem do Produto', { tag: '@writes' }, () => {
     await adminPanel.abrirAba('products');
     await adminProductsPage.abrirNovo();
 
+    // FIX (achado no CI do REF-CI-01, ver docs/ref/REF-CI-01-progress.md): sem interceptar, o navegador
+    // tenta baixar esta URL de verdade; a falha (DNS) e' assincrona e corre contra o clique em
+    // "remover" — o onError do ImageUploader (setPreview(null), legitimo em producao) some com o
+    // botao NO MEIO do clique ("element was detached from the DOM"). Mais provavel/lento no runner do
+    // CI que localmente, mas a corrida existe nos dois. Mockar a resposta (imagem real 1x1) faz o link
+    // ser REALMENTE valido (bate com o nome do teste), eliminando a corrida na raiz.
+    await page.route('https://exemplo.encanto.local/foto.jpg', (route) => route.fulfill({
+      status: 200,
+      contentType: 'image/png',
+      body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64'),
+    }));
+
     await adminProductsPage.imagemUrlInput.fill('https://exemplo.encanto.local/foto.jpg');
     await expect(page.locator('[data-testid="prod-form-imagem"] img')).toHaveAttribute('src', 'https://exemplo.encanto.local/foto.jpg');
 
