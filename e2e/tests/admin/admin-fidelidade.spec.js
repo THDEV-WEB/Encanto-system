@@ -78,19 +78,22 @@ test.describe('Fidelidade — visão do Admin', { tag: '@writes' }, () => {
     };
 
     const estavaAtivo = await adminFidelidadePage.enabledCheckbox.isChecked();
-    expect(await lerValorReal()).toBe(estavaAtivo);
+    await expect.poll(lerValorReal).toBe(estavaAtivo);
 
     // O rótulo muda de forma OTIMISTA, na hora do clique — mas o RPC de save é assíncrono. Esperar
-    // "✓ Salvo com sucesso!" antes de ler o banco evita correr contra a própria escrita em voo.
+    // "✓ Salvo com sucesso!" reduz a corrida, mas não a elimina (o cliente já viu a resposta antes de
+    // ela ficar visível para OUTRA conexão/cliente lendo o mesmo banco — achado real em CI: 1ª tentativa
+    // flakou aqui). expect.poll (já usado em admin-status.spec.js para o mesmo tipo de checagem)
+    // absorve essa folga sem reintroduzir a corrida com um timeout fixo arbitrário.
     await adminFidelidadePage.enabledToggleClicavel.click();
     await expect(page.getByText('✓ Salvo com sucesso!')).toBeVisible();
     await expect(page.getByText(estavaAtivo ? '○ Desativado' : '● Ativo')).toBeVisible();
-    expect(await lerValorReal()).toBe(!estavaAtivo);
+    await expect.poll(lerValorReal).toBe(!estavaAtivo);
 
     // restaura o estado original
     await adminFidelidadePage.enabledToggleClicavel.click();
     await expect(page.getByText('✓ Salvo com sucesso!')).toBeVisible();
     await expect(page.getByText(estavaAtivo ? '● Ativo' : '○ Desativado')).toBeVisible();
-    expect(await lerValorReal()).toBe(estavaAtivo);
+    await expect.poll(lerValorReal).toBe(estavaAtivo);
   });
 });
