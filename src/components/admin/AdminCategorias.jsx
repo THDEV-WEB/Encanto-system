@@ -26,7 +26,7 @@ export function AdminCategorias() {
           <table className="data-table">
             <thead><tr><th>Ícone</th><th>Nome</th><th>Ordem</th><th>Ações</th></tr></thead>
             <tbody>{cats.map(c=>(
-              <tr key={c.id}>
+              <tr key={c.id} data-testid={`cat-row-${c.id}`}>
                 <td style={{fontSize:24}}>{c.icone||'🍽️'}</td>
                 <td><b>{c.nome}</b></td>
                 <td>{c.ordem}</td>
@@ -44,14 +44,14 @@ export function AdminCategorias() {
           <div className="modal-form">
             <h3 style={{fontFamily:'var(--font-head)',fontSize:18,fontWeight:700,marginBottom:20}}>{modal==='new'?'Nova Categoria':'Editar Categoria'}</h3>
             <div className="form-group"><label className="form-label">Nome</label>
-              <input className="form-input" value={form.nome} onChange={e=>setForm(f=>({...f,nome:e.target.value}))}/>
+              <input data-testid="cat-form-nome" className="form-input" value={form.nome} onChange={e=>setForm(f=>({...f,nome:e.target.value}))}/>
             </div>
             <div className="form-row">
               <div className="form-group"><label className="form-label">Ícone (emoji)</label>
-                <input className="form-input" value={form.icone} onChange={e=>setForm(f=>({...f,icone:e.target.value}))}/>
+                <input data-testid="cat-form-icone" className="form-input" value={form.icone} onChange={e=>setForm(f=>({...f,icone:e.target.value}))}/>
               </div>
               <div className="form-group"><label className="form-label">Ordem</label>
-                <input className="form-input" type="number" value={form.ordem} onChange={e=>setForm(f=>({...f,ordem:+e.target.value}))}/>
+                <input data-testid="cat-form-ordem" className="form-input" type="number" value={form.ordem} onChange={e=>setForm(f=>({...f,ordem:+e.target.value}))}/>
               </div>
             </div>
             <div style={{display:'flex',gap:10,marginTop:8}}>

@@ -8,12 +8,16 @@ export function AdminAdicionais() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
-  const [form, setForm] = useState({nome:'',preco:''});
+  const [form, setForm] = useState({nome:'',preco:'',tipo:'gratis',grupo:'acai'});
   const load = async()=>{ setLoading(true); const d=await DS.getAllAds(); setItems(d??MOCK_ADS); setLoading(false); };
   useEffect(()=>{load();},[]);
   const save = async()=>{
     if(!form.nome) return;
-    await DS.upsertAd({nome:form.nome,preco:+form.preco||0},modal==='new'?null:modal.id);
+    /* FIX (achado REF-E2E-03): tipo/grupo eram capturados no form mas nunca enviados ao upsertAd —
+       "Novo Adicional" sempre falhava (adicionais.grupo é NOT NULL sem default) e editar o Tipo/
+       Grupo de um adicional existente era silenciosamente ignorado (o UPDATE nunca tocava essas
+       colunas). */
+    await DS.upsertAd({nome:form.nome,tipo:form.tipo||'gratis',grupo:form.grupo||'acai',preco:+form.preco||0},modal==='new'?null:modal.id);
     setModal(null); load();
   };
   return (
@@ -21,13 +25,13 @@ export function AdminAdicionais() {
       <div className="admin-card">
         <div className="admin-card-header">
           <h3>Adicionais ({items.length})</h3>
-          <button className="btn-primary" onClick={()=>{setForm({nome:'',preco:''});setModal('new');}}>+ Novo</button>
+          <button className="btn-primary" onClick={()=>{setForm({nome:'',preco:'',tipo:'gratis',grupo:'acai'});setModal('new');}}>+ Novo</button>
         </div>
         {loading?<Spinner/>:(
           <table className="data-table">
             <thead><tr><th>Nome</th><th>Grupo</th><th>Tipo</th><th>Preço</th><th>Ações</th></tr></thead>
             <tbody>{items.map(it=>(
-              <tr key={it.id}>
+              <tr key={it.id} data-testid={`ad-row-${it.id}`}>
                 <td style={{fontWeight:600}}>{it.nome}</td>
                 <td><span className="badge badge-purple" style={{fontSize:10}}>
                   {it.grupo==='marmita'?'🍱 Marmita':it.grupo==='bebida'?'🧃 Bebida':'🍇 Açaí'}</span></td>
@@ -48,16 +52,16 @@ export function AdminAdicionais() {
           <div className="modal-form">
             <h3 style={{fontFamily:'var(--font-head)',fontSize:18,fontWeight:700,marginBottom:20}}>{modal==='new'?'Novo Adicional':'Editar Adicional'}</h3>
             <div className="form-group"><label className="form-label">Nome</label>
-              <input className="form-input" value={form.nome} onChange={e=>setForm(f=>({...f,nome:e.target.value}))}/>
+              <input data-testid="ad-form-nome" className="form-input" value={form.nome} onChange={e=>setForm(f=>({...f,nome:e.target.value}))}/>
             </div>
             <div className="form-group"><label className="form-label">Tipo</label>
-              <select className="form-select" value={form.tipo} onChange={e=>setForm(f=>({...f,tipo:e.target.value}))}>
+              <select data-testid="ad-form-tipo" className="form-select" value={form.tipo} onChange={e=>setForm(f=>({...f,tipo:e.target.value}))}>
                 <option value="gratis">Grátis (incluso no produto)</option>
                 <option value="pago">Pago (cobrado à parte)</option>
               </select>
             </div>
             <div className="form-group"><label className="form-label">Grupo (categoria)</label>
-              <select className="form-select" value={form.grupo||'acai'} onChange={e=>setForm(f=>({...f,grupo:e.target.value}))}>
+              <select data-testid="ad-form-grupo" className="form-select" value={form.grupo||'acai'} onChange={e=>setForm(f=>({...f,grupo:e.target.value}))}>
                 <option value="acai">🍇 Adicionais Açaí</option>
                 <option value="marmita">🍱 Adicionais Marmita</option>
                 <option value="bebida">🧃 Adicionais Bebida</option>
@@ -65,7 +69,7 @@ export function AdminAdicionais() {
             </div>
             {form.tipo==='pago' && (
               <div className="form-group"><label className="form-label">Preço (R$)</label>
-                <input className="form-input" type="number" step="0.01" value={form.preco} onChange={e=>setForm(f=>({...f,preco:e.target.value}))}/>
+                <input data-testid="ad-form-preco" className="form-input" type="number" step="0.01" value={form.preco} onChange={e=>setForm(f=>({...f,preco:e.target.value}))}/>
               </div>
             )}
             <div style={{display:'flex',gap:10,marginTop:8}}>

@@ -1,6 +1,6 @@
 # REF-E2E-03 — Cobertura E2E do Painel Administrativo — Auditoria
 
-**Status:** 🟡 Onda 1 commitada (6eb14b9). Onda 2 (Dashboard + Pedidos) implementada e verificada (2026-07-23) — 17/17 specs do Admin + 66/66 da suíte E2E inteira + suíte de domínio 100%, sem regressão. Aguardando aprovação do dono para commitar e seguir para a Onda 3. Ondas 3-6 seguem a auditoria abaixo, 1 aprovação por onda.
+**Status:** 🟡 Ondas 1 (6eb14b9) e 2 (ce19ffa) commitadas. Onda 3 (Categorias + Adicionais) implementada e verificada (2026-07-24) — inclui 2 correções de produção (ver "Onda 3 — executada") pedidas explicitamente pelo dono ao ser confrontado com 2 bugs reais descobertos durante a implementação. 22/22 specs do Admin + 71/71 da suíte E2E inteira + suíte de domínio 100%, sem regressão. Aguardando aprovação do dono para commitar e seguir para a Onda 4. Ondas 4-6 seguem a auditoria abaixo, 1 aprovação por onda.
 **Depende de:** REF-E2E-01 (infraestrutura Playwright, projeto Supabase dedicado `encanto-e2e`, POM, `support/*`), REF-E2E-02 (padrão de fixture persistente, `workers:1`), AUTH-01 (fundação `is_admin()`/RLS), REF-ORDER-01/01b/01c (fluxo de pedidos + notificação), REF-ADMIN-CATALOG-01/REF-ADMIN-ADDONS-02 (governança do catálogo), REF-BUSINESS-HOURS-02/03, REF-DELIVERY-01, REF-LOYALTY-01.
 **Relacionado:** fecha a lista "Faltam: Admin" deixada em aberto desde a auditoria da E2E-01.
 
@@ -238,6 +238,81 @@ mensagens, comanda). Arquivos:
 
 Verificação: `npx playwright test --project=chromium e2e/tests/admin` (17/17), suíte completa
 (`npm run test:e2e`, 66/66) e suíte de domínio completa, sem regressão.
+
+## Onda 3 — executada (2026-07-24)
+
+Implementada como planejada em §6 (Categorias + Adicionais: CRUD completo, validação, exclusão "em
+uso"), mas com um desvio IMPORTANTE em relação ao princípio geral desta REF ("só testar, não
+corrigir produto"): **2 bugs de produção reais e graves foram descobertos ao tentar escrever o
+caminho feliz de criação, confirmados por teste DIRETO contra o backend (não hipótese de leitura de
+código), e o dono, perguntado explicitamente via 2 perguntas, pediu correção imediata (fix mínimo)
+para ambos — não só documentação.**
+
+### Achados (antes da correção)
+
+1. **"+ Nova Categoria" sempre falhava, silenciosamente, em QUALQUER ambiente (não só E2E).**
+   `DS.upsertCat` insere `{nome,icone,cor,ordem,ativo:true}` — nunca inclui `slug`. A coluna
+   `categories.slug` é `NOT NULL` **sem default** (confirmado via OpenAPI schema do PostgREST:
+   `required: [id, nome, slug, tipo]`, só `slug` sem `default`). O INSERT sempre violava a constraint
+   (`23502 — null value in column "slug"`), mas `DS.upsertCat` nunca verifica `r.error` — o erro era
+   descartado, `setModal(null)` fechava o modal como se tivesse funcionado, e `load()` recarregava a
+   MESMA lista de sempre. **Resultado prático: o Admin nunca conseguiu criar uma categoria nova pela
+   UI, desde que essa tela existe** — só edição de categorias pré-existentes (inseridas via
+   SQL/dashboard, já com slug) funcionava.
+2. **"+ Novo Adicional" tinha 2 problemas simultâneos.** (a) Mesma classe de bug: `adicionais.grupo`
+   é `NOT NULL` sem default, mas `AdminAdicionais.jsx`'s `save()` chamava `DS.upsertAd({nome,preco})` —
+   nunca enviava `tipo`/`grupo`, apesar do formulário claramente os capturar via 2 `<select>`. Criar
+   sempre falhava (`23502 — null value in column "grupo"`), mesmo padrão de erro descartado. (b) Bug
+   **independente**: mesmo ao EDITAR um adicional já existente, mudar Tipo/Grupo no formulário nunca
+   era persistido — o payload de update também omitia essas 2 colunas, então a mudança visual no
+   `<select>` nunca chegava ao banco (o próximo `load()` sempre mostrava os valores antigos).
+
+### Decisão do dono e correção aplicada
+
+Perguntado via 2 questões (uma por achado) se o certo era só documentar o comportamento real (padrão
+já usado para outros gaps desta e de REFs anteriores — Dashboard, chip Fidelidade) ou corrigir agora,
+o dono escolheu **corrigir os 2** (fix mínimo, escopo restrito ao necessário para destravar a
+funcionalidade real, sem tocar em mais nada):
+
+- `src/services/DataService.js`: nova função local `slugifyCategoria(nome)` (remove acentos, minúsculo,
+  hífens, sufixo `Date.now().toString(36)` para evitar colisão sem consultar unicidade) — `upsertCat`
+  passa a incluir `slug` **só no INSERT** (edição de categoria existente não muda o slug, comportamento
+  inalterado).
+- `src/components/admin/AdminAdicionais.jsx`: `save()` agora envia `tipo`/`grupo` (com fallback
+  `'gratis'`/`'acai'`) ao `DS.upsertAd`; o reset do "+ Novo" (`setForm(...)`) passa a inicializar
+  `tipo`/`grupo` (antes só `nome`/`preco` — o `<select>` ficava com `value` controlado por um campo
+  `undefined`, mascarado visualmente pelo primeiro `<option>` do navegador).
+
+Nenhuma mudança em `DS.delCat`/`DS.delAd` (comportamento de exclusão preservado, incluindo o achado
+#3 abaixo) nem nos guards de domínio (`test:admin-catalog`/`test:admin-addons`, ambos verdes sem
+alteração).
+
+### 3. Achado preservado (não é bug, é a arquitetura real): categoria "em uso"
+
+Confirmado por teste direto (`admin-categorias.spec.js`, 3º caso): excluir uma categoria referenciada
+por `products.categoria_ids` **sucede sem erro nenhum** — não há FK protegendo esse array (é
+`text[]` puro). A coluna legada `categoria_id` (singular) tem FK com `ON DELETE SET NULL` e por isso
+zera sozinha; `categoria_ids` (a fonte real da arquitetura multi-categoria, REF-ADMIN-CATALOG-01)
+fica com uma referência órfã, nunca limpa. **Não corrigido** — está fora do pedido do dono (as 2
+perguntas foram só sobre criação, não sobre exclusão) e é um gap de arquitetura mais profundo
+(exigiria decidir se "excluir categoria em uso" deveria ser bloqueado, ou fazer cascade no array) —
+registrado aqui para decisão futura, se o dono quiser abrir uma REF de produto.
+
+### Arquivos
+
+- `src/components/admin/AdminCategorias.jsx` / `AdminAdicionais.jsx`: `data-testid` nas linhas da
+  tabela (`cat-row-{id}` / `ad-row-{id}`) e nos campos do formulário (nenhum tem `<label htmlFor>`) —
+  além das 2 correções de bug acima.
+- `src/services/DataService.js`: `slugifyCategoria` + `upsertCat` corrigido.
+- `e2e/pages/AdminCategoriasPage.page.js` / `AdminAdicionaisPage.page.js` (novos).
+- `e2e/support/fixture-catalog-admin.js` (novo) — `limparCatalogoDeTeste()`, simétrico a
+  `cleanup.js` mas para categorias/adicionais com prefixo `E2E_TEST_` (produtos entram na Onda 4).
+- 2 specs novos: `admin-categorias.spec.js` (CRUD + validação + exclusão "em uso"),
+  `admin-adicionais.spec.js` (CRUD + validação) — 5 casos de teste.
+
+Verificação: `npx playwright test --project=chromium e2e/tests/admin` (22/22), suíte completa
+(`npm run test:e2e`, 71/71) e suíte de domínio completa (incluindo os guards de catálogo/adicionais),
+sem regressão.
 
 ## 8. Critérios objetivos de aprovação (por onda, mesmo padrão das REFs anteriores)
 

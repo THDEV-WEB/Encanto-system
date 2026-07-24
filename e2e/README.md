@@ -193,8 +193,26 @@ fluxos) — reaproveita 100% da infra de E2E-01/02 (Playwright, projeto `encanto
   avançar status e abrir um painel expansível no mesmo card — `AdminPedidos` desmonta/remonta todo
   `OrderCard` enquanto `loading` é `true` (troca por `<Spinner/>`), resetando o painel aberto —
   corrigido no spec aguardando o novo status assentar antes de interagir. Ver ADR "Onda 2 — executada".
-- **Próximas ondas:** Categorias+Adicionais (3), Produtos (4), Configurações+Fidelidade admin (5),
-  Permissões (matriz completa)+Saúde (6) — ver ADR §6.
+- **Onda 3 (Categorias + Adicionais):** FEITO — **com 2 correções reais de produção** (fora do
+  princípio geral "só testar" desta REF, pedidas explicitamente pelo dono ao ser confrontado com os
+  bugs). `data-testid` nas linhas da tabela (`cat-row-{id}`/`ad-row-{id}`) e nos campos do formulário
+  (nenhum tem `<label htmlFor>`) de `AdminCategorias.jsx`/`AdminAdicionais.jsx`. Novos
+  `AdminCategoriasPage.page.js`/`AdminAdicionaisPage.page.js` e `support/fixture-catalog-admin.js`
+  (`limparCatalogoDeTeste()`, simétrico a `cleanup.js`). `admin-categorias.spec.js` (CRUD, validação
+  de nome vazio, exclusão "em uso"). `admin-adicionais.spec.js` (CRUD, validação). **2 bugs reais
+  corrigidos** (confirmados por teste direto contra o backend, não hipótese): (1) "+ Nova Categoria"
+  sempre falhava silenciosamente em qualquer ambiente — `categories.slug` é `NOT NULL` sem default e
+  o insert nunca o enviava; corrigido com um `slugifyCategoria()` novo em `DataService.js`, só no
+  create. (2) "+ Novo/Editar Adicional" tinha 2 problemas: criar sempre falhava (`adicionais.grupo`
+  também `NOT NULL` sem default, nunca enviado) e editar Tipo/Grupo de um adicional existente era
+  silenciosamente ignorado (o payload de update nunca incluía essas colunas); corrigido em
+  `AdminAdicionais.jsx` (`save()` passa a enviar `tipo`/`grupo`; reset do "+ Novo" inicializa os 2).
+  **Achado preservado, não corrigido** (fora do pedido do dono): excluir uma categoria "em uso" (com
+  produtos em `categoria_ids`) sucede sem erro — não há FK protegendo esse array; a coluna legada
+  `categoria_id` zera sozinha (FK com `ON DELETE SET NULL`), mas `categoria_ids` fica órfão. Ver ADR
+  "Onda 3 — executada" para o racional completo e as 2 perguntas feitas ao dono.
+- **Próximas ondas:** Produtos (4), Configurações+Fidelidade admin (5), Permissões (matriz
+  completa)+Saúde (6) — ver ADR §6.
 
 ### Nota sobre `set_store_mode` (Onda 4)
 

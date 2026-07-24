@@ -10,6 +10,15 @@ import { PRODUCTS_PAGE_SIZE, PRODUCTS_PAGINATE, PRODUCTS_CACHE_TTL } from '../co
 import { prodInCat } from '../utils/catalog.js';
 import { emitProductsChanged } from './productCacheBus.js';
 
+/* FIX (achado REF-E2E-03 · Onda 3): `categories.slug` é NOT NULL sem default no banco — usado só
+   por upsertCat (criação de categoria nova). Sufixo curto evita colisão sem consultar unicidade. */
+function slugifyCategoria(nome) {
+  const base = String(nome || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  return `${base || 'categoria'}-${Date.now().toString(36)}`;
+}
+
 export const DS = {
   /* HARDENING — cache global leve da lista COMPLETA de produtos (só quando NÃO há
      `search`): reduz fetchAllProductsSafe duplicado ao navegar entre categorias (o
@@ -179,7 +188,11 @@ export const DS = {
   },
   async upsertCat(data,id) {
     if (id) await this.run(d=>d.from('categories').update(data).eq('id',id));
-    else    await this.run(d=>d.from('categories').insert({...data,ativo:true}));
+    /* FIX (achado REF-E2E-03): `categories.slug` é NOT NULL sem default — o insert sem essa
+       coluna sempre violava a constraint, e o erro (nunca checado aqui) fazia "+ Nova" fechar o
+       modal como se tivesse funcionado, sem criar linha nenhuma. Gera um slug a partir do nome +
+       sufixo curto (evita colisão sem depender de índice único explícito). */
+    else    await this.run(d=>d.from('categories').insert({...data,ativo:true,slug:slugifyCategoria(data.nome)}));
   },
   async delCat(id)  { await this.run(d=>d.from('categories').delete().eq('id',id)); },
   /* ── CORREÇÃO CRÍTICA DE IMAGEM ──────────────────────────────
