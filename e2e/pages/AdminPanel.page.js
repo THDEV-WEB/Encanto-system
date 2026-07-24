@@ -1,8 +1,9 @@
-/* e2e/pages/AdminPanel.page.js — REF-E2E-01. Page Object do painel Admin
-   (src/components/admin/AdminPanel.jsx). As abas são hoje <div onClick> sem role/aria-label —
-   TODO(REF-E2E-01 · Onda admin): promover cada uma a data-testid="admin-tab-{id}" no commit da
-   1ª spec de Admin (ver tabela de seletores na auditoria). O botão "← Ver loja" é um <button> real
-   com texto estável — usável hoje via getByRole. */
+/* e2e/pages/AdminPanel.page.js — REF-E2E-01 (esboço) · completado na REF-E2E-03 · Onda 1.
+   Page Object do painel Admin (src/components/admin/AdminPanel.jsx). As abas são <div onClick> sem
+   role/aria-label — promovidas a data-testid="admin-tab-{id}" (único ajuste de produção desta REF
+   além dos data-testid do login). O botão "← Ver loja" é um <button> real com texto estável — usável
+   via getByRole; é o mesmo handler `onExit` do item "Sair" da sidebar (um <div>, sem role), então
+   testar um cobre o outro — não duplicamos seletor/teste para o segundo. */
 const TABS = ['dashboard', 'pedidos', 'products', 'categorias', 'adicionais', 'status', 'fidelidade', 'saude'];
 
 export class AdminPanelPage {

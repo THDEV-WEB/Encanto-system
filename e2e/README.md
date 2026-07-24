@@ -149,6 +149,36 @@ CI, ver §Onda 4 da REF-E2E-02 abaixo) — não varia mais com `CI`.
   `playwright.config.js` agora fixa `workers: 1` sempre (antes só CI era seguro).
 - **Próximas ondas:** nenhuma pendente na lista original desta REF — ver ADR para o escopo fechado.
 
+### REF-E2E-03 — Admin (auditoria em
+[`../docs/adr/REF-E2E-03-auditoria-admin.md`](../docs/adr/REF-E2E-03-auditoria-admin.md))
+
+Cobertura E2E do Painel Administrativo, tratado como aplicação distinta da loja (nunca mistura
+fluxos) — reaproveita 100% da infra de E2E-01/02 (Playwright, projeto `encanto-e2e`, `workers:1`,
+`ADMIN_FIXTURE`/`CLIENTE_FIXTURE`, `support/*`).
+
+- **Onda 1 (infraestrutura: login, permissão, sessão, logout, `e2e/tests/admin/`):** FEITO.
+  `data-testid="admin-tab-{id}"` nas 8 abas de `AdminPanel.jsx` + `data-testid` em e-mail/senha/erro
+  de `AdminLogin.jsx` (únicos ajustes de produção). `AdminLoginPage.js`/`AdminPanel.page.js`
+  (esboçados na Onda 1 da E2E-01) completados. **Decisão de arquitetura:** ao contrário do cliente
+  (Google/OTP, mecanicamente impossível de automatizar de ponta a ponta), o login do Admin é
+  e-mail/senha real — todo teste faz login de verdade pela UI (`ADMIN_FIXTURE`), sem `storageState`
+  (a própria auditoria achou que a sessão do Admin **não é restaurada automaticamente** de nenhuma
+  forma — ver achado abaixo). `admin-login.spec.js` (sucesso/senha errada/e-mail inexistente,
+  mesma mensagem genérica do Supabase nos 2 últimos). `admin-permissao.spec.js` parte 1 (reaproveita
+  `CLIENTE_FIXTURE` da E2E-02 como conta "autenticada, sem admin" — zero conta nova; prova que a UI
+  inteira renderiza, sem gate de `is_admin()` no cliente, mas um pedido "avulso" de outro cliente —
+  novo `criarPedidoAvulso()` em `support/fixture-order.js` — fica invisível no Dashboard, a RLS
+  bloqueia de verdade). `admin-sessao.spec.js` (reload no meio do painel cai na **loja**, não no
+  login — o hash `#admin-encanto` já foi limpo no 1º mount; sessão forjada sob a chave padrão do
+  client `db`, `sb-<ref>-auth-token`, não trava o boot). `admin-logout.spec.js` ("Sair" só troca o
+  `mode` de volta para `store`, sem chamar `signOut()` — provado interceptando a chamada de rede via
+  `page.route`, não só lendo o código). **Achado confirmado ao rodar (não hipótese):** as 3
+  previsões da auditoria se confirmaram sem ajuste nenhum na 1ª execução — ver ADR "Onda 1 —
+  executada" para o detalhe, incluindo uma correção de precisão no texto original da auditoria (o
+  fallback do reload é a loja, não uma tela de login).
+- **Próximas ondas:** Dashboard+Pedidos (2), Categorias+Adicionais (3), Produtos (4),
+  Configurações+Fidelidade admin (5), Permissões (matriz completa)+Saúde (6) — ver ADR §6.
+
 ### Nota sobre `set_store_mode` (Onda 4)
 
 A RPC oficial `set_store_mode` exige `is_admin()=true` (checagem explícita no corpo da função, não é

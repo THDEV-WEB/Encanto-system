@@ -34,14 +34,14 @@ export function AdminLogin({ onLogin }) {
         <p>Painel administrativo da loja</p>
         <div className="form-group">
           <label className="form-label">E-mail</label>
-          <input className="form-input" value={email} onChange={e=>setEmail(e.target.value)}/>
+          <input data-testid="admin-login-email" className="form-input" value={email} onChange={e=>setEmail(e.target.value)}/>
         </div>
         <div className="form-group">
           <label className="form-label">Senha</label>
-          <input className="form-input" type="password" placeholder="Sua senha"
+          <input data-testid="admin-login-senha" className="form-input" type="password" placeholder="Sua senha"
             value={pass} onChange={e=>setPass(e.target.value)} onKeyDown={e=>e.key==='Enter'&&login()}/>
         </div>
-        {err&&<p style={{color:'var(--red)',fontSize:13,marginBottom:8}}>{err}</p>}
+        {err&&<p data-testid="admin-login-erro" style={{color:'var(--red)',fontSize:13,marginBottom:8}}>{err}</p>}
         <button className="login-btn" onClick={login} disabled={loading}>
           {loading?'Entrando...':'Entrar'}
         </button>

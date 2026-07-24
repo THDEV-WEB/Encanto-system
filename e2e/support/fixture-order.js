@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto';
 import { supabaseAnon, E2E_ENV_PRONTO, avisarAmbientePendente } from './supabaseAdmin.js';
 import { CLIENTE_FIXTURE } from './fixture-accounts.js';
 import { PROD_MARMITA_P } from './fixture-catalog.js';
+import { PREFIXO_TESTE } from './cleanup.js';
 
 /** Cria 1 pedido (retirada, R$15,99, 1x Marmita P fixture) vinculado ao cliente fixture pelo telefone.
     Retorna o order_id. {ok:false, skipped:true} se o ambiente de E2E não estiver configurado. */
@@ -29,4 +30,30 @@ export async function criarPedidoFixture() {
   if (error) throw new Error(`[e2e] create_order (fixture) falhou: ${error.message}`);
   if (data?.ok === false) throw new Error(`[e2e] create_order (fixture) recusado: ${data.error}`);
   return { ok: true, skipped: false, orderId: data.order_id };
+}
+
+/** REF-E2E-03 · Onda 1. Cria 1 pedido "avulso" (retirada, R$12,50, 1x Marmita P fixture) para um
+    cliente GENÉRICO (nome com PREFIXO_TESTE, telefone gerado por execução) — SEM vínculo com
+    CLIENTE_FIXTURE. Usado por specs de Admin que precisam de um pedido real no backend para provar
+    que uma sessão sem is_admin() NÃO o enxerga (ver docs/adr/REF-E2E-03-auditoria-admin.md §5), sem
+    tocar Meus Pedidos/Fidelidade do cliente fixture (que usam criarPedidoFixture, acima). Limpo por
+    `limparDadosDeTeste()` (já existente, já filtra customers por PREFIXO_TESTE). Retorna o order_id e
+    o telefone gerado. {ok:false, skipped:true} se o ambiente de E2E não estiver configurado. */
+export async function criarPedidoAvulso() {
+  if (!E2E_ENV_PRONTO) { avisarAmbientePendente('pedido avulso (Admin)'); return { ok: false, skipped: true }; }
+  const anon = supabaseAnon();
+  const total = 12.5;
+  const telefone = `4799${Date.now().toString().slice(-7)}`; // gerado por execucao - nunca colide com CLIENTE_FIXTURE
+  const { data, error } = await anon.rpc('create_order', {
+    p_customer: { name: `${PREFIXO_TESTE}Avulso`, phone: telefone },
+    p_order: { total, status: 'recebido', payment_method: 'dinheiro', address: 'Retirada na loja — E2E', observacoes: null },
+    p_items: [{
+      product_id: PROD_MARMITA_P, nome_produto: 'Marmita P', quantity: 1,
+      price: total, preco_unitario: total, adicionais: [], observacoes: null,
+    }],
+    p_request_id: randomUUID(),
+  });
+  if (error) throw new Error(`[e2e] create_order (avulso) falhou: ${error.message}`);
+  if (data?.ok === false) throw new Error(`[e2e] create_order (avulso) recusado: ${data.error}`);
+  return { ok: true, skipped: false, orderId: data.order_id, telefone };
 }

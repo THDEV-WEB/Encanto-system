@@ -28,7 +28,7 @@ export function AdminPanel({ onExit }) {
         <div className="admin-logo">✨ <span>Encanto</span></div>
         <nav className="admin-nav">
           {tabs.map(t=>(
-            <div key={t.id} className={`admin-nav-item ${tab===t.id?'active':''}`} onClick={()=>setTab(t.id)}>
+            <div key={t.id} data-testid={`admin-tab-${t.id}`} className={`admin-nav-item ${tab===t.id?'active':''}`} onClick={()=>setTab(t.id)}>
               <span className="nav-icon">{t.icon}</span>
               <span>{t.label}</span>
             </div>
