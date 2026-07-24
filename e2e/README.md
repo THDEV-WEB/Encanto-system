@@ -290,6 +290,36 @@ Verificação: `npx playwright test --project=chromium e2e/tests/admin` (43/43),
 (`npm run test:e2e`, 92/92) e suíte de domínio completa (exceto as 3 falhas pré-existentes/congeladas
 de `test:f1b`, sem relação com esta REF), sem regressão.
 
+### REF-ADMIN-02 — Refinamentos do Painel Administrativo (auditoria em
+[`../docs/adr/REF-ADMIN-02-refinamentos-painel.md`](../docs/adr/REF-ADMIN-02-refinamentos-painel.md))
+
+Fecha as 3 limitações que a própria REF-ADMIN-01 tinha deixado documentadas para uma iteração futura.
+
+- **Onda 1 (integridade das categorias):** DECISÃO FORMAL, sem mudança de código. Avaliadas
+  constraint/trigger/RPC como alternativas ao guard de aplicação atual — todas fechariam uma corrida
+  TOCTOU teórica (milissegundos, exigindo 2 atores agindo na mesma categoria no mesmo instante), mas a
+  um custo real (nova migration, aplicada manualmente pelo dono por convenção do projeto, sem
+  credenciais de DDL nem para o projeto de E2E dedicado; regra duplicada em SQL+JS). Conclusão: o guard
+  de aplicação (REF-ADMIN-01) continua sendo a solução certa para a escala atual. Ver ADR §Onda 1.
+- **Onda 2 (flash inicial do painel):** FEITO. Novo estado `'checking'`, isolado dentro de
+  `useAdminSession.js` — só existe quando HÁ evidência de uma sessão de Admin salva (leitura síncrona
+  de `localStorage` pela chave padrão do supabase-js, ANTES do 1º render); nunca monta `StoreApp` nem
+  `AdminPanel` nesse meio-tempo. Para o resto dos visitantes (o caso comum), o 1º render continua
+  `'store'` imediato, sem nenhum atraso. Novo `AdminSessionChecking.jsx` (reaproveita o `Spinner`
+  existente). Teste novo em `admin-sessao.spec.js` prova por REDE (não por timing): intercepta
+  `/rest/v1/products` e `/rest/v1/categories` durante um reload com sessão válida — zero chamadas
+  confirma que a Loja nunca chegou a montar.
+- **Onda 3 (busca/filtros de Pedidos):** FEITO. Causa raiz: a funcionalidade nunca existiu (confirmado
+  por leitura do componente atual e do histórico pré-extração) — não era um bug. `AdminPedidos.jsx`
+  ganhou busca tolerante a acento/caixa/parcial (reaproveita `utils/searchText.js`, o mesmo motor da
+  busca da loja) por cliente/telefone/id/ref/número, + filtro por status, combináveis (AND) — tudo
+  client-side sobre a lista já carregada por `useOrders()` (zero consulta nova). Novo arquivo
+  `admin-pedidos-busca.spec.js` (6 testes) + novos getters em `AdminPedidosPage.page.js`.
+
+Verificação: `npx playwright test --project=chromium e2e/tests/admin` (50/50, 43 antigos + 7 novos),
+suíte completa (`npm run test:e2e`, 99/99, era 92) e suíte de domínio completa (exceto as mesmas 3
+falhas pré-existentes/congeladas de `test:f1b`), sem regressão.
+
 ### Nota sobre `set_store_mode` (Onda 4)
 
 A RPC oficial `set_store_mode` exige `is_admin()=true` (checagem explícita no corpo da função, não é

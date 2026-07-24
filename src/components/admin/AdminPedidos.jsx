@@ -12,6 +12,7 @@ import { ComandaModal } from './comanda/ComandaModal.jsx';
 import { tipoDoPedido } from './comanda/comandaModel.js';
 import { PedidoHistorico } from './PedidoHistorico.jsx';
 import { PedidoNotificacoes } from './PedidoNotificacoes.jsx';
+import { deburr, textMatches } from '../../utils/searchText.js';
 
 /* cartoes-resumo (contadores por status) — a mesma trilha operacional + cancelado */
 const RESUMO = ['recebido', 'preparo', 'pronto', 'entrega', 'entregue', 'cancelado'];
@@ -112,15 +113,42 @@ function OrderCard({ order, numero, onChanged, onComanda }) {
   );
 }
 
+/* REF-ADMIN-02 · Onda 3 — busca/filtro nunca existiram aqui (causa raiz: ausência de funcionalidade,
+   não um bug de comportamento). Client-side sobre a lista já carregada por useOrders (mesmo padrão do
+   breakdown por status acima e do Dashboard): zero consulta nova. Busca tolerante a acento/caixa/
+   parcial (utils/searchText, mesmo motor da busca da loja) contra nome/telefone do cliente, uuid
+   completo, ref curta (8 primeiros chars, igual à exibida no card) e o número sequencial do pedido. */
+function pedidoCasaBusca(order, numero, dq) {
+  if (!dq) return true;
+  const refCurta = String(order.id || '').replace(/-/g, '').slice(0, 8);
+  return textMatches(order.customers?.name, dq)
+      || textMatches(order.customers?.phone, dq)
+      || textMatches(order.id, dq)
+      || textMatches(refCurta, dq)
+      || textMatches(String(numero), dq);
+}
+
 export function AdminPedidos() {
   const { orders, loading, refresh } = useOrders();
   const [comanda, setComanda] = useState(null);   // { order, numero, count }
+  const [busca, setBusca] = useState('');
+  const [statusFiltro, setStatusFiltro] = useState('todos');
 
   const abrirComanda = async (order, numero) => {
     setComanda({ order, numero, count: null });
     const count = await DS.countPedidosByCustomer(order.customer_id);
     setComanda((c) => (c && c.order?.id === order.id ? { ...c, count } : c));
   };
+
+  /* numero = posição no pedido dentro da lista TOTAL (não da filtrada) — preserva a numeração de
+     sempre (#1 = mais antigo) mesmo com busca/filtro ativos. */
+  const numeroPorId = new Map(orders.map((o, i) => [o.id, orders.length - i]));
+  const dq = deburr(busca.trim());
+  const filtrados = orders.filter((o) => {
+    const status = o.status || 'recebido';
+    if (statusFiltro !== 'todos' && status !== statusFiltro) return false;
+    return pedidoCasaBusca(o, numeroPorId.get(o.id), dq);
+  });
 
   return (
     <div>
@@ -134,15 +162,38 @@ export function AdminPedidos() {
       </div>
       <div className="admin-card">
         <div className="admin-card-header">
-          <h3>Pedidos ({orders.length})</h3>
+          <h3>Pedidos ({filtrados.length})</h3>
           <button className="btn-secondary" onClick={refresh}>🔄 Atualizar</button>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '12px 16px 0' }}>
+          <input
+            data-testid="pedidos-busca"
+            className="form-input"
+            style={{ flex: '1 1 240px' }}
+            type="text"
+            placeholder="Buscar por cliente, telefone ou nº do pedido"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+          />
+          <select
+            data-testid="pedidos-filtro-status"
+            className="form-select"
+            style={{ width: 'auto', minWidth: 160 }}
+            value={statusFiltro}
+            onChange={(e) => setStatusFiltro(e.target.value)}
+          >
+            <option value="todos">Todos os status</option>
+            {RESUMO.map((k) => <option key={k} value={k}>{statusInfo(k).label}</option>)}
+          </select>
         </div>
         <div style={{ padding: 16 }}>
           {loading ? <Spinner /> : orders.length === 0 ? (
             <div className="empty-state"><div className="icon">📋</div><p>Nenhum pedido ainda</p></div>
+          ) : filtrados.length === 0 ? (
+            <div className="empty-state"><div className="icon">🔍</div><p>Nenhum pedido encontrado com esses filtros</p></div>
           ) : (
-            orders.map((o, i) => (
-              <OrderCard key={o.id} order={o} numero={orders.length - i} onChanged={refresh} onComanda={abrirComanda} />
+            filtrados.map((o) => (
+              <OrderCard key={o.id} order={o} numero={numeroPorId.get(o.id)} onChanged={refresh} onComanda={abrirComanda} />
             ))
           )}
         </div>

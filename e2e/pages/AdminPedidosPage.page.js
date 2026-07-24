@@ -15,6 +15,12 @@ export class AdminPedidosPage {
 
   get atualizarButton() { return this.page.getByRole('button', { name: /Atualizar/ }); }
 
+  // ── Busca/filtro (REF-ADMIN-02 · Onda 3) ────────────────────────────────────
+  get buscaInput()        { return this.page.locator('[data-testid="pedidos-busca"]'); }
+  get filtroStatusSelect() { return this.page.locator('[data-testid="pedidos-filtro-status"]'); }
+  async buscar(texto) { await this.buscaInput.fill(texto); }
+  async filtrarPorStatus(status) { await this.filtroStatusSelect.selectOption(status); }
+
   avancarButton(orderId)   { return this.card(orderId).getByRole('button', { name: /Avançar/ }); }
   cancelarButton(orderId)  { return this.card(orderId).getByRole('button', { name: 'Cancelar' }); }
   reabrirButton(orderId)   { return this.card(orderId).getByRole('button', { name: 'Reabrir' }); }

@@ -53,6 +53,26 @@ test.describe('sessão do Admin', { tag: '@writes' }, () => {
     await expect(page.locator('[data-testid="admin-login-senha"]')).toHaveCount(0);
   });
 
+  test('reload com sessão de Admin salva nunca busca o catálogo da Loja (fix REF-ADMIN-02 · Onda 2 — flash)', async ({ adminLoginPage, adminPanel, page }) => {
+    test.skip(!E2E_ENV_PRONTO, 'ambiente de E2E não configurado (.env.e2e)');
+
+    await adminLoginPage.goto();
+    await adminLoginPage.login(ADMIN_FIXTURE.email, ADMIN_FIXTURE.senha);
+    await expect(adminPanel.tab('dashboard')).toBeVisible();
+
+    // Achado (ADR REF-ADMIN-01, limitação conhecida): antes, o 1º render de um reload SEMPRE assumia
+    // mode='store' até getSession() resolver — StoreApp montava e useCategories/useProducts disparavam
+    // esses 2 fetches imediatamente. Prova por rede (não por timing): se o fix (mode='checking' isolado)
+    // funciona, a Loja nunca chega a montar entre o reload e o painel reaparecer — zero chamadas.
+    let chamouCatalogoDaLoja = false;
+    await page.route('**/rest/v1/products**', (route) => { chamouCatalogoDaLoja = true; return route.continue(); });
+    await page.route('**/rest/v1/categories**', (route) => { chamouCatalogoDaLoja = true; return route.continue(); });
+
+    await page.reload();
+    await expect(adminPanel.tab('dashboard')).toBeVisible(); // sessão restaurada (dashboard não usa products/categories)
+    expect(chamouCatalogoDaLoja).toBe(false);
+  });
+
   test('acessar #admin-encanto já autenticado pula a tela de login direto para o painel', async ({ adminLoginPage, adminPanel, page }) => {
     test.skip(!E2E_ENV_PRONTO, 'ambiente de E2E não configurado (.env.e2e)');
 
