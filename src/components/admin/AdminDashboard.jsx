@@ -1,14 +1,20 @@
-import { useEffect } from 'react';
-import { useOrders } from '../../hooks/useOrders.js';
-import { fmt, fmtDataHoraLoja, dataLojaYMD } from '../../utils/format.js';
+/* components/admin/AdminDashboard.jsx — REF-ADMIN-03 · Onda 3: agregados via useOrdersStats (SQL,
+   RPC admin_orders_stats) em vez de reduzir um array de no máximo 100 pedidos (useOrders antigo).
+   Causa raiz do que isto substitui: "Total geral"/breakdown por status vinham de orders.length /
+   orders.filter(...).length sobre um array com limit(100) fixo — correto só enquanto o histórico
+   total coubesse nessas 100 linhas; a partir daí ficava silenciosamente errado (capado). Os agregados
+   agora são calculados no banco, sobre a tabela inteira, sem esse teto. */
+import { useOrdersStats } from '../../hooks/useOrdersStats.js';
+import { fmt, fmtDataHoraLoja } from '../../utils/format.js';
 
 export function AdminDashboard() {
-  const { orders, refresh } = useOrders();
-  const hojeLoja = dataLojaYMD(new Date());   // "hoje" no fuso da LOJA (America/Sao_Paulo)
-  const hoje  = orders.filter(o=>dataLojaYMD(o.created_at)===hojeLoja);
-  const fatHoje  = hoje.reduce((a,o)=>a+Number(o.total||0),0);
-  const emPreparo = orders.filter(o=>o.status==='preparo'||o.status==='recebido').length;
-  const ticketMed = hoje.length>0 ? fatHoje/hoje.length : 0;
+  const { stats, recentes, refresh } = useOrdersStats(10);
+  const breakdown  = stats?.breakdown || {};
+  const hojeCount  = stats?.hoje_count || 0;
+  const hojeTotal  = Number(stats?.hoje_total || 0);
+  const totalGeral = stats?.total_geral || 0;
+  const emPreparo  = (breakdown.recebido || 0) + (breakdown.preparo || 0);
+  const ticketMed  = hojeCount > 0 ? hojeTotal / hojeCount : 0;
   const statusMap = {
     recebido:{label:'Recebido',cls:'status-recebido'},
     preparo: {label:'Em Preparo',cls:'status-preparo'},
@@ -17,24 +23,18 @@ export function AdminDashboard() {
     cancelado:{label:'Cancelado',cls:'status-cancelado'},
   };
 
-  /* Auto-refresh a cada 60s */
-  useEffect(()=>{
-    const t=setInterval(()=>refresh(),60000);
-    return()=>clearInterval(t);
-  },[refresh]);
-
   return (
     <div>
       {/* Métricas principais */}
       <div className="stat-cards" style={{gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))'}}>
         <div className="stat-card" style={{borderTop:'3px solid var(--grape)'}}>
           <div className="stat-icon">🌅</div>
-          <div className="stat-val">{hoje.length}</div>
+          <div className="stat-val">{hojeCount}</div>
           <div className="stat-label">Pedidos hoje</div>
         </div>
         <div className="stat-card" style={{borderTop:'3px solid #16A34A'}}>
           <div className="stat-icon">💰</div>
-          <div className="stat-val">{fmt(fatHoje)}</div>
+          <div className="stat-val">{fmt(hojeTotal)}</div>
           <div className="stat-label">Faturamento hoje</div>
         </div>
         <div className="stat-card" style={{borderTop:'3px solid var(--orange)'}}>
@@ -49,7 +49,7 @@ export function AdminDashboard() {
         </div>
         <div className="stat-card" style={{borderTop:'3px solid var(--gray-300)'}}>
           <div className="stat-icon">📦</div>
-          <div className="stat-val">{orders.length}</div>
+          <div className="stat-val">{totalGeral}</div>
           <div className="stat-label">Total geral</div>
         </div>
       </div>
@@ -58,7 +58,7 @@ export function AdminDashboard() {
       <div className="stat-cards" style={{marginBottom:20}}>
         {Object.entries(statusMap).map(([k,v])=>(
           <div key={k} className="stat-card" style={{padding:'12px 16px'}}>
-            <div className="stat-val" style={{fontSize:20}}>{orders.filter(o=>o.status===k).length}</div>
+            <div className="stat-val" style={{fontSize:20}}>{breakdown[k] || 0}</div>
             <div className="stat-label">{v.label}</div>
           </div>
         ))}
@@ -70,17 +70,13 @@ export function AdminDashboard() {
           <h3>📋 Últimos pedidos</h3>
           <button className="btn-secondary" onClick={refresh}>🔄 Atualizar</button>
         </div>
-        {orders.length===0
+        {recentes.length===0
           ?<div className="empty-state"><div className="icon">📋</div><p>Nenhum pedido</p></div>
           :<table className="data-table">
              <thead><tr><th>Cliente</th><th>Total</th><th>Status</th><th>Horário</th></tr></thead>
-             <tbody>{orders.slice(0,10).map(o=>(
+             <tbody>{recentes.map(o=>(
                <tr key={o.id}>
                  <td>
-                   {/* FIX (achado REF-ADMIN-01 · Onda 3, ex-REF-E2E-03 §1.3): o.cliente_nome/telefone
-                       nunca existiram no retorno de DS.getPedidos() (o select traz `customers:{name,phone}`
-                       aninhado) — a coluna sempre renderizou em branco. Mesmo acesso já usado em
-                       AdminPedidos.jsx (aba Pedidos), com fallback p/ pedidos sem cliente vinculado. */}
                    <div style={{fontWeight:600}}>{o.customers?.name || '—'}</div>
                    <div style={{fontSize:11,color:'var(--gray-500)'}}>{o.customers?.phone || ''}</div>
                  </td>

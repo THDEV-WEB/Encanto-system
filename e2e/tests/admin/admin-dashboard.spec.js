@@ -10,7 +10,12 @@
    `o.customers?.name`/`o.customers?.phone` (mesmo acesso já usado, e já funcionando, em
    AdminPedidos.jsx), com fallback '—' para pedidos sem cliente vinculado (compatibilidade com
    pedidos antigos/avulsos sem customer_id). O teste de "atualizar manual" continua usando o valor do
-   card "Total geral" p/ prova de atualização (não depende de nome/telefone). */
+   card "Total geral" p/ prova de atualização (não depende de nome/telefone).
+
+   REF-ADMIN-03 · Onda 3: `DS.getPedidos()` (limit(100) fixo) foi aposentado — os stat-cards agora vêm
+   de `DS.getPedidosStats()` (RPC admin_orders_stats, agregados em SQL sobre a tabela inteira) e
+   "Últimos pedidos" de `DS.getPedidosRecentes(10)`. Mesma forma `o.customers?.name/phone` preservada;
+   os testes abaixo continuam valendo sem alteração. */
 import { test, expect } from '../../fixtures/index.js';
 import { ADMIN_FIXTURE } from '../../support/fixture-accounts.js';
 import { criarPedidoAvulso } from '../../support/fixture-order.js';

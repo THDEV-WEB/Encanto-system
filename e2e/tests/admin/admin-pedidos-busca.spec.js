@@ -1,11 +1,14 @@
-/* e2e/tests/admin/admin-pedidos-busca.spec.js — REF-ADMIN-02 · Onda 3 (@writes).
+/* e2e/tests/admin/admin-pedidos-busca.spec.js — REF-ADMIN-02 · Onda 3 (@writes) · server-side desde
+   REF-ADMIN-03 · Onda 3.
    Achado (auditoria REF-ADMIN-02): busca/filtro na aba Pedidos (AdminPedidos.jsx) nunca existiram —
    não é um bug de comportamento incorreto, é ausência de funcionalidade (confirmado por leitura do
    componente atual e do histórico via git log/show, inclusive antes da extração REF-APP-01 · Onda 7.2).
-   Fix: filtro client-side sobre a lista já carregada por useOrders (zero consulta nova) — busca
-   tolerante a acento/caixa/parcial (utils/searchText, mesmo motor da busca da loja) por nome/telefone
-   do cliente, uuid completo, ref curta (8 chars) e número sequencial do pedido; filtro por status
-   (dropdown); ambos combináveis (AND). */
+   Fix original (REF-ADMIN-02): filtro client-side sobre a lista já carregada por useOrders (só os 100
+   pedidos mais recentes). REF-ADMIN-03 · Onda 3 moveu para o banco (RPC admin_orders_search, via
+   useOrdersPagina) — mesmas garantias de busca (nome/telefone do cliente, uuid completo, ref curta) +
+   filtro por status, combináveis (AND), agora alcançando o histórico INTEIRO, não só a 1ª página (ver
+   admin-pedidos-escala.spec.js). O número sequencial "#N" foi retirado do card (não compõe mais com
+   busca/paginação sobre a tabela toda) — "Ref. XXXXXXXX" continua sendo o identificador buscável. */
 import { test, expect } from '../../fixtures/index.js';
 import { ADMIN_FIXTURE } from '../../support/fixture-accounts.js';
 import { criarPedidoAvulso } from '../../support/fixture-order.js';

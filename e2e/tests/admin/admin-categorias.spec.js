@@ -1,5 +1,7 @@
 /* e2e/tests/admin/admin-categorias.spec.js — REF-E2E-03 · Onda 3 (@writes) + REF-ADMIN-01 · Onda 1
-   (fix: exclusão de categoria em uso).
+   (fix: exclusão de categoria em uso) + REF-ADMIN-03 · Onda 1 (trigger `trg_categoria_delete` no
+   banco como 2ª linha de defesa — migrations/REF-ADMIN-03-categoria-delete-guard.sql, aplicada no
+   projeto de E2E dedicado).
    CRUD de Categorias (AdminCategorias.jsx). `DS.upsertCat` não encadeia `.select()` no insert — nem
    o app nem este spec sabem o id da categoria recém-criada sem uma consulta própria; por isso
    descobrimos o id via `supabaseAdmin()` (mesmo padrão já usado em checkout-logado.spec.js para
@@ -108,5 +110,27 @@ test.describe('CRUD de Categorias', { tag: '@writes' }, () => {
 
     const { data: categoria } = await admin.from('categories').select('id').eq('id', catId).maybeSingle();
     expect(categoria).toBeNull();
+  });
+
+  test('DB: trigger trg_categoria_delete bloqueia o DELETE mesmo direto pelo backend, sem passar pela UI/app (fix REF-ADMIN-03 · Onda 1)', async () => {
+    test.skip(!E2E_ENV_PRONTO, 'ambiente de E2E não configurado (.env.e2e)');
+    // 2ª linha de defesa (defesa em profundidade): mesmo que o guard de aplicação (DS.delCat) nunca
+    // rodasse — SQL direto, uma futura API/RPC, um bug no app — o banco recusa sozinho. Usa
+    // supabaseAdmin() (service_role) direto, sem passar pelo AdminCategoriasPage/UI nenhuma.
+    const admin = supabaseAdmin();
+    const catId = `E2E_TEST_cat_trigger_${Date.now()}`;
+    const prodId = randomUUID();
+    await admin.from('categories').insert({ id: catId, nome: 'E2E_TEST_CategoriaTrigger', ordem: 999, ativo: true, slug: `e2e-test-cat-trigger-${Date.now()}`, tipo: 'business' });
+    await admin.from('products').insert({ id: prodId, nome: 'E2E_TEST_ProdutoTrigger', descricao: 'teste', preco: 9.99, categoria_id: catId, categoria_ids: [catId], disponivel: true, adicionais_gratis: 0 });
+
+    const { error } = await admin.from('categories').delete().eq('id', catId);
+    expect(error).not.toBeNull();
+    expect(error.message).toContain('nao pode ser excluida');
+
+    const { data: categoria } = await admin.from('categories').select('id').eq('id', catId).maybeSingle();
+    expect(categoria).not.toBeNull(); // sobreviveu — o banco recusou por conta própria
+
+    await admin.from('products').delete().eq('id', prodId);
+    await admin.from('categories').delete().eq('id', catId); // agora sem vínculo, exclui normalmente
   });
 });

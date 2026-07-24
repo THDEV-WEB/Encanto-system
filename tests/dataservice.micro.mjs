@@ -55,19 +55,36 @@ check('R5 _sanitizeImageUrl exige http', () => assert.ok(/url\.startsWith\('http
 check("R5 DS grava 'imagem_url' (viva)", () => assert.ok(/imagem_url/.test(DSCODE)));
 check("R5 DS NÃO referencia 'image_url' (legada) no código", () => assert.ok(!/\bimage_url\b/.test(DSCODE)));
 
-/* Anatomia — 22 métodos + 2 props (ADR §1): identidade do contrato preservada */
+/* R6 (REF-ADMIN-03 · Onda 1) — delCat não pode ignorar o erro do DELETE. Achado: antes, delCat
+   sempre devolvia {ok:true} depois do DELETE, mesmo se o banco recusasse (a trigger nova,
+   trg_categoria_delete, pode recusar numa corrida — produto vinculado entre a contagem do guard de
+   aplicação e o DELETE). Guard de fonte: isola o corpo de delCat e exige que ele cheque `r.error`. */
+const delCatMatch = DSRC.match(/async delCat\(id\) \{[\s\S]*?\n {2}\},/);
+check('R6 delCat isolável por regex (contrato de assinatura preservado)', () => assert.ok(delCatMatch));
+const DELCAT_SRC = delCatMatch ? delCatMatch[0] : '';
+check('R6 delCat verifica r.error antes de reportar sucesso (nunca {ok:true} incondicional após o DELETE)', () => {
+  assert.ok(/\.delete\(\)/.test(DELCAT_SRC), 'delCat não chama .delete()');
+  assert.ok(/if\s*\(\s*r\.error\s*\)/.test(DELCAT_SRC), 'delCat não checa r.error do DELETE');
+});
+
+/* Anatomia — 24 métodos + 2 props (ADR §1 + REF-ADMIN-03 · Onda 3: getPedidos() aposentado —
+   limit(100) fixo capava Dashboard/busca silenciosamente — substituído por getPedidosStats/
+   getPedidosRecentes/getPedidosPagina, ver comentário em DataService.js): identidade do contrato
+   preservada (menos o método retirado, mais os 3 novos — +2 líquido). */
 const MEMBROS = [
   '_globalProductsCache:', '_globalProductsCacheTime:', '_invalidateProductsCache()',
   'async run(', 'async fetchAllProductsSafe(', 'async getCats()', 'async getAllCats()',
   'async getProds(', 'async getAllProds()', 'async getAds()', 'async getAllAds()',
-  'async savePedido(', 'async getPedidos()', 'async setStatus(', 'async getHealth()',
+  'async savePedido(', 'async getPedidosStats()', 'async getPedidosRecentes(', 'async getPedidosPagina(',
+  'async setStatus(', 'async getHealth()',
   'async logEvent(', 'async upsertCat(', 'async delCat(', '_sanitizeImageUrl(',
   'async upsertProd(', 'async toggleProd(', 'async delProd(', 'async upsertAd(', 'async delAd(',
 ];
-check(`anatomia: ${MEMBROS.length} membros presentes (22 métodos + 2 props)`, () => {
+check(`anatomia: ${MEMBROS.length} membros presentes (24 métodos + 2 props)`, () => {
   const faltando = MEMBROS.filter(s => !DSRC.includes(s));
   assert.deepStrictEqual(faltando, [], 'membros ausentes: ' + faltando.join(', '));
 });
+check('anatomia: getPedidos() (legado, limit(100) fixo) foi removido — substituído por métodos escaláveis', () => assert.ok(!/async getPedidos\(\)/.test(DSRC)));
 check('anatomia: savePedido → rpc create_order', () => assert.ok(/d\.rpc\('create_order'/.test(DSRC)));
 
 /* ── (B) RUNTIME — test-first (verde na extração da Onda 2) ── */

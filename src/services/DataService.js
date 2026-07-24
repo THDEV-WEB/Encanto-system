@@ -136,11 +136,42 @@ export const DS = {
     }
     return res?.order_id ?? null;
   },
-  async getPedidos() {
+  /* REF-ADMIN-03 · Onda 3 — substitui o antigo getPedidos() (select direto, limit(100) fixo, sem
+     paginacao/busca/filtro server-side). Causa raiz: aquele limit(100) capava SILENCIOSAMENTE tanto os
+     agregados do Dashboard (Total geral/breakdown por status, calculados sobre o array já truncado)
+     quanto a busca/filtro de Pedidos (REF-ADMIN-02) — um pedido antigo fora da janela dos 100 mais
+     recentes nunca aparecia numa busca por telefone, por exemplo. As 2 RPCs abaixo
+     (migrations/REF-ADMIN-03-orders-scale.sql) calculam os agregados em SQL sobre a tabela INTEIRA e
+     paginam por cursor (created_at,id) — nunca um limit() truncando o que o app "acha" que existe. */
+  async getPedidosStats() {
+    const r = await this.run(d=>d.rpc('admin_orders_stats'));
+    return r.data ?? null;
+  },
+  /* Só para o Dashboard ("Últimos pedidos"): não precisa order_items (a tabela só mostra
+     cliente/total/status/horário) nem busca/filtro — um limit(N) simples continua correto porque
+     aqui a intenção É "os N mais recentes", nunca "todos". */
+  async getPedidosRecentes(limite=10) {
     const r = await this.run(d=>d.from('orders')
-      .select('*, customers(name,phone), order_items(*)')
-      .order('created_at',{ascending:false}).limit(100));
+      .select('*, customers(name,phone)')
+      .order('created_at',{ascending:false}).limit(limite));
     return r.data ?? [];
+  },
+  /* Página do quadro operacional de Pedidos (AdminPedidos.jsx): busca (cliente/telefone/id/ref) +
+     filtro de status + paginação por cursor, tudo resolvido em SQL (admin_orders_search). `cursor`
+     é `{created_at,id}` do último pedido da página anterior (null = 1ª página). Retorna o próximo
+     cursor (null quando não há mais páginas — página veio menor que o limite pedido). */
+  async getPedidosPagina({ busca, status, limit=20, cursor } = {}) {
+    const r = await this.run(d=>d.rpc('admin_orders_search', {
+      p_search: busca || null,
+      p_status: (status && status !== 'todos') ? status : null,
+      p_limit: limit,
+      p_cursor_created_at: cursor?.created_at ?? null,
+      p_cursor_id: cursor?.id ?? null,
+    }));
+    const orders = r.data ?? [];
+    const ultimo = orders[orders.length-1];
+    const proximoCursor = (orders.length === limit && ultimo) ? { created_at: ultimo.created_at, id: ultimo.id } : null;
+    return { orders, cursor: proximoCursor };
   },
   async setStatus(id,status) {
     await this.run(d=>d.from('orders').update({status}).eq('id',id));
@@ -198,7 +229,12 @@ export const DS = {
      `categoria_id` (singular) zera sozinha (ON DELETE SET NULL), mas `categoria_ids` (text[], fonte
      real da arquitetura multi-categoria, REF-ADMIN-CATALOG-01) não tem FK nenhuma e ficava com
      referência órfã. Guard de aplicação: conta produtos que usam a categoria (`.contains`, mesmo
-     operador `@>` do Postgres) ANTES de excluir; bloqueia com contagem se houver vínculo. */
+     operador `@>` do Postgres) ANTES de excluir; bloqueia com contagem se houver vínculo.
+     REF-ADMIN-03 · Onda 1: banco ganhou uma 2a linha de defesa (trigger `trg_categoria_delete`,
+     migrations/REF-ADMIN-03-categoria-delete-guard.sql) — fecha a corrida TOCTOU entre a contagem
+     acima e o DELETE (produto vinculado nesse meio-tempo). `delCat` agora CHECA o erro do DELETE
+     (achado: antes ignorava `r.error` e sempre devolvia {ok:true}, mesmo se o banco tivesse recusado)
+     e, se a trigger bloquear, reconta para devolver uma mensagem tão precisa quanto o caminho normal. */
   async produtosNaCategoria(id) {
     const r = await this.run(d=>d.from('products').select('id',{count:'exact',head:true}).contains('categoria_ids',[id]));
     return typeof r.count === 'number' ? r.count : 0;
@@ -206,7 +242,11 @@ export const DS = {
   async delCat(id) {
     const emUso = await this.produtosNaCategoria(id);
     if (emUso > 0) return { ok:false, count:emUso };
-    await this.run(d=>d.from('categories').delete().eq('id',id));
+    const r = await this.run(d=>d.from('categories').delete().eq('id',id));
+    if (r.error) {
+      const emUsoAgora = await this.produtosNaCategoria(id);
+      return { ok:false, count: emUsoAgora || 1 };
+    }
     return { ok:true };
   },
   /* ── CORREÇÃO CRÍTICA DE IMAGEM ──────────────────────────────

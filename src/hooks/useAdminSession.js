@@ -21,22 +21,20 @@
    'checking', isolado deste hook (App.jsx só mostra um spinner nesse caso — nunca a Loja nem o
    Admin), mas só entra em cena quando HÁ evidência de uma sessão de Admin salva (chave do
    localStorage do client `db` presente) — para todo o resto dos visitantes (o caso comum, sem essa
-   chave), o 1º render continua 'store' de forma síncrona e imediata, sem NENHUM atraso adicional. */
-import { useState, useEffect, useCallback } from 'react';
-import { db, SUPA_URL } from '../lib/supabase.js';
+   chave), o 1º render continua 'store' de forma síncrona e imediata, sem NENHUM atraso adicional.
 
-/* Chave de storage default do supabase-js v2 (nenhum storageKey explícito foi passado ao criar
-   `db`, ao contrário de `dbCliente`) — mesmo formato usado internamente pela lib: sb-<ref>-auth-token. */
-function chaveSessaoAdmin() {
-  try { return `sb-${new URL(SUPA_URL).hostname.split('.')[0]}-auth-token`; } catch { return null; }
-}
+   STORAGE KEY (REF-ADMIN-03 · Onda 2): antes, este hook precisava ADIVINHAR a chave de localStorage
+   de `db` reconstruindo o formato default do supabase-js a partir de SUPA_URL — dependência implícita
+   do formato interno da lib, duplicada à parte nos specs de E2E. Agora `db` tem `storageKey` explícito
+   (constants/authStorage.js, mesma ideia que `dbCliente` já usava) — este hook só IMPORTA a constante,
+   sem reconstruir nada. */
+import { useState, useEffect, useCallback } from 'react';
+import { db } from '../lib/supabase.js';
+import { ADMIN_AUTH_STORAGE_KEY } from '../constants/authStorage.js';
 
 function possivelSessaoAdmin() {
   if (typeof window === 'undefined' || !db) return false;
-  try {
-    const chave = chaveSessaoAdmin();
-    return !!(chave && window.localStorage.getItem(chave));
-  } catch { return false; }
+  try { return !!window.localStorage.getItem(ADMIN_AUTH_STORAGE_KEY); } catch { return false; }
 }
 
 export function useAdminSession() {

@@ -1,9 +1,26 @@
-/* components/admin/AdminPedidos.jsx — REF-ORDER-01 (integracao operacional).
+/* components/admin/AdminPedidos.jsx — REF-ORDER-01 (integracao operacional) + REF-ADMIN-02 · Onda 3
+   (busca/filtro) + REF-ADMIN-03 · Onda 3 (escalabilidade).
    Painel de pedidos como TABLEIRO OPERACIONAL (cards), nao mais tabela: cada pedido mostra o status atual,
    a TRILHA visual, e AÇOES SEMPRE VISIVEIS (avancar status conforme o tipo, comanda/reimprimir, historico,
-   mensagens). Estilos inline (nao dependem do index.css). Dados via useOrders/DS; dominio puro p/ comanda. */
+   mensagens). Estilos inline (nao dependem do index.css).
+
+   REF-ADMIN-03 · Onda 3: busca/filtro/paginação passam a ser SERVER-SIDE (useOrdersPagina, RPC
+   admin_orders_search) — antes (REF-ADMIN-02) filtravam client-side sobre os 100 pedidos mais
+   recentes já carregados; um pedido mais antigo nunca aparecia numa busca por telefone, por exemplo.
+   Os stat-cards de status usam os MESMOS agregados globais do Dashboard (useOrdersStats,
+   admin_orders_stats) em vez de contar sobre a lista carregada — que agora é só a PÁGINA atual, não
+   o total.
+
+   O número sequencial "#N" (posição no array completo) foi RETIRADO do card: ele exigia conhecer a
+   posição de um pedido no histórico INTEIRO, algo que deixa de fazer sentido com paginação/busca sobre
+   a tabela toda (equivaleria a um full scan a cada página). "Ref. XXXXXXXX" (8 chars do id) já era
+   exibido e já é o identificador usado em outros lugares do sistema (Meus Pedidos do cliente,
+   notificação WhatsApp) — vira o único identificador curto do card, sem introduzir nada novo.
+   `comandaModel.numeroFormatado` já tinha fallback pronto para quando `numero` não é passado (usa a
+   mesma ref curta) — nenhuma mudança necessária no domínio da comanda. */
 import { useState } from 'react';
-import { useOrders } from '../../hooks/useOrders.js';
+import { useOrdersPagina } from '../../hooks/useOrdersPagina.js';
+import { useOrdersStats } from '../../hooks/useOrdersStats.js';
 import { DS } from '../../services/DataService.js';
 import { fmt, fmtDataHoraLoja } from '../../utils/format.js';
 import { Spinner } from '../ui/Spinner.jsx';
@@ -12,7 +29,6 @@ import { ComandaModal } from './comanda/ComandaModal.jsx';
 import { tipoDoPedido } from './comanda/comandaModel.js';
 import { PedidoHistorico } from './PedidoHistorico.jsx';
 import { PedidoNotificacoes } from './PedidoNotificacoes.jsx';
-import { deburr, textMatches } from '../../utils/searchText.js';
 
 /* cartoes-resumo (contadores por status) — a mesma trilha operacional + cancelado */
 const RESUMO = ['recebido', 'preparo', 'pronto', 'entrega', 'entregue', 'cancelado'];
@@ -26,7 +42,7 @@ const act = (bg, fg, bd) => ({
   cursor: 'pointer', background: bg, color: fg, fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 6,
 });
 
-function OrderCard({ order, numero, onChanged, onComanda }) {
+function OrderCard({ order, onChanged, onComanda }) {
   const [aba, setAba] = useState(null);   // 'hist' | 'msg' | null
   const [salvando, setSalvando] = useState(false);
   const tipo = tipoDoPedido(order);
@@ -47,11 +63,10 @@ function OrderCard({ order, numero, onChanged, onComanda }) {
 
   return (
     <div data-testid={`pedido-card-${order.id}`} style={{ border: '1px solid var(--gray-200,#E8DCC8)', borderRadius: 14, padding: 14, marginBottom: 12, background: 'var(--white,#fff)' }}>
-      {/* topo: numero + ref + tipo + status atual */}
+      {/* topo: ref + tipo + status atual */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-          <span style={{ fontWeight: 800, fontSize: 16, color: 'var(--grape,#A62786)' }}>#{numero}</span>
-          <span style={{ fontSize: 11, color: 'var(--gray-500,#6B5D50)' }}>Ref. {('#' + String(order.id || '').replace(/-/g, '').slice(0, 8)).toUpperCase()}</span>
+          <span style={{ fontWeight: 800, fontSize: 14, color: 'var(--grape,#A62786)' }}>Ref. {('#' + String(order.id || '').replace(/-/g, '').slice(0, 8)).toUpperCase()}</span>
           <span style={{ fontSize: 11.5, fontWeight: 700, color: tipo === 'retirada' ? '#0F766E' : '#1D4ED8' }}>
             {tipo === 'retirada' ? '🏪 Retirada' : '🛵 Entrega'}
           </span>
@@ -89,7 +104,7 @@ function OrderCard({ order, numero, onChanged, onComanda }) {
             </button>
           : !cancelado && <span style={{ fontSize: 12.5, fontWeight: 700, color: '#15803D' }}>✅ Pedido concluído</span>}
 
-        <button style={act('#F1EADF', '#6B5D50')} onClick={() => onComanda(order, numero)}>🧾 Comanda</button>
+        <button style={act('#F1EADF', '#6B5D50')} onClick={() => onComanda(order)}>🧾 Comanda</button>
         <button style={act('#F1EADF', '#6B5D50')} aria-expanded={aba === 'hist'} onClick={() => setAba(aba === 'hist' ? null : 'hist')}>🕑 Histórico</button>
         <button style={act('#F1EADF', '#6B5D50')} aria-expanded={aba === 'msg'} onClick={() => setAba(aba === 'msg' ? null : 'msg')}>💬 Mensagens</button>
 
@@ -113,57 +128,38 @@ function OrderCard({ order, numero, onChanged, onComanda }) {
   );
 }
 
-/* REF-ADMIN-02 · Onda 3 — busca/filtro nunca existiram aqui (causa raiz: ausência de funcionalidade,
-   não um bug de comportamento). Client-side sobre a lista já carregada por useOrders (mesmo padrão do
-   breakdown por status acima e do Dashboard): zero consulta nova. Busca tolerante a acento/caixa/
-   parcial (utils/searchText, mesmo motor da busca da loja) contra nome/telefone do cliente, uuid
-   completo, ref curta (8 primeiros chars, igual à exibida no card) e o número sequencial do pedido. */
-function pedidoCasaBusca(order, numero, dq) {
-  if (!dq) return true;
-  const refCurta = String(order.id || '').replace(/-/g, '').slice(0, 8);
-  return textMatches(order.customers?.name, dq)
-      || textMatches(order.customers?.phone, dq)
-      || textMatches(order.id, dq)
-      || textMatches(refCurta, dq)
-      || textMatches(String(numero), dq);
-}
-
 export function AdminPedidos() {
-  const { orders, loading, refresh } = useOrders();
-  const [comanda, setComanda] = useState(null);   // { order, numero, count }
   const [busca, setBusca] = useState('');
   const [statusFiltro, setStatusFiltro] = useState('todos');
+  const { orders, loading, temMais, carregarMais, refresh } = useOrdersPagina({ busca, status: statusFiltro });
+  const { stats, refresh: refreshStats } = useOrdersStats(0); // só agregados globais — a lista é a de useOrdersPagina
+  const [comanda, setComanda] = useState(null);   // { order, count }
 
-  const abrirComanda = async (order, numero) => {
-    setComanda({ order, numero, count: null });
+  const abrirComanda = async (order) => {
+    setComanda({ order, count: null });
     const count = await DS.countPedidosByCustomer(order.customer_id);
     setComanda((c) => (c && c.order?.id === order.id ? { ...c, count } : c));
   };
 
-  /* numero = posição no pedido dentro da lista TOTAL (não da filtrada) — preserva a numeração de
-     sempre (#1 = mais antigo) mesmo com busca/filtro ativos. */
-  const numeroPorId = new Map(orders.map((o, i) => [o.id, orders.length - i]));
-  const dq = deburr(busca.trim());
-  const filtrados = orders.filter((o) => {
-    const status = o.status || 'recebido';
-    if (statusFiltro !== 'todos' && status !== statusFiltro) return false;
-    return pedidoCasaBusca(o, numeroPorId.get(o.id), dq);
-  });
+  const atualizar = () => { refresh(); refreshStats(); };
+  const breakdown = stats?.breakdown || {};
+  const semResultado = !loading && orders.length === 0;
+  const buscaOuFiltroAtivo = !!busca.trim() || statusFiltro !== 'todos';
 
   return (
     <div>
       <div className="stat-cards">
         {RESUMO.map((k) => (
           <div key={k} className="stat-card">
-            <div className="stat-val">{orders.filter((o) => (o.status || 'recebido') === k).length}</div>
+            <div className="stat-val">{breakdown[k] || 0}</div>
             <div className="stat-label">{statusInfo(k).label}</div>
           </div>
         ))}
       </div>
       <div className="admin-card">
         <div className="admin-card-header">
-          <h3>Pedidos ({filtrados.length})</h3>
-          <button className="btn-secondary" onClick={refresh}>🔄 Atualizar</button>
+          <h3>Pedidos</h3>
+          <button className="btn-secondary" onClick={atualizar}>🔄 Atualizar</button>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '12px 16px 0' }}>
           <input
@@ -187,19 +183,29 @@ export function AdminPedidos() {
           </select>
         </div>
         <div style={{ padding: 16 }}>
-          {loading ? <Spinner /> : orders.length === 0 ? (
-            <div className="empty-state"><div className="icon">📋</div><p>Nenhum pedido ainda</p></div>
-          ) : filtrados.length === 0 ? (
-            <div className="empty-state"><div className="icon">🔍</div><p>Nenhum pedido encontrado com esses filtros</p></div>
+          {loading && orders.length === 0 ? <Spinner /> : semResultado ? (
+            <div className="empty-state">
+              <div className="icon">{buscaOuFiltroAtivo ? '🔍' : '📋'}</div>
+              <p>{buscaOuFiltroAtivo ? 'Nenhum pedido encontrado com esses filtros' : 'Nenhum pedido ainda'}</p>
+            </div>
           ) : (
-            filtrados.map((o) => (
-              <OrderCard key={o.id} order={o} numero={numeroPorId.get(o.id)} onChanged={refresh} onComanda={abrirComanda} />
-            ))
+            <>
+              {orders.map((o) => (
+                <OrderCard key={o.id} order={o} onChanged={atualizar} onComanda={abrirComanda} />
+              ))}
+              {temMais && (
+                <div style={{ textAlign: 'center', marginTop: 8 }}>
+                  <button className="btn-secondary" disabled={loading} onClick={carregarMais}>
+                    {loading ? 'Carregando…' : 'Carregar mais'}
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
       {comanda && (
-        <ComandaModal order={comanda.order} numero={comanda.numero} totalPedidos={comanda.count} onClose={() => setComanda(null)} />
+        <ComandaModal order={comanda.order} totalPedidos={comanda.count} onClose={() => setComanda(null)} />
       )}
     </div>
   );

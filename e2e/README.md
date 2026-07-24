@@ -320,6 +320,36 @@ Verificação: `npx playwright test --project=chromium e2e/tests/admin` (50/50, 
 suíte completa (`npm run test:e2e`, 99/99, era 92) e suíte de domínio completa (exceto as mesmas 3
 falhas pré-existentes/congeladas de `test:f1b`), sem regressão.
 
+### REF-ADMIN-03 — Robustez, Escalabilidade e Preparação para SaaS (auditoria em
+[`../docs/adr/REF-ADMIN-03-robustez-escala.md`](../docs/adr/REF-ADMIN-03-robustez-escala.md))
+
+Fecha as 3 limitações remanescentes deixadas pela REF-ADMIN-01/02 e prepara a base técnica para
+crescimento (SaaS). Migrations aplicadas/validadas no projeto de E2E dedicado; produção pendente do dono.
+
+- **Onda 1 (integridade das categorias):** REVERTE a conclusão da REF-ADMIN-02 à luz do schema real —
+  o projeto já tinha um sistema de triggers STI maduro (NORM-06 F1B) para outro invariante; uma
+  trigger `BEFORE DELETE ON categories` (`trg_categoria_delete`) é extensão natural desse padrão, não
+  infraestrutura nova. Implementada + índice GIN em `categoria_ids` (não existia nenhum). Fecha
+  parcialmente a corrida TOCTOU (trigger simétrica em `products.categoria_ids` descartada
+  conscientemente — ver ADR). Bug real corrigido: `DS.delCat` ignorava o erro do DELETE.
+- **Onda 2 (sessão do Admin):** `storageKey` explícito e centralizado (`constants/authStorage.js`)
+  para `db` — antes dependia do formato DEFAULT (não documentado) do supabase-js, com a MESMA lógica
+  de derivação duplicada em produção e nos specs. Migração 1× de sessões salvas sob a chave antiga
+  (sem forçar relogin de ninguém). Hook `useAdminSession` reavaliado por completo — nenhuma outra
+  simplificação de baixo risco encontrada.
+- **Onda 3 (escalabilidade de Pedidos):** 2 bugs latentes fechados (Total geral/breakdown do Dashboard
+  e busca/filtro de Pedidos ficariam silenciosamente errados/incompletos além de 100 pedidos
+  históricos). 2 RPCs novas (`admin_orders_stats`, `admin_orders_search` — paginação por cursor/
+  keyset, não OFFSET) + índice `orders(status, created_at DESC)`. `DS.getPedidos()` (legado)
+  removido, substituído por 3 métodos escaláveis. Número sequencial "#N" retirado do card (não compõe
+  com busca sobre a tabela inteira sem full-scan) — "Ref. XXXXXXXX" vira o único identificador curto
+  (já usado em outros pontos do sistema). **Bug real encontrado pela própria suíte**: race condition
+  em `useOrdersPagina` (resposta de rede fora de ordem sobrescrevia um filtro aplicado) — só aparecia
+  rodando a suíte INTEIRA, não a pasta admin isolada; corrigido com `requestIdRef`.
+
+Verificação: suíte completa (`npm run test:e2e`) 104/104 (era 92), suíte admin isolada 52/52, suíte de
+domínio completa (exceto as mesmas 3 falhas pré-existentes/congeladas de `test:f1b`), sem regressão.
+
 ### Nota sobre `set_store_mode` (Onda 4)
 
 A RPC oficial `set_store_mode` exige `is_admin()=true` (checagem explícita no corpo da função, não é

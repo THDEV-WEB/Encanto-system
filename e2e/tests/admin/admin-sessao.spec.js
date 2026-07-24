@@ -11,15 +11,24 @@
    sessão válida — tanto vindo de mode='store' (F5 direto) quanto de mode='login' (link com o hash
    '#admin-encanto' enquanto já autenticado, não precisa digitar senha de novo). onAuthStateChange
    mantém o modo sincronizado se a sessão cair (ex.: refresh token revogado) enquanto o Admin está
-   aberto — sem loop, uma única transição para 'store'. */
+   aberto — sem loop, uma única transição para 'store'.
+
+   REF-ADMIN-03 · Onda 2: `db` ganhou storageKey EXPLÍCITO (constants/authStorage.js) — este spec
+   importa a MESMA constante em vez de reconstruir a chave default do supabase-js a partir da URL
+   (dependência implícita eliminada dos dois lados, produção e teste, não só de um). */
 import { test, expect } from '../../fixtures/index.js';
 import { AdminLoginPage } from '../../pages/AdminLoginPage.js';
+import { AdminPanelPage } from '../../pages/AdminPanel.page.js';
 import { ADMIN_FIXTURE } from '../../support/fixture-accounts.js';
-import { E2E_ENV, E2E_ENV_PRONTO } from '../../support/supabaseAdmin.js';
+import { E2E_ENV, E2E_ENV_PRONTO, supabaseAnon } from '../../support/supabaseAdmin.js';
+import { ADMIN_AUTH_STORAGE_KEY } from '../../../src/constants/authStorage.js';
 
-function chaveStorageAdmin() {
+/* Formato DEFAULT do supabase-js (sb-<ref>-auth-token) — só é reconstruído AQUI, de propósito: este
+   teste simula um navegador de ANTES da Onda 2 (quando essa era a única chave que existia), para
+   provar que `migrarChaveSessaoAdminLegada()` (lib/supabase.js) resgata essa sessão sem forçar relogin. */
+function chaveStorageAdminLegada() {
   const ref = new URL(E2E_ENV.url).hostname.split('.')[0];
-  return `sb-${ref}-auth-token`; // default do supabase-js quando storageKey não é customizado (GoTrueClient)
+  return `sb-${ref}-auth-token`;
 }
 
 function sessaoAdminForjada() {
@@ -95,7 +104,7 @@ test.describe('sessão do Admin', { tag: '@writes' }, () => {
         cookies: [],
         origins: [{
           origin: new URL(baseURL).origin,
-          localStorage: [{ name: chaveStorageAdmin(), value: JSON.stringify(sessaoAdminForjada()) }],
+          localStorage: [{ name: ADMIN_AUTH_STORAGE_KEY, value: JSON.stringify(sessaoAdminForjada()) }],
         }],
       },
     });
@@ -113,6 +122,38 @@ test.describe('sessão do Admin', { tag: '@writes' }, () => {
     await expect(adminLoginPage.emailInput).toBeVisible();
 
     expect(erros, `erros JS não capturados: ${erros.map(String).join('; ')}`).toHaveLength(0);
+    await context.close();
+  });
+
+  test('sessão salva sob a chave LEGADA (default do supabase-js) é migrada sem forçar relogin (fix REF-ADMIN-03 · Onda 2)', async ({ browser, baseURL }) => {
+    test.skip(!E2E_ENV_PRONTO, 'ambiente de E2E não configurado (.env.e2e)');
+
+    // Sessão REAL do admin fixture (mesmo método que o formulário de login usa por baixo,
+    // signInWithPassword) — só o LUGAR onde ela é injetada simula o navegador pré-Onda 2.
+    const anon = supabaseAnon();
+    const { data, error } = await anon.auth.signInWithPassword({ email: ADMIN_FIXTURE.email, password: ADMIN_FIXTURE.senha });
+    if (error || !data?.session) throw new Error(`[e2e] login do admin fixture falhou: ${error?.message || 'sem sessão'}`);
+
+    const chaveLegada = chaveStorageAdminLegada();
+    const context = await browser.newContext({
+      storageState: {
+        cookies: [],
+        origins: [{ origin: new URL(baseURL).origin, localStorage: [{ name: chaveLegada, value: JSON.stringify(data.session) }] }],
+      },
+    });
+    const page = await context.newPage();
+    const adminPanel = new AdminPanelPage(page);
+    await page.goto(baseURL);
+
+    await expect(adminPanel.tab('dashboard')).toBeVisible(); // migrou e restaurou — sem tela de login
+
+    const chaves = await page.evaluate((chaveAntiga) => ({
+      nova: window.localStorage.getItem('encanto-admin-auth') !== null,
+      antiga: window.localStorage.getItem(chaveAntiga) !== null,
+    }), chaveLegada);
+    expect(chaves.nova).toBe(true);   // sessão agora vive na chave centralizada
+    expect(chaves.antiga).toBe(false); // chave antiga limpa (não fica lixo duplicado)
+
     await context.close();
   });
 });
