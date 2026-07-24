@@ -93,7 +93,7 @@ export function ImageUploader({ currentUrl, onUpload }) {
             <img src={preview} alt="Preview" style={{width:'100%',height:'100%',objectFit:'cover'}}
               onError={()=>setPreview(null)}/>
             {!uploading && (
-              <button onClick={()=>{setPreview(null);onUpload?.(null);}}
+              <button data-testid="img-uploader-remover" onClick={()=>{setPreview(null);onUpload?.(null);}}
                 style={{position:'absolute',top:6,right:6,width:24,height:24,borderRadius:6,
                   background:'rgba(220,38,38,.9)',color:'#fff',border:'none',cursor:'pointer',
                   fontSize:12,display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'var(--font-body)'}}>
@@ -115,7 +115,7 @@ export function ImageUploader({ currentUrl, onUpload }) {
       </div>
 
       {/* Botão upload */}
-      <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif"
+      <input ref={inputRef} data-testid="img-uploader-arquivo" type="file" accept="image/jpeg,image/png,image/webp,image/gif"
         style={{display:'none'}} onChange={handleFile} disabled={uploading}/>
       <button type="button" className="btn-secondary"
         style={{width:'100%',fontSize:13,marginBottom:8}}
@@ -127,12 +127,12 @@ export function ImageUploader({ currentUrl, onUpload }) {
       <label style={{fontSize:11,color:'var(--gray-500)',display:'block',marginBottom:4}}>
         Ou cole uma URL de imagem:
       </label>
-      <input className="form-input" style={{fontSize:13,padding:'8px 12px'}}
+      <input data-testid="img-uploader-url" className="form-input" style={{fontSize:13,padding:'8px 12px'}}
         placeholder="https://..." defaultValue={currentUrl||''}
         onChange={handleUrlChange} disabled={uploading}/>
 
       {uploadErr && (
-        <div style={{marginTop:6,padding:'7px 10px',borderRadius:8,background:'var(--red-pale)',
+        <div data-testid="img-uploader-erro" style={{marginTop:6,padding:'7px 10px',borderRadius:8,background:'var(--red-pale)',
           border:'1px solid #FECACA',fontSize:12,color:'var(--red)',fontWeight:600}}>
           ⚠️ {uploadErr}
         </div>

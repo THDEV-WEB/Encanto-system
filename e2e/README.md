@@ -211,8 +211,26 @@ fluxos) — reaproveita 100% da infra de E2E-01/02 (Playwright, projeto `encanto
   produtos em `categoria_ids`) sucede sem erro — não há FK protegendo esse array; a coluna legada
   `categoria_id` zera sozinha (FK com `ON DELETE SET NULL`), mas `categoria_ids` fica órfão. Ver ADR
   "Onda 3 — executada" para o racional completo e as 2 perguntas feitas ao dono.
-- **Próximas ondas:** Produtos (4), Configurações+Fidelidade admin (5), Permissões (matriz
-  completa)+Saúde (6) — ver ADR §6.
+- **Onda 4 (Produtos, o formulário mais complexo do projeto):** FEITO. `data-testid` em TODOS os
+  campos de `AdminProducts.jsx` (nenhum `<label htmlFor>`) + `prod-row-{id}` na tabela + containers
+  dos toggle-buttons dinâmicos + wrapper do `ImageUploader` (também instrumentado). Novo
+  `AdminProductsPage.page.js`. `fixture-catalog.js` ganhou 8 constantes `CAT_*` (ids das categorias
+  do seed). `limparCatalogoDeTeste()` agora também apaga `products` de teste. Novo
+  `mockImageUpload()` em `network-stubs.js` (só o POST de upload; `getPublicUrl` é local, sem rede).
+  5 specs novos (10 casos): `admin-produtos-crud.spec.js` (simples: criar/editar/disponibilidade/
+  excluir/validação), `admin-produtos-tamanhos.spec.js` (criar/validação/sincronização de preço com
+  o menor tamanho/volta ao modo simples), `admin-produtos-categorias-destaque.spec.js` (multi-
+  categoria + destaque + ordem), `admin-produtos-adicionais.spec.js` (grupos de adicionais dinâmicos
+  por categoria), `admin-produtos-imagem.spec.js` (validação client-side + upload mockado + URL
+  manual). **2 achados de teste confirmados ao rodar** (nenhum bug de produto): (1) os toggles
+  "Disponível"/"Destaque" usam `.toggle-switch input{opacity:0;width:0;height:0}` — o `<input>` real
+  nunca é "visível" para o Playwright, `.click()`/`.check()` diretos travam; o Page Object clica no
+  `.toggle-slider` visível (mesmo alvo de um usuário real), usando o `<input>` só para `toBeChecked`.
+  (2) corrida real entre `salvar()` (assíncrono) e uma consulta direta ao backend logo em seguida,
+  sem esperar confirmação visível na UI — passava isolado, falhava dentro da suíte inteira; mesma
+  lição já vista na Onda 2 (race avançar-status × abrir painel). Ver ADR "Onda 4 — executada".
+- **Próxima onda:** Configurações+Fidelidade admin (5), Permissões (matriz completa)+Saúde (6) — ver
+  ADR §6.
 
 ### Nota sobre `set_store_mode` (Onda 4)
 

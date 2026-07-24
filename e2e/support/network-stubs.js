@@ -104,3 +104,21 @@ export async function mockEmailChangeAuth(page) {
     });
   });
 }
+
+/* Stub do upload de imagem (ImageUploader.jsx, Admin/Produtos — REF-E2E-03 · Onda 4). Decisão da
+   auditoria (ADR §7.1): o bucket `products` não existe no projeto de E2E (Storage não é dumpável
+   junto do schema Postgres — ver §1.8) — mockar via page.route cobre a MECÂNICA da UI (preview
+   atualiza, onUpload dispara, produto salva a URL) sem provisionar Storage real. Intercepta só o POST
+   de upload (`storage-js` chama `POST {url}/object/{bucket}/{path}`); `getPublicUrl` é síncrono/local
+   (nunca faz rede), então o front constrói uma URL pública real (mesmo formato de produção) a partir
+   do nome de arquivo gerado localmente — não precisa ser mockada à parte. */
+export async function mockImageUpload(page) {
+  await page.route('**/storage/v1/object/products/**', (route) => {
+    if (route.request().method() !== 'POST') return route.continue();
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ Id: 'e2e-fixture-upload-id', Key: 'products/e2e-fixture-upload.jpg' }),
+    });
+  });
+}

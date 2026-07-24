@@ -1,6 +1,6 @@
 # REF-E2E-03 — Cobertura E2E do Painel Administrativo — Auditoria
 
-**Status:** 🟡 Ondas 1 (6eb14b9) e 2 (ce19ffa) commitadas. Onda 3 (Categorias + Adicionais) implementada e verificada (2026-07-24) — inclui 2 correções de produção (ver "Onda 3 — executada") pedidas explicitamente pelo dono ao ser confrontado com 2 bugs reais descobertos durante a implementação. 22/22 specs do Admin + 71/71 da suíte E2E inteira + suíte de domínio 100%, sem regressão. Aguardando aprovação do dono para commitar e seguir para a Onda 4. Ondas 4-6 seguem a auditoria abaixo, 1 aprovação por onda.
+**Status:** 🟡 Ondas 1 (6eb14b9), 2 (ce19ffa) e 3 (836e208, +2 fixes reais de criação) commitadas. Onda 4 (Produtos — o formulário mais complexo do projeto) implementada e verificada (2026-07-24) — 32/32 specs do Admin + 81/81 da suíte E2E inteira + suíte de domínio 100%, sem regressão. Aguardando aprovação do dono para commitar e seguir para a Onda 5. Onda 6 segue a auditoria abaixo.
 **Depende de:** REF-E2E-01 (infraestrutura Playwright, projeto Supabase dedicado `encanto-e2e`, POM, `support/*`), REF-E2E-02 (padrão de fixture persistente, `workers:1`), AUTH-01 (fundação `is_admin()`/RLS), REF-ORDER-01/01b/01c (fluxo de pedidos + notificação), REF-ADMIN-CATALOG-01/REF-ADMIN-ADDONS-02 (governança do catálogo), REF-BUSINESS-HOURS-02/03, REF-DELIVERY-01, REF-LOYALTY-01.
 **Relacionado:** fecha a lista "Faltam: Admin" deixada em aberto desde a auditoria da E2E-01.
 
@@ -313,6 +313,59 @@ registrado aqui para decisão futura, se o dono quiser abrir uma REF de produto.
 Verificação: `npx playwright test --project=chromium e2e/tests/admin` (22/22), suíte completa
 (`npm run test:e2e`, 71/71) e suíte de domínio completa (incluindo os guards de catálogo/adicionais),
 sem regressão.
+
+## Onda 4 — executada (2026-07-24)
+
+Cobertura de Produtos (o formulário mais complexo do projeto — nome/descrição/preço/preço-promo/
+tamanhos dinâmicos/categoria principal+extras/ordem/badge/adicionais grátis/grupos de adicionais/
+imagem/disponível/destaque), exatamente como planejada em §6.
+
+### Arquivos
+
+- `src/components/admin/AdminProducts.jsx`: `data-testid` em TODOS os campos do formulário (nenhum
+  tem `<label htmlFor>`) + `prod-row-{id}` na linha da tabela + containers para os toggle-buttons
+  dinâmicos (`prod-form-categorias-extra`/`prod-form-grupos-ad`) + wrapper do `ImageUploader`
+  (`prod-form-imagem`) — a maior densidade de `data-testid` de toda a suíte, prevista na auditoria
+  (§1.5), sem alternativa semântica sem reescrever o formulário (fora de escopo).
+- `src/components/admin/ImageUploader.jsx`: `data-testid` no input de arquivo, input de URL, botão
+  remover e mensagem de erro.
+- `e2e/pages/AdminProductsPage.page.js` (novo) — cobre todo o formulário; documenta explicitamente o
+  achado dos toggles (abaixo).
+- `e2e/support/fixture-catalog.js`: 8 constantes `CAT_*` novas (ids das categorias do seed) — já
+  usadas por specs de Produtos para selecionar categoria sem depender de nomes soltos.
+- `e2e/support/fixture-catalog-admin.js`: `limparCatalogoDeTeste()` passou a apagar também `products`
+  (prefixo `E2E_TEST_`), antes só categorias/adicionais (Onda 3).
+- `e2e/support/network-stubs.js`: `mockImageUpload()` novo — intercepta só o POST de upload do
+  Storage (`**/storage/v1/object/products/**`); `getPublicUrl` é síncrono/local, nunca precisa mock.
+- 5 specs novos em `e2e/tests/admin/`: `admin-produtos-crud.spec.js` (produto simples: criar/editar/
+  disponibilidade/excluir/validação), `admin-produtos-tamanhos.spec.js` (tamanhos: criar/validação/
+  sincronização de preço/volta ao modo simples), `admin-produtos-categorias-destaque.spec.js`
+  (multi-categoria + destaque + ordem), `admin-produtos-adicionais.spec.js` (grupos de adicionais
+  dinâmicos, por categoria), `admin-produtos-imagem.spec.js` (validação client-side + upload mockado
+  + URL manual) — 10 casos de teste.
+
+### Achados confirmados ao rodar (2, ambos de teste — nenhum bug de produto nesta onda)
+
+1. **Toggles "Disponível"/"Destaque" (form) e o toggle inline da lista usam o padrão CSS
+   `.toggle-switch input{opacity:0;width:0;height:0}`** (index.css) — o `<input type="checkbox">`
+   real nunca é "visível" para o Playwright (área zero), então `.click()`/`.check()` diretos no
+   input travam esperando visibilidade (confirmado: 2 specs falharam por timeout na 1ª tentativa).
+   Corrigido no Page Object: o `<input>` continua exposto via `data-testid` só para ASSERÇÕES
+   (`toBeChecked`), e o clique real mira o `.toggle-slider` (ou o label pai) visível ao lado — o
+   mesmo alvo que um usuário real clicaria.
+2. **Corrida real entre `salvar()` (assíncrono) e uma verificação direta no backend logo em
+   seguida**: `admin-produtos-adicionais.spec.js` passou isolado, mas falhou ao rodar dentro da
+   suíte Admin inteira (`criado` veio `null` — o produto ainda não existia no banco no instante da
+   consulta). Causa: a única spec desta onda que consultava `supabaseAdmin()` logo após `.salvar()`
+   sem antes esperar uma confirmação visível na UI — o clique resolve ao despachar o evento, não
+   quando `DS.upsertProd`/`load()` terminam. Todas as OUTRAS specs desta onda já aguardavam
+   `page.getByText(nome)` antes de qualquer consulta directa; esta foi corrigida para o mesmo
+   padrão. Reforça a lição já registrada na Onda 2 (race avançar-status × abrir painel): **nunca
+   consultar o backend direto sem antes esperar uma confirmação visível na UI**, mesmo quando a
+   spec "passa" isolada.
+
+Verificação: `npx playwright test --project=chromium e2e/tests/admin` (32/32), suíte completa
+(`npm run test:e2e`, 81/81) e suíte de domínio completa, sem regressão.
 
 ## 8. Critérios objetivos de aprovação (por onda, mesmo padrão das REFs anteriores)
 

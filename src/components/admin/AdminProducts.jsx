@@ -248,7 +248,7 @@ export function AdminProducts() {
                 <th>Preço</th><th>Disp.</th><th>Ações</th>
               </tr></thead>
               <tbody>{prods.map(p => (
-                <tr key={p.id}>
+                <tr key={p.id} data-testid={`prod-row-${p.id}`}>
                   <td>
                     {/* Miniatura da imagem com fallback */}
                     <div style={{
@@ -322,12 +322,12 @@ export function AdminProducts() {
 
             <div className="form-group">
               <label className="form-label">Nome *</label>
-              <input className="form-input" value={form.nome} onChange={e=>setForm(f=>({...f,nome:e.target.value}))}/>
+              <input data-testid="prod-form-nome" className="form-input" value={form.nome} onChange={e=>setForm(f=>({...f,nome:e.target.value}))}/>
             </div>
 
             <div className="form-group">
               <label className="form-label">Descrição</label>
-              <textarea className="form-input obs-textarea" value={form.descricao}
+              <textarea data-testid="prod-form-descricao" className="form-input obs-textarea" value={form.descricao}
                 onChange={e=>setForm(f=>({...f,descricao:e.target.value}))}/>
             </div>
 
@@ -336,12 +336,12 @@ export function AdminProducts() {
               <div className="form-row">
                 <div className="form-group">
                   <label className="form-label">Preço (R$) *</label>
-                  <input className="form-input" type="number" step="0.01" value={form.preco}
+                  <input data-testid="prod-form-preco" className="form-input" type="number" step="0.01" value={form.preco}
                     onChange={e=>setForm(f=>({...f,preco:e.target.value}))}/>
                 </div>
                 <div className="form-group">
                   <label className="form-label">Preço Promo</label>
-                  <input className="form-input" type="number" step="0.01" value={form.preco_promo}
+                  <input data-testid="prod-form-preco-promo" className="form-input" type="number" step="0.01" value={form.preco_promo}
                     onChange={e=>setForm(f=>({...f,preco_promo:e.target.value}))}/>
                 </div>
               </div>
@@ -359,23 +359,23 @@ export function AdminProducts() {
               </label>
 
               {temTamanhos && form.tamanhos.map((t,i)=>(
-                <div key={i} style={{display:'flex',gap:8,marginBottom:8,alignItems:'flex-end',flexWrap:'wrap'}}>
+                <div key={i} data-testid={`prod-tamanho-${i}`} style={{display:'flex',gap:8,marginBottom:8,alignItems:'flex-end',flexWrap:'wrap'}}>
                   <div style={{flex:'2 1 130px'}}>
                     <label className="form-label" style={{fontSize:11}}>Nome / volume *</label>
-                    <input className="form-input" placeholder="300 ml" value={t.label||''}
+                    <input data-testid={`prod-tamanho-label-${i}`} className="form-input" placeholder="300 ml" value={t.label||''}
                       onChange={e=>updTamanho(i,{label:e.target.value})}/>
                   </div>
                   <div style={{flex:'1 1 90px'}}>
                     <label className="form-label" style={{fontSize:11}}>Preço (R$) *</label>
-                    <input className="form-input" type="number" step="0.01" placeholder="0.00"
+                    <input data-testid={`prod-tamanho-preco-${i}`} className="form-input" type="number" step="0.01" placeholder="0.00"
                       value={t.preco ?? ''} onChange={e=>updTamanho(i,{preco:e.target.value})}/>
                   </div>
                   <div style={{flex:'1 1 90px'}}>
                     <label className="form-label" style={{fontSize:11}}>Adic. grátis</label>
-                    <input className="form-input" type="number" min="0"
+                    <input data-testid={`prod-tamanho-adicionais-${i}`} className="form-input" type="number" min="0"
                       value={t.adicionais_gratis ?? 0} onChange={e=>updTamanho(i,{adicionais_gratis:e.target.value})}/>
                   </div>
-                  <button type="button" className="btn-danger" title="Remover tamanho"
+                  <button type="button" data-testid={`prod-tamanho-remover-${i}`} className="btn-danger" title="Remover tamanho"
                     style={{flexShrink:0}} onClick={()=>delTamanho(i)}>🗑</button>
                 </div>
               ))}
@@ -394,7 +394,7 @@ export function AdminProducts() {
 
             <div className="form-group">
               <label className="form-label">Categoria principal</label>
-              <select className="form-select" value={form.categoria_id}
+              <select data-testid="prod-form-categoria" className="form-select" value={form.categoria_id}
                 onChange={e=>setForm(f=>({...f,categoria_id:e.target.value}))}>
                 <option value="">Selecione...</option>
                 {/* Destaques e vitrine (controlada pelo toggle), nunca categoria principal */}
@@ -411,7 +411,7 @@ export function AdminProducts() {
                   (opcional — o mesmo produto em várias categorias, sem duplicar)
                 </span>
               </label>
-              <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+              <div data-testid="prod-form-categorias-extra" style={{display:'flex',flexWrap:'wrap',gap:8}}>
                 {cats.filter(c=>c.id!==form.categoria_id && c.id!==destaquesId).map(c=>{
                   const on = (form.categoria_extras||[]).includes(c.id);
                   return (
@@ -437,13 +437,13 @@ export function AdminProducts() {
                   (menor aparece primeiro na loja)
                 </span>
               </label>
-              <input className="form-input" type="number" step="1" value={form.ordem}
+              <input data-testid="prod-form-ordem" className="form-input" type="number" step="1" value={form.ordem}
                 onChange={e=>setForm(f=>({...f,ordem:e.target.value}))}/>
             </div>
 
             <div className="form-group">
               <label className="form-label">Badge de destaque</label>
-              <select className="form-select" value={form.badge}
+              <select data-testid="prod-form-badge" className="form-select" value={form.badge}
                 onChange={e=>setForm(f=>({...f,badge:e.target.value}))}>
                 <option value="">Sem badge</option>
                 <option value="mais_vendido">⭐ Mais vendido</option>
@@ -455,7 +455,7 @@ export function AdminProducts() {
 
             <div className="form-group">
               <label className="form-label">Adicionais grátis (qtd)</label>
-              <input className="form-input" type="number" min="0" max="10" placeholder="0"
+              <input data-testid="prod-form-adicionais-gratis" className="form-input" type="number" min="0" max="10" placeholder="0"
                 value={form.adicionais_gratis}
                 onChange={e=>setForm(f=>({...f,adicionais_gratis:+e.target.value}))}/>
             </div>
@@ -468,7 +468,7 @@ export function AdminProducts() {
                   (o cliente só vê adicionais dos grupos marcados — nenhum marcado = sem adicionais)
                 </span>
               </label>
-              <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+              <div data-testid="prod-form-grupos-ad" style={{display:'flex',flexWrap:'wrap',gap:8}}>
                 {gruposDisponiveis.map(g => {
                   const on = (form.grupos_ad||[]).includes(g);
                   return (
@@ -499,16 +499,18 @@ export function AdminProducts() {
                   </span>
                 )}
               </label>
-              <ImageUploader
-                currentUrl={currentImageUrl}
-                onUpload={handleImageUploaded}
-              />
+              <div data-testid="prod-form-imagem">
+                <ImageUploader
+                  currentUrl={currentImageUrl}
+                  onUpload={handleImageUploaded}
+                />
+              </div>
             </div>
 
             <div style={{display:'flex',gap:20,marginBottom:16,alignItems:'center'}}>
               <label style={{display:'flex',alignItems:'center',gap:8,fontSize:14,cursor:'pointer'}}>
                 <label className="toggle-switch">
-                  <input type="checkbox" checked={form.disponivel}
+                  <input data-testid="prod-form-disponivel" type="checkbox" checked={form.disponivel}
                     onChange={e=>setForm(f=>({...f,disponivel:e.target.checked}))}/>
                   <span className="toggle-slider"/>
                 </label>
@@ -517,7 +519,7 @@ export function AdminProducts() {
               <label style={{display:'flex',alignItems:'center',gap:8,fontSize:14,cursor:'pointer'}}
                 title="Coloca o produto na vitrine Destaques da loja (sem duplicar a linha)">
                 <label className="toggle-switch">
-                  <input type="checkbox" checked={form.destaque}
+                  <input data-testid="prod-form-destaque" type="checkbox" checked={form.destaque}
                     onChange={e=>setForm(f=>({...f,destaque:e.target.checked}))}/>
                   <span className="toggle-slider"/>
                 </label>
@@ -526,7 +528,7 @@ export function AdminProducts() {
             </div>
 
             {saveErr && (
-              <div style={{padding:'10px 12px',borderRadius:8,background:'var(--red-pale)',
+              <div data-testid="prod-form-erro" style={{padding:'10px 12px',borderRadius:8,background:'var(--red-pale)',
                 border:'1px solid #FECACA',fontSize:13,color:'var(--red)',
                 fontWeight:600,marginBottom:12}}>
                 ⚠️ {saveErr}
