@@ -1,0 +1,120 @@
+name: CI
+
+# REF-CI-01 — protege a qualidade do projeto automaticamente a cada push/PR para main.
+# 3 jobs INDEPENDENTES (rodam em paralelo, nenhum depende do outro):
+#   - build:         npm ci + vite build. Sem segredos (VITE_SUPABASE_URL/KEY ausentes não falham o
+#                    build — só geram um aviso; lib/supabase.js já degrada para db=null em runtime).
+#   - domain-tests:  os ~26 scripts de domínio (tests/*.mjs) via `npm run test:domain` — puramente
+#                    lógicos/estáticos, zero credencial, zero rede.
+#   - e2e:           suíte Playwright completa contra o projeto Supabase DEDICADO a testes (nunca
+#                    produção — mesmo projeto usado localmente, REF-E2E-01). Sem os secrets
+#                    E2E_SUPABASE_* configurados no repo, os specs `@writes` apenas pulam
+#                    (test.skip(!E2E_ENV_PRONTO)) e os `@read-only` seguem rodando contra o catálogo
+#                    MOCK — o job não fica vermelho por falta de secrets, só com cobertura reduzida.
+#
+# DELIBERADAMENTE FORA deste pipeline automático: os guards que exigem conexão direta ao Postgres de
+# PRODUÇÃO (test:f1b, test:rls, test:orders-rls, test:auth-rls, verify:norm05, guard:slug —
+# agrupados em `npm run test:db-guards`). Expor credenciais de produção a um workflow que roda em
+# todo push/PR (inclusive de forks) é um risco desproporcional ao ganho — permanecem uma suíte local,
+# rodada manualmente pelo dono (ver docs/adr/REF-CI-01-pipeline.md).
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Build de produção
+        run: npm run build
+
+  domain-tests:
+    name: Testes de domínio
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Suíte de domínio (pricing/addons/checkout/catalog/loyalty/address/comanda/whatsapp/...)
+        run: npm run test:domain
+
+  e2e:
+    name: E2E (Playwright · Chromium)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Cache dos navegadores do Playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Instalar navegador (Chromium) + dependências de sistema
+        run: npx playwright install --with-deps chromium
+
+      - name: Preparar .env.e2e (projeto Supabase dedicado a testes — nunca produção)
+        env:
+          E2E_URL: ${{ secrets.E2E_SUPABASE_URL }}
+          E2E_ANON_KEY: ${{ secrets.E2E_SUPABASE_ANON_KEY }}
+          E2E_SERVICE_ROLE_KEY: ${{ secrets.E2E_SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          cat > .env.e2e <<EOF
+          VITE_SUPABASE_URL=${E2E_URL}
+          VITE_SUPABASE_KEY=${E2E_ANON_KEY}
+          VITE_WHATSAPP=5500000000000
+          VITE_RPC_TIMEOUT=12000
+          E2E_SUPABASE_SERVICE_ROLE_KEY=${E2E_SERVICE_ROLE_KEY}
+          EOF
+
+      - name: Suíte E2E completa
+        run: npm run test:e2e
+
+      - name: Upload do relatório Playwright (só em falha)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: e2e/playwright-report/
+          retention-days: 14

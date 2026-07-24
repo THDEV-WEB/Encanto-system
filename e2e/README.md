@@ -89,13 +89,21 @@ binário do Chromium está instalado (`npx playwright install chromium`) — é 
 `npm run test:e2e`. Para rodar a matriz completa: `npx playwright install firefox webkit` uma vez, e
 depois `npm run test:e2e:all-browsers` (ou `--project=firefox` / `--project=webkit` isoladamente).
 
-## Preparado para CI (GitHub Actions) — ainda não criado
+## CI (GitHub Actions) — REF-CI-01
 
-`playwright.config.js` já reage a `process.env.CI` (retries, `reuseExistingServer`) e o `webServer`
-sobe o app sozinho — quando o workflow `.github/workflows/e2e.yml` for criado (fase própria, fora do
-escopo desta Onda), não deve exigir nenhuma refatoração daqui, só o arquivo de workflow chamando
-`npm ci && npx playwright install --with-deps && npm run test:e2e`. `workers` é `1` sempre (local e
-CI, ver §Onda 4 da REF-E2E-02 abaixo) — não varia mais com `CI`.
+Criado em `.github/workflows/ci.yml` (auditoria completa em
+[`../docs/adr/REF-CI-01-pipeline.md`](../docs/adr/REF-CI-01-pipeline.md)) — exatamente como esta
+seção antecipava: nenhuma refatoração precisou ser feita aqui, só o workflow chamando
+`npm ci && npx playwright install --with-deps chromium && npm run test:e2e` no job `e2e` (que roda em
+paralelo com `build`/`domain-tests`, sem depender deles). `playwright.config.js` já reagia a
+`process.env.CI` (retries, `reuseExistingServer`, `workers:1` fixo) desde a REF-E2E-01/02 — segue
+inalterado.
+
+Sem os secrets `E2E_SUPABASE_URL`/`E2E_SUPABASE_ANON_KEY`/`E2E_SUPABASE_SERVICE_ROLE_KEY` cadastrados
+no repositório (Settings → Secrets and variables → Actions), o job roda mesmo assim — só com cobertura
+reduzida (`@read-only` contra o catálogo mock; `@writes` pulando via `test.skip(!E2E_ENV_PRONTO)`,
+mecanismo que já existia desde a REF-E2E-01, não é código novo). Cadastrando os 3 secrets, a suíte
+completa passa a rodar a cada push/PR para `main`.
 
 ## Onde isto para hoje
 

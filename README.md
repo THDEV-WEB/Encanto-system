@@ -1,5 +1,7 @@
 # encanto-react
 
+[![CI](https://github.com/THDEV-WEB/Encanto-system/actions/workflows/ci.yml/badge.svg)](https://github.com/THDEV-WEB/Encanto-system/actions/workflows/ci.yml)
+
 Migração do sistema **Encanto – Açaí & Marmitas** para **Vite + React**, mantendo o
 sistema original intocado em `../Encanto/`.
 
