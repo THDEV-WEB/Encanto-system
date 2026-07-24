@@ -70,11 +70,28 @@ vazio, redispara após dono cadastrar os 3 secrets) → `56cd80b` (fix: 2 flakes
 | 30092729757 | a811f02 | ✅ | ✅ | ❌ 17 falhas (22.0min) | mesma causa; reporter `github` adicionado só p/ diagnóstico (annotations públicas) |
 | 30095359329 | 869caf3 | ✅ | ✅ | ❌ 10 falhas (15.6min) | fallback de URL/key resolveu os 7 testes de login; restam os que precisam do catálogo REAL (secrets nunca configurados no repo) |
 | 30106607464 | 1c0a908 | ✅ | ✅ | ❌ 2 falhas (6.2min) | dono cadastrou os 3 secrets reais — tempo já bate com local; sobraram 2 flakes genuínos de CI |
-| 30108030526 | 56cd80b | ⏳ em andamento | | | fix dos 2 flakes: `admin-produtos-imagem.spec.js` (corrida onError vs clique "remover", URL fake mockada) + `checkout-guest.spec.js` (timeout de reconciliação 15s→30s) |
+| 30108030526 | 56cd80b | ✅ | ✅ | ❌ 1 falha infra (1.3min) | `actions/checkout@v4` não baixou (429 Too Many Requests do próprio GitHub) — nada a ver com código; corrigido os 2 flakes de teste (imagem + reconciliação de horário) neste commit mesmo assim |
+| 30108185031 | 8b7b486 | ✅ | ✅ | ❌ 1 falha (5.8min) | redisparo após o 429 — imagem OK agora, mas "loja fechada" falhou de novo: botão ficou "enabled" nas 64 tentativas ao longo dos 30s inteiros (não é lentidão, é ausência total de reconciliação) |
+| 30109244656 | 7927d13 | ✅ | ✅ | **✅ 104/104 (2.6min)** | causa raiz real: `forcarStoreMode()` lia credenciais de `C:\Users\...\db.e2e.env` (arquivo LOCAL do Windows, inexistente em CI) — virava no-op silencioso; reescrito para usar `supabaseAdmin()` (mesma infra que já funciona nos 2 ambientes) |
 
-**Achado real de edição:** ao aplicar o fix da Onda de imagem, um `Edit` acidentalmente removeu as
-linhas de login/navegação do teste (old_string/new_string mal recortados) — pego imediatamente pela
-própria suíte local (timeout esperando um elemento que nunca apareceria sem login), corrigido antes do
-commit.
+**Achado real de edição:** ao aplicar o fix da Onda de imagem (run 30106607464), um `Edit` acidentalmente
+removeu as linhas de login/navegação do teste (old_string/new_string mal recortados) — pego
+imediatamente pela própria suíte local (timeout esperando um elemento que nunca apareceria sem login),
+corrigido antes do commit.
 
-**PRÓXIMO PASSO:** aguardar conclusão do run 30108030526 e confirmar pipeline 100% verde.
+**Achado real mais profundo (o que realmente fechou o pipeline):** o timeout ampliado (15s→30s) em
+`checkout-guest.spec.js` NÃO era a causa raiz — era só uma correção de sintoma que não resolveu nada
+(o botão nunca mudava de estado, não importa quanto se esperasse). A causa raiz de verdade era
+`e2e/support/storeMode.js` (helper de setup, escrito na REF-E2E-01, antes de qualquer CI existir)
+depender de uma conexão Postgres direta com credenciais lidas de um arquivo local do Windows —
+silenciosamente virava no-op em CI, deixando o `store_mode` do banco compartilhado com o valor residual
+de execuções locais anteriores, nunca de fato "CLOSED". Reescrito para usar `supabaseAdmin()` (REST,
+service_role, já usado por toda a suíte e já configurado via secrets do GitHub) — elimina a dependência
+de arquivo local por completo.
+
+## ESTADO FINAL
+
+✅ **Pipeline 100% verde** — run [30109244656](https://github.com/THDEV-WEB/Encanto-system/actions/runs/30109244656):
+Build ✅ (0.3min) · Domain-tests ✅ (0.3min) · E2E ✅ **104/104** (2.6min). Zero falhas, zero warnings
+críticos (só o aviso de depreciação do Node 20 nas actions, infraestrutura do GitHub). REF-CI-01
+totalmente operacional e validada de ponta a ponta com execução real.
