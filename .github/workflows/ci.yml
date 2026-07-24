@@ -100,9 +100,17 @@ jobs:
           E2E_ANON_KEY: ${{ secrets.E2E_SUPABASE_ANON_KEY }}
           E2E_SERVICE_ROLE_KEY: ${{ secrets.E2E_SUPABASE_SERVICE_ROLE_KEY }}
         run: |
+          # FIX (achado no 1o/2o run desta REF, ver docs/ref/REF-CI-01-progress.md): sem os secrets, a
+          # URL/KEY viravam string vazia -> createClient('','') lanca erro SINCRONO ("supabaseUrl is
+          # required") -> dbCliente/db ficam null -> qualquer teste que dependa deles (mesmo so' pra
+          # disparar um fetch que o Playwright intercepta via page.route) trava esperando uma tela que
+          # nunca muda, ate' o timeout de 30s (nao falha rapido, nem com erro claro). Fallback abaixo
+          # garante createClient() SEMPRE bem-sucedido (URL/key sintaticamente validos, mesmo que
+          # falsos) - o que precisa mesmo dos dados REAIS semeados no projeto dedicado (catalog/search/
+          # cart/checkout-guest com PROD_MARMITA_P) continua dependendo dos secrets reais configurados.
           cat > .env.e2e <<EOF
-          VITE_SUPABASE_URL=${E2E_URL}
-          VITE_SUPABASE_KEY=${E2E_ANON_KEY}
+          VITE_SUPABASE_URL=${E2E_URL:-https://e2e-mock.supabase.co}
+          VITE_SUPABASE_KEY=${E2E_ANON_KEY:-e2e-mock-anon-key}
           VITE_WHATSAPP=5500000000000
           VITE_RPC_TIMEOUT=12000
           E2E_SUPABASE_SERVICE_ROLE_KEY=${E2E_SERVICE_ROLE_KEY}
