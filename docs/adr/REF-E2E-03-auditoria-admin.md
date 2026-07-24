@@ -1,6 +1,6 @@
 # REF-E2E-03 — Cobertura E2E do Painel Administrativo — Auditoria
 
-**Status:** 🟡 Ondas 1 (6eb14b9), 2 (ce19ffa) e 3 (836e208, +2 fixes reais de criação) commitadas. Onda 4 (Produtos — o formulário mais complexo do projeto) implementada e verificada (2026-07-24) — 32/32 specs do Admin + 81/81 da suíte E2E inteira + suíte de domínio 100%, sem regressão. Aguardando aprovação do dono para commitar e seguir para a Onda 5. Onda 6 segue a auditoria abaixo.
+**Status:** 🟡 Ondas 1 (6eb14b9), 2 (ce19ffa), 3 (836e208, +2 fixes reais de criação) e 4 (4383317) commitadas. Onda 5 (Configurações + Fidelidade admin) implementada e verificada (2026-07-24) — 36/36 specs do Admin + 85/85 da suíte E2E inteira + suíte de domínio 100%, sem regressão. Aguardando aprovação do dono para commitar e seguir para a Onda 6 (fechamento).
 **Depende de:** REF-E2E-01 (infraestrutura Playwright, projeto Supabase dedicado `encanto-e2e`, POM, `support/*`), REF-E2E-02 (padrão de fixture persistente, `workers:1`), AUTH-01 (fundação `is_admin()`/RLS), REF-ORDER-01/01b/01c (fluxo de pedidos + notificação), REF-ADMIN-CATALOG-01/REF-ADMIN-ADDONS-02 (governança do catálogo), REF-BUSINESS-HOURS-02/03, REF-DELIVERY-01, REF-LOYALTY-01.
 **Relacionado:** fecha a lista "Faltam: Admin" deixada em aberto desde a auditoria da E2E-01.
 
@@ -366,6 +366,48 @@ imagem/disponível/destaque), exatamente como planejada em §6.
 
 Verificação: `npx playwright test --project=chromium e2e/tests/admin` (32/32), suíte completa
 (`npm run test:e2e`, 81/81) e suíte de domínio completa, sem regressão.
+
+## Onda 5 — executada (2026-07-24)
+
+Configurações (Status da Loja + Tempo de Entrega) + Fidelidade — visão do Admin, exatamente como
+planejado em §6.
+
+### Arquivos
+
+- `src/components/admin/AdminFidelidade.jsx`: `data-testid` no toggle Ativo/Desativado e nos 2 campos
+  de config (Pedidos p/ recompensa/Desconto) — únicos ajustes de produção desta onda. `AdminStatus.jsx`
+  e `AdminDeliveryEta.jsx` não precisaram de NENHUM ajuste — botões com texto estável e o campo de ETA
+  já tinha `aria-label` real, únicas telas do Admin 100% acessíveis sem `data-testid`.
+- `e2e/pages/AdminFidelidadePage.page.js` (novo, leve) — Status/DeliveryEta usam locators diretos nos
+  specs (sem POM: não há ganho arquitetural em um POM para 3 botões e 1 campo já rotulado).
+- 3 specs novos: `admin-status.spec.js` (AUTO/OPEN/CLOSED reais, restaura OPEN via `forcarStoreMode`),
+  `admin-delivery-eta.spec.js` (preset+salvar, validação de faixa, restaura 30 pela própria UI),
+  `admin-fidelidade.spec.js` (busca/ajuste/resgate administrativo de um cliente + config do programa,
+  restaura o baseline OBSERVADO, não assumido) — 4 casos de teste.
+
+### Achados confirmados ao rodar (3, todos de teste/timing — nenhum bug de produto)
+
+1. **`useDeliveryEta` pinta primeiro pelo CACHE em memória e só depois puxa o valor oficial do
+   servidor** (`sincronizarEta()` assíncrono no mount) — clicar um preset ANTES desse 2º
+   carregamento terminar é silenciosamente desfeito pelo `useEffect` que resincroniza `valor` assim
+   que `etaAtual` muda. Corrigido esperando "Valor atual salvo: 30 minutos" assentar antes de
+   qualquer interação.
+2. **`cliente.required` (Fidelidade admin) fica congelado no momento da BUSCA** (`admin_find_loyalty`)
+   — mudar a config global (`required`) depois não atualiza retroativamente o resultado já exibido
+   na tela; é preciso refazer a busca para o novo threshold refletir em `reward_available`. Não é bug
+   (o operador real também precisaria buscar de novo), mas exigiu ajuste no spec.
+3. **`loyalty_required`/`loyalty_discount` não existiam como linhas em `settings` antes desta onda**
+   (primeira escrita real via `set_loyalty_config` neste projeto de E2E) — `adminLerConfig()` parte de
+   fallback hardcoded (10/50/true, mesmo da regulamento). Um teste que falhou na 1ª tentativa (antes
+   do achado #2 ser corrigido) deixou `loyalty_required='1'` persistido; corrigido manualmente para
+   `10` antes de re-executar — reforça por que specs de Configurações restauram o baseline
+   OBSERVADO (não um valor fixo assumido): o "baseline" real só passou a existir quando a suíte
+   passou a exercitar essa RPC pela primeira vez.
+
+Verificação: `npx playwright test --project=chromium e2e/tests/admin` (36/36), suíte completa
+(`npm run test:e2e`, 85/85) e suíte de domínio completa, sem regressão. Baselines globais
+confirmados por consulta direta ao final: `store_mode=OPEN`, `delivery_eta_min=30`,
+`loyalty_required=10`, `loyalty_discount=50`.
 
 ## 8. Critérios objetivos de aprovação (por onda, mesmo padrão das REFs anteriores)
 

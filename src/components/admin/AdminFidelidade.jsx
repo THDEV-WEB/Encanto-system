@@ -96,7 +96,7 @@ export function AdminFidelidade() {
             {enabled ? '● Ativo' : '○ Desativado'}
           </span>
           <label className="toggle-switch">
-            <input type="checkbox" checked={enabled} disabled={cfgLoad} onChange={e=>toggleEnabled(e.target.checked)}/>
+            <input data-testid="fid-form-enabled" type="checkbox" checked={enabled} disabled={cfgLoad} onChange={e=>toggleEnabled(e.target.checked)}/>
             <span className="toggle-slider"/>
           </label>
         </div>
@@ -184,12 +184,12 @@ export function AdminFidelidade() {
           <div className="form-row" style={{marginBottom:20}}>
             <div className="form-group">
               <label className="form-label">Pedidos para recompensa</label>
-              <input className="form-input" type="number" min="1" max="100"
+              <input data-testid="fid-form-required" className="form-input" type="number" min="1" max="100"
                 value={required} onChange={e=>setRequired(+e.target.value)}/>
             </div>
             <div className="form-group">
               <label className="form-label">Desconto da recompensa (%)</label>
-              <input className="form-input" type="number" min="1" max="100"
+              <input data-testid="fid-form-discount" className="form-input" type="number" min="1" max="100"
                 value={discount} onChange={e=>setDiscount(+e.target.value)}/>
             </div>
           </div>

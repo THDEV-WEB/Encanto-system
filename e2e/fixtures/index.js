@@ -19,6 +19,7 @@ import { AdminPedidosPage } from '../pages/AdminPedidosPage.page.js';
 import { AdminCategoriasPage } from '../pages/AdminCategoriasPage.page.js';
 import { AdminAdicionaisPage } from '../pages/AdminAdicionaisPage.page.js';
 import { AdminProductsPage } from '../pages/AdminProductsPage.page.js';
+import { AdminFidelidadePage } from '../pages/AdminFidelidadePage.page.js';
 import { mockViaCep, mockNominatim } from '../support/network-stubs.js';
 
 export const test = base.extend({
@@ -33,6 +34,7 @@ export const test = base.extend({
   adminCategoriasPage: async ({ page }, use) => { await use(new AdminCategoriasPage(page)); },
   adminAdicionaisPage: async ({ page }, use) => { await use(new AdminAdicionaisPage(page)); },
   adminProductsPage: async ({ page }, use) => { await use(new AdminProductsPage(page)); },
+  adminFidelidadePage: async ({ page }, use) => { await use(new AdminFidelidadePage(page)); },
 
   /** Injete em specs que abrem a busca de endereço — intercepta ViaCEP/Nominatim com respostas
       fixas (e2e/support/network-stubs.js), sem depender de rede externa real. Disponível hoje. */

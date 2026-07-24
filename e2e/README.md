@@ -229,8 +229,22 @@ fluxos) — reaproveita 100% da infra de E2E-01/02 (Playwright, projeto `encanto
   (2) corrida real entre `salvar()` (assíncrono) e uma consulta direta ao backend logo em seguida,
   sem esperar confirmação visível na UI — passava isolado, falhava dentro da suíte inteira; mesma
   lição já vista na Onda 2 (race avançar-status × abrir painel). Ver ADR "Onda 4 — executada".
-- **Próxima onda:** Configurações+Fidelidade admin (5), Permissões (matriz completa)+Saúde (6) — ver
-  ADR §6.
+- **Onda 5 (Configurações + Fidelidade admin):** FEITO. `data-testid` só no toggle Ativo/Desativado e
+  nos 2 campos de config de `AdminFidelidade.jsx` — `AdminStatus.jsx`/`AdminDeliveryEta.jsx` não
+  precisaram de NENHUM ajuste (botões com texto estável + `aria-label` real no campo de ETA; únicas
+  telas do Admin 100% acessíveis sem `data-testid`). Novo `AdminFidelidadePage.page.js` (leve; Status/
+  DeliveryEta usam locators diretos, sem POM — não há ganho arquitetural nisso). 3 specs novos (4
+  casos): `admin-status.spec.js` (AUTO/OPEN/CLOSED reais, restaura `OPEN`), `admin-delivery-eta.spec.js`
+  (preset+salvar, validação de faixa, restaura `30`), `admin-fidelidade.spec.js` (busca/ajuste/resgate
+  administrativo + config do programa, restaura o baseline OBSERVADO). **3 achados de teste/timing**
+  (nenhum bug de produto): (1) `useDeliveryEta` pinta primeiro pelo cache em memória e só depois puxa
+  o valor oficial — clicar um preset cedo demais é desfeito pelo `useEffect` de resincronização,
+  corrigido esperando o valor oficial assentar antes de interagir; (2) `cliente.required` (Fidelidade
+  admin) fica congelado no momento da busca — mudar a config global depois não atualiza
+  retroativamente, é preciso rebuscar; (3) `loyalty_required`/`loyalty_discount` não existiam como
+  linhas em `settings` antes desta onda (1ª escrita real via `set_loyalty_config` no projeto de E2E).
+  Ver ADR "Onda 5 — executada".
+- **Próxima onda:** Permissões (matriz completa) + Saúde (6, fechamento) — ver ADR §6.
 
 ### Nota sobre `set_store_mode` (Onda 4)
 
