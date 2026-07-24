@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import AppShell from './AppShell.jsx';
 import './index.css';
 import { precoVitrine } from './utils/pricing.js'; /* eslint-disable-line no-unused-vars */ // TOKEN Regra F (deps.audit.mjs §F): App.jsx deve consumir pricing; consumidor real movido p/ components/admin/AdminProducts.jsx (Onda 6.4). NAO remover sem ajustar a Regra F.
@@ -8,6 +7,7 @@ import { AdminLogin } from './components/admin/AdminLogin.jsx';
 import { AdminPanel } from './components/admin/AdminPanel.jsx';
 import { StoreApp } from './pages/StoreApp.jsx';
 import { AuthProvider } from './providers/AuthProvider.jsx'; // AUTH-01: sessao do CLIENTE (envolve so a loja)
+import { useAdminSession } from './hooks/useAdminSession.js'; // REF-ADMIN-01 · Onda 2: sessao do ADMIN (restauracao + logout real)
 
 /* ============================================================
    ENCANTO DELIVERY — React 18 + Supabase v2
@@ -103,21 +103,13 @@ import { AuthProvider } from './providers/AuthProvider.jsx'; // AUTH-01: sessao 
 let _cpApp = false;
 function App() {
   if (!_cpApp) { _cpApp = true; try { if (typeof window !== 'undefined' && window.__ENC_BOOT__ && window.__ENC_BOOT__.step) window.__ENC_BOOT__.step('CP-App-render', 'App() render-phase'); } catch { /* noop */ } }
-  const [mode, setMode] = useState(()=>{
-    /* Acesso por hash #admin-encanto */
-    if (typeof window !== 'undefined' && window.location.hash === '#admin-encanto') {
-      window.history.replaceState(null,'',window.location.pathname);
-      return 'login';
-    }
-    return 'store';
-  });
-  const [, setAdmin] = useState(null);
+  const { mode, entrar, abrirLogin, verLoja, sair } = useAdminSession();
 
   let content;
-  if (mode==='login')      content = <AdminLogin onLogin={u=>{setAdmin(u);setMode('admin');}}/>;
-  else if (mode==='admin') content = <AdminPanel onExit={()=>{setMode('store');setAdmin(null);}}/>;
+  if (mode==='login')      content = <AdminLogin onLogin={entrar}/>;
+  else if (mode==='admin') content = <AdminPanel onExit={verLoja} onLogout={sair}/>;
   /* AUTH-01: a loja (e SO ela) vive dentro do AuthProvider — sessao de cliente isolada do Admin. */
-  else                     content = <AuthProvider><StoreApp onAdmin={()=>setMode('login')}/></AuthProvider>;
+  else                     content = <AuthProvider><StoreApp onAdmin={abrirLogin}/></AuthProvider>;
 
   /* AppShell envolve TUDO: BackgroundLayer (fundo único, loja + admin) + camada de conteúdo. */
   return (

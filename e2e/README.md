@@ -256,6 +256,40 @@ fluxos) — reaproveita 100% da infra de E2E-01/02 (Playwright, projeto `encanto
   outros casos testados. Ver ADR "Onda 6 — executada" + "Fechamento da REF-E2E-03" para o resumo
   completo (números finais, 3 bugs reais corrigidos, gaps documentados, lições recorrentes).
 
+### REF-ADMIN-01 — Robustez do Painel Administrativo (auditoria em
+[`../docs/adr/REF-ADMIN-01-robustez-painel.md`](../docs/adr/REF-ADMIN-01-robustez-painel.md))
+
+Corrige 3 achados que a REF-E2E-03 tinha documentado como "gaps de produto, não corrigidos" — mesma
+infra de sempre, zero Page Object/fixture novo (só ajustes pontuais nos 2 já existentes).
+
+- **Onda 1 (exclusão de categoria em uso):** FEITO. `DS.delCat` agora conta produtos vinculados
+  (`.contains('categoria_ids',[id])`, novo `DS.produtosNaCategoria`) antes de excluir — bloqueia com
+  `{ok:false,count}` se houver algum, `AdminCategorias.jsx` mostra a contagem numa mensagem clara
+  (`data-testid="cat-erro"`) e não exclui nada. Guard de aplicação, não trigger no banco (única via de
+  escrita é este botão, RLS já restringe a `is_admin()` — mudar o modelo de dados não se justificava).
+  O teste que documentava o bug (`admin-categorias.spec.js`) foi reescrito para provar o fix
+  (categoria/vínculo sobrevivem intactos no backend); novo teste cobre exclusão permitida (sem vínculo).
+- **Onda 2 (sessão do Admin):** FEITO. Novo `src/hooks/useAdminSession.js` espelha o padrão já usado
+  por `AuthProvider`/`AuthService` do lado do cliente (`getSession()` no mount + `onAuthStateChange`)
+  — um F5 no meio do painel agora restaura `mode='admin'` (antes caía sempre na loja, mesmo com token
+  ainda válido). "← Ver loja" e "Sair" eram o MESMO handler (nenhum chamava `signOut()`) — separados:
+  "Ver loja" só troca de tela (prévia, sessão continua válida); "Sair" (`data-testid="admin-logout"`,
+  era um `<div>` sem seletor próprio) chama `db.auth.signOut()` de verdade. `admin-sessao.spec.js`
+  reescrito (prova restauração, tanto de `'store'` quanto de `'login'` via hash já autenticado);
+  `admin-logout.spec.js` reescrito com um teste por botão (rede real via `page.route`, F5 depois
+  confirma sessão viva/morta); `AdminPanel.page.js` ganhou `verLojaButton`/`verLoja()` +
+  `logoutButton`/`logout()` (antes um só `sairButton`/`sair()` cobria os dois, por serem idênticos).
+- **Onda 3 (Dashboard operacional):** FEITO. `AdminDashboard.jsx` trocou `o.cliente_nome`/
+  `o.cliente_telefone` (campos que nunca existiram no retorno de `DS.getPedidos()`) por
+  `o.customers?.name`/`o.customers?.phone` — o MESMO acesso já usado e funcionando em
+  `AdminPedidos.jsx`, com fallback `'—'` para pedidos sem cliente vinculado. Dois testes novos em
+  `admin-dashboard.spec.js`: nome/telefone aparecem para um pedido real; um pedido sem `customer_id`
+  não quebra a tabela (mostra `'—'`).
+
+Verificação: `npx playwright test --project=chromium e2e/tests/admin` (43/43), suíte completa
+(`npm run test:e2e`, 92/92) e suíte de domínio completa (exceto as 3 falhas pré-existentes/congeladas
+de `test:f1b`, sem relação com esta REF), sem regressão.
+
 ### Nota sobre `set_store_mode` (Onda 4)
 
 A RPC oficial `set_store_mode` exige `is_admin()=true` (checagem explícita no corpo da função, não é

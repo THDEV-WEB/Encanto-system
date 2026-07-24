@@ -8,6 +8,7 @@ export function AdminCategorias() {
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState({nome:'',icone:'🍽️',cor:'#6B21A8',ordem:0});
+  const [erro, setErro] = useState('');
   const load = async()=>{ setLoading(true); const d=await DS.getAllCats(); setCats(d??MOCK_CATS); setLoading(false); };
   useEffect(()=>{load();},[]);
   const save = async()=>{
@@ -15,13 +16,23 @@ export function AdminCategorias() {
     await DS.upsertCat({nome:form.nome,icone:form.icone,cor:form.cor,ordem:+form.ordem},modal==='new'?null:modal.id);
     setModal(null); load();
   };
+  /* FIX (achado REF-ADMIN-01 · Onda 1): DS.delCat agora recusa categoria em uso (ver comentário lá) —
+     aqui só reage ao resultado: mensagem clara, sem excluir nada. */
+  const excluir = async(c)=>{
+    if(!window.confirm('Excluir?')) return;
+    setErro('');
+    const r = await DS.delCat(c.id);
+    if(!r.ok){ setErro(`Não é possível excluir "${c.nome}": ${r.count} produto(s) usam esta categoria.`); return; }
+    load();
+  };
   return (
     <div>
       <div className="admin-card">
         <div className="admin-card-header">
           <h3>Categorias ({cats.length})</h3>
-          <button className="btn-primary" onClick={()=>{setForm({nome:'',icone:'🍽️',cor:'#6B21A8',ordem:0});setModal('new');}}>+ Nova</button>
+          <button className="btn-primary" onClick={()=>{setErro('');setForm({nome:'',icone:'🍽️',cor:'#6B21A8',ordem:0});setModal('new');}}>+ Nova</button>
         </div>
+        {erro&&<p data-testid="cat-erro" style={{color:'var(--red)',fontSize:13,margin:'0 0 12px'}}>{erro}</p>}
         {loading?<Spinner/>:(
           <table className="data-table">
             <thead><tr><th>Ícone</th><th>Nome</th><th>Ordem</th><th>Ações</th></tr></thead>
@@ -32,7 +43,7 @@ export function AdminCategorias() {
                 <td>{c.ordem}</td>
                 <td style={{display:'flex',gap:8}}>
                   <button className="btn-sm" onClick={()=>{setForm({nome:c.nome,icone:c.icone||'🍽️',cor:c.cor||'#6B21A8',ordem:c.ordem||0});setModal(c);}}>✏️ Editar</button>
-                  <button className="btn-danger" onClick={async()=>{ if(window.confirm('Excluir?')){await DS.delCat(c.id);load();} }}>🗑</button>
+                  <button className="btn-danger" onClick={()=>excluir(c)}>🗑</button>
                 </td>
               </tr>
             ))}</tbody>

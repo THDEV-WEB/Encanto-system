@@ -77,8 +77,12 @@ export function AdminDashboard() {
              <tbody>{orders.slice(0,10).map(o=>(
                <tr key={o.id}>
                  <td>
-                   <div style={{fontWeight:600}}>{o.cliente_nome}</div>
-                   <div style={{fontSize:11,color:'var(--gray-500)'}}>{o.cliente_telefone}</div>
+                   {/* FIX (achado REF-ADMIN-01 · Onda 3, ex-REF-E2E-03 §1.3): o.cliente_nome/telefone
+                       nunca existiram no retorno de DS.getPedidos() (o select traz `customers:{name,phone}`
+                       aninhado) — a coluna sempre renderizou em branco. Mesmo acesso já usado em
+                       AdminPedidos.jsx (aba Pedidos), com fallback p/ pedidos sem cliente vinculado. */}
+                   <div style={{fontWeight:600}}>{o.customers?.name || '—'}</div>
+                   <div style={{fontSize:11,color:'var(--gray-500)'}}>{o.customers?.phone || ''}</div>
                  </td>
                  <td style={{fontWeight:700}}>{fmt(o.total)}</td>
                  <td><span className={`badge ${statusMap[o.status]?.cls||'badge-gray'}`}>

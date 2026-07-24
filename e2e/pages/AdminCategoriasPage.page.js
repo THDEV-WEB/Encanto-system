@@ -1,9 +1,10 @@
-/* e2e/pages/AdminCategoriasPage.page.js — REF-E2E-03 · Onda 3.
+/* e2e/pages/AdminCategoriasPage.page.js — REF-E2E-03 · Onda 3 (+ REF-ADMIN-01 · Onda 1: mensagem de erro).
    Page Object da aba Categorias (src/components/admin/AdminCategorias.jsx). O formulário não tem
    nenhum <label htmlFor> (achado da auditoria, ADR §1.5 — label e input são irmãos, não associados) —
    por isso os campos usam data-testid (cat-form-nome/icone/ordem), único ajuste de produção desta
    tela além de `data-testid="cat-row-{id}"` na linha da tabela (escopa editar/excluir por categoria,
-   sem depender de posição). Botões "Salvar"/"Cancelar"/"+ Nova" já são texto estável — getByRole. */
+   sem depender de posição) e `data-testid="cat-erro"` (mensagem de bloqueio de exclusão). Botões
+   "Salvar"/"Cancelar"/"+ Nova" já são texto estável — getByRole. */
 export class AdminCategoriasPage {
   constructor(page) { this.page = page; }
 
@@ -17,6 +18,7 @@ export class AdminCategoriasPage {
   get ordemInput() { return this.page.locator('[data-testid="cat-form-ordem"]'); }
   get salvarButton()   { return this.page.getByRole('button', { name: 'Salvar' }); }
   get cancelarButton() { return this.page.getByRole('button', { name: 'Cancelar' }); }
+  get erroMensagem()   { return this.page.locator('[data-testid="cat-erro"]'); }
 
   async abrirNova() { await this.novaButton.click(); }
   async editar(id) { await this.editarButton(id).click(); }

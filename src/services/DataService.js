@@ -194,7 +194,21 @@ export const DS = {
        sufixo curto (evita colisão sem depender de índice único explícito). */
     else    await this.run(d=>d.from('categories').insert({...data,ativo:true,slug:slugifyCategoria(data.nome)}));
   },
-  async delCat(id)  { await this.run(d=>d.from('categories').delete().eq('id',id)); },
+  /* FIX (achado REF-ADMIN-01 · Onda 1): antes, o DELETE rodava sem checar vínculo — a FK legada
+     `categoria_id` (singular) zera sozinha (ON DELETE SET NULL), mas `categoria_ids` (text[], fonte
+     real da arquitetura multi-categoria, REF-ADMIN-CATALOG-01) não tem FK nenhuma e ficava com
+     referência órfã. Guard de aplicação: conta produtos que usam a categoria (`.contains`, mesmo
+     operador `@>` do Postgres) ANTES de excluir; bloqueia com contagem se houver vínculo. */
+  async produtosNaCategoria(id) {
+    const r = await this.run(d=>d.from('products').select('id',{count:'exact',head:true}).contains('categoria_ids',[id]));
+    return typeof r.count === 'number' ? r.count : 0;
+  },
+  async delCat(id) {
+    const emUso = await this.produtosNaCategoria(id);
+    if (emUso > 0) return { ok:false, count:emUso };
+    await this.run(d=>d.from('categories').delete().eq('id',id));
+    return { ok:true };
+  },
   /* ── CORREÇÃO CRÍTICA DE IMAGEM ──────────────────────────────
      Regras:
      1. NUNCA salvar base64 — rejeitar se começar com 'data:'

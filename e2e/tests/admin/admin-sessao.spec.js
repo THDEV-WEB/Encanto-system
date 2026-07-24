@@ -1,15 +1,17 @@
-/* e2e/tests/admin/admin-sessao.spec.js — REF-E2E-03 · Onda 1 (@writes).
-   2 achados reais da auditoria (ADR §1.2), testados como SE COMPORTAM hoje — não como alguém
-   assumiria que deveriam se comportar:
-   1. Não existe restauração de sessão do Admin: nenhum código chama db.auth.getSession()/
-      onAuthStateChange() fora de AdminLogin.jsx, e App.jsx só entra em mode='admin' via onLogin(). Um
-      reload no meio do painel remonta o React do zero; o hash '#admin-encanto' já foi limpo via
-      history.replaceState no 1º mount (AdminLogin.jsx), então o F5 (sem hash na URL) inicializa
-      mode='store' — cai na LOJA, não numa tela de login.
-   2. Uma sessão forjada sob a chave padrão do client `db` (sb-<ref>-auth-token — sem storageKey
-      customizado, ver lib/supabase.js) não trava o boot: nada no app relê essa chave para decidir
-      `mode`, e o supabase-js só tenta o refresh internamente sem gerar erro não-capturado (mesma
-      garantia já provada para o cliente em e2e/tests/auth/session-invalida.spec.js). */
+/* e2e/tests/admin/admin-sessao.spec.js — REF-E2E-03 · Onda 1 (@writes) · reescrito na REF-ADMIN-01 ·
+   Onda 2 (fix: restauração de sessão do Admin).
+   Achado original (REF-E2E-03, ADR §1.2): nenhum código chamava db.auth.getSession()/
+   onAuthStateChange() fora de AdminLogin.jsx, e App.jsx só entrava em mode='admin' via onLogin(). Um
+   reload no meio do painel remontava o React do zero; o hash '#admin-encanto' já tinha sido limpo via
+   history.replaceState no 1º mount, então o F5 (sem hash na URL) inicializava mode='store' — caía na
+   LOJA, mesmo com o token do Supabase ainda válido em localStorage.
+
+   REF-ADMIN-01 · Onda 2 corrigiu via hooks/useAdminSession.js: getSession() no mount (espelha o
+   padrão já usado por AuthProvider/AuthService do lado do cliente) restaura mode='admin' quando há
+   sessão válida — tanto vindo de mode='store' (F5 direto) quanto de mode='login' (link com o hash
+   '#admin-encanto' enquanto já autenticado, não precisa digitar senha de novo). onAuthStateChange
+   mantém o modo sincronizado se a sessão cair (ex.: refresh token revogado) enquanto o Admin está
+   aberto — sem loop, uma única transição para 'store'. */
 import { test, expect } from '../../fixtures/index.js';
 import { AdminLoginPage } from '../../pages/AdminLoginPage.js';
 import { ADMIN_FIXTURE } from '../../support/fixture-accounts.js';
@@ -38,7 +40,7 @@ function sessaoAdminForjada() {
 }
 
 test.describe('sessão do Admin', { tag: '@writes' }, () => {
-  test('reload no meio do painel perde o estado e cai na loja (sem restauração — achado real)', async ({ adminLoginPage, adminPanel, page }) => {
+  test('reload no meio do painel mantém o Admin autenticado (fix REF-ADMIN-01 · Onda 2)', async ({ adminLoginPage, adminPanel, page }) => {
     test.skip(!E2E_ENV_PRONTO, 'ambiente de E2E não configurado (.env.e2e)');
 
     await adminLoginPage.goto();
@@ -47,8 +49,22 @@ test.describe('sessão do Admin', { tag: '@writes' }, () => {
 
     await page.reload();
 
-    await expect(adminPanel.tab('dashboard')).toBeHidden();
-    await expect(page.locator('.header')).toBeVisible(); // loja, não a tela de login
+    await expect(adminPanel.tab('dashboard')).toBeVisible(); // sessão restaurada, sem pedir login de novo
+    await expect(page.locator('[data-testid="admin-login-senha"]')).toHaveCount(0);
+  });
+
+  test('acessar #admin-encanto já autenticado pula a tela de login direto para o painel', async ({ adminLoginPage, adminPanel, page }) => {
+    test.skip(!E2E_ENV_PRONTO, 'ambiente de E2E não configurado (.env.e2e)');
+
+    await adminLoginPage.goto();
+    await adminLoginPage.login(ADMIN_FIXTURE.email, ADMIN_FIXTURE.senha);
+    await expect(adminPanel.tab('dashboard')).toBeVisible();
+
+    // Simula reabrir pelo link com hash (ex.: favorito) enquanto a sessão do 1º login ainda é válida.
+    await adminLoginPage.goto();
+
+    await expect(adminPanel.tab('dashboard')).toBeVisible();
+    await expect(page.locator('[data-testid="admin-login-senha"]')).toHaveCount(0);
   });
 
   test('sessão forjada não trava o boot — tela de login aparece normalmente', async ({ browser, baseURL }) => {
@@ -70,6 +86,9 @@ test.describe('sessão do Admin', { tag: '@writes' }, () => {
     const adminLoginPage = new AdminLoginPage(page);
     await adminLoginPage.goto();
 
+    // useAdminSession AGORA lê essa chave (getSession()) para tentar restaurar — mas um refresh_token
+    // forjado só falha ao tentar renovar (sem lançar) e a sessão vira null: a tela de login continua
+    // aparecendo normalmente, sem travar o boot nem gerar erro não capturado.
     await expect(page.locator('#enc-loader')).toHaveCount(0, { timeout: 15_000 });
     await expect(adminLoginPage.emailInput).toBeVisible();
 

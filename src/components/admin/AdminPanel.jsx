@@ -9,7 +9,7 @@ import { AdminDeliveryEta } from './AdminDeliveryEta.jsx';   // REF-DELIVERY-01:
 import { AdminFidelidade } from './AdminFidelidade.jsx';
 import { AdminHealth } from './AdminHealth.jsx';
 
-export function AdminPanel({ onExit }) {
+export function AdminPanel({ onExit, onLogout }) {
   const [tab, setTab] = useState('dashboard');
   const tabs = [
     {id:'dashboard', icon:'📊', label:'Dashboard'},
@@ -35,7 +35,7 @@ export function AdminPanel({ onExit }) {
           ))}
         </nav>
         <div style={{padding:'16px 8px'}}>
-          <div className="admin-nav-item" onClick={onExit} style={{color:'rgba(255,255,255,.5)'}}>
+          <div className="admin-nav-item" data-testid="admin-logout" onClick={onLogout} style={{color:'rgba(255,255,255,.5)'}}>
             <span className="nav-icon">🚪</span><span>Sair</span>
           </div>
         </div>
