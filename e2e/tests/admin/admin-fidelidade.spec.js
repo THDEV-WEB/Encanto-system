@@ -12,7 +12,7 @@ import { ADMIN_FIXTURE, CLIENTE_FIXTURE } from '../../support/fixture-accounts.j
 import { garantirClienteFixtureVinculado } from '../../support/fixture-customer.js';
 import { criarPedidoFixture } from '../../support/fixture-order.js';
 import { limparPedidosDoFixture } from '../../support/cleanup.js';
-import { E2E_ENV_PRONTO } from '../../support/supabaseAdmin.js';
+import { E2E_ENV_PRONTO, supabaseAdmin } from '../../support/supabaseAdmin.js';
 
 test.describe('Fidelidade — visão do Admin', { tag: '@writes' }, () => {
   test.describe.configure({ mode: 'serial' }); // config do programa (required/discount) é GLOBAL
@@ -68,12 +68,29 @@ test.describe('Fidelidade — visão do Admin', { tag: '@writes' }, () => {
     await adminLoginPage.login(ADMIN_FIXTURE.email, ADMIN_FIXTURE.senha);
     await adminPanel.abrirAba('fidelidade');
 
+    // Lê o valor REAL persistido (settings.loyalty_enabled), não só o rótulo da UI — achado real
+    // (REF-CI-01, ver docs/ref/REF-CI-01-progress.md): a UI atualizava o rótulo de forma otimista
+    // mesmo quando o `set_loyalty_config` falhava, deixando o programa preso em "false" no banco
+    // enquanto a suíte inteira reportava verde. Cada asserção abaixo confirma o banco, não a tela.
+    const lerValorReal = async () => {
+      const { data } = await supabaseAdmin().from('settings').select('valor').eq('chave', 'loyalty_enabled').single();
+      return data.valor !== 'false';
+    };
+
     const estavaAtivo = await adminFidelidadePage.enabledCheckbox.isChecked();
+    expect(await lerValorReal()).toBe(estavaAtivo);
+
+    // O rótulo muda de forma OTIMISTA, na hora do clique — mas o RPC de save é assíncrono. Esperar
+    // "✓ Salvo com sucesso!" antes de ler o banco evita correr contra a própria escrita em voo.
     await adminFidelidadePage.enabledToggleClicavel.click();
+    await expect(page.getByText('✓ Salvo com sucesso!')).toBeVisible();
     await expect(page.getByText(estavaAtivo ? '○ Desativado' : '● Ativo')).toBeVisible();
+    expect(await lerValorReal()).toBe(!estavaAtivo);
 
     // restaura o estado original
     await adminFidelidadePage.enabledToggleClicavel.click();
+    await expect(page.getByText('✓ Salvo com sucesso!')).toBeVisible();
     await expect(page.getByText(estavaAtivo ? '● Ativo' : '○ Desativado')).toBeVisible();
+    expect(await lerValorReal()).toBe(estavaAtivo);
   });
 });

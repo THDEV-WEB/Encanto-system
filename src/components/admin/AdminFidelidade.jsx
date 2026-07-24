@@ -29,9 +29,18 @@ export function AdminFidelidade() {
     const res = await adminSalvarConfig(r.required, r.discount, r.enabled);
     if (res.ok) { setCfgSaved(true); setTimeout(() => setCfgSaved(false), 2500); }
     else setCfgErro(res.error === 'sem permissao' ? 'Sem permissão de administrador.' : 'Não foi possível salvar.');
+    return res.ok;
   };
 
-  const toggleEnabled = async (v) => { setEnabled(v); await salvarConfig({ required, discount, enabled: v }); };
+  // Otimista, mas nunca mentiroso: se o backend recusar, desfaz o toggle na tela — sem isto, uma
+  // falha de rede/permissao deixava o rotulo "Ativo/Desativado" mostrando um estado que nunca foi
+  // persistido (achado real: settings.loyalty_enabled ficou dessincronizado no projeto de E2E).
+  const toggleEnabled = async (v) => {
+    const anterior = enabled;
+    setEnabled(v);
+    const ok = await salvarConfig({ required, discount, enabled: v });
+    if (!ok) setEnabled(anterior);
+  };
 
   /* ── Consulta/gestão de um cliente ── */
   const [query,    setQuery]    = useState('');
