@@ -30,10 +30,13 @@ export default defineConfig({
      arquivo (decisao original da auditoria: 1 so cliente fixture, como o admin). Suite pequena o
      bastante (~50 specs) para o custo de tempo ser aceitavel frente a determinismo. */
   workers: 1,
-  reporter: [
-    ['list'],
-    ['html', { outputFolder: './playwright-report', open: 'never' }],
-  ],
+  /* 'github' só em CI: gera anotações por teste falho (##[error] arquivo:linha) direto no Actions —
+     achado ao investigar a 1a falha da REF-CI-01 (job e2e vermelho, sem acesso aos logs/artefato via
+     API pública, que exige auth mesmo em repo público). Sem custo local (reporter extra é ignorado
+     fora de CI=true). */
+  reporter: CI
+    ? [['list'], ['github'], ['html', { outputFolder: './playwright-report', open: 'never' }]]
+    : [['list'], ['html', { outputFolder: './playwright-report', open: 'never' }]],
 
   use: {
     baseURL: BASE_URL,
