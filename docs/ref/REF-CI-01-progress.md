@@ -89,9 +89,37 @@ de execuções locais anteriores, nunca de fato "CLOSED". Reescrito para usar `s
 service_role, já usado por toda a suíte e já configurado via secrets do GitHub) — elimina a dependência
 de arquivo local por completo.
 
+## Verificação final pós-fechamento (achado real + 2 correções)
+
+Ao confirmar que a REF-CI-01 não tinha pendências, um run disparado por um commit SÓ de docs
+(`abb5d3a`, sem mudança de código) **falhou** — prova de que não era coincidência do commit anterior:
+`e2e/tests/cliente/fidelidade.spec.js` parou de achar o banner de fidelidade.
+
+**Causa raiz real:** `settings.loyalty_enabled` estava `'false'` no projeto de E2E dedicado, porque
+`AdminFidelidade.toggleEnabled` (src/components/admin/AdminFidelidade.jsx) atualizava o rótulo
+"Ativo/Desativado" de forma OTIMISTA (antes do RPC `set_loyalty_config` resolver) e nunca revertia se
+o save falhasse — e o teste do toggle (`admin-fidelidade.spec.js`) só verificava a UI, nunca o banco,
+então um save falho passava despercebido. Isso deixou o programa de fidelidade preso em "desativado"
+no banco compartilhado, derrubando o teste do cliente (que depende do programa estar ativo).
+
+**Fix 1** (`9c65750`): `toggleEnabled` reverte para o valor anterior quando o save falha (nunca mais
+mente sobre o que foi persistido); `admin-fidelidade.spec.js` passou a ler `settings.loyalty_enabled`
+direto do banco (supabaseAdmin) após cada clique, não só o rótulo da tela. Dado do E2E corrigido
+manualmente (`loyalty_enabled=true`). Local: 104/104. **CI (run 30115078011): verde, mas a própria
+asserção nova reportou "flaky"** (falhou na 1ª tentativa, passou no retry) — a leitura via um client
+service_role diferente do que fez a escrita corria, ocasionalmente, contra a visibilidade da própria
+escrita em CI.
+
+**Fix 2** (`3ebea73`): a checagem de banco passou a usar `expect.poll` (mesmo padrão já usado em
+`admin-status.spec.js`) em vez de uma leitura pontual — absorve essa folga sem timeout arbitrário.
+Local: 3 execuções isoladas 2/2 sempre + suite completa 104/104. **CI (run 30115958667): 104/104,
+zero flakes.**
+
 ## ESTADO FINAL
 
-✅ **Pipeline 100% verde** — run [30109244656](https://github.com/THDEV-WEB/Encanto-system/actions/runs/30109244656):
-Build ✅ (0.3min) · Domain-tests ✅ (0.3min) · E2E ✅ **104/104** (2.6min). Zero falhas, zero warnings
-críticos (só o aviso de depreciação do Node 20 nas actions, infraestrutura do GitHub). REF-CI-01
-totalmente operacional e validada de ponta a ponta com execução real.
+✅ **Pipeline 100% verde e robusto** — run [30115958667](https://github.com/THDEV-WEB/Encanto-system/actions/runs/30115958667):
+Build ✅ · Domain-tests ✅ · E2E ✅ **104/104** (3.3min), sem nenhum flake. Zero falhas, zero warnings
+críticos (só o aviso de depreciação do Node 20 nas actions, infraestrutura do GitHub). Workflow
+(`.github/workflows/ci.yml`) dispara automaticamente em todo push/PR para `main` — infraestrutura
+definitiva do repositório, não uma validação pontual. REF-CI-01 **fechada**: totalmente operacional,
+validada de ponta a ponta com execução real, sem nenhuma pendência conhecida.
