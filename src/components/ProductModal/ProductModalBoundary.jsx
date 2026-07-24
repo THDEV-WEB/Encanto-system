@@ -1,10 +1,12 @@
 /* components/ProductModal/ProductModalBoundary.jsx — REF-APP-01 · Onda 4 (move puro do App.jsx).
    Error boundary do modal de produto. Apresentacional, sem domínio. Sem erro → renderiza os children. */
 import React from 'react';
+import { capturarErroReact } from '../../lib/sentry.js'; // REF-OBS-01: no-op sem VITE_SENTRY_DSN
 
 export class ProductModalBoundary extends React.Component {
   constructor(p){super(p);this.state={err:null};}
   static getDerivedStateFromError(e){return {err:e};}
+  componentDidCatch(err, info){ capturarErroReact(err, info); }
   render(){
     if(this.state.err) return (
       <div className="modal-overlay" onClick={this.props.onClose}>

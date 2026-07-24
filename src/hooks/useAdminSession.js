@@ -31,6 +31,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { db } from '../lib/supabase.js';
 import { ADMIN_AUTH_STORAGE_KEY } from '../constants/authStorage.js';
+import { setUsuario, limparUsuario, marcarArea } from '../lib/sentry.js'; // REF-OBS-01: no-op sem VITE_SENTRY_DSN
 
 function possivelSessaoAdmin() {
   if (typeof window === 'undefined' || !db) return false;
@@ -73,11 +74,18 @@ export function useAdminSession() {
       } else {
         setAdmin(null);
         setMode((m) => (m === 'admin' || m === 'checking' ? 'store' : m));
+        limparUsuario(); // REF-OBS-01: logout/expiração — some do contexto do Sentry
       }
     });
 
     return () => { vivo = false; sub?.subscription?.unsubscribe?.(); };
   }, []);
+
+  // REF-OBS-01: contexto do Sentry sincronizado com o estado real — só id (nunca e-mail/senha do admin).
+  useEffect(() => {
+    marcarArea(mode === 'admin' ? 'admin' : 'loja');
+    if (mode === 'admin' && admin?.session?.user?.id) setUsuario(admin.session.user.id, { role: 'admin' });
+  }, [mode, admin]);
 
   const entrar = useCallback((u) => { setAdmin(u); setMode('admin'); }, []);
   const abrirLogin = useCallback(() => { setMode('login'); }, []);

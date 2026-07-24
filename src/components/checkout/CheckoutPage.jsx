@@ -13,6 +13,7 @@ import { DS } from '../../services/DataService.js';
 import { LOYALTY_EVENT } from '../../services/loyalty/index.js';   // REF-LOYALTY-01: avisa a loja p/ re-buscar o estado oficial
 import { STORE_INFO } from '../../constants/storeInfo.js';
 import { useAddress, AddressSummary } from '../../address/index.js';   // REF-CHECKOUT-ADDRESS-01: FONTE UNICA do endereco
+import { registrarBreadcrumb } from '../../lib/sentry.js'; // REF-OBS-01: no-op sem VITE_SENTRY_DSN
 
 export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode }) {
   /* REF-CLIENTE-02 (vinculo pedido<->conta): create_order reusa o customer POR TELEFONE e nunca toca
@@ -83,8 +84,10 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode }) {
       setLoading(false);
       submittingRef.current = false;
       setErr('Não foi possível registrar seu pedido. Confira o telefone e tente novamente.');
+      registrarBreadcrumb('checkout: falha ao persistir pedido', { itens: cart.items.length, retirada });
       return;
     }
+    registrarBreadcrumb('checkout: pedido criado', { orderId, itens: cart.items.length, retirada });
     /* REF-LOYALTY-01: o selo de fidelidade e concedido no BACKEND, DENTRO de create_order (mesma
        transacao do pedido, idempotente por request_id + indice unico). O frontend NAO conta/grava
        selo — apenas avisa a loja para re-buscar o estado oficial (get_my_loyalty) e refletir o novo

@@ -1,5 +1,6 @@
 import { Component } from 'react';
 import { createRoot } from 'react-dom/client';
+import { capturarErroReact } from './lib/sentry.js'; // REF-OBS-01: 1o import — Sentry.init roda antes do resto do bundle
 import App from './App.jsx';
 
 /* REF-BOOT-02 v2 (instrumentacao TEMPORARIA): checkpoints SINCRONOS do bootstrap no coletor ES5 do
@@ -21,7 +22,11 @@ class RootBoundary extends Component {
     /* primeira pintura real: rAF pos-commit -> separa "montou" de "montou mas nao pintou" */
     try { requestAnimationFrame(() => { try { const b = window.__ENC_BOOT__; if (b && b.markFirstPaint) b.markFirstPaint(); } catch { /* noop */ } }); } catch { /* noop */ }
   }
-  componentDidCatch(err) { try { console.error('[Encanto] erro no bootstrap (render):', err); } catch { /* noop */ } boot('BOOT-ERR-RENDER', String(err && err.message || err)); }
+  componentDidCatch(err, info) {
+    try { console.error('[Encanto] erro no bootstrap (render):', err); } catch { /* noop */ }
+    boot('BOOT-ERR-RENDER', String(err && err.message || err));
+    capturarErroReact(err, info); // REF-OBS-01: no-op sem VITE_SENTRY_DSN
+  }
   render() {
     if (this.state.err) {
       return (

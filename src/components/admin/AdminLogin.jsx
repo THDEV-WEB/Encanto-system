@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { db } from '../../lib/supabase.js';
+import { registrarBreadcrumb } from '../../lib/sentry.js'; // REF-OBS-01: no-op sem VITE_SENTRY_DSN
 
 export function AdminLogin({ onLogin }) {
   const [email,   setEmail]   = useState('as992203620@gmail.com');
@@ -15,14 +16,17 @@ export function AdminLogin({ onLogin }) {
     if (error) {
       setErr(error.message || 'Falha no login.');
       setLoading(false);
+      registrarBreadcrumb('admin: falha no login', { motivo: error.message });
       return;
     }
     if (!data?.session?.access_token) {
       // Salvaguarda: sem sessão ativa, não libera o painel.
       setErr('Login sem sessão ativa. Tente novamente.');
       setLoading(false);
+      registrarBreadcrumb('admin: login sem sessao ativa');
       return;
     }
+    registrarBreadcrumb('admin: login bem-sucedido');
     onLogin({ email, session: data.session });
     setLoading(false);
   };

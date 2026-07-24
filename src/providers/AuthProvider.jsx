@@ -6,6 +6,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { AuthContext } from '../contexts/AuthContext.js';
 import { AuthService } from '../services/AuthService.js';
+import { setUsuario, limparUsuario } from '../lib/sentry.js'; // REF-OBS-01: no-op sem VITE_SENTRY_DSN
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
@@ -14,10 +15,12 @@ export function AuthProvider({ children }) {
   const [precisaTelefone, setPrecisaTelefone] = useState(false);
 
   const carregarCustomer = useCallback(async (s) => {
-    if (!s?.user) { setCustomer(null); setPrecisaTelefone(false); return; }
+    if (!s?.user) { setCustomer(null); setPrecisaTelefone(false); limparUsuario(); return; }
     const cust = await AuthService.getMeuCustomer(s.user.id);
     setCustomer(cust);
     setPrecisaTelefone(!cust?.phone);   // 1o acesso (sem telefone) -> pedir telefone uma vez
+    // Só id + role — nunca telefone/nome/e-mail do cliente (PII) chegam ao Sentry.
+    setUsuario(cust?.id ?? s.user.id, { role: 'cliente' });
   }, []);
 
   useEffect(() => {
