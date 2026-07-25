@@ -182,13 +182,56 @@ Session Replay, Profiling avançado, Logs pagos, Crons, Feature Flags, AI Monito
 ou opção correspondente foi adicionada em `Sentry.init`. Captura genérica de `console.error` também não
 foi ligada (decisão técnica documentada acima, evita ruído/duplicação).
 
-## PRÓXIMO PASSO
+## Fechamento — pipeline automático confirmado em produção (após o dono configurar a Vercel)
 
-1. Commit desta REF (Ondas 2/3/6 + comentário em `vite.config.js`) — aguardando push nos mesmos moldes
-   das REFs anteriores.
-2. Dono: configurar `SENTRY_AUTH_TOKEN`/`SENTRY_ORG`/`SENTRY_PROJECT` na Vercel (Production) — única
-   pendência real para releases FUTUROS terem source map/commit/deploy automáticos.
-3. Dono: apagar manualmente o release e os 5 issues de teste listados acima (opcional, só limpeza
-   cosmética do painel — não afeta nada funcionalmente).
-4. Revogar o Auth Token de leitura usado nesta validação (Sentry → Settings → Auth Tokens), já que seu
-   propósito (comprovar a integração) foi cumprido.
+Dono configurou `SENTRY_AUTH_TOKEN`/`SENTRY_ORG`/`SENTRY_PROJECT` na Vercel (Production + Preview) e
+pediu a validação final: push → CI → deploy → comprovação de que passou a ser 100% automático.
+
+1. **Push:** commit `9ef8bfc` → `origin/main` (`0827593..9ef8bfc`).
+2. **CI** (run `30171686926`): **3/3 jobs verdes** — Build, Testes de domínio, E2E (Playwright).
+3. **Deploy Vercel:** confirmado via bundle ao vivo mudando para `assets/index-Dr1Zpi5s.js`, com o SHA
+   `9ef8bfc035606cb48464a909c2e6e6044656758f` embutido (poll do bundle público, sem acesso à Vercel).
+4. **Release `9ef8bfc035606cb48464a909c2e6e6044656758f` no Sentry — criada SOZINHA pelo build da Vercel,
+   ZERO ação manual minha desta vez** (confirmado via API, timestamps batendo com o horário do deploy):
+   - `deployCount: 1`, `environment: vercel-production`, com a **URL real do deployment da Vercel**
+     preenchida automaticamente (`https://encanto-system-2622z4qdm-....vercel.app`) — antes (nos testes
+     manuais desta REF) esse campo `url` vinha vazio, porque eu não estava rodando de fato na Vercel.
+   - Debug ID do bundle ao vivo (`sentry-dbid-d8e0b2d7-0b6d-436f-9a42-0347e94544c4`) confere com o
+     mecanismo de upload já comprovado (mesmo plugin, mesmo fluxo, já validado ponta a ponta na rodada
+     anterior desta REF com `src/main.jsx`/`_sentryValidationCrash` desminificado corretamente).
+   - Evento REAL: forcei uma falha de carregamento de imagem contra um espelho byte-a-byte do bundle
+     de produção (baixado de `encanto-system.vercel.app`, servido localmente) — o evento chegou ao
+     Sentry já tagueado `release=9ef8bfc...`, `environment=production`, `app.origem=recurso`, contexto
+     com a URL real da imagem — prova direta de que o release recém-criado automaticamente está
+     recebendo e etiquetando eventos reais corretamente.
+   - **`commitCount: 0`** — único item que NÃO ficou automático. Causa raiz identificada via API: a
+     organização Sentry não tem **nenhuma integração do GitHub instalada**
+     (`/organizations/thdev-web/integrations/` retorna `[]`) — sem ela, o `release.setCommits` (que a
+     Vercel aciona sozinha, com `repo: THDEV-WEB/Encanto-system`) não tem como resolver os commits, e
+     falha em silêncio (`shouldNotThrowOnFailure`, por design — nunca quebra o deploy). Isto é uma
+     configuração de CONTA do Sentry (OAuth, feita na UI, fora do alcance de um token de API), não um
+     problema de código nem de env var. **Ação pendente do dono (opcional, só se quiser "suspect
+     commits"/diff de código na UI do Sentry):** Sentry → Settings → Integrations → GitHub → instalar e
+     conectar o repositório `THDEV-WEB/Encanto-system`.
+5. Tentei também forçar uma exceção real de parse (RPC) via resposta JSON malformada contra o mesmo
+   espelho de produção — não gerou evento novo. Achado honesto, não um problema: o supabase-js parece
+   normalizar mesmo falhas de parse em `res.error` (nunca lança), então o catch de `DataService.run`
+   (e `capturarErroDados`) cobre principalmente falhas verdadeiramente inesperadas — já provado
+   funcionando corretamente por chamada direta na rodada anterior desta REF.
+6. Limpeza: scripts temporários desta rodada apagados, servidor espelho encerrado, working tree limpo
+   (`git status` sem alterações após o push).
+
+**Conclusão:** a cadeia Git → GitHub Actions → Vercel → Sentry está funcionando de ponta a ponta,
+automaticamente, sem upload manual — release, deploy, source maps e captura de eventos confirmados ao
+vivo. Único item que segue precisando de uma ação (opcional, cosmética para a UI de commits do Sentry,
+não afeta captura de erro nem source map) é conectar a integração do GitHub na conta do Sentry.
+
+## PRÓXIMO PASSO (nada bloqueante — REF considerada concluída)
+
+1. (Opcional) Sentry → Settings → Integrations → GitHub → conectar `THDEV-WEB/Encanto-system`, se quiser
+   ver commits associados a cada release na UI do Sentry.
+2. (Opcional, cosmético) Apagar manualmente o release de teste `sentryvalidationtest...` e os 5 issues
+   de teste (`[SENTRY-VALIDATION-TEST]` / "Falha ao carregar recurso: IMG") — o release real `9ef8bfc`
+   não deve ser mexido.
+3. Revogar o Auth Token de leitura usado nesta validação (Sentry → Settings → Auth Tokens) — já cumpriu
+   seu propósito.
