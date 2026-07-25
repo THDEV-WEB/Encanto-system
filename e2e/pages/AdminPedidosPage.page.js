@@ -48,5 +48,7 @@ export class AdminPedidosPage {
   paperButton(largura)       { return this.comandaDialog.getByRole('button', { name: largura, exact: true }); } // '80mm' | '58mm'
   get comandaFecharButton()  { return this.comandaDialog.getByRole('button', { name: 'Fechar' }); }
   get comandaImprimirButton(){ return this.comandaDialog.getByRole('button', { name: /Imprimir/ }); }
+  get comandaCopiarButton()  { return this.comandaDialog.getByRole('button', { name: /Copiar|Copiado/ }); } // REF-REGRESSION-01 · P5
+  get comandaWhatsappButton(){ return this.comandaDialog.getByRole('button', { name: /WhatsApp/ }); }       // REF-REGRESSION-01 · P5
   async fecharComanda() { await this.comandaFecharButton.click(); }
 }

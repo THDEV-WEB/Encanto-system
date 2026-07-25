@@ -51,4 +51,34 @@ test.describe('comanda do Pedido', { tag: '@writes' }, () => {
     await adminPedidosPage.fecharComanda();
     await expect(adminPedidosPage.comandaDialog).toBeHidden();
   });
+
+  /* REF-REGRESSION-01 · P5: achado real da auditoria — a comanda só podia ser vista/impressa, nunca
+     copiada nem encaminhada por fora do app (ex.: repassar pro entregador sem imprimir). Prova por
+     efeito colateral real (clipboard/nova aba), não só o texto do botão. */
+  test('"Copiar" grava o texto da comanda na área de transferência e "WhatsApp" abre o wa.me com o texto', async ({ adminLoginPage, adminPanel, adminPedidosPage, page, context, baseURL }) => {
+    const pedido = await criarPedidoAvulso();
+    test.skip(pedido.skipped, 'ambiente de E2E não configurado (.env.e2e)');
+
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: baseURL });
+    await adminLoginPage.goto();
+    await adminLoginPage.login(ADMIN_FIXTURE.email, ADMIN_FIXTURE.senha);
+    await adminPanel.abrirAba('pedidos');
+    await adminPedidosPage.abrirComanda(pedido.orderId);
+    await expect(adminPedidosPage.comandaDialog).toBeVisible();
+
+    await adminPedidosPage.comandaCopiarButton.click();
+    await expect(adminPedidosPage.comandaCopiarButton).toHaveText(/Copiado/);
+    const copiado = await page.evaluate(() => navigator.clipboard.readText());
+    expect(copiado).toContain('E2E_TEST_Avulso');
+    expect(copiado).toContain('RETIRADA');
+    expect(copiado).not.toMatch(/<[a-z]/i); // texto plano, sem marcação HTML
+
+    const [novaAba] = await Promise.all([
+      context.waitForEvent('page'),
+      adminPedidosPage.comandaWhatsappButton.click(),
+    ]);
+    await novaAba.waitForLoadState('domcontentloaded').catch(() => {}); // wa.me pode não resolver em ambiente de teste
+    expect(decodeURIComponent(novaAba.url())).toContain('E2E_TEST_Avulso');
+    await novaAba.close();
+  });
 });

@@ -5,6 +5,7 @@
 import { useMemo, useState } from 'react';
 import { buildComanda } from './comandaModel.js';
 import { comandaHTML } from './comandaHtml.js';
+import { comandaTexto } from './comandaTexto.js';
 import { printComanda } from './printComanda.js';
 
 const overlay = {
@@ -31,11 +32,26 @@ const paperBtn = (on) => ({
 
 export function ComandaModal({ order, numero, totalPedidos, onClose }) {
   const [paper, setPaper] = useState('80mm');
-  const html = useMemo(
-    () => comandaHTML(buildComanda(order, { numero, totalPedidosCliente: totalPedidos }), { paper }),
-    [order, numero, totalPedidos, paper],
+  const [copiado, setCopiado] = useState(false);
+  const vm = useMemo(
+    () => buildComanda(order, { numero, totalPedidosCliente: totalPedidos }),
+    [order, numero, totalPedidos],
   );
+  const html  = useMemo(() => comandaHTML(vm, { paper }), [vm, paper]);
+  const texto = useMemo(() => comandaTexto(vm), [vm]);
   if (!order) return null;
+
+  /* FIX (achado REF-REGRESSION-01 · P5): faltava "copiar"/"compartilhar via WhatsApp" — a comanda só
+     podia ser vista/impressa, nunca encaminhada de outro jeito (ex.: repassar pro entregador ou pro
+     grupo da cozinha sem imprimir). navigator.clipboard exige contexto seguro (https/localhost) —
+     já é a realidade do app (Vercel + dev local); sem suporte, falha graciosamente (sem crash). */
+  const copiar = async () => {
+    try { await navigator.clipboard.writeText(texto); setCopiado(true); setTimeout(() => setCopiado(false), 2000); }
+    catch { /* clipboard indisponível (permissão/navegador antigo) — botão só não dá o feedback de sucesso */ }
+  };
+  const compartilharWhatsapp = () => {
+    window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, '_blank', 'noopener');
+  };
   return (
     <div style={overlay} onClick={onClose} role="dialog" aria-modal="true" aria-label="Comanda do pedido">
       <div style={card} onClick={(e) => e.stopPropagation()}>
@@ -54,8 +70,10 @@ export function ComandaModal({ order, numero, totalPedidos, onClose }) {
             style={{ width: '100%', height: 560, border: 'none', background: '#fff', borderRadius: 8, boxShadow: '0 2px 10px rgba(0,0,0,.12)' }}
           />
         </div>
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', padding: '12px 16px', borderTop: '1px solid #E8DCC8' }}>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap', padding: '12px 16px', borderTop: '1px solid #E8DCC8' }}>
           <button style={btn('#F1EADF', '#6B5D50')} onClick={onClose}>Fechar</button>
+          <button style={btn('#F1EADF', '#6B5D50')} onClick={copiar}>{copiado ? '✅ Copiado!' : '📋 Copiar'}</button>
+          <button style={btn('#25D366', '#fff')} onClick={compartilharWhatsapp}>📤 WhatsApp</button>
           <button style={btn('#A62786', '#fff')} onClick={() => printComanda(html)}>🖨️ Imprimir / Reimprimir</button>
         </div>
       </div>

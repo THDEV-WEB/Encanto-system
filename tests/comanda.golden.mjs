@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import { buildComanda, agruparAdicionais, tipoDoPedido, refCurtaDoPedido } from '../src/components/admin/comanda/comandaModel.js';
 import { comandaHTML } from '../src/components/admin/comanda/comandaHtml.js';
+import { comandaTexto } from '../src/components/admin/comanda/comandaTexto.js';
 
 let fail = 0;
 const check = (m, fn) => { try { fn(); console.error('  ok ' + m); } catch (e) { fail++; console.error('  x  ' + m + ' — ' + (e?.message ?? e)); } };
@@ -117,5 +118,31 @@ check('HTML escapa conteudo perigoso (XSS-safe)', () => {
   assert.ok(!h.includes('A<b>&"x'));
 });
 
-console.log(fail === 0 ? '\nOK comanda.golden — view-model + HTML termico estaveis' : `\nFALHA comanda.golden — ${fail} caso(s)`);
+/* ── texto simples (Copiar / WhatsApp) — REF-REGRESSION-01 · P5 ── */
+const textoE = comandaTexto(vmE);
+check('texto entrega: cabecalho, tipo, itens, obs, cliente, total — sem HTML nenhum', () => {
+  assert.ok(textoE.includes('ENCANTO DELIVERY'));
+  assert.ok(textoE.includes('ENTREGA'));
+  assert.ok(textoE.includes('Marmita G'));
+  assert.ok(textoE.includes('Nutella'));
+  assert.ok(textoE.includes('Adicionais Premium'));
+  assert.ok(textoE.includes('OBS: bem passada'));
+  assert.ok(textoE.includes('Maria Souza'));
+  assert.ok(textoE.includes('Pedidos realizados: 7'));
+  assert.ok(textoE.includes('TOTAL'));
+  assert.ok(!/<[a-z]/i.test(textoE), 'texto plano não deve conter marcação HTML');
+});
+const textoR = comandaTexto(vmR);
+check('texto retirada: RETIRADA, tag COMBO, sem secao ENDEREÇO', () => {
+  assert.ok(textoR.includes('RETIRADA'));
+  assert.ok(textoR.includes('[COMBO]'));
+  assert.ok(!textoR.includes('ENDEREÇO'));
+});
+check('texto: nunca fabrica HTML-escape (conteudo cru, plano)', () => {
+  const vmX = buildComanda({ ...pedidoRetirada, order_items: [{ id: 'x', nome_produto: 'A<b>&"x', quantity: 1, preco_unitario: 1, adicionais: [] }] }, {});
+  const txt = comandaTexto(vmX);
+  assert.ok(txt.includes('A<b>&"x'), 'texto plano preserva o nome cru (destino é clipboard/WhatsApp, não HTML)');
+});
+
+console.log(fail === 0 ? '\nOK comanda.golden — view-model + HTML termico + texto simples estaveis' : `\nFALHA comanda.golden — ${fail} caso(s)`);
 process.exit(fail ? 1 : 0);

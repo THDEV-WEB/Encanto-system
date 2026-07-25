@@ -61,6 +61,7 @@ const DOMAIN_CONSUMERS = [
   'components/admin/AdminProducts.jsx', // REF-APP-01 · Onda 6.4 — consome precoVitrine de utils/pricing (vitrine de preço do admin)
   'components/admin/AdminAdicionais.jsx', // REF-APP-01 · Onda 7.1 — consome MOCK_ADS de utils/addons (fallback do CRUD de adicionais)
   'pages/StoreApp.jsx',      // REF-APP-01 · Onda 9.1 — consome resolverAdicionais/selecionarFonteAdicionais de utils/addons (resolucao de adicionais do ProductModal)
+  'utils/addonGroupLabels.js', // REF-REGRESSION-01 · P6 — consome GRUPOS de utils/addons (fonte unica de emoji/nome por grupo, UI fora do dominio)
   // Cada extração que importe pricing/addons adiciona a si mesma AQUI, no MESMO commit. Ex. (REF-APP-01):
   // 'pages/StoreApp.jsx', 'hooks/useCart.js', 'hooks/useAdicionais.js', 'components/ProductCard.jsx',
   // 'components/ProductModal/ProductModalInner.jsx', 'components/CartSidebar.jsx',

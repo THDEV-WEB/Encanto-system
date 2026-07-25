@@ -38,6 +38,22 @@ function possivelSessaoAdmin() {
   try { return !!window.localStorage.getItem(ADMIN_AUTH_STORAGE_KEY); } catch { return false; }
 }
 
+/* REF-REGRESSION-01 · P1 (achado de seguranca): uma sessao Supabase valida no client `db` prova
+   AUTENTICACAO, nunca AUTORIZACAO — antes deste fix, getSession()/onAuthStateChange promoviam
+   mode='admin' so por existir sessao, confiando 100% na RLS (is_admin(), tabela public.admins)
+   como UNICA linha de defesa. is_admin() ja e a fonte da verdade real usada por toda RLS do
+   projeto desde AUTH-01; aqui so passa a ser consultada TAMBEM no front, antes de renderizar o
+   painel. null = indeterminado (erro de rede/RPC) — o chamador nunca deve decidir com null,
+   so com true/false explicitos (fail-closed: nunca promove no duvidoso). */
+async function verificarIsAdmin() {
+  if (!db) return null;
+  try {
+    const { data, error } = await db.rpc('is_admin');
+    if (error) return null;
+    return data === true;
+  } catch { return null; }
+}
+
 export function useAdminSession() {
   const [mode, setMode] = useState(() => {
     /* Acesso por hash #admin-encanto */
@@ -53,25 +69,41 @@ export function useAdminSession() {
     let vivo = true;
     if (!db) return undefined; // modo degradado (offline) — preserva o comportamento anterior
 
-    db.auth.getSession().then(({ data }) => {
+    /* REF-REGRESSION-01 · P1: promove pra 'admin' SÓ depois de confirmar is_admin() — nunca só por
+       existir sessão. autorizado===false é fail-safe: uma sessão Supabase válida mas sem privilégio
+       (nunca deveria chegar aqui hoje, já que as 2 sessões — cliente/admin — são isoladas por
+       storageKey) é deslogada de verdade, não só "voltada pra loja" (evita re-tentar 'checking' pra
+       sempre a cada F5). autorizado===null (erro de rede) nunca desloga uma sessão que pode ser
+       legítima — só não promove (fail-closed sem falso-negativo agressivo). */
+    const promoverSeAutorizado = async (session) => {
+      const autorizado = await verificarIsAdmin();
       if (!vivo) return;
-      if (data?.session) {
-        setAdmin({ email: data.session.user?.email ?? null, session: data.session });
+      if (autorizado === true) {
+        setAdmin({ email: session.user?.email ?? null, session });
         // Só restaura quando ainda não há um destino explícito diferente (evita sobrescrever um logout
         // que já tenha acontecido no meio do caminho, embora improvável nesta janela síncrona).
         setMode((m) => (m === 'store' || m === 'login' || m === 'checking' ? 'admin' : m));
+      } else if (autorizado === false) {
+        try { await db.auth.signOut(); } catch { /* best-effort — a UI já sai mesmo se a rede falhar */ }
+        setAdmin(null);
+        setMode((m) => (m === 'checking' ? 'store' : m));
+        limparUsuario();
       } else {
-        // 'checking' apostou numa sessão que não se confirmou (token expirado/inválido) — libera a Loja.
         setMode((m) => (m === 'checking' ? 'store' : m));
       }
+    };
+
+    db.auth.getSession().then(({ data }) => {
+      if (!vivo) return;
+      if (data?.session) promoverSeAutorizado(data.session);
+      // 'checking' apostou numa sessão que não se confirmou (token expirado/inválido) — libera a Loja.
+      else setMode((m) => (m === 'checking' ? 'store' : m));
     });
 
     const { data: sub } = db.auth.onAuthStateChange((_evento, session) => {
       if (!vivo) return;
-      if (session) {
-        setAdmin({ email: session.user?.email ?? null, session });
-        setMode((m) => (m === 'store' || m === 'login' || m === 'checking' ? 'admin' : m));
-      } else {
+      if (session) promoverSeAutorizado(session);
+      else {
         setAdmin(null);
         setMode((m) => (m === 'admin' || m === 'checking' ? 'store' : m));
         limparUsuario(); // REF-OBS-01: logout/expiração — some do contexto do Sentry

@@ -8,6 +8,10 @@ import { useOrdersStats } from '../../hooks/useOrdersStats.js';
 import { fmt, fmtDataHoraLoja } from '../../utils/format.js';
 
 export function AdminDashboard() {
+  /* N=10 (achado REF-REGRESSION-01 · P4, justificando o número antes mágico): este card é um
+     resumo "de relance" (widget do Dashboard), não o log operacional — esse é a aba Pedidos
+     (useOrdersPagina, busca+paginação sobre o histórico inteiro). 10 cabe sem rolagem numa tela
+     comum e é mais que suficiente pra conferir "o que chegou agora" a cada refresh de 60s. */
   const { stats, recentes, refresh } = useOrdersStats(10);
   const breakdown  = stats?.breakdown || {};
   const hojeCount  = stats?.hoje_count || 0;

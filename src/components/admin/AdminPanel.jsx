@@ -14,14 +14,14 @@ export function AdminPanel({ onExit, onLogout }) {
   const tabs = [
     {id:'dashboard', icon:'📊', label:'Dashboard'},
     {id:'pedidos',   icon:'📋', label:'Pedidos'},
-    {id:'products',  icon:'🛍️', label:'products'},
+    {id:'products',  icon:'🛍️', label:'Produtos'},
     {id:'categorias',icon:'🏷️', label:'Categorias'},
     {id:'adicionais',icon:'➕', label:'Adicionais'},
     {id:'status',    icon:'🏪', label:'Status'},
     {id:'fidelidade',icon:'🎁', label:'Fidelidade'},
     {id:'saude',     icon:'🩺', label:'Saúde'},
   ];
-  const titles = {dashboard:'Dashboard',pedidos:'Pedidos',products:'Products',categorias:'Categorias',adicionais:'Adicionais',status:'Status da Loja',fidelidade:'Fidelidade',saude:'Saúde do Sistema'};
+  const titles = {dashboard:'Dashboard',pedidos:'Pedidos',products:'Produtos',categorias:'Categorias',adicionais:'Adicionais',status:'Status da Loja',fidelidade:'Fidelidade',saude:'Saúde do Sistema'};
   return (
     <div className="admin-layout">
       <div className="admin-sidebar">

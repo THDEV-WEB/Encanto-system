@@ -296,5 +296,11 @@ export const DS = {
     if (id) await this.run(d=>d.from('adicionais').update(data).eq('id',id));
     else    await this.run(d=>d.from('adicionais').insert({...data,ativo:true}));
   },
-  async delAd(id)   { await this.run(d=>d.from('adicionais').delete().eq('id',id)); },
+  /* FIX (achado REF-REGRESSION-01 · P6, mesmo padrao do delCat/REF-ADMIN-03): antes, ignorava
+     r.error e a UI nao tinha como distinguir "excluido" de "falhou" - o item so "voltava" no
+     proximo load(), sem nenhum aviso (indistinguivel de "nao da pra excluir"). */
+  async delAd(id) {
+    const r = await this.run(d=>d.from('adicionais').delete().eq('id',id));
+    return r.error ? { ok:false, error:r.error.message } : { ok:true };
+  },
 };

@@ -67,6 +67,18 @@ check('R6 delCat verifica r.error antes de reportar sucesso (nunca {ok:true} inc
   assert.ok(/if\s*\(\s*r\.error\s*\)/.test(DELCAT_SRC), 'delCat não checa r.error do DELETE');
 });
 
+/* R7 (REF-REGRESSION-01 · P6) — MESMO bug do R6 (delCat), agora em delAd: antes, o DELETE de
+   adicionais não checava r.error — se falhasse (sessão expirada, rede), a UI recarregava a lista e
+   o item "voltava" sem nenhum aviso, indistinguível de "não dá pra excluir" (achado real da
+   auditoria de regressão). */
+const delAdMatch = DSRC.match(/async delAd\(id\) \{[\s\S]*?\n {2}\},/);
+check('R7 delAd isolável por regex (contrato de assinatura preservado)', () => assert.ok(delAdMatch));
+const DELAD_SRC = delAdMatch ? delAdMatch[0] : '';
+check('R7 delAd verifica r.error antes de reportar sucesso (nunca {ok:true} incondicional após o DELETE)', () => {
+  assert.ok(/\.delete\(\)/.test(DELAD_SRC), 'delAd não chama .delete()');
+  assert.ok(/r\.error\s*\?/.test(DELAD_SRC) || /if\s*\(\s*r\.error\s*\)/.test(DELAD_SRC), 'delAd não checa r.error do DELETE');
+});
+
 /* Anatomia — 24 métodos + 2 props (ADR §1 + REF-ADMIN-03 · Onda 3: getPedidos() aposentado —
    limit(100) fixo capava Dashboard/busca silenciosamente — substituído por getPedidosStats/
    getPedidosRecentes/getPedidosPagina, ver comentário em DataService.js): identidade do contrato

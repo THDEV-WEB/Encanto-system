@@ -3,8 +3,9 @@
    Consumidor de dominio (utils/addons) -> allowlist D1 do test:deps. */
 import React, { useState } from 'react';
 import { fmt, precoTamanho } from '../../utils/format.js';
-import { ADICIONAL_SIMPLES_PRECO, agruparPorGrupo, cotaGratis, ehAdicionalGratis, resolverPrecoAdicionais } from '../../utils/addons.js';
+import { ADICIONAL_SIMPLES_PRECO, agruparPorGrupo, cotaGratis, ehAdicionalGratis, resolverPrecoAdicionais, GRUPOS } from '../../utils/addons.js';
 import { catEmoji } from '../../utils/catalog.js';
+import { GRUPO_INFO } from '../../utils/addonGroupLabels.js';
 export function ProductModalInner({ prod, catNome, adicionais, onClose, onAdd, onSuggest }) {
   const [qty,      setQty]      = useState(1);
   const [sel,      setSel]      = useState([]);
@@ -49,16 +50,18 @@ export function ProductModalInner({ prod, catNome, adicionais, onClose, onAdd, o
     (prod.upsell_bebida === undefined &&
      (catNome||prod.nome).toLowerCase().match(/marmita|açaí|acai|copo|batidinha/));
 
-  /* Rótulos: combo → específico; produto único → genérico "Adicionais" */
+  /* Rótulos: combo → específico; produto único → genérico "Adicionais". Emoji/nome de cada grupo
+     vêm da fonte única utils/addonGroupLabels.js (REF-REGRESSION-01 · P6) — só a COMPOSIÇÃO da
+     frase (combo vs. genérico; "do/da X" vs. bare) é local a este componente, texto idêntico ao
+     de antes (nenhuma mudança de comportamento aprovado). */
   const isCombo = grupos.length > 1;
-  const GRUPO_LABEL = {
-    marmita: isCombo ? '🍱 Adicionais da Marmita' : 'Adicionais',
-    acai:    isCombo ? '🍇 Adicionais do Açaí'    : 'Adicionais',
-    bebida:  isCombo ? '🧃 Adicionais da Bebida'  : 'Adicionais',
-    simples: '🥄 Adicionais Simples',
-    premium: '⭐ Premium',
-    frutas_premium: '🍓 Frutas Premium',
-    chocolates: '🍫 Chocolates',
+  const rotuloGrupo = (grupo) => {
+    const { emoji = '', nome = grupo } = GRUPO_INFO[grupo] || {};
+    if (grupo === GRUPOS.MARMITA) return isCombo ? `${emoji} Adicionais da Marmita` : 'Adicionais';
+    if (grupo === GRUPOS.ACAI)    return isCombo ? `${emoji} Adicionais do Açaí`    : 'Adicionais';
+    if (grupo === GRUPOS.BEBIDA)  return isCombo ? `${emoji} Adicionais da Bebida`  : 'Adicionais';
+    if (grupo === GRUPOS.SIMPLES) return `${emoji} Adicionais ${nome}`;
+    return `${emoji} ${nome}`;
   };
 
   return (
@@ -160,7 +163,7 @@ export function ProductModalInner({ prod, catNome, adicionais, onClose, onAdd, o
               <div key={grupo} className="modal-section">
                 {/* Título do grupo + contador global de grátis */}
                 <div className="modal-section-title" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                  <span>{GRUPO_LABEL[grupo]||grupo}</span>
+                  <span>{rotuloGrupo(grupo)}</span>
                   {gratis_max>0 && gratisList.length>0 && (
                     <span style={{fontSize:11,fontWeight:700,
                       color: gratisSobrando>0?'var(--green)':'var(--gray-400)',

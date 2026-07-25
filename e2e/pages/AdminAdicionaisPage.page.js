@@ -9,6 +9,7 @@ export class AdminAdicionaisPage {
   row(id) { return this.page.locator(`[data-testid="ad-row-${id}"]`); }
   editarButton(id)  { return this.row(id).getByRole('button', { name: '✏️' }); }
   excluirButton(id) { return this.row(id).getByRole('button', { name: '🗑' }); }
+  grupoBadge(id)    { return this.row(id).locator('.badge-purple'); } // REF-REGRESSION-01 · P6
 
   get nomeInput()   { return this.page.locator('[data-testid="ad-form-nome"]'); }
   get tipoSelect()  { return this.page.locator('[data-testid="ad-form-tipo"]'); }

@@ -1,11 +1,14 @@
-/* e2e/tests/admin/admin-permissao.spec.js — REF-E2E-03 · Onda 1, parte 1 (@writes).
-   Achado real da auditoria (ADR §1.2): NÃO existe verificação de is_admin() no cliente — qualquer
-   usuário autenticado do Supabase chega à UI inteira do Admin; só os DADOS são protegidos por RLS.
+/* e2e/tests/admin/admin-permissao.spec.js — REF-E2E-03 · Onda 1, parte 1 (@writes) · reescrito na
+   REF-REGRESSION-01 · P1 (achado de segurança crítica).
+   Achado ORIGINAL (ADR §1.2, REF-E2E-03): NÃO existia verificação de is_admin() no cliente — qualquer
+   usuário autenticado do Supabase chegava à UI inteira do Admin; só os DADOS eram protegidos por RLS
+   (defesa em profundidade ausente — o painel nem deveria renderizar pra quem não é admin). Este teste
+   documentava esse gap como comportamento ACEITO. A REF-REGRESSION-01 fechou o gap de verdade:
+   useAdminSession.js/AdminLogin.jsx agora chamam is_admin() (RPC, tabela public.admins) antes de
+   promover mode='admin' — uma sessão autenticada sem privilégio é deslogada e barrada ANTES de ver
+   qualquer pixel do painel. Este teste passa a provar o comportamento NOVO (correto), não o antigo.
    Reaproveita CLIENTE_FIXTURE (E2E-02, decisão ADR §7.2) como a conta "autenticada, sem admin" — ele
-   nunca está em public.admins, zero conta nova. Para provar o bloqueio de verdade (não uma tela vazia
-   por acaso, sem nada a esconder), cria-se 1 pedido "avulso" de OUTRO cliente antes do teste: se este
-   login herdasse acesso de admin, o Dashboard mostraria esse pedido; o teste prova que ele continua
-   invisível.
+   nunca está em public.admins, zero conta nova.
 
    Parte 2 (abaixo): escrita bloqueada por RLS para um usuário ANÔNIMO — a matriz completa do §1.9 já
    é exaustivamente provada pelos guards de domínio (`test:auth-rls`/`test:orders-rls`/`test:rls`,
@@ -16,26 +19,29 @@
    anônimo do site — não simulação de role via SQL cru. */
 import { test, expect } from '../../fixtures/index.js';
 import { CLIENTE_FIXTURE } from '../../support/fixture-accounts.js';
-import { criarPedidoAvulso } from '../../support/fixture-order.js';
-import { limparDadosDeTeste } from '../../support/cleanup.js';
-import { supabaseAnon, E2E_ENV_PRONTO } from '../../support/supabaseAdmin.js';
+import { E2E_ENV_PRONTO, supabaseAnon } from '../../support/supabaseAdmin.js';
 
-test.describe('permissão — autenticado sem is_admin() (parte 1: leitura)', { tag: '@writes' }, () => {
-  test.afterEach(async () => { await limparDadosDeTeste(); });
+test.describe('permissão — autenticado sem is_admin() (parte 1: gate de autorização)', { tag: '@writes' }, () => {
+  test('CLIENTE_FIXTURE é barrado no login do Admin — credencial válida não basta sem is_admin()', async ({ adminLoginPage, adminPanel, page }) => {
+    test.skip(!E2E_ENV_PRONTO, 'ambiente de E2E não configurado (.env.e2e)');
 
-  test('CLIENTE_FIXTURE chega na UI do Admin, mas não vê pedidos de outros clientes', async ({ adminLoginPage, adminPanel, page }) => {
-    const pedido = await criarPedidoAvulso();
-    test.skip(pedido.skipped, 'ambiente de E2E não configurado (.env.e2e)');
+    let logoutChamado = false;
+    await page.route('**/auth/v1/logout**', (route) => { logoutChamado = true; return route.continue(); });
 
     await adminLoginPage.goto();
     await adminLoginPage.login(CLIENTE_FIXTURE.email, CLIENTE_FIXTURE.senha);
 
-    // Sem gate de is_admin() no cliente — a UI inteira renderiza (achado real, não um bloqueio inexistente).
-    await expect(adminPanel.tab('dashboard')).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
+    // Fix REF-REGRESSION-01 · P1: nunca chega ao painel — is_admin()===false desloga e mostra erro.
+    await expect(adminLoginPage.erroMensagem).toHaveText('Acesso restrito ao administrador.');
+    await expect(adminPanel.tab('dashboard')).toHaveCount(0);
+    expect(logoutChamado).toBe(true); // a sessão autenticada (mas sem privilégio) é encerrada de verdade
 
-    // A garantia real está nos dados: o pedido avulso existe de verdade no backend, mas a RLS o esconde.
-    await expect(page.getByText('Nenhum pedido')).toBeVisible();
+    // Nem um F5 reabre o painel — sem sessão nenhuma sobrevivendo sob a chave do Admin. O hash secreto
+    // já foi consumido (history.replaceState no 1º mount), então o reload cai na LOJA normal — mesmo
+    // padrão de "Sair" (admin-logout.spec.js), não uma tela de login presa.
+    await page.reload();
+    await expect(adminPanel.tab('dashboard')).toHaveCount(0);
+    await expect(page.locator('.header')).toBeVisible();
   });
 });
 

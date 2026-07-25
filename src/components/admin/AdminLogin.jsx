@@ -26,6 +26,18 @@ export function AdminLogin({ onLogin }) {
       registrarBreadcrumb('admin: login sem sessao ativa');
       return;
     }
+    // REF-REGRESSION-01 · P1: signInWithPassword só prova credencial válida no projeto Supabase
+    // (autenticação) — nunca que quem logou é o admin (autorização real, tabela public.admins,
+    // via is_admin() — a mesma fonte que já protege toda a RLS do projeto). Sem este check, qualquer
+    // conta com senha válida no mesmo projeto veria o painel inteiro renderizado no client.
+    const { data: souAdmin, error: erroIsAdmin } = await db.rpc('is_admin');
+    if (erroIsAdmin || souAdmin !== true) {
+      await db.auth.signOut().catch(() => {});
+      setErr('Acesso restrito ao administrador.');
+      setLoading(false);
+      registrarBreadcrumb('admin: login negado (sem privilegio de admin)');
+      return;
+    }
     registrarBreadcrumb('admin: login bem-sucedido');
     onLogin({ email, session: data.session });
     setLoading(false);

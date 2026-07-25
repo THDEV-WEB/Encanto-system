@@ -4,7 +4,8 @@ import { MOCK_CATS, MOCK_PRODS } from '../../data/mockCatalog.js';
 import { precoVitrine } from '../../utils/pricing.js';
 import { fmt } from '../../utils/format.js';
 import { getProdCatIds } from '../../utils/catalog.js';   // REF-ADMIN-CATALOG-01: multiplas categorias
-import { gruposDoProduto, MOCK_ADS } from '../../utils/addons.js';   // REF-ADMIN-ADDONS-02: grupos de adicionais por produto (dominio)
+import { gruposDoProduto, MOCK_ADS, GRUPOS } from '../../utils/addons.js';   // REF-ADMIN-ADDONS-02: grupos de adicionais por produto (dominio)
+import { GRUPO_INFO } from '../../utils/addonGroupLabels.js'; // REF-REGRESSION-01 · P6: fonte unica emoji/nome por grupo
 import { Spinner } from '../ui/Spinner.jsx';
 import { ImageUploader } from './ImageUploader.jsx';
 
@@ -38,12 +39,19 @@ export function AdminProducts() {
       : [ ...(f.categoria_extras||[]), id ] }));
 
   /* ── REF-ADMIN-ADDONS-02: grupos de adicionais por produto ────────────────────
-     Rotulo/emoji vivem na UI (regra institucional do dominio addons.js). Grupo
-     desconhecido (futuro: Molhos, Sobremesas...) recebe rotulo derivado da chave -> escalavel. */
-  const GRUPO_AD_LABEL = { acai:'🍇 Adicionais Açaí', marmita:'🍱 Adicionais Marmita', bebida:'🧃 Adicionais Bebida',
-    simples:'🥄 Adicionais Simples', premium:'⭐ Premium', frutas_premium:'🍓 Frutas Premium', chocolates:'🍫 Chocolates' };
-  const GRUPO_AD_ORDEM = ['acai','marmita','bebida','simples','premium','frutas_premium','chocolates'];
-  const labelGrupoAd = (g) => GRUPO_AD_LABEL[g] || String(g).replace(/_/g,' ').replace(/\b\w/g, c=>c.toUpperCase());
+     Rotulo/emoji vivem na UI (regra institucional do dominio addons.js) — fonte unica agora e
+     utils/addonGroupLabels.js (GRUPO_INFO), REF-REGRESSION-01 · P6 (antes: mapa local duplicado
+     aqui + em AdminAdicionais.jsx + em ProductModalInner.jsx, com textos ja divergentes entre si).
+     Grupo desconhecido (futuro: Molhos, Sobremesas...) recebe rotulo derivado da chave -> escalavel. */
+  const labelGrupoAd = (g) => {
+    const { emoji = '', nome = g } = GRUPO_INFO[g] || {};
+    if (!GRUPO_INFO[g]) return String(g).replace(/_/g,' ').replace(/\b\w/g, c=>c.toUpperCase());
+    if (g === GRUPOS.ACAI)    return `${emoji} Adicionais Açaí`;
+    if (g === GRUPOS.MARMITA) return `${emoji} Adicionais Marmita`;
+    if (g === GRUPOS.BEBIDA)  return `${emoji} Adicionais Bebida`;
+    if (g === GRUPOS.SIMPLES) return `${emoji} Adicionais ${nome}`;
+    return `${emoji} ${nome}`;
+  };
   const toggleGrupoAd = (g) => setForm(f => ({ ...f,
     grupos_ad: (f.grupos_ad||[]).includes(g)
       ? (f.grupos_ad||[]).filter(x => x !== g)
@@ -55,8 +63,9 @@ export function AdminProducts() {
     const catId = form.categoria_id;
     const aplic = (ads||[]).filter(a => a.grupo && (!a.aplica_categoria_id || a.aplica_categoria_id === catId));
     const uniao = [...new Set([ ...aplic.map(a => a.grupo), ...(form.grupos_ad||[]) ])];
+    const ordem = Object.values(GRUPOS);
     return uniao.sort((a,b) => {
-      const ia = GRUPO_AD_ORDEM.indexOf(a), ib = GRUPO_AD_ORDEM.indexOf(b);
+      const ia = ordem.indexOf(a), ib = ordem.indexOf(b);
       return (ia<0?99:ia) - (ib<0?99:ib) || String(a).localeCompare(String(b));
     });
   })();

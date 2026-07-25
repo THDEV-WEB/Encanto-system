@@ -44,6 +44,47 @@ test.describe('CRUD de Adicionais', { tag: '@writes' }, () => {
     await expect(page.getByText(NOME_AD_EDITADO)).toHaveCount(0);
   });
 
+  /* REF-REGRESSION-01 · P6: achado real da auditoria — o badge de Grupo só reconhecia 3 dos 7
+     grupos reais (acai/marmita/bebida), então simples/premium/frutas_premium/chocolates caíam
+     todos no mesmo rótulo "🍇 Açaí" (dava a falsa impressão de "adicionais duplicados" na
+     listagem). Prova que 2 adicionais de MESMO NOME-BASE em grupos diferentes têm badges
+     DISTINTOS — e que o <select> de edição lista os 7 grupos reais (não mais 3). */
+  test('adicionais em grupos diferentes mostram badges diferentes (nunca colapsam em "Açaí")', async ({ adminLoginPage, adminPanel, adminAdicionaisPage, page }) => {
+    test.skip(!E2E_ENV_PRONTO, 'ambiente de E2E não configurado (.env.e2e)');
+    await adminLoginPage.goto();
+    await adminLoginPage.login(ADMIN_FIXTURE.email, ADMIN_FIXTURE.senha);
+    await adminPanel.abrirAba('adicionais');
+
+    const admin = supabaseAdmin();
+    const criarAd = async (nome, grupo) => {
+      await adminAdicionaisPage.abrirNovo();
+      await adminAdicionaisPage.preencher({ nome, tipo: 'gratis', grupo });
+      await adminAdicionaisPage.salvar();
+      await expect(page.getByText(nome)).toBeVisible();
+      const { data } = await admin.from('adicionais').select('id').eq('nome', nome).single();
+      return data.id;
+    };
+
+    const idAcai    = await criarAd('E2E_TEST_BadgeAcai', 'acai');
+    const idPremium = await criarAd('E2E_TEST_BadgePremium', 'premium');
+    const idFrutas  = await criarAd('E2E_TEST_BadgeFrutas', 'frutas_premium');
+
+    await expect(adminAdicionaisPage.grupoBadge(idAcai)).toHaveText('🍇 Açaí');
+    await expect(adminAdicionaisPage.grupoBadge(idPremium)).toHaveText('⭐ Premium');
+    await expect(adminAdicionaisPage.grupoBadge(idFrutas)).toHaveText('🍓 Frutas Premium');
+    // a garantia central do achado: grupos diferentes NUNCA mostram o mesmo texto de badge.
+    const textos = await Promise.all(
+      [idAcai, idPremium, idFrutas].map((id) => adminAdicionaisPage.grupoBadge(id).textContent()),
+    );
+    expect(new Set(textos).size).toBe(3);
+
+    // o <select> de edição oferece os 7 grupos reais (achado: antes só tinha 3 <option>).
+    await adminAdicionaisPage.editar(idPremium);
+    const opcoes = await adminAdicionaisPage.grupoSelect.locator('option').allTextContents();
+    expect(opcoes).toHaveLength(7);
+    await adminAdicionaisPage.cancelarButton.click();
+  });
+
   test('nome vazio não salva e mantém o modal aberto', async ({ adminLoginPage, adminPanel, adminAdicionaisPage, page }) => {
     test.skip(!E2E_ENV_PRONTO, 'ambiente de E2E não configurado (.env.e2e)');
     await adminLoginPage.goto();
