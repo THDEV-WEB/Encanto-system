@@ -14,7 +14,7 @@ import { LOYALTY_EVENT } from '../../services/loyalty/index.js';   // REF-LOYALT
 import { STORE_INFO } from '../../constants/storeInfo.js';
 import { useAddress, AddressSummary } from '../../address/index.js';   // REF-CHECKOUT-ADDRESS-01: FONTE UNICA do endereco
 import { lerGuestIdentity, salvarGuestIdentity } from '../../utils/guestIdentity.js'; // REF-CUSTOMER-01: cache local so p/ visitante
-import { registrarBreadcrumb } from '../../lib/sentry.js'; // REF-OBS-01: no-op sem VITE_SENTRY_DSN
+import { registrarBreadcrumb, marcarPedido } from '../../lib/sentry.js'; // REF-OBS-01/REF-SENTRY-01: no-op sem VITE_SENTRY_DSN
 
 export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode }) {
   /* REF-CLIENTE-02 (vinculo pedido<->conta): create_order reusa o customer POR TELEFONE e nunca toca
@@ -100,6 +100,7 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode }) {
       return;
     }
     registrarBreadcrumb('checkout: pedido criado', { orderId, itens: cart.items.length, retirada });
+    marcarPedido(orderId); // REF-SENTRY-01: tag pesquisável — acha no Sentry qualquer erro próximo deste pedido
     /* REF-CUSTOMER-01: so cacheia localmente p/ visitante — cliente logado ja tem o Supabase (customer)
        como fonte oficial, cachear aqui de novo criaria uma segunda fonte permanente do mesmo dado. */
     if (!isLogged) salvarGuestIdentity(form.nome, form.telefone);

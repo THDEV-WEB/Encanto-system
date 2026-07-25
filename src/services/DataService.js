@@ -3,12 +3,14 @@
    ordem, mesmos contratos de retorno, os mesmos singletons de cache e o mesmo uso de `this`.
    NENHUMA mudança de comportamento — apenas realocação. Consumidores seguem chamando DS.metodo(...)
    via `import { DS } from './services/DataService.js'` (objeto único; nunca desestruturar → preserva this).
-   Camada services: importa só lib/supabase (db, RPC_TIMEOUT), constants/catalogConfig e utils/catalog
-   (prodInCat) — nunca pricing/addons/format (D2 / G-CK1 do test:deps permanecem verdes). */
+   Camada services: importa só lib/supabase (db, RPC_TIMEOUT), constants/catalogConfig, utils/catalog
+   (prodInCat) e lib/sentry (observabilidade, REF-SENTRY-01) — nunca pricing/addons/format (D2 / G-CK1
+   do test:deps permanecem verdes). */
 import { db, RPC_TIMEOUT } from '../lib/supabase.js';
 import { PRODUCTS_PAGE_SIZE, PRODUCTS_PAGINATE, PRODUCTS_CACHE_TTL } from '../constants/catalogConfig.js';
 import { prodInCat } from '../utils/catalog.js';
 import { emitProductsChanged } from './productCacheBus.js';
+import { capturarErroDados } from '../lib/sentry.js';
 
 /* FIX (achado REF-E2E-03 · Onda 3): `categories.slug` é NOT NULL sem default no banco — usado só
    por upsertCat (criação de categoria nova). Sufixo curto evita colisão sem consultar unicidade. */
@@ -40,6 +42,7 @@ export const DS = {
       return res;
     } catch(e) {
       console.warn('[DS]', e?.message || e);
+      capturarErroDados(e, { throwOnError }); // REF-SENTRY-01: só chega aqui exceção REAL (rede/RPC), nunca erro lógico esperado
       if (throwOnError) throw e;
       return {data:null,error:e};
     }

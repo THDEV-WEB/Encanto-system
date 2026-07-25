@@ -27,7 +27,33 @@ if (sentryAtivo) {
     dsn: DSN,
     environment: import.meta.env.MODE, // 'development' | 'production' | 'e2e' (vite --mode e2e)
     release: typeof __APP_RELEASE__ !== 'undefined' ? __APP_RELEASE__ : 'dev', // ver vite.config.js
+    /* REF-SENTRY-01 · Onda 6: monitoramento básico de performance (Web Vitals + navegação/transações),
+       recomendação oficial do Sentry. Amostragem conservadora ("sem exageros") — ajustável aqui sem
+       tocar em mais nada caso o volume real observado no painel peça outro valor. Session Replay/
+       Profiling permanecem DE FORA (fora de escopo desta REF, e nenhum dos dois é habilitado por
+       tracesSampleRate/integrations abaixo). */
+    integrations: [Sentry.browserTracingIntegration()],
+    tracesSampleRate: 0.2,
   });
+
+  /* REF-SENTRY-01 · Onda 2 ("Resource Loading Errors"): falha de carregamento de <img>/<script>/<link>
+     NÃO é capturada pelo GlobalHandlers do SDK (o evento 'error' de recurso não tem `.error`/`.message`,
+     só dispara na fase de CAPTURA, nunca faz bubble até window.onerror comum) — por isso precisa de um
+     listener dedicado, registrado uma única vez aqui (mesmo padrão "captura global" do resto do módulo).
+     Filtra por `target !== window` para nunca duplicar erros de SCRIPT em runtime (esses sim already
+     chegam via GlobalHandlers) — só recurso (imagem/script/css/etc. que falhou o load). */
+  window.addEventListener('error', (event) => {
+    const alvo = event?.target;
+    if (!alvo || alvo === window || !(alvo.tagName)) return;
+    Sentry.withScope((scope) => {
+      scope.setTag('app.origem', 'recurso');
+      scope.setContext('recurso', {
+        tag: alvo.tagName,
+        src: alvo.src || alvo.href || null,
+      });
+      Sentry.captureMessage(`Falha ao carregar recurso: ${alvo.tagName}`, 'warning');
+    });
+  }, true); // capture phase — obrigatório para recurso (não faz bubble)
 }
 
 /** Reporta ao Sentry um erro pego por um Error Boundary — no-op se Sentry não estiver ativo. */
@@ -37,6 +63,25 @@ export function capturarErroReact(err, info) {
     if (info?.componentStack) scope.setContext('react', { componentStack: info.componentStack });
     Sentry.captureException(err);
   });
+}
+
+/** Reporta uma falha REAL de acesso a dados (RPC/rede) capturada em DataService.run — nunca erros
+    lógicos esperados do Supabase (esses chegam em `res.error` e são tratados pelo chamador sem lançar;
+    só o que de fato virou exceção passa por aqui). No-op se Sentry não estiver ativo. */
+export function capturarErroDados(err, contexto) {
+  if (!sentryAtivo) return;
+  Sentry.withScope((scope) => {
+    scope.setTag('app.origem', 'dados');
+    if (contexto) scope.setContext('dados', contexto);
+    Sentry.captureException(err);
+  });
+}
+
+/** Marca o pedido atual como TAG pesquisável em qualquer evento subsequente da mesma sessão — ajuda a
+    achar no Sentry todos os erros próximos a um pedido específico (ex.: relatado pelo cliente/WhatsApp). */
+export function marcarPedido(orderId) {
+  if (!sentryAtivo || !orderId) return;
+  Sentry.setTag('order.id', orderId);
 }
 
 /** Marca a área do app (loja/admin) em todo evento subsequente — ajuda a filtrar no Sentry. */

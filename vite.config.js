@@ -14,6 +14,15 @@ const RELEASE = process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA || '
    pelos secrets de E2E (REF-CI-01): funcionalidade ausente, build nunca quebra. */
 const sentryUploadPronto = !!(process.env.SENTRY_AUTH_TOKEN && process.env.SENTRY_ORG && process.env.SENTRY_PROJECT);
 
+/* REF-SENTRY-01 (achado da auditoria/validação): o próprio sentryVitePlugin, quando os 3 vars acima
+   existem, JÁ associa commits (release.setCommits, git local) e registra um deploy (release.deploy,
+   env `vercel-${VERCEL_TARGET_ENV}`) automaticamente ao rodar dentro da Vercel (detecta via
+   process.env.VERCEL/VERCEL_TARGET_ENV/VERCEL_GIT_*) — nenhum código adicional necessário aqui.
+   Confirmado end-to-end (build local replicando os env vars da Vercel + API do Sentry): upload de
+   source maps, commitCount e deployCount corretos. Se um release novo aparecer no Sentry sem commits/
+   deploy, o problema NÃO é este arquivo — é SENTRY_AUTH_TOKEN/SENTRY_ORG/SENTRY_PROJECT ausentes nas
+   env vars do PROJETO NA VERCEL (Project Settings → Environment Variables → Production). */
+
 // Config mínima — apenas o plugin React (JSX). Nada de mágica adicional
 // para manter o comportamento o mais próximo possível do sistema atual.
 export default defineConfig({
