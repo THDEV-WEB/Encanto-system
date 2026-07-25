@@ -6,3 +6,9 @@
    deriva da URL do projeto (`sb-<ref>-auth-token`), um formato interno/não documentado da lib. */
 export const ADMIN_AUTH_STORAGE_KEY = 'encanto-admin-auth';
 export const CLIENTE_AUTH_STORAGE_KEY = 'encanto-cliente-auth';
+
+/* REF-AUTH-02: chave de sessionStorage (NUNCA localStorage — precisa "esquecer" sozinha ao abrir uma
+   aba/janela nova) que marca que o usuário JÁ ESCOLHEU entrar no fluxo administrativo nesta aba
+   (engrenagem ou hash '#admin-encanto'). Existir uma sessão de Admin salva (ADMIN_AUTH_STORAGE_KEY)
+   nunca decide sozinha a tela inicial — só esta chave, isolada por aba, faz isso. */
+export const ADMIN_FLOW_SESSION_KEY = 'encanto-admin-flow';

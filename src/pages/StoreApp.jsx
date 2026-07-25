@@ -208,7 +208,7 @@ function StoreAppContent({ onAdmin }) {
             🛒{cart.count>0&&<span> {fmt(cart.total)}</span>}
             {cart.count>0&&<span className="cart-badge">{cart.count}</span>}
           </button>
-          <button className="header-admin-btn" onClick={onAdmin} title="Painel Admin">
+          <button className="header-admin-btn" data-testid="header-admin-btn" onClick={onAdmin} title="Painel Admin">
             ⚙️
           </button>
           <StoreMenu onRecomprar={recomprar} />

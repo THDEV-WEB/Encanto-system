@@ -8,17 +8,24 @@
 
    REF-ADMIN-01 · Onda 2 corrigiu via hooks/useAdminSession.js: getSession() no mount (espelha o
    padrão já usado por AuthProvider/AuthService do lado do cliente) restaura mode='admin' quando há
-   sessão válida — tanto vindo de mode='store' (F5 direto) quanto de mode='login' (link com o hash
-   '#admin-encanto' enquanto já autenticado, não precisa digitar senha de novo). onAuthStateChange
-   mantém o modo sincronizado se a sessão cair (ex.: refresh token revogado) enquanto o Admin está
-   aberto — sem loop, uma única transição para 'store'.
+   sessão válida vinda de mode='login' (hash '#admin-encanto' ou engrenagem, enquanto já autenticado —
+   não precisa digitar senha de novo) ou 'checking' (F5 dentro do painel). onAuthStateChange mantém o
+   modo sincronizado se a sessão cair (ex.: refresh token revogado) enquanto o Admin está aberto — sem
+   loop, uma única transição para 'store'.
 
    REF-ADMIN-03 · Onda 2: `db` ganhou storageKey EXPLÍCITO (constants/authStorage.js) — este spec
    importa a MESMA constante em vez de reconstruir a chave default do supabase-js a partir da URL
-   (dependência implícita eliminada dos dois lados, produção e teste, não só de um). */
+   (dependência implícita eliminada dos dois lados, produção e teste, não só de um).
+
+   REF-AUTH-02: a restauração NUNCA mais parte de mode='store' — só de 'login'/'checking' (o usuário
+   precisa ter entrado no fluxo admin primeiro: engrenagem/hash). Uma sessão salva sozinha não decide
+   mais a tela inicial (1º teste desta suíte); os specs que testam sessão pré-existente injetada via
+   storageState agora clicam a engrenagem (`[data-testid="header-admin-btn"]`) explicitamente antes de
+   esperar o painel. */
 import { test, expect } from '../../fixtures/index.js';
 import { AdminLoginPage } from '../../pages/AdminLoginPage.js';
 import { AdminPanelPage } from '../../pages/AdminPanel.page.js';
+import { StorePage } from '../../pages/StorePage.js';
 import { ADMIN_FIXTURE } from '../../support/fixture-accounts.js';
 import { E2E_ENV, E2E_ENV_PRONTO, supabaseAnon } from '../../support/supabaseAdmin.js';
 import { ADMIN_AUTH_STORAGE_KEY } from '../../../src/constants/authStorage.js';
@@ -49,6 +56,45 @@ function sessaoAdminForjada() {
 }
 
 test.describe('sessão do Admin', { tag: '@writes' }, () => {
+  test('domínio principal SEMPRE abre a Loja, mesmo com sessão de Admin válida salva (fix REF-AUTH-02)', async ({ browser, baseURL }) => {
+    test.skip(!E2E_ENV_PRONTO, 'ambiente de E2E não configurado (.env.e2e)');
+
+    // Achado real em produção: uma sessão de Admin válida em localStorage bastava para o domínio
+    // principal abrir o painel direto, sem o usuário nunca ter clicado na engrenagem nem navegado
+    // para o hash. Sessão salva (autenticação) e "o usuário escolheu entrar no fluxo admin"
+    // (autorização de TELA, não de dado) são conceitos diferentes — este teste prova que a mera
+    // existência da sessão nunca mais decide a tela inicial sozinha.
+    const anon = supabaseAnon();
+    const { data, error } = await anon.auth.signInWithPassword({ email: ADMIN_FIXTURE.email, password: ADMIN_FIXTURE.senha });
+    if (error || !data?.session) throw new Error(`[e2e] login do admin fixture falhou: ${error?.message || 'sem sessão'}`);
+
+    const context = await browser.newContext({
+      storageState: {
+        cookies: [],
+        origins: [{
+          origin: new URL(baseURL).origin,
+          localStorage: [{ name: ADMIN_AUTH_STORAGE_KEY, value: JSON.stringify(data.session) }],
+        }],
+      },
+    });
+    const page = await context.newPage();
+    const storePage = new StorePage(page);
+    await storePage.goto(); // domínio principal, sem hash, aba nova (nunca entrou no fluxo admin)
+
+    // A Loja abre direto — a sessão salva não decide a tela inicial sozinha.
+    await expect(page.locator('[data-prod]').first()).toBeVisible();
+    await expect(page.locator('[data-testid="admin-tab-dashboard"]')).toHaveCount(0);
+
+    // Ao entrar explicitamente no fluxo (engrenagem), a sessão ainda válida abre o painel direto,
+    // sem pedir login de novo — persistência de sessão só evita repetir o login DEPOIS da escolha.
+    await page.locator('[data-testid="header-admin-btn"]').click();
+    const adminPanel = new AdminPanelPage(page);
+    await expect(adminPanel.tab('dashboard')).toBeVisible();
+    await expect(page.locator('[data-testid="admin-login-senha"]')).toHaveCount(0);
+
+    await context.close();
+  });
+
   test('reload no meio do painel mantém o Admin autenticado (fix REF-ADMIN-01 · Onda 2)', async ({ adminLoginPage, adminPanel, page }) => {
     test.skip(!E2E_ENV_PRONTO, 'ambiente de E2E não configurado (.env.e2e)');
 
@@ -142,9 +188,16 @@ test.describe('sessão do Admin', { tag: '@writes' }, () => {
       },
     });
     const page = await context.newPage();
+    const storePage = new StorePage(page);
     const adminPanel = new AdminPanelPage(page);
-    await page.goto(baseURL);
+    await storePage.goto();
 
+    // REF-AUTH-02: domínio principal abre a Loja mesmo com sessão válida salva — a migração da
+    // chave legada acontece em background (lib/supabase.js), mas não decide mais a tela inicial
+    // sozinha. Só ao entrar no fluxo (engrenagem) a sessão migrada evita o relogin.
+    await expect(page.locator('[data-prod]').first()).toBeVisible();
+
+    await page.locator('[data-testid="header-admin-btn"]').click();
     await expect(adminPanel.tab('dashboard')).toBeVisible(); // migrou e restaurou — sem tela de login
 
     const chaves = await page.evaluate((chaveAntiga) => ({
