@@ -35,4 +35,26 @@ test.describe('logout', { tag: '@writes' }, () => {
 
     await context.close();
   });
+
+  test('sair também limpa o cache local de visitante (fix REF-CUSTOMER-01 — dispositivo compartilhado)', async ({ browser, baseURL }) => {
+    const context = await contextClienteFixture(browser, baseURL);
+    test.skip(!context, 'ambiente de E2E não configurado (.env.e2e)');
+
+    const page = await context.newPage();
+    const storePage = new StorePage(page);
+    await storePage.goto();
+
+    // Simula um cache de visitante deixado por OUTRA pessoa neste mesmo navegador antes deste login.
+    await page.evaluate(() => {
+      window.localStorage.setItem('encanto_guest_identity', JSON.stringify({ version: 1, nome: 'Visitante Anterior', telefone: '11988887777', savedAt: Date.now() }));
+    });
+
+    await storePage.abrirLogin();
+    await page.getByRole('button', { name: /Sair da conta/ }).click();
+
+    const cacheAposLogout = await page.evaluate(() => window.localStorage.getItem('encanto_guest_identity'));
+    expect(cacheAposLogout).toBeNull();
+
+    await context.close();
+  });
 });

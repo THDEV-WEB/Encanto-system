@@ -58,7 +58,10 @@ export function AuthProvider({ children }) {
   const entrarComGoogle = useCallback(()             => AuthService.signInWithGoogle(), []);
   const enviarEmail     = useCallback((email)        => AuthService.signInWithEmailOtp(email), []);
   const confirmarEmail  = useCallback((email, token) => AuthService.verifyEmailOtp(email, token), []);
-  const sair            = useCallback(async () => { const r = await AuthService.signOut(); setCustomer(null); setPrecisaTelefone(false); return r; }, []);
+  /* REF-CUSTOMER-01 (revisão pós-implantação): logout também limpa o cache de visitante — sem isso, a
+     próxima pessoa a usar o MESMO navegador como visitante (dispositivo compartilhado) herdaria
+     nome/telefone de quem acabou de sair. */
+  const sair            = useCallback(async () => { const r = await AuthService.signOut(); setCustomer(null); setPrecisaTelefone(false); limparGuestIdentity(); return r; }, []);
 
   /* 1o acesso: nome + telefone -> vinculo hibrido (por telefone). */
   const completarCadastro = useCallback(async (nome, telefone) => {

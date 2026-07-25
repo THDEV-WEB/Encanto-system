@@ -1,8 +1,10 @@
 /* tests/guestIdentity.golden.mjs — REF-CUSTOMER-01. Roda: node tests/guestIdentity.golden.mjs
    (npm run test:guest-identity). Prova o contrato do cache LOCAL de visitante: le/grava/limpa, tolera
    corrupcao, e nunca "inventa" dado (so nome OU telefone presentes ainda conta como cache valido, mas
-   nenhum dos dois -> null). Polyfill minimo de localStorage (Node puro, sem browser/jsdom) — mesmo
-   padrao de objeto que o modulo real consome (getItem/setItem/removeItem). */
+   nenhum dos dois -> null). Cobre tambem a politica de limpeza (revisao pos-implantacao): TTL de 30
+   dias validado na LEITURA, savedAt/version gravados no payload, savedAt ausente tratado como
+   expirado (falha pro lado seguro). Polyfill minimo de localStorage (Node puro, sem browser/jsdom) —
+   mesmo padrao de objeto que o modulo real consome (getItem/setItem/removeItem). */
 import assert from 'node:assert/strict';
 
 function criarLocalStorageFake() {
@@ -50,6 +52,34 @@ check('objeto sem nome nem telefone -> null (nao "inventa" cache vazio)', () => 
 check('so nome (sem telefone) ainda conta como cache valido', () => {
   salvarGuestIdentity('Ana', '');
   assert.deepEqual(lerGuestIdentity(), { nome: 'Ana', telefone: '' });
+});
+
+check('salvar grava version + savedAt no payload (permite evolucao futura)', () => {
+  const antes = Date.now();
+  salvarGuestIdentity('Carla', '38977776666');
+  const bruto = JSON.parse(globalThis.localStorage.getItem(STORAGE_KEYS.GUEST_IDENTITY));
+  assert.equal(bruto.version, 1);
+  assert.equal(typeof bruto.savedAt, 'number');
+  assert.ok(bruto.savedAt >= antes);
+});
+
+check('TTL: cache com 29 dias ainda e valido', () => {
+  const vinteNoveDias = 29 * 24 * 60 * 60 * 1000;
+  globalThis.localStorage.setItem(STORAGE_KEYS.GUEST_IDENTITY, JSON.stringify({ version: 1, nome: 'Bia', telefone: '38966665555', savedAt: Date.now() - vinteNoveDias }));
+  assert.deepEqual(lerGuestIdentity(), { nome: 'Bia', telefone: '38966665555' });
+});
+
+check('TTL: cache com 31 dias expira -> le null E remove do localStorage', () => {
+  const trintaEUmDias = 31 * 24 * 60 * 60 * 1000;
+  globalThis.localStorage.setItem(STORAGE_KEYS.GUEST_IDENTITY, JSON.stringify({ version: 1, nome: 'Duda', telefone: '38955554444', savedAt: Date.now() - trintaEUmDias }));
+  assert.equal(lerGuestIdentity(), null);
+  assert.equal(globalThis.localStorage.getItem(STORAGE_KEYS.GUEST_IDENTITY), null); // expirado -> descartado, nao so ignorado
+});
+
+check('savedAt ausente (payload de formato desconhecido) -> tratado como expirado', () => {
+  globalThis.localStorage.setItem(STORAGE_KEYS.GUEST_IDENTITY, JSON.stringify({ nome: 'Foo', telefone: '38900001111' }));
+  assert.equal(lerGuestIdentity(), null);
+  assert.equal(globalThis.localStorage.getItem(STORAGE_KEYS.GUEST_IDENTITY), null);
 });
 
 check('localStorage indisponivel (throw) -> nunca lanca, degrada em silencio', () => {

@@ -8,7 +8,8 @@ concluída e validada.
 
 ## Estado atual
 
-✅ CONCLUÍDA — 3/3 partes implementadas, testadas (domínio + E2E completo, 111/111) e commitadas.
+✅ CONCLUÍDA — 3/3 partes implementadas + revisão pós-implantação da política de limpeza do
+guestIdentity, testadas (domínio + E2E completo, 112/112) e commitadas.
 
 ## Parte 1 — Persistência inteligente do cliente
 
@@ -47,6 +48,43 @@ Checkout) — não havia regressão aí.
 `package.json` (`test:guest-identity` no `test:domain`), `e2e/tests/checkout/checkout-guest.spec.js`
 (+1: guest lembrado no pedido seguinte), `e2e/tests/checkout/checkout-logado.spec.js` (+1: cache de
 visitante divergente nunca sobrescreve o customer logado — prova a fonte única).
+
+### Revisão pós-implantação — política de limpeza do guestIdentity (dispositivo compartilhado)
+
+Perguntado explicitamente pelo dono qual era a política de limpeza do cache (TTL? logout? troca de
+usuário?), a resposta honesta na 1ª entrega desta REF era: **nenhuma dedicada**. O único gatilho de
+limpeza era `AuthProvider.carregarCustomer` (`if (cust?.phone) limparGuestIdentity()`) — cobre a
+transição da MESMA pessoa de visitante para cadastrada, mas não fecha: (a) logout do cliente nunca
+limpava o cache; (b) sem TTL, um cache "esquecido" num navegador ficava vivo indefinidamente; (c) numa
+troca de usuário onde o novo usuário AINDA não tem telefone vinculado, o cache da pessoa anterior
+vazaria para o formulário de 1º acesso dela.
+
+**Aprovado pelo dono para implementar nesta mesma REF** (explicitamente SEM a solução de UX "Não sou
+eu?", que fica para uma referência própria caso necessário):
+- **Logout limpa o cache** — `AuthProvider.sair()` agora chama `limparGuestIdentity()` além de
+  `signOut()`/resetar `customer`. Fecha o caso "usuário loga, usa, desloga — o próximo visitante no
+  mesmo aparelho não deveria herdar nada".
+- **TTL de 30 dias, validado na LEITURA** (`lerGuestIdentity`, não na escrita) — `salvarGuestIdentity`
+  agora grava `savedAt` (epoch ms); ao ler, se `Date.now() - savedAt > 30 dias` (ou `savedAt` ausente —
+  formato desconhecido tratado como expirado, falha pro lado seguro), o cache é descartado
+  (`limparGuestIdentity()`) e a função devolve `null` — nunca fica "vivo pra sempre".
+- **`version` gravado no payload** (valor `1`, não interpretado ainda) — só para permitir uma
+  migração/rejeição deliberada se o formato mudar numa REF futura, sem precisar adivinhar payloads
+  antigos.
+- **Limitação conhecida e aceita conscientemente:** dois VISITANTES diferentes usando o mesmo
+  navegador **sem nenhum login entre eles** ainda podem herdar nome/telefone um do outro dentro da
+  janela de 30 dias — o TTL reduz a exposição, mas não fecha esse caso por completo. Requer uma
+  affordance de UI ("Não sou eu?"/limpar dados), decisão de produto maior, propositalmente fora do
+  escopo desta REF.
+
+**Arquivos adicionais desta revisão:** `src/utils/guestIdentity.js` (TTL/version/savedAt),
+`src/providers/AuthProvider.jsx` (`sair()` limpa o cache), `tests/guestIdentity.golden.mjs` (+4 casos:
+version/savedAt gravados, TTL 29 dias válido, TTL 31 dias expira e remove, `savedAt` ausente expira),
+`e2e/tests/auth/logout.spec.js` (+1: logout limpa o cache de visitante, mesmo com um cache "de outra
+pessoa" pré-existente no navegador).
+
+**Testes desta revisão:** build limpo; `test:domain` 100% verde (11/11 em `guestIdentity.golden`,
+antes 7); suíte E2E completa **112/112** (antes 111 — +1 do logout). Zero regressão.
 
 ## Parte 2 — Refinamento visual do Login Admin (sem tocar a REF-AUTH-02)
 
@@ -88,12 +126,14 @@ tabela `admins` não tem papel/permissão nenhum; é uma REF própria).
 
 ## Testes e evidências
 
-- `npm run build`: limpo (585,52 kB).
-- `npm run test:domain`: 100% verde (inclui `test:guest-identity`, 7/7 novos).
-- `npm run test:e2e` (suíte completa, chromium): **111/111 verdes** (era 107 antes desta REF — 4 specs
-  novos: guest lembrado, cache não vaza pro logado, e os 2 de Minha Conta do Admin). 1 falha
-  encontrada na 1ª rodada foi bug de asserção do próprio teste novo (locator `.or()` casando com 2
-  elementos simultâneos) — corrigido, não era regressão de produto; 2ª rodada 100% verde.
+- `npm run build`: limpo (585,65 kB).
+- `npm run test:domain`: 100% verde (inclui `test:guest-identity`, 11/11 — 7 do contrato base + 4 da
+  revisão de TTL/version/logout).
+- `npm run test:e2e` (suíte completa, chromium): **112/112 verdes** (era 107 antes desta REF — 5 specs
+  novos: guest lembrado, cache não vaza pro logado, os 2 de Minha Conta do Admin, logout limpa o cache
+  de visitante). 1 falha encontrada na 1ª rodada foi bug de asserção do próprio teste novo (locator
+  `.or()` casando com 2 elementos simultâneos) — corrigido, não era regressão de produto; rodadas
+  seguintes 100% verdes.
 
 ## Regressões verificadas
 
