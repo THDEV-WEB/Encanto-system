@@ -13,6 +13,7 @@ import { DS } from '../../services/DataService.js';
 import { LOYALTY_EVENT } from '../../services/loyalty/index.js';   // REF-LOYALTY-01: avisa a loja p/ re-buscar o estado oficial
 import { STORE_INFO } from '../../constants/storeInfo.js';
 import { useAddress, AddressSummary } from '../../address/index.js';   // REF-CHECKOUT-ADDRESS-01: FONTE UNICA do endereco
+import { lerGuestIdentity, salvarGuestIdentity } from '../../utils/guestIdentity.js'; // REF-CUSTOMER-01: cache local so p/ visitante
 import { registrarBreadcrumb } from '../../lib/sentry.js'; // REF-OBS-01: no-op sem VITE_SENTRY_DSN
 
 export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode }) {
@@ -21,7 +22,7 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode }) {
      cadastro (que carrega o auth_user_id). Para o cliente LOGADO, a identidade vem da conta e o telefone
      fica TRAVADO (=identidade, ja coletada no 1o acesso) — garante o vinculo, sem re-orfanar o pedido.
      Guest (nao logado) segue 100% editavel: guest checkout intocado. */
-  const { isLogged, customer } = useAuth();
+  const { isLogged, customer, status } = useAuth();
   /* REF-CHECKOUT-ADDRESS-01: o endereco de entrega vem da FONTE UNICA (dominio Address, mesmo objeto do
      header). O checkout NAO tem mais um endereco proprio; edita o mesmo objeto pelo mesmo AddressModal
      (abrirModal). Retirada nao usa endereco de entrega — usa o endereco da loja. */
@@ -34,10 +35,21 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode }) {
   const lojaFechada = !horario.aberto;
   const identidadeTravada = isLogged && !!customer?.phone;
   const [form, setForm] = useState({nome:'',telefone:'',pagamento:'dinheiro',troco:'',obs:''});
+  /* Cliente LOGADO: Supabase (customer) e a FONTE OFICIAL — inalterado. */
   useEffect(() => {
     if (!isLogged || !customer) return;   // guest: nao pre-preenche nada
     setForm(f => ({ ...f, nome: f.nome || customer.name || '', telefone: customer.phone || f.telefone }));
   }, [isLogged, customer]);
+  /* REF-CUSTOMER-01: visitante (SEM conta) — pre-preenche do cache local, so depois que o status de auth
+     resolver definitivamente para 'anon' (nunca durante 'loading', pra nao correr com o efeito acima e
+     acabar preenchendo com o cache de visitante um campo que o customer real ia preencher com OUTRO
+     valor logo em seguida). Nao mescla com o customer: sao fontes mutuamente exclusivas por definicao. */
+  useEffect(() => {
+    if (status !== 'anon') return;
+    const cache = lerGuestIdentity();
+    if (!cache) return;
+    setForm(f => ({ ...f, nome: f.nome || cache.nome, telefone: f.telefone || cache.telefone }));
+  }, [status]);
   const [loading, setLoading] = useState(false);
   const [err,     setErr]     = useState('');   // feedback inline (mesmo padrão do AdminLogin)
   const submittingRef = useRef(false);   // trava reentrância (duplo clique / envio simultâneo)
@@ -88,6 +100,9 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode }) {
       return;
     }
     registrarBreadcrumb('checkout: pedido criado', { orderId, itens: cart.items.length, retirada });
+    /* REF-CUSTOMER-01: so cacheia localmente p/ visitante — cliente logado ja tem o Supabase (customer)
+       como fonte oficial, cachear aqui de novo criaria uma segunda fonte permanente do mesmo dado. */
+    if (!isLogged) salvarGuestIdentity(form.nome, form.telefone);
     /* REF-LOYALTY-01: o selo de fidelidade e concedido no BACKEND, DENTRO de create_order (mesma
        transacao do pedido, idempotente por request_id + indice unico). O frontend NAO conta/grava
        selo — apenas avisa a loja para re-buscar o estado oficial (get_my_loyalty) e refletir o novo

@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { AuthContext } from '../contexts/AuthContext.js';
 import { AuthService } from '../services/AuthService.js';
 import { setUsuario, limparUsuario } from '../lib/sentry.js'; // REF-OBS-01: no-op sem VITE_SENTRY_DSN
+import { limparGuestIdentity } from '../utils/guestIdentity.js'; // REF-CUSTOMER-01: fonte unica (Supabase encerra o cache de visitante)
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
@@ -19,6 +20,11 @@ export function AuthProvider({ children }) {
     const cust = await AuthService.getMeuCustomer(s.user.id);
     setCustomer(cust);
     setPrecisaTelefone(!cust?.phone);   // 1o acesso (sem telefone) -> pedir telefone uma vez
+    /* REF-CUSTOMER-01: a partir daqui o Supabase (cust) e a fonte OFICIAL — encerra qualquer cache local
+       de visitante (nunca duas fontes permanentes para o mesmo nome/telefone). So quando cust.phone
+       existe de verdade (customer JA vinculado); enquanto precisaTelefone for true, o cache continua
+       vivo de propósito (CompletarCadastro.jsx ainda pode reaproveita-lo para pre-preencher o 1o cadastro). */
+    if (cust?.phone) limparGuestIdentity();
     // Só id + role — nunca telefone/nome/e-mail do cliente (PII) chegam ao Sentry.
     setUsuario(cust?.id ?? s.user.id, { role: 'cliente' });
   }, []);

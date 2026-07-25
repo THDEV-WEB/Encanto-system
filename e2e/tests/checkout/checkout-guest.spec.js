@@ -47,6 +47,34 @@ test.describe('checkout guest', { tag: '@writes' }, () => {
     await expect(page.getByRole('heading', { name: /sucesso/i })).toBeVisible();
   });
 
+  test('guest tem nome/telefone lembrados no pedido seguinte (fix REF-CUSTOMER-01)', async ({ storePage, productModal, cartSidebar, checkoutPage, page }) => {
+    await forcarStoreMode('OPEN');
+    await storePage.goto();
+    await storePage.selecionarRetirada();
+    await storePage.openProduct(PRODUTO_FIXTURE_ID);
+    await productModal.adicionar();
+    await storePage.openCart();
+    await cartSidebar.goToCheckout();
+    await expect(checkoutPage.submitButton).toBeEnabled({ timeout: 15_000 });
+
+    const nome = `${PREFIXO_TESTE}Recorrente`;
+    const telefone = telefoneUnico();
+    await checkoutPage.preencher({ nome, telefone });
+    await checkoutPage.finalizar();
+    await expect(page.getByRole('heading', { name: /sucesso/i })).toBeVisible();
+
+    // 2º pedido, MESMO contexto (mesmo localStorage do navegador) — nome/telefone já vêm preenchidos,
+    // sem o cliente precisar redigitar (causa raiz: cache local de visitante nunca existiu para guest).
+    await storePage.goto();
+    await storePage.selecionarRetirada();
+    await storePage.openProduct(PRODUTO_FIXTURE_ID);
+    await productModal.adicionar();
+    await storePage.openCart();
+    await cartSidebar.goToCheckout();
+    await expect(checkoutPage.nomeInput).toHaveValue(nome, { timeout: 8_000 });
+    await expect(checkoutPage.telefoneInput).toHaveValue(telefone, { timeout: 8_000 });
+  });
+
   test('loja fechada bloqueia o checkout (gate de horário)', async ({ storePage, productModal, cartSidebar, checkoutPage, page }) => {
     await forcarStoreMode('CLOSED');
     await storePage.goto(); // useBusinessHours lê o modo oficial no mount — nada de esperar o polling de 30s

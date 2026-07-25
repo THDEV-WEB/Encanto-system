@@ -4,11 +4,17 @@
 import { useState } from 'react';
 import { useAuth } from '../../hooks/useAuth.js';
 import { ScreenModal } from './ScreenModal.jsx';
+import { lerGuestIdentity } from '../../utils/guestIdentity.js'; // REF-CUSTOMER-01: reaproveita o que ja foi digitado como visitante
 
 export function CompletarCadastro() {
   const { isLogged, precisaTelefone, completarCadastro, user } = useAuth();
-  const [nome, setNome] = useState('');
-  const [tel, setTel] = useState('');
+  /* REF-CUSTOMER-01: se o visitante ja tinha digitado nome/telefone num pedido guest anterior (mesmo
+     navegador), reaproveita aqui — e o UNICO lugar que escreve esses dados no Supabase (linkCustomer),
+     entao isto e a "migracao" do cache local pra fonte oficial. Sucesso aqui -> carregarCustomer roda
+     com cust.phone preenchido -> AuthProvider ja limpa o cache local (nao duplicado aqui). */
+  const guestCache = lerGuestIdentity();
+  const [nome, setNome] = useState(guestCache?.nome || '');
+  const [tel, setTel] = useState(guestCache?.telefone || '');
   const [erro, setErro] = useState('');
   const [busy, setBusy] = useState(false);
   const [dispensado, setDispensado] = useState(false);

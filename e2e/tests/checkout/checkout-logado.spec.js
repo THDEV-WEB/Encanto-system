@@ -60,4 +60,35 @@ test.describe('checkout logado', { tag: '@writes' }, () => {
 
     await context.close();
   });
+
+  test('cache local de visitante NUNCA sobrescreve o customer logado (fonte única, fix REF-CUSTOMER-01)', async ({ browser, baseURL }) => {
+    await forcarStoreMode('OPEN');
+    const context = await contextClienteFixture(browser, baseURL);
+    test.skip(!context, 'ambiente de E2E não configurado (.env.e2e)');
+
+    // Simula um cache de visitante DIVERGENTE já presente nesta aba (ex.: alguém usou este navegador
+    // como guest antes de logar) — se existisse uma 2ª fonte de verdade, isto vazaria pro formulário.
+    await context.addInitScript(() => {
+      window.localStorage.setItem('encanto_guest_identity', JSON.stringify({ nome: 'Visitante Divergente', telefone: '11999998888' }));
+    });
+
+    const page = await context.newPage();
+    const storePage = new StorePage(page);
+    const productModal = new ProductModalPage(page);
+    const cartSidebar = new CartSidebarPage(page);
+    const checkoutPage = new CheckoutPagePO(page);
+
+    await storePage.goto();
+    await storePage.selecionarRetirada();
+    await storePage.openProduct(PRODUTO_FIXTURE_ID);
+    await productModal.adicionar();
+    await storePage.openCart();
+    await cartSidebar.goToCheckout();
+
+    // O customer da CONTA (Supabase) vence — o cache de visitante divergente é ignorado por completo.
+    await expect(checkoutPage.nomeInput).toHaveValue(CLIENTE_FIXTURE.nome);
+    await expect(checkoutPage.telefoneInput).toHaveValue(CLIENTE_FIXTURE.telefone);
+
+    await context.close();
+  });
 });
