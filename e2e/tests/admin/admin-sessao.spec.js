@@ -138,8 +138,11 @@ test.describe('sessão do Admin', { tag: '@writes' }, () => {
     // Simula reabrir pelo link com hash (ex.: favorito) enquanto a sessão do 1º login ainda é válida.
     await adminLoginPage.goto();
 
-    await expect(adminPanel.tab('dashboard')).toBeVisible();
+    // REF-CUSTOMER-01 · Parte 2: NUNCA deve renderizar o formulário de login (nem por um instante) quando
+    // já existe sessão válida — checado logo após a navegação, ANTES de esperar o painel, exatamente a
+    // janela onde o "flash" antigo aparecia. Se voltar a acontecer, o formulário reaparece aqui.
     await expect(page.locator('[data-testid="admin-login-senha"]')).toHaveCount(0);
+    await expect(adminPanel.tab('dashboard')).toBeVisible();
   });
 
   test('sessão forjada não trava o boot — tela de login aparece normalmente', async ({ browser, baseURL }) => {

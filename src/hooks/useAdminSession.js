@@ -42,7 +42,16 @@
    continua no painel"). Só é marcado quando o próprio usuário entra no fluxo (hash/engrenagem/login
    bem-sucedido) e só é limpo num logout real (nunca no "← Ver loja", que continua sendo uma prévia).
    A promoção para mode='admin' (promoverSeAutorizado) nunca mais parte de mode='store' — só de
-   'login'/'checking', que só existem quando o usuário (ou uma aba já dentro do fluxo) pediu. */
+   'login'/'checking', que só existem quando o usuário (ou uma aba já dentro do fluxo) pediu.
+
+   REFINO VISUAL DO LOGIN (REF-CUSTOMER-01 · Parte 2): a máquina de estados acima (mode/gate/flow-flag)
+   NÃO MUDA NESTA REF — só a APRESENTAÇÃO durante 'login'. Achado: engrenagem/hash com sessão já válida
+   mostrava o FORMULÁRIO de login por uma fração de segundo antes de promover pra 'admin' (network
+   round-trip do getSession()+is_admin()) — sensação de "pisca"/glitch. Fix: `verificandoSessao`, um
+   sinal PURAMENTE de UI (não é um novo mode, não afeta nenhuma regra de promoção) — true só quando
+   mode==='login' E há evidência de sessão salva (possivelSessaoAdmin()); AdminLogin.jsx troca o
+   formulário por um "Verificando sessão..." (reaproveita AdminSessionChecking) enquanto for true. Sem
+   sessão salva, verificandoSessao nunca liga — formulário aparece imediato, sem nenhum atraso. */
 import { useState, useEffect, useCallback } from 'react';
 import { db } from '../lib/supabase.js';
 import { ADMIN_AUTH_STORAGE_KEY, ADMIN_FLOW_SESSION_KEY } from '../constants/authStorage.js';
@@ -104,6 +113,7 @@ export function useAdminSession() {
     return (estaNoFluxoAdmin() && possivelSessaoAdmin()) ? 'checking' : 'store';
   });
   const [admin, setAdmin] = useState(null);
+  const [verificandoSessao, setVerificandoSessao] = useState(false); // REF-CUSTOMER-01 · Parte 2: só UI
 
   /* REF-REGRESSION-01 · P1: promove pra 'admin' SÓ depois de confirmar is_admin() — nunca só por
      existir sessão. autorizado===false é fail-safe: uma sessão Supabase válida mas sem privilégio
@@ -167,8 +177,12 @@ export function useAdminSession() {
   useEffect(() => {
     if ((mode !== 'login' && mode !== 'checking') || !db) return undefined;
     let vivo = true;
+    /* REF-CUSTOMER-01 · Parte 2: só liga o "Verificando sessão..." quando HÁ evidência de sessão salva —
+       sem isso, ligar o sinal seria um spinner gratuito para quem nunca logou (o caso comum). */
+    if (mode === 'login' && possivelSessaoAdmin()) setVerificandoSessao(true);
     db.auth.getSession().then(({ data }) => {
       if (!vivo) return;
+      setVerificandoSessao(false); // resolveu (positivo ou negativo) — encerra a apresentação de "verificando"
       if (data?.session) promoverSeAutorizado(data.session);
       else setMode((m) => (m === 'checking' ? 'store' : m));
     });
@@ -194,5 +208,5 @@ export function useAdminSession() {
     setMode('store');
   }, []);
 
-  return { mode, admin, entrar, abrirLogin, verLoja, sair };
+  return { mode, admin, entrar, abrirLogin, verLoja, sair, verificandoSessao };
 }

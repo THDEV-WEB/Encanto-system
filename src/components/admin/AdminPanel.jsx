@@ -8,8 +8,9 @@ import { AdminStatus } from './AdminStatus.jsx';
 import { AdminDeliveryEta } from './AdminDeliveryEta.jsx';   // REF-DELIVERY-01: config do tempo de entrega
 import { AdminFidelidade } from './AdminFidelidade.jsx';
 import { AdminHealth } from './AdminHealth.jsx';
+import { AdminMinhaConta } from './AdminMinhaConta.jsx'; // REF-CUSTOMER-01 · Parte 3
 
-export function AdminPanel({ onExit, onLogout }) {
+export function AdminPanel({ admin, onExit, onLogout }) {
   const [tab, setTab] = useState('dashboard');
   const tabs = [
     {id:'dashboard', icon:'📊', label:'Dashboard'},
@@ -20,8 +21,9 @@ export function AdminPanel({ onExit, onLogout }) {
     {id:'status',    icon:'🏪', label:'Status'},
     {id:'fidelidade',icon:'🎁', label:'Fidelidade'},
     {id:'saude',     icon:'🩺', label:'Saúde'},
+    {id:'minhaconta',icon:'👤', label:'Minha Conta'},
   ];
-  const titles = {dashboard:'Dashboard',pedidos:'Pedidos',products:'Produtos',categorias:'Categorias',adicionais:'Adicionais',status:'Status da Loja',fidelidade:'Fidelidade',saude:'Saúde do Sistema'};
+  const titles = {dashboard:'Dashboard',pedidos:'Pedidos',products:'Produtos',categorias:'Categorias',adicionais:'Adicionais',status:'Status da Loja',fidelidade:'Fidelidade',saude:'Saúde do Sistema',minhaconta:'Minha Conta'};
   return (
     <div className="admin-layout">
       <div className="admin-sidebar">
@@ -54,6 +56,7 @@ export function AdminPanel({ onExit, onLogout }) {
           {tab==='status'     && <><AdminStatus/><AdminDeliveryEta/></>}
           {tab==='fidelidade' && <AdminFidelidade/>}
           {tab==='saude'      && <AdminHealth/>}
+          {tab==='minhaconta' && <AdminMinhaConta admin={admin}/>}
         </div>
       </div>
     </div>

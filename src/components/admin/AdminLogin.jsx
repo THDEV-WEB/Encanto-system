@@ -1,12 +1,18 @@
 import { useState } from 'react';
 import { db } from '../../lib/supabase.js';
 import { registrarBreadcrumb } from '../../lib/sentry.js'; // REF-OBS-01: no-op sem VITE_SENTRY_DSN
+import { AdminSessionChecking } from './AdminSessionChecking.jsx'; // REF-CUSTOMER-01 · Parte 2: mesmo estado visual do F5 no painel
 
-export function AdminLogin({ onLogin }) {
+export function AdminLogin({ onLogin, verificandoSessao }) {
   const [email,   setEmail]   = useState('as992203620@gmail.com');
   const [pass,    setPass]    = useState('');
   const [err,     setErr]     = useState('');
   const [loading, setLoading] = useState(false);
+  /* REF-CUSTOMER-01 · Parte 2: enquanto o hook confirma uma sessão salva plausível, mostra o mesmo
+     estado neutro do F5-dentro-do-painel em vez do formulário — elimina o "flash" de login para quem
+     já está autenticado. `mode` continua 'login' o tempo todo (nenhuma mudança na máquina de estados
+     da REF-AUTH-02); isto é só a apresentação. Sem sessão salva, verificandoSessao nunca liga. */
+  if (verificandoSessao) return <AdminSessionChecking/>;
   const login = async () => {
     if (!pass) { setErr('Digite a senha'); return; }
     if (!db)   { setErr('Supabase indisponível. Recarregue a página.'); return; }

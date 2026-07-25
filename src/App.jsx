@@ -104,11 +104,11 @@ import { useAdminSession } from './hooks/useAdminSession.js'; // REF-ADMIN-01 ·
 let _cpApp = false;
 function App() {
   if (!_cpApp) { _cpApp = true; try { if (typeof window !== 'undefined' && window.__ENC_BOOT__ && window.__ENC_BOOT__.step) window.__ENC_BOOT__.step('CP-App-render', 'App() render-phase'); } catch { /* noop */ } }
-  const { mode, entrar, abrirLogin, verLoja, sair } = useAdminSession();
+  const { mode, admin, entrar, abrirLogin, verLoja, sair, verificandoSessao } = useAdminSession();
 
   let content;
-  if (mode==='login')         content = <AdminLogin onLogin={entrar}/>;
-  else if (mode==='admin')    content = <AdminPanel onExit={verLoja} onLogout={sair}/>;
+  if (mode==='login')         content = <AdminLogin onLogin={entrar} verificandoSessao={verificandoSessao}/>;
+  else if (mode==='admin')    content = <AdminPanel admin={admin} onExit={verLoja} onLogout={sair}/>;
   /* REF-ADMIN-02 · Onda 2: 'checking' so aparece quando ha uma sessao de Admin salva no navegador
      ainda sendo confirmada — nao monta nem a Loja nem o Admin, elimina o flash. */
   else if (mode==='checking') content = <AdminSessionChecking/>;
