@@ -1,10 +1,10 @@
 /* e2e/tests/admin/admin-logout.spec.js — REF-E2E-03 · Onda 1 (@writes) · reescrito na REF-ADMIN-01 ·
-   Onda 2 (fix: logout que não deslogava).
+   Onda 2 (fix: logout que não deslogava) · ajustado na REF-STABILITY-02 (reload sempre volta pra Loja).
    Achado original (REF-E2E-03, ADR §1.2): "Sair" (sidebar) e "← Ver loja" (topo) chamavam o MESMO
    handler `onExit` (App.jsx) — só trocava o `mode` de volta para 'store', sem chamar
    db.auth.signOut() nunca. REF-ADMIN-01 · Onda 2 separou os dois comportamentos (useAdminSession.js):
-   "Ver loja" continua só trocando de tela (prévia — sessão do Supabase permanece válida, F5 depois
-   volta para o Admin, ver admin-sessao.spec.js); "Sair" agora chama signOut() de verdade.
+   "Ver loja" continua só trocando de tela (prévia — sessão do Supabase permanece válida); "Sair" agora
+   chama signOut() de verdade.
 
    Prova por rede (POST .../auth/v1/logout via page.route), não só navegação — se algum dia esses
    handlers voltarem a se misturar, este teste quebra. */
@@ -29,8 +29,15 @@ test.describe('sair do Admin', { tag: '@writes' }, () => {
     await expect(page.locator('.header')).toBeVisible(); // loja renderizou
     expect(logoutChamado).toBe(false);
 
-    // A sessão continua válida: um F5 agora volta direto para o Admin (não pede login de novo).
+    // REF-STABILITY-02: um F5 SEMPRE volta pra Loja agora (nenhuma exceção pro Admin) — a sessão
+    // continua válida (persistência normal), então "Entrar" depois reaproveita sem pedir senha de novo.
     await page.reload();
+    await expect(page.locator('[data-prod]').first()).toBeVisible();
+    await expect(adminPanel.tab('dashboard')).toHaveCount(0);
+
+    await page.locator('[data-testid="header-admin-btn"]').click();
+    await expect(page.locator('[data-testid="admin-login-senha"]')).toBeVisible();
+    await adminLoginPage.submitButton.click();
     await expect(adminPanel.tab('dashboard')).toBeVisible();
   });
 

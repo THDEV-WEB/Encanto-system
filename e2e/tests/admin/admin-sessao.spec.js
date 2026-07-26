@@ -1,27 +1,28 @@
 /* e2e/tests/admin/admin-sessao.spec.js — REF-E2E-03 · Onda 1 (@writes) · reescrito na REF-ADMIN-01 ·
-   Onda 2 (fix: restauração de sessão do Admin).
-   Achado original (REF-E2E-03, ADR §1.2): nenhum código chamava db.auth.getSession()/
-   onAuthStateChange() fora de AdminLogin.jsx, e App.jsx só entrava em mode='admin' via onLogin(). Um
-   reload no meio do painel remontava o React do zero; o hash '#admin-encanto' já tinha sido limpo via
-   history.replaceState no 1º mount, então o F5 (sem hash na URL) inicializava mode='store' — caía na
-   LOJA, mesmo com o token do Supabase ainda válido em localStorage.
+   Onda 2, depois na REF-STABILITY-01, e agora na REF-STABILITY-02 (mudança de comportamento — decisão
+   do dono, substitui as duas anteriores nesta parte específica).
 
-   REF-ADMIN-01 · Onda 2 corrigiu via hooks/useAdminSession.js: getSession() no mount (espelha o
-   padrão já usado por AuthProvider/AuthService do lado do cliente) restaura mode='admin' quando há
-   sessão válida vinda de mode='login' (hash '#admin-encanto' ou engrenagem, enquanto já autenticado —
-   não precisa digitar senha de novo) ou 'checking' (F5 dentro do painel). onAuthStateChange mantém o
-   modo sincronizado se a sessão cair (ex.: refresh token revogado) enquanto o Admin está aberto — sem
-   loop, uma única transição para 'store'.
+   NOVO COMPORTAMENTO (REF-STABILITY-02): a sessão do Admin no Supabase continua persistindo
+   normalmente, mas NUNCA MAIS decide sozinha qual tela aparece — nem no boot, nem num F5, nem ao entrar
+   no fluxo admin (engrenagem/hash). Todo bootstrap SEMPRE abre a Loja; engrenagem/hash SEMPRE abrem a
+   tela de LOGIN (com o formulário, nunca mais uma tela "verificando sessão" escondendo-o); só o clique
+   explícito em "Entrar" consulta/reaproveita uma sessão válida (sem pedir credencial de novo) — sem
+   sessão válida, cai no login normal por e-mail/senha.
 
-   REF-ADMIN-03 · Onda 2: `db` ganhou storageKey EXPLÍCITO (constants/authStorage.js) — este spec
-   importa a MESMA constante em vez de reconstruir a chave default do supabase-js a partir da URL
-   (dependência implícita eliminada dos dois lados, produção e teste, não só de um).
+   Isso INVERTE várias asserções das duas gerações anteriores desta suíte:
+   - Antes (REF-AUTH-02/ADMIN-01): engrenagem/hash com sessão válida iam DIRETO pro painel.
+     Agora: mostram o formulário; só "Entrar" promove.
+   - Antes (REF-ADMIN-02): F5 dentro do painel ('checking') mantinha o Admin sem novo clique.
+     Agora: F5 sempre volta pra Loja — "Entrar" depois reaproveita a sessão sem pedir senha.
+   - Antes (REF-STABILITY-01): formulário "nunca entra no DOM, nem por 1 frame" com sessão válida
+     (escondido atrás de 'verificando sessão'). Agora: o formulário É PRA aparecer sempre — o que se
+     prova agora é o INVERSO: ele nunca é pulado sem o clique.
+   - O teste "reload nunca busca o catálogo da Loja" (REF-ADMIN-02) foi RETIRADO: seu objetivo era
+     provar que a Loja não chegava a montar num F5 com sessão salva — hoje isso é o comportamento
+     ESPERADO (a Loja sempre monta num F5), então a premissa do teste deixou de existir.
 
-   REF-AUTH-02: a restauração NUNCA mais parte de mode='store' — só de 'login'/'checking' (o usuário
-   precisa ter entrado no fluxo admin primeiro: engrenagem/hash). Uma sessão salva sozinha não decide
-   mais a tela inicial (1º teste desta suíte); os specs que testam sessão pré-existente injetada via
-   storageState agora clicam a engrenagem (`[data-testid="header-admin-btn"]`) explicitamente antes de
-   esperar o painel. */
+   REF-ADMIN-03 · Onda 2: `db` tem storageKey EXPLÍCITO (constants/authStorage.js) — este spec importa
+   a MESMA constante em vez de reconstruir a chave default do supabase-js a partir da URL. */
 import { test, expect } from '../../fixtures/index.js';
 import { AdminLoginPage } from '../../pages/AdminLoginPage.js';
 import { AdminPanelPage } from '../../pages/AdminPanel.page.js';
@@ -55,47 +56,51 @@ function sessaoAdminForjada() {
   };
 }
 
+/* Injeta uma sessão de Admin REAL (fixture) em localStorage, sob a chave oficial, numa aba nova. */
+async function contextComSessaoAdmin(browser, baseURL) {
+  const anon = supabaseAnon();
+  const { data, error } = await anon.auth.signInWithPassword({ email: ADMIN_FIXTURE.email, password: ADMIN_FIXTURE.senha });
+  if (error || !data?.session) throw new Error(`[e2e] login do admin fixture falhou: ${error?.message || 'sem sessão'}`);
+  return browser.newContext({
+    storageState: {
+      cookies: [],
+      origins: [{
+        origin: new URL(baseURL).origin,
+        localStorage: [{ name: ADMIN_AUTH_STORAGE_KEY, value: JSON.stringify(data.session) }],
+      }],
+    },
+  });
+}
+
 test.describe('sessão do Admin', { tag: '@writes' }, () => {
-  test('domínio principal SEMPRE abre a Loja, mesmo com sessão de Admin válida salva (fix REF-AUTH-02)', async ({ browser, baseURL }) => {
+  test('domínio principal SEMPRE abre a Loja; engrenagem SEMPRE mostra o login; "Entrar" reaproveita sessão válida', async ({ browser, baseURL }) => {
     test.skip(!E2E_ENV_PRONTO, 'ambiente de E2E não configurado (.env.e2e)');
 
-    // Achado real em produção: uma sessão de Admin válida em localStorage bastava para o domínio
-    // principal abrir o painel direto, sem o usuário nunca ter clicado na engrenagem nem navegado
-    // para o hash. Sessão salva (autenticação) e "o usuário escolheu entrar no fluxo admin"
-    // (autorização de TELA, não de dado) são conceitos diferentes — este teste prova que a mera
-    // existência da sessão nunca mais decide a tela inicial sozinha.
-    const anon = supabaseAnon();
-    const { data, error } = await anon.auth.signInWithPassword({ email: ADMIN_FIXTURE.email, password: ADMIN_FIXTURE.senha });
-    if (error || !data?.session) throw new Error(`[e2e] login do admin fixture falhou: ${error?.message || 'sem sessão'}`);
-
-    const context = await browser.newContext({
-      storageState: {
-        cookies: [],
-        origins: [{
-          origin: new URL(baseURL).origin,
-          localStorage: [{ name: ADMIN_AUTH_STORAGE_KEY, value: JSON.stringify(data.session) }],
-        }],
-      },
-    });
+    const context = await contextComSessaoAdmin(browser, baseURL);
     const page = await context.newPage();
     const storePage = new StorePage(page);
-    await storePage.goto(); // domínio principal, sem hash, aba nova (nunca entrou no fluxo admin)
+    await storePage.goto(); // domínio principal, sem hash, aba nova
 
     // A Loja abre direto — a sessão salva não decide a tela inicial sozinha.
     await expect(page.locator('[data-prod]').first()).toBeVisible();
     await expect(page.locator('[data-testid="admin-tab-dashboard"]')).toHaveCount(0);
 
-    // Ao entrar explicitamente no fluxo (engrenagem), a sessão ainda válida abre o painel direto,
-    // sem pedir login de novo — persistência de sessão só evita repetir o login DEPOIS da escolha.
+    // Engrenagem: SEMPRE mostra o formulário de login primeiro — nunca pula pro painel sozinha,
+    // mesmo com sessão válida salva (regressão-alvo desta ref: promoção sem clique explícito).
     await page.locator('[data-testid="header-admin-btn"]').click();
     const adminPanel = new AdminPanelPage(page);
+    await expect(page.locator('[data-testid="admin-login-senha"]')).toBeVisible();
+    await expect(adminPanel.tab('dashboard')).toHaveCount(0);
+
+    // Só o clique em "Entrar" consulta a sessão — reaproveita sem pedir credencial de novo.
+    const adminLoginPage = new AdminLoginPage(page);
+    await adminLoginPage.submitButton.click();
     await expect(adminPanel.tab('dashboard')).toBeVisible();
-    await expect(page.locator('[data-testid="admin-login-senha"]')).toHaveCount(0);
 
     await context.close();
   });
 
-  test('reload no meio do painel mantém o Admin autenticado (fix REF-ADMIN-01 · Onda 2)', async ({ adminLoginPage, adminPanel, page }) => {
+  test('reload no meio do painel SEMPRE volta para a Loja; "Entrar" reaproveita a sessão sem pedir senha de novo', async ({ adminLoginPage, adminPanel, page }) => {
     test.skip(!E2E_ENV_PRONTO, 'ambiente de E2E não configurado (.env.e2e)');
 
     await adminLoginPage.goto();
@@ -104,31 +109,18 @@ test.describe('sessão do Admin', { tag: '@writes' }, () => {
 
     await page.reload();
 
-    await expect(adminPanel.tab('dashboard')).toBeVisible(); // sessão restaurada, sem pedir login de novo
-    await expect(page.locator('[data-testid="admin-login-senha"]')).toHaveCount(0);
-  });
+    // REF-STABILITY-02: nenhuma exceção mais para "F5 dentro do painel" — todo bootstrap abre a Loja.
+    await expect(page.locator('[data-prod]').first()).toBeVisible();
+    await expect(adminPanel.tab('dashboard')).toHaveCount(0);
 
-  test('reload com sessão de Admin salva nunca busca o catálogo da Loja (fix REF-ADMIN-02 · Onda 2 — flash)', async ({ adminLoginPage, adminPanel, page }) => {
-    test.skip(!E2E_ENV_PRONTO, 'ambiente de E2E não configurado (.env.e2e)');
-
-    await adminLoginPage.goto();
-    await adminLoginPage.login(ADMIN_FIXTURE.email, ADMIN_FIXTURE.senha);
+    // A sessão continua válida (persistência normal): engrenagem + Entrar restaura sem digitar senha.
+    await page.locator('[data-testid="header-admin-btn"]').click();
+    await expect(page.locator('[data-testid="admin-login-senha"]')).toBeVisible();
+    await adminLoginPage.submitButton.click();
     await expect(adminPanel.tab('dashboard')).toBeVisible();
-
-    // Achado (ADR REF-ADMIN-01, limitação conhecida): antes, o 1º render de um reload SEMPRE assumia
-    // mode='store' até getSession() resolver — StoreApp montava e useCategories/useProducts disparavam
-    // esses 2 fetches imediatamente. Prova por rede (não por timing): se o fix (mode='checking' isolado)
-    // funciona, a Loja nunca chega a montar entre o reload e o painel reaparecer — zero chamadas.
-    let chamouCatalogoDaLoja = false;
-    await page.route('**/rest/v1/products**', (route) => { chamouCatalogoDaLoja = true; return route.continue(); });
-    await page.route('**/rest/v1/categories**', (route) => { chamouCatalogoDaLoja = true; return route.continue(); });
-
-    await page.reload();
-    await expect(adminPanel.tab('dashboard')).toBeVisible(); // sessão restaurada (dashboard não usa products/categories)
-    expect(chamouCatalogoDaLoja).toBe(false);
   });
 
-  test('acessar #admin-encanto já autenticado pula a tela de login direto para o painel', async ({ adminLoginPage, adminPanel, page }) => {
+  test('acessar #admin-encanto já autenticado MOSTRA o login (não pula mais pro painel); "Entrar" reaproveita a sessão', async ({ adminLoginPage, adminPanel, page }) => {
     test.skip(!E2E_ENV_PRONTO, 'ambiente de E2E não configurado (.env.e2e)');
 
     await adminLoginPage.goto();
@@ -136,104 +128,45 @@ test.describe('sessão do Admin', { tag: '@writes' }, () => {
     await expect(adminPanel.tab('dashboard')).toBeVisible();
 
     // Simula reabrir pelo link com hash (ex.: favorito) enquanto a sessão do 1º login ainda é válida.
+    // Navega para about:blank primeiro: uma 2ª ida direto para a MESMA origem só mudando o hash é
+    // navegação same-document no navegador (não recarrega, só dispara hashchange) — o app nunca
+    // remontaria, e o teste passaria "de graça" sem provar nada sobre o mount novo.
+    await page.goto('about:blank');
     await adminLoginPage.goto();
 
-    // REF-CUSTOMER-01 · Parte 2: NUNCA deve renderizar o formulário de login (nem por um instante) quando
-    // já existe sessão válida — checado logo após a navegação, ANTES de esperar o painel, exatamente a
-    // janela onde o "flash" antigo aparecia. Se voltar a acontecer, o formulário reaparece aqui.
-    await expect(page.locator('[data-testid="admin-login-senha"]')).toHaveCount(0);
+    // REF-STABILITY-02: o hash é só um atalho para a TELA de login — nunca pula a etapa de "Entrar",
+    // mesmo com sessão válida. Formulário aparece; painel só depois do clique.
+    await expect(page.locator('[data-testid="admin-login-senha"]')).toBeVisible();
+    await expect(adminPanel.tab('dashboard')).toHaveCount(0);
+
+    await adminLoginPage.submitButton.click();
     await expect(adminPanel.tab('dashboard')).toBeVisible();
   });
 
-  /* FIX (achado REF-STABILITY-01): os testes acima checam admin-login-senha via `toHaveCount(0)|
-     toBeVisible()` — asserções com POLLING (retry), incapazes de flagrar um "vulto" de UM frame só
-     (a janela real do bug: verificandoSessao nascia false e só virava true 1 render depois, num
-     useEffect pós-paint — ~16ms). É por isso que a suíte ficava 100% verde com a regressão presente.
-     Fix aqui: MutationObserver ligado ANTES da navegação/clique, que grava se o formulário alguma vez
-     entrou no DOM — não importa por quantos ms, nem se o polling do Playwright "passou por cima". */
-  async function nuncaInseriuFormularioDeLogin(page, disparar) {
-    await page.evaluate(() => {
-      window.__viuLoginForm = false;
-      const obs = new MutationObserver(() => {
-        if (document.querySelector('[data-testid="admin-login-senha"]')) window.__viuLoginForm = true;
-      });
-      obs.observe(document.documentElement, { childList: true, subtree: true });
-      window.__obsLoginForm = obs; // referência viva — não pode ser coletado antes da checagem
-    });
-    await disparar();
-    return page.evaluate(() => window.__viuLoginForm);
-  }
-
-  test('gear com sessão já válida: formulário de login NUNCA entra no DOM, nem por 1 frame (fix REF-STABILITY-01)', async ({ browser, baseURL }) => {
+  test('gear/hash com sessão válida: nunca promove sem o clique em "Entrar" (regressão-alvo desta ref)', async ({ browser, baseURL }) => {
     test.skip(!E2E_ENV_PRONTO, 'ambiente de E2E não configurado (.env.e2e)');
 
-    const anon = supabaseAnon();
-    const { data, error } = await anon.auth.signInWithPassword({ email: ADMIN_FIXTURE.email, password: ADMIN_FIXTURE.senha });
-    if (error || !data?.session) throw new Error(`[e2e] login do admin fixture falhou: ${error?.message || 'sem sessão'}`);
-
-    const context = await browser.newContext({
-      storageState: {
-        cookies: [],
-        origins: [{
-          origin: new URL(baseURL).origin,
-          localStorage: [{ name: ADMIN_AUTH_STORAGE_KEY, value: JSON.stringify(data.session) }],
-        }],
-      },
-    });
-    const page = await context.newPage();
-    const storePage = new StorePage(page);
-    const adminPanel = new AdminPanelPage(page);
-    await storePage.goto();
-    await expect(page.locator('[data-prod]').first()).toBeVisible();
-
-    const viu = await nuncaInseriuFormularioDeLogin(page, async () => {
-      await page.locator('[data-testid="header-admin-btn"]').click();
-      await expect(adminPanel.tab('dashboard')).toBeVisible();
-    });
-    expect(viu, 'formulário de login apareceu no DOM (mesmo que brevemente) com sessão já válida').toBe(false);
-
-    await context.close();
-  });
-
-  test('hash #admin-encanto já autenticado: formulário de login NUNCA entra no DOM, nem por 1 frame (fix REF-STABILITY-01)', async ({ browser, baseURL }) => {
-    test.skip(!E2E_ENV_PRONTO, 'ambiente de E2E não configurado (.env.e2e)');
-
-    const anon = supabaseAnon();
-    const { data, error } = await anon.auth.signInWithPassword({ email: ADMIN_FIXTURE.email, password: ADMIN_FIXTURE.senha });
-    if (error || !data?.session) throw new Error(`[e2e] login do admin fixture falhou: ${error?.message || 'sem sessão'}`);
-
-    const context = await browser.newContext({
-      storageState: {
-        cookies: [],
-        origins: [{
-          origin: new URL(baseURL).origin,
-          localStorage: [{ name: ADMIN_AUTH_STORAGE_KEY, value: JSON.stringify(data.session) }],
-        }],
-      },
-    });
+    const context = await contextComSessaoAdmin(browser, baseURL);
     const page = await context.newPage();
     const adminPanel = new AdminPanelPage(page);
     const adminLoginPage = new AdminLoginPage(page);
 
-    // liga o observer ANTES da navegação (o mount/1º render acontece durante o goto, não depois)
-    await page.addInitScript(() => {
-      window.__viuLoginForm = false;
-      const obs = new MutationObserver(() => {
-        if (document.querySelector('[data-testid="admin-login-senha"]')) window.__viuLoginForm = true;
-      });
-      obs.observe(document.documentElement, { childList: true, subtree: true });
-      window.__obsLoginForm = obs; // referência viva — MutationObserver sem referência pode ser coletado
-    });
     await adminLoginPage.goto(); // navega direto para a URL com #admin-encanto
-    await expect(adminPanel.tab('dashboard')).toBeVisible();
 
-    const viu = await page.evaluate(() => window.__viuLoginForm);
-    expect(viu, 'formulário de login apareceu no DOM (mesmo que brevemente) via hash com sessão já válida').toBe(false);
+    // Espera um tempo real (não só a asserção seguinte) para dar chance a qualquer promoção em
+    // background acontecer, caso a regressão volte — é exatamente o comportamento antigo que este
+    // teste barra: sessão válida presente NUNCA deve, sozinha, levar ao painel.
+    await page.waitForTimeout(500);
+    await expect(adminPanel.tab('dashboard')).toHaveCount(0);
+    await expect(page.locator('[data-testid="admin-login-senha"]')).toBeVisible();
+
+    await adminLoginPage.submitButton.click();
+    await expect(adminPanel.tab('dashboard')).toBeVisible();
 
     await context.close();
   });
 
-  test('sessão forjada não trava o boot — tela de login aparece normalmente', async ({ browser, baseURL }) => {
+  test('sessão forjada: "Entrar" sem digitar senha falha graciosamente (pede senha), sem travar nem gerar erro JS', async ({ browser, baseURL }) => {
     test.skip(!E2E_ENV_PRONTO, 'ambiente de E2E não configurado (.env.e2e)');
 
     const context = await browser.newContext({
@@ -252,17 +185,20 @@ test.describe('sessão do Admin', { tag: '@writes' }, () => {
     const adminLoginPage = new AdminLoginPage(page);
     await adminLoginPage.goto();
 
-    // useAdminSession AGORA lê essa chave (getSession()) para tentar restaurar — mas um refresh_token
-    // forjado só falha ao tentar renovar (sem lançar) e a sessão vira null: a tela de login continua
-    // aparecendo normalmente, sem travar o boot nem gerar erro não capturado.
+    // Formulário aparece imediato (REF-STABILITY-02 não consulta sessão nenhuma so por abrir a tela).
     await expect(page.locator('#enc-loader')).toHaveCount(0, { timeout: 15_000 });
     await expect(adminLoginPage.emailInput).toBeVisible();
+
+    // Clicar "Entrar" sem senha: tenta reaproveitar a sessão forjada, getSession()/is_admin() falham
+    // ao tentar renovar o refresh_token inválido (sem lançar) — cai no "Digite a senha", nunca trava.
+    await adminLoginPage.submitButton.click();
+    await expect(adminLoginPage.erroMensagem).toHaveText('Digite a senha');
 
     expect(erros, `erros JS não capturados: ${erros.map(String).join('; ')}`).toHaveLength(0);
     await context.close();
   });
 
-  test('sessão salva sob a chave LEGADA (default do supabase-js) é migrada sem forçar relogin (fix REF-ADMIN-03 · Onda 2)', async ({ browser, baseURL }) => {
+  test('sessão salva sob a chave LEGADA (default do supabase-js) é migrada e reaproveitada via "Entrar", sem forçar relogin (fix REF-ADMIN-03 · Onda 2)', async ({ browser, baseURL }) => {
     test.skip(!E2E_ENV_PRONTO, 'ambiente de E2E não configurado (.env.e2e)');
 
     // Sessão REAL do admin fixture (mesmo método que o formulário de login usa por baixo,
@@ -281,15 +217,17 @@ test.describe('sessão do Admin', { tag: '@writes' }, () => {
     const page = await context.newPage();
     const storePage = new StorePage(page);
     const adminPanel = new AdminPanelPage(page);
+    const adminLoginPage = new AdminLoginPage(page);
     await storePage.goto();
 
-    // REF-AUTH-02: domínio principal abre a Loja mesmo com sessão válida salva — a migração da
-    // chave legada acontece em background (lib/supabase.js), mas não decide mais a tela inicial
-    // sozinha. Só ao entrar no fluxo (engrenagem) a sessão migrada evita o relogin.
+    // Domínio principal abre a Loja mesmo com sessão válida salva — a migração da chave legada
+    // acontece em background (lib/supabase.js) no load do módulo, independente da tela mostrada.
     await expect(page.locator('[data-prod]').first()).toBeVisible();
 
     await page.locator('[data-testid="header-admin-btn"]').click();
-    await expect(adminPanel.tab('dashboard')).toBeVisible(); // migrou e restaurou — sem tela de login
+    await expect(page.locator('[data-testid="admin-login-senha"]')).toBeVisible(); // login, não o painel direto
+    await adminLoginPage.submitButton.click();
+    await expect(adminPanel.tab('dashboard')).toBeVisible(); // migrou e restaurou — sem digitar senha
 
     const chaves = await page.evaluate((chaveAntiga) => ({
       nova: window.localStorage.getItem('encanto-admin-auth') !== null,
