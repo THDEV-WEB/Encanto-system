@@ -1,6 +1,6 @@
 # ADR REF-COMPANY-01 — Dados institucionais da empresa (módulo "Dados da Empresa" no Admin)
 
-- **Status:** ✅ **Implementado no código** (frontend + migration escrita). **Migration pendente de aplicação** no Supabase de produção (ambiente de trabalho não tem credenciais de escrita no banco — ver §7).
+- **Status:** ✅ **LIVE.** Migration aplicada pelo dono no SQL editor do Supabase e **verificada ao vivo** via REST (`get_company_info()` devolve o objeto seedado correto; `set_company_info()` via `anon` devolve `42501 permission denied` — escrita corretamente restrita a admin). Ver §7.
 - **Escopo:** nome da empresa, telefone principal, WhatsApp oficial, e-mail institucional, toggle do botão flutuante do WhatsApp. Fundação para crescer (Instagram/Facebook/CNPJ/endereço comercial/PIX/... — ver §6).
 - **Relacionado:** [[REF-CONTACT-01]] (troca pontual do número antigo pelo oficial, imediatamente anterior a esta ref) · [[REF-BUSINESS-HOURS-03]] (store_mode) · [[REF-DELIVERY-01]]/[[REF-DELIVERY-01a]] (delivery_eta_min — molde direto desta arquitetura) · [[REF-LOYALTY-01]] (set_loyalty_config — precedente de RPC multi-campo).
 
@@ -108,11 +108,19 @@ Os próximos candidatos naturais (já com estrutura preparada em `STORE_INFO`, s
 - `tests/company-info.guard.mjs` (`npm run test:company-guard`) — guarda estrutural: `WHATSAPP` nunca reaparece; `STORE_INFO` não volta a guardar nome/telefone/e-mail; `useCompanyInfo` definido em 1 lugar só; os 4 pontos de contato do cliente nunca hardcodeiam `wa.me`/`tel:`; botão flutuante sempre condicional; `companyInfo.js` usa os RPCs dedicados (nunca `get_setting` genérico).
 - Ambos incluídos em `npm run test:domain` (28/28 verde) e `npm run build` limpo.
 
-## 8. Pendência de execução (ambiente de trabalho)
+## 8. Migration — aplicada e verificada ao vivo
 
-A migration [`migrations/REF-COMPANY-01-institutional-info.sql`](../../migrations/REF-COMPANY-01-institutional-info.sql) (+ [rollback](../../migrations/REF-COMPANY-01-institutional-info-rollback.sql)) está escrita, idempotente e versionada, mas **não foi aplicada** ao Supabase de produção — o ambiente de trabalho desta sessão não tinha credenciais de escrita no banco (mesma situação de toda migration anterior neste projeto: aplicação é sempre um passo manual do dono, via SQL editor ou Management API). Até a aplicação:
+A migration [`migrations/REF-COMPANY-01-institutional-info.sql`](../../migrations/REF-COMPANY-01-institutional-info.sql) (+ [rollback](../../migrations/REF-COMPANY-01-institutional-info-rollback.sql)) foi aplicada pelo dono no SQL editor do Supabase de produção (o ambiente de trabalho desta sessão não tinha credenciais de escrita no banco — aplicação manual, mesma situação de toda migration anterior neste projeto).
 
-- A loja continua funcionando (modo degradado: `DEFAULT_COMPANY_INFO` em `companyInfoRules.js` cobre os mesmos valores reais de hoje).
-- O Admin (`AdminEmpresa`) vai falhar ao salvar (`set_company_info` ainda não existe) até a migration rodar.
+**Verificação ao vivo via REST (anon key), mesmo método usado em REF-DELIVERY-01:**
 
-**Ação necessária:** aplicar `REF-COMPANY-01-institutional-info.sql` no SQL editor do Supabase (produção). Após aplicar, o Admin já consegue editar e o preview 🟢/🔴 reflete o estado real.
+```
+POST /rest/v1/rpc/get_company_info
+→ {"nome":"Encanto — Açaí & Marmitas","email":"contato@encantoacai.com.br",
+   "telefone":"5547992722920","whatsapp":"5547992722920","whatsappFloatEnabled":true}
+
+POST /rest/v1/rpc/set_company_info  (com anon key)
+→ {"code":"42501","message":"permission denied for function set_company_info"}
+```
+
+Confirma: (a) o objeto seedado está correto e a leitura pública funciona (não cai na armadilha de RLS do `get_setting` genérico); (b) a escrita está corretamente bloqueada para `anon` — só `authenticated` + `is_admin()` consegue gravar. O Admin (`AdminEmpresa`) já pode ser usado normalmente em produção.
