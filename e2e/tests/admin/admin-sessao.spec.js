@@ -145,6 +145,94 @@ test.describe('sessão do Admin', { tag: '@writes' }, () => {
     await expect(adminPanel.tab('dashboard')).toBeVisible();
   });
 
+  /* FIX (achado REF-STABILITY-01): os testes acima checam admin-login-senha via `toHaveCount(0)|
+     toBeVisible()` — asserções com POLLING (retry), incapazes de flagrar um "vulto" de UM frame só
+     (a janela real do bug: verificandoSessao nascia false e só virava true 1 render depois, num
+     useEffect pós-paint — ~16ms). É por isso que a suíte ficava 100% verde com a regressão presente.
+     Fix aqui: MutationObserver ligado ANTES da navegação/clique, que grava se o formulário alguma vez
+     entrou no DOM — não importa por quantos ms, nem se o polling do Playwright "passou por cima". */
+  async function nuncaInseriuFormularioDeLogin(page, disparar) {
+    await page.evaluate(() => {
+      window.__viuLoginForm = false;
+      const obs = new MutationObserver(() => {
+        if (document.querySelector('[data-testid="admin-login-senha"]')) window.__viuLoginForm = true;
+      });
+      obs.observe(document.documentElement, { childList: true, subtree: true });
+      window.__obsLoginForm = obs; // referência viva — não pode ser coletado antes da checagem
+    });
+    await disparar();
+    return page.evaluate(() => window.__viuLoginForm);
+  }
+
+  test('gear com sessão já válida: formulário de login NUNCA entra no DOM, nem por 1 frame (fix REF-STABILITY-01)', async ({ browser, baseURL }) => {
+    test.skip(!E2E_ENV_PRONTO, 'ambiente de E2E não configurado (.env.e2e)');
+
+    const anon = supabaseAnon();
+    const { data, error } = await anon.auth.signInWithPassword({ email: ADMIN_FIXTURE.email, password: ADMIN_FIXTURE.senha });
+    if (error || !data?.session) throw new Error(`[e2e] login do admin fixture falhou: ${error?.message || 'sem sessão'}`);
+
+    const context = await browser.newContext({
+      storageState: {
+        cookies: [],
+        origins: [{
+          origin: new URL(baseURL).origin,
+          localStorage: [{ name: ADMIN_AUTH_STORAGE_KEY, value: JSON.stringify(data.session) }],
+        }],
+      },
+    });
+    const page = await context.newPage();
+    const storePage = new StorePage(page);
+    const adminPanel = new AdminPanelPage(page);
+    await storePage.goto();
+    await expect(page.locator('[data-prod]').first()).toBeVisible();
+
+    const viu = await nuncaInseriuFormularioDeLogin(page, async () => {
+      await page.locator('[data-testid="header-admin-btn"]').click();
+      await expect(adminPanel.tab('dashboard')).toBeVisible();
+    });
+    expect(viu, 'formulário de login apareceu no DOM (mesmo que brevemente) com sessão já válida').toBe(false);
+
+    await context.close();
+  });
+
+  test('hash #admin-encanto já autenticado: formulário de login NUNCA entra no DOM, nem por 1 frame (fix REF-STABILITY-01)', async ({ browser, baseURL }) => {
+    test.skip(!E2E_ENV_PRONTO, 'ambiente de E2E não configurado (.env.e2e)');
+
+    const anon = supabaseAnon();
+    const { data, error } = await anon.auth.signInWithPassword({ email: ADMIN_FIXTURE.email, password: ADMIN_FIXTURE.senha });
+    if (error || !data?.session) throw new Error(`[e2e] login do admin fixture falhou: ${error?.message || 'sem sessão'}`);
+
+    const context = await browser.newContext({
+      storageState: {
+        cookies: [],
+        origins: [{
+          origin: new URL(baseURL).origin,
+          localStorage: [{ name: ADMIN_AUTH_STORAGE_KEY, value: JSON.stringify(data.session) }],
+        }],
+      },
+    });
+    const page = await context.newPage();
+    const adminPanel = new AdminPanelPage(page);
+    const adminLoginPage = new AdminLoginPage(page);
+
+    // liga o observer ANTES da navegação (o mount/1º render acontece durante o goto, não depois)
+    await page.addInitScript(() => {
+      window.__viuLoginForm = false;
+      const obs = new MutationObserver(() => {
+        if (document.querySelector('[data-testid="admin-login-senha"]')) window.__viuLoginForm = true;
+      });
+      obs.observe(document.documentElement, { childList: true, subtree: true });
+      window.__obsLoginForm = obs; // referência viva — MutationObserver sem referência pode ser coletado
+    });
+    await adminLoginPage.goto(); // navega direto para a URL com #admin-encanto
+    await expect(adminPanel.tab('dashboard')).toBeVisible();
+
+    const viu = await page.evaluate(() => window.__viuLoginForm);
+    expect(viu, 'formulário de login apareceu no DOM (mesmo que brevemente) via hash com sessão já válida').toBe(false);
+
+    await context.close();
+  });
+
   test('sessão forjada não trava o boot — tela de login aparece normalmente', async ({ browser, baseURL }) => {
     test.skip(!E2E_ENV_PRONTO, 'ambiente de E2E não configurado (.env.e2e)');
 

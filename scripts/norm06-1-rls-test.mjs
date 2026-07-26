@@ -173,6 +173,28 @@ try {
     `UPDATE public.products SET disponivel=disponivel WHERE id='${pid}'`]);
   out('');
 
+  // ── AUTHENTICATED: DELETE realmente afeta linha (achado REF-STABILITY-01) ──
+  // Gap real: a suíte nunca testava DELETE sob authenticated/admin. expectAllowed só prova "não deu
+  // erro" — mas um DELETE filtrado pela RLS (sessão sem is_admin() no momento) TAMBÉM não dá erro,
+  // só afeta 0 linhas (rowCount) — indistinguível de sucesso sem medir a contagem de verdade. Cobre
+  // a causa raiz investigada em "não consigo excluir um adicional".
+  out('— AUTHENTICATED · DELETE afeta a linha de verdade (rowCount), não só "sem erro" —');
+  for (const [id, tabela, insertSql] of [
+    ['BW5', 'adicionais', `INSERT INTO public.adicionais(nome,grupo,aplica_categoria_id) VALUES('__RLS_DEL_AD','simples','c3') RETURNING id`],
+    ['BW6', 'products', `INSERT INTO public.products(nome) VALUES('__RLS_DEL_PROD') RETURNING id`],
+  ]) {
+    let v = 'FAIL', d = '';
+    await tx('authenticated', async () => {
+      const ins = await client.query(insertSql);
+      const novoId = ins.rows[0].id;
+      const del = await client.query(`DELETE FROM public.${tabela} WHERE id = $1`, [novoId]);
+      v = (del.rowCount === 1) ? 'PASS' : 'FAIL';
+      d = `DELETE afetou ${del.rowCount} linha(s) (esperado 1) — RLS permite exclusão real ao admin, não só "sem erro"`;
+    });
+    record(id, 'authenticated', 'allow', `DELETE ${tabela} (linha própria) afeta 1 linha de verdade`, v, d);
+  }
+  out('');
+
   // ── AUTHENTICATED: NÃO burla as triggers STI (F1B) — o teste pedido ──
   out('— AUTHENTICATED · escrita liberada por RLS NÃO burla as triggers STI (F1B) —');
   await expectDenied('CS1·I1', 'authenticated', 'STI', 'INSERT pc collection_id=business (temp)', [mkBiz],

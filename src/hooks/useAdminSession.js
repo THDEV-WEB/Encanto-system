@@ -94,12 +94,18 @@ async function verificarIsAdmin() {
 }
 
 export function useAdminSession() {
+  /* FIX (achado REF-STABILITY-01 — "vulto" da tela de login ao entrar no Admin): calculado FORA dos
+     useState abaixo, e não dentro do useEffect (que só roda DEPOIS do 1º paint) — ver
+     verificandoSessao logo abaixo. Puro/sem efeito colateral (o efeito colateral de fato, limpar o
+     hash + marcarFluxoAdmin, mora só dentro do useState(mode), que roda 1x no mount); reler em
+     renders seguintes é inofensivo pois os dois initializers só executam na 1ª chamada de cada um. */
+  const veioPorHashAdmin = typeof window !== 'undefined' && window.location.hash === '#admin-encanto';
   const [mode, setMode] = useState(() => {
     /* Acesso por hash #admin-encanto — entrada EXPLÍCITA no fluxo administrativo (equivalente a
        clicar na engrenagem, mas via link/favorito). Sempre 'login': se a sessão salva não se
        confirmar (expirada/inválida), o usuário pediu Admin e deve ver a tela de Login, nunca a Loja
        silenciosamente (ver validação #8 da REF-AUTH-02). */
-    if (typeof window !== 'undefined' && window.location.hash === '#admin-encanto') {
+    if (veioPorHashAdmin) {
       window.history.replaceState(null, '', window.location.pathname);
       marcarFluxoAdmin();
       return 'login';
@@ -113,7 +119,13 @@ export function useAdminSession() {
     return (estaNoFluxoAdmin() && possivelSessaoAdmin()) ? 'checking' : 'store';
   });
   const [admin, setAdmin] = useState(null);
-  const [verificandoSessao, setVerificandoSessao] = useState(false); // REF-CUSTOMER-01 · Parte 2: só UI
+  /* REF-CUSTOMER-01 · Parte 2 criou este sinal, mas ligava via useEffect — sempre 1 frame TARDE
+     DEMAIS (efeitos rodam DEPOIS do commit/paint), deixando escapar exatamente 1 pintura do
+     formulário de login antes de trocar pro "Verificando sessão..." (o "vulto" do achado
+     REF-STABILITY-01). FIX: valor inicial calculado de forma SÍNCRONA, no mesmo instante/render em
+     que mode passa a 'login' (aqui no mount-via-hash; em abrirLogin() logo abaixo, no clique da
+     engrenagem) — a 1ª pintura já nasce correta, sem frame intermediário. */
+  const [verificandoSessao, setVerificandoSessao] = useState(() => veioPorHashAdmin && possivelSessaoAdmin());
 
   /* REF-REGRESSION-01 · P1: promove pra 'admin' SÓ depois de confirmar is_admin() — nunca só por
      existir sessão. autorizado===false é fail-safe: uma sessão Supabase válida mas sem privilégio
@@ -177,14 +189,22 @@ export function useAdminSession() {
   useEffect(() => {
     if ((mode !== 'login' && mode !== 'checking') || !db) return undefined;
     let vivo = true;
-    /* REF-CUSTOMER-01 · Parte 2: só liga o "Verificando sessão..." quando HÁ evidência de sessão salva —
-       sem isso, ligar o sinal seria um spinner gratuito para quem nunca logou (o caso comum). */
-    if (mode === 'login' && possivelSessaoAdmin()) setVerificandoSessao(true);
-    db.auth.getSession().then(({ data }) => {
+    /* FIX (REF-STABILITY-01, achado 1/2): NÃO liga mais verificandoSessao aqui (useEffect roda depois
+       do 1º paint — sempre 1 frame tarde demais, causava o "vulto" do login). Ligar já é
+       responsabilidade SÍNCRONA de quem muda mode para 'login' (useState(mode) no mount-via-hash;
+       abrirLogin() no clique da engrenagem).
+       FIX (REF-STABILITY-01, achado 2/2 — pego pelo teste novo com MutationObserver, não pelas
+       asserções por polling já existentes): desligar verificandoSessao já no callback de
+       getSession() (ANTES de promoverSeAutorizado ter terminado) reabria uma janela real — o
+       formulário de verdade ficava visível durante TODO o round-trip da RPC is_admin() (não é "1
+       frame", é a rede inteira). Await promoverSeAutorizado ANTES de desligar: só some da tela de
+       "Verificando sessão..." quando o desfecho (promovido para admin, recusado, ou mantido em
+       'login' para digitar credencial) já está decidido — nunca no meio do caminho. */
+    db.auth.getSession().then(async ({ data }) => {
       if (!vivo) return;
-      setVerificandoSessao(false); // resolveu (positivo ou negativo) — encerra a apresentação de "verificando"
-      if (data?.session) promoverSeAutorizado(data.session);
+      if (data?.session) await promoverSeAutorizado(data.session);
       else setMode((m) => (m === 'checking' ? 'store' : m));
+      if (vivo) setVerificandoSessao(false);
     });
     return () => { vivo = false; };
   }, [mode, promoverSeAutorizado]);
@@ -199,7 +219,11 @@ export function useAdminSession() {
      verLoja NÃO marca nem limpa — é uma prévia (sessão permanece válida, F5 depois volta pro Admin,
      comportamento pré-existente preservado). sair() é o único logout real — limpa o fluxo também. */
   const entrar = useCallback((u) => { marcarFluxoAdmin(); setAdmin(u); setMode('admin'); }, []);
-  const abrirLogin = useCallback(() => { marcarFluxoAdmin(); setMode('login'); }, []);
+  /* FIX (REF-STABILITY-01): verificandoSessao setado SÍNCRONO, na mesma chamada que muda mode para
+     'login' (React 18 agrupa os dois setStates deste handler num único render) — a 1ª pintura de
+     AdminLogin já nasce sabendo se deve mostrar o formulário ou "Verificando sessão...", sem
+     depender do useEffect (que só resolveria 1 frame depois). */
+  const abrirLogin = useCallback(() => { marcarFluxoAdmin(); setVerificandoSessao(possivelSessaoAdmin()); setMode('login'); }, []);
   const verLoja = useCallback(() => { setMode('store'); }, []);
   const sair = useCallback(async () => {
     if (db) { try { await db.auth.signOut(); } catch { /* best-effort — a UI já sai mesmo se a rede falhar */ } }

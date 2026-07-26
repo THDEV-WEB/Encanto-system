@@ -301,9 +301,19 @@ export const DS = {
   },
   /* FIX (achado REF-REGRESSION-01 · P6, mesmo padrao do delCat/REF-ADMIN-03): antes, ignorava
      r.error e a UI nao tinha como distinguir "excluido" de "falhou" - o item so "voltava" no
-     proximo load(), sem nenhum aviso (indistinguivel de "nao da pra excluir"). */
+     proximo load(), sem nenhum aviso (indistinguivel de "nao da pra excluir").
+     FIX (achado REF-STABILITY-01): checar r.error NAO bastava — RLS filtra um DELETE cuja sessao
+     nao satisfaz a policy (is_admin() falso no momento da chamada: token expirado, corrida de
+     refresh, etc.) devolvendo 0 linhas afetadas SEM nenhum error (nem PostgREST nem Postgres tratam
+     isso como falha — e so um WHERE que nao casou nada). Sem `.select('id')`, o supabase-js nunca
+     devolve quantas linhas foram de fato excluidas, entao esse caso silencioso virava {ok:true} —
+     "excluir" nao dava erro nenhum, mas o item reaparecia no load() seguinte. Confirmado por teste
+     direto (BEGIN/ROLLBACK) contra producao: RLS/trigger/FK/constraint NAO bloqueiam a exclusao para
+     o admin real — o gap era so este (falso-positivo de sucesso). */
   async delAd(id) {
-    const r = await this.run(d=>d.from('adicionais').delete().eq('id',id));
-    return r.error ? { ok:false, error:r.error.message } : { ok:true };
+    const r = await this.run(d=>d.from('adicionais').delete().eq('id',id).select('id'));
+    if (r.error) return { ok:false, error:r.error.message };
+    if (!r.data?.length) return { ok:false, error:'Nenhum item foi excluído (sessão sem permissão no momento ou item já removido). Atualize a página e tente novamente.' };
+    return { ok:true };
   },
 };
