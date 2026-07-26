@@ -317,6 +317,9 @@ Fecha as 3 limitações que a própria REF-ADMIN-01 tinha deixado documentadas p
   existente). Teste novo em `admin-sessao.spec.js` prova por REDE (não por timing): intercepta
   `/rest/v1/products` e `/rest/v1/categories` durante um reload com sessão válida — zero chamadas
   confirma que a Loja nunca chegou a montar.
+  > **REVERTIDO pela REF-STABILITY-02** (decisão do dono, ver seção no fim deste arquivo): o estado
+  > `'checking'` e `AdminSessionChecking.jsx` foram removidos — um F5 (ou qualquer bootstrap) agora
+  > SEMPRE abre a Loja, sem exceção; o Admin só é restaurado por clique explícito em "Entrar".
 - **Onda 3 (busca/filtros de Pedidos):** FEITO. Causa raiz: a funcionalidade nunca existiu (confirmado
   por leitura do componente atual e do histórico pré-extração) — não era um bug. `AdminPedidos.jsx`
   ganhou busca tolerante a acento/caixa/parcial (reaproveita `utils/searchText.js`, o mesmo motor da
@@ -365,3 +368,33 @@ RLS) — um client `service_role` via PostgREST não satisfaz isso sozinho (`aut
 uma sessão real de admin). `support/storeMode.js` escreve direto na tabela `settings` via conexão
 Postgres (mesma infra de `scripts/e2e-seed.mjs`) para o SETUP de teste — efeito idêntico ao da RPC,
 sem forjar uma sessão de admin só pra isso.
+
+### REF-STABILITY-02 — Acesso ao Admin como escolha explícita (decisão do dono, reverte parte da
+REF-ADMIN-02/REF-AUTH-02/REF-STABILITY-01)
+
+Motivação: o "vulto" da tela de login (REF-STABILITY-01) foi relatado como recorrente, predominante em
+mobile. Auditoria não encontrou regressão de código nas correções anteriores, mas identificou que
+qualquer mecanismo de auto-promoção em background (mesmo timing-perfeito no desktop) fica exposto a
+diferenças de ciclo de vida de aba/processo em SO mobile que a suíte E2E (Playwright, desktop) não
+consegue reproduzir. Decisão do dono: eliminar TODA promoção automática, em vez de apenas ajustar o
+timing — a sessão persiste normalmente, mas só é consultada/reaproveitada no clique explícito em
+"Entrar".
+
+- **Removido de `useAdminSession.js`:** o estado `'checking'`, `verificandoSessao`, a flag de
+  sessionStorage `ADMIN_FLOW_SESSION_KEY` (REF-AUTH-02) e os dois `useEffect`s que chamavam
+  `getSession()` automaticamente no mount/ao entrar em 'login' (promoviam para `'admin'` em background).
+  `onAuthStateChange` permanece, mas só REAGE (desloga se a sessão cair enquanto em 'admin'; nunca
+  promove).
+- **Novo em `AdminLogin.jsx`:** o clique em "Entrar" agora tenta `getSession()` + `is_admin()` PRIMEIRO
+  — sessão válida e autorizada entra direto, sem pedir e-mail/senha; caso contrário, cai no login normal
+  por credencial (comportamento inalterado).
+- **Removidos (código morto):** `AdminSessionChecking.jsx` (componente), `ADMIN_FLOW_SESSION_KEY`
+  (`constants/authStorage.js`).
+- **`App.jsx`:** remove o branch `mode==='checking'`.
+- **Testes:** `admin-sessao.spec.js` reescrito por completo (as asserções de "pula direto pro painel"/
+  "nunca busca o catálogo num reload" viraram o oposto — ver cabeçalho do arquivo); `admin-logout.spec.js`
+  e `admin-minha-conta.spec.js` ajustados (reload agora sempre mostra a Loja; reentrar no Admin exige
+  engrenagem + "Entrar").
+- **Fluxo resultante:** abrir o app → sempre Loja. Engrenagem/hash `#admin-encanto` → sempre a tela de
+  login (formulário visível, nunca escondido atrás de uma verificação em background). "Entrar" → reusa
+  sessão válida sem pedir credencial, ou autentica normalmente se não houver.
