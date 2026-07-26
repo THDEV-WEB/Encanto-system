@@ -1,22 +1,34 @@
 import { useState } from 'react';
 import { db } from '../../lib/supabase.js';
 import { registrarBreadcrumb } from '../../lib/sentry.js'; // REF-OBS-01: no-op sem VITE_SENTRY_DSN
-import { AdminSessionChecking } from './AdminSessionChecking.jsx'; // REF-CUSTOMER-01 · Parte 2: mesmo estado visual do F5 no painel
 
-export function AdminLogin({ onLogin, verificandoSessao }) {
+export function AdminLogin({ onLogin }) {
   const [email,   setEmail]   = useState('as992203620@gmail.com');
   const [pass,    setPass]    = useState('');
   const [err,     setErr]     = useState('');
   const [loading, setLoading] = useState(false);
-  /* REF-CUSTOMER-01 · Parte 2: enquanto o hook confirma uma sessão salva plausível, mostra o mesmo
-     estado neutro do F5-dentro-do-painel em vez do formulário — elimina o "flash" de login para quem
-     já está autenticado. `mode` continua 'login' o tempo todo (nenhuma mudança na máquina de estados
-     da REF-AUTH-02); isto é só a apresentação. Sem sessão salva, verificandoSessao nunca liga. */
-  if (verificandoSessao) return <AdminSessionChecking/>;
+
   const login = async () => {
-    if (!pass) { setErr('Digite a senha'); return; }
-    if (!db)   { setErr('Supabase indisponível. Recarregue a página.'); return; }
+    if (!db) { setErr('Supabase indisponível. Recarregue a página.'); return; }
     setLoading(true); setErr('');
+
+    /* REF-STABILITY-02: "Entrar" é o ÚNICO momento em que a sessão salva é consultada/reaproveitada —
+       nunca antes (nem no boot, nem ao abrir esta tela via engrenagem/hash). Se já existir uma sessão
+       válida E autorizada (is_admin()), entra direto, sem exigir e-mail/senha de novo. Sessão inexistente/
+       expirada ou sem privilégio de admin: cai no login normal por credencial (abaixo), sem erro nenhum
+       exibido por essa tentativa silenciosa. */
+    const { data: sessaoAtual } = await db.auth.getSession();
+    if (sessaoAtual?.session?.access_token) {
+      const { data: souAdminSessaoAtual, error: erroSessaoAtual } = await db.rpc('is_admin');
+      if (!erroSessaoAtual && souAdminSessaoAtual === true) {
+        registrarBreadcrumb('admin: sessao existente reaproveitada (Entrar)');
+        onLogin({ email: sessaoAtual.session.user?.email ?? email, session: sessaoAtual.session });
+        setLoading(false);
+        return;
+      }
+    }
+
+    if (!pass) { setErr('Digite a senha'); setLoading(false); return; }
     // Login real: só entra com sessão autenticada do Supabase. Sem bypass.
     const { data, error } = await db.auth.signInWithPassword({ email, password: pass });
     if (error) {

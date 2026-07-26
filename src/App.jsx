@@ -5,7 +5,6 @@ import { resolverAdicionais } from './utils/addons.js'; /* eslint-disable-line n
 import { DS } from './services/DataService.js'; /* eslint-disable-line no-unused-vars */ // TOKEN guard test:ds-micro R2 (dataservice.micro.mjs §A): App.jsx mantem o residuo de consumo do DS (corpo movido p/ services/DataService.js na Onda 2). NAO remover sem ajustar o guard R2.
 import { AdminLogin } from './components/admin/AdminLogin.jsx';
 import { AdminPanel } from './components/admin/AdminPanel.jsx';
-import { AdminSessionChecking } from './components/admin/AdminSessionChecking.jsx';
 import { StoreApp } from './pages/StoreApp.jsx';
 import { AuthProvider } from './providers/AuthProvider.jsx'; // AUTH-01: sessao do CLIENTE (envolve so a loja)
 import { useAdminSession } from './hooks/useAdminSession.js'; // REF-ADMIN-01 · Onda 2: sessao do ADMIN (restauracao + logout real)
@@ -104,16 +103,15 @@ import { useAdminSession } from './hooks/useAdminSession.js'; // REF-ADMIN-01 ·
 let _cpApp = false;
 function App() {
   if (!_cpApp) { _cpApp = true; try { if (typeof window !== 'undefined' && window.__ENC_BOOT__ && window.__ENC_BOOT__.step) window.__ENC_BOOT__.step('CP-App-render', 'App() render-phase'); } catch { /* noop */ } }
-  const { mode, admin, entrar, abrirLogin, verLoja, sair, verificandoSessao } = useAdminSession();
+  const { mode, admin, entrar, abrirLogin, verLoja, sair } = useAdminSession();
 
   let content;
-  if (mode==='login')         content = <AdminLogin onLogin={entrar} verificandoSessao={verificandoSessao}/>;
-  else if (mode==='admin')    content = <AdminPanel admin={admin} onExit={verLoja} onLogout={sair}/>;
-  /* REF-ADMIN-02 · Onda 2: 'checking' so aparece quando ha uma sessao de Admin salva no navegador
-     ainda sendo confirmada — nao monta nem a Loja nem o Admin, elimina o flash. */
-  else if (mode==='checking') content = <AdminSessionChecking/>;
-  /* AUTH-01: a loja (e SO ela) vive dentro do AuthProvider — sessao de cliente isolada do Admin. */
-  else                         content = <AuthProvider><StoreApp onAdmin={abrirLogin}/></AuthProvider>;
+  if (mode==='login')      content = <AdminLogin onLogin={entrar}/>;
+  else if (mode==='admin') content = <AdminPanel admin={admin} onExit={verLoja} onLogout={sair}/>;
+  /* AUTH-01: a loja (e SO ela) vive dentro do AuthProvider — sessao de cliente isolada do Admin.
+     REF-STABILITY-02: todo bootstrap comeca aqui, sem excecao — a sessao do Admin persiste normalmente,
+     mas nunca decide a tela inicial sozinha (so o clique em "Entrar" a reaproveita). */
+  else                      content = <AuthProvider><StoreApp onAdmin={abrirLogin}/></AuthProvider>;
 
   /* AppShell envolve TUDO: BackgroundLayer (fundo único, loja + admin) + camada de conteúdo. */
   return (
