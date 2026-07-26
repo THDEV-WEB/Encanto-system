@@ -7,8 +7,11 @@ import { useState, useEffect } from 'react';
 import {
   adminLerConfig, adminSalvarConfig, adminBuscar, adminAjustar, adminResgatar,
 } from '../../services/loyalty/index.js';
+import { useCompanyInfo } from '../../hooks/useCompanyInfo.js';
+import { formatarTelefoneBR } from '../../services/company/companyInfo.js';
 
 export function AdminFidelidade() {
+  const { whatsapp } = useCompanyInfo();   // REF-COMPANY-01: numero da loja vem do cadastro da empresa
   /* ── Config do programa ── */
   const [required, setRequired] = useState(10);
   const [discount, setDiscount] = useState(50);
@@ -244,9 +247,9 @@ export function AdminFidelidade() {
           <div style={{display:'flex',gap:12,padding:'12px 0'}}>
             <div style={{fontSize:12,fontWeight:700,color:'var(--amarelo)',minWidth:110,flexShrink:0}}>Contato</div>
             <div style={{fontSize:13,color:'var(--gray-600)'}}>
-              <a href="https://wa.me/5538992203620" target="_blank"
+              <a href={`https://wa.me/${whatsapp}`} target="_blank"
                 style={{color:'var(--amarelo)',fontWeight:600}}>
-                WhatsApp: (38) 99220-3620
+                WhatsApp: {formatarTelefoneBR(whatsapp)}
               </a>
             </div>
           </div>

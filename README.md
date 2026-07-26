@@ -42,7 +42,7 @@ npm run preview  # serve o build localmente para conferência
 encanto-react/
   index.html          # shell do Vite (head/fonts + <div id="root"> + main.jsx)
   vite.config.js      # plugin React
-  .env                # VITE_SUPABASE_URL / VITE_SUPABASE_KEY / VITE_WHATSAPP
+  .env                # VITE_SUPABASE_URL / VITE_SUPABASE_KEY
   .env.example        # modelo sem segredos
   src/
     main.jsx          # ReactDOM.createRoot(...).render(<App/>)

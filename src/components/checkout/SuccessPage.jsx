@@ -2,10 +2,11 @@
    Tela de confirmacao do pedido (apresentacional): abre o WhatsApp com a msg pronta e mostra
    tempo estimado + barra de status cosmetica. Sem DS, sem carrinho (prop 'cart' preservada mas nao usada). */
 import { useState } from 'react';
-import { WHATSAPP } from '../../lib/supabase.js';
 
-export function SuccessPage({ msg, cart, onBack, deliveryEta, deliveryMode }) {
-  const open = () => window.open(`https://wa.me/${WHATSAPP}?text=${encodeURIComponent(msg)}`,'_blank');
+export function SuccessPage({ msg, cart, onBack, deliveryEta, deliveryMode, whatsapp }) {
+  /* REF-COMPANY-01: numero SEMPRE vindo do cadastro da empresa (prop, unico ponto de consumo em
+     StoreApp -> Single Source of Truth), nunca mais hardcoded/env var. */
+  const open = () => window.open(`https://wa.me/${whatsapp}?text=${encodeURIComponent(msg)}`,'_blank');
   /* REF-DELIVERY-01: tempo estimado vem da CONFIG unica (deliveryEta), nao mais de um valor aleatorio.
      Consciente do modo (igual a DeliveryBar): entrega usa a config; retirada usa o tempo fixo de retirada. */
   const retirada = deliveryMode === 'retirada';

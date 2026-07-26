@@ -17,3 +17,6 @@ e2e/test-results
 e2e/.auth
 blob-report
 playwright/.cache
+
+.vercel
+.env*

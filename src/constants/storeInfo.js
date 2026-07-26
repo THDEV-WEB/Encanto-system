@@ -1,12 +1,12 @@
-/* constants/storeInfo.js — informacoes institucionais da loja (LOGIN-ARCH-02).
-   Fonte UNICA p/ Contato/Sobre/Termos/Redes — nada de hardcode espalhado. Editar aqui no futuro.
+/* constants/storeInfo.js — informacoes institucionais da loja AINDA ESTATICAS (LOGIN-ARCH-02).
+   Fonte UNICA p/ Sobre/Termos/Redes/Endereco — nada de hardcode espalhado. Editar aqui no futuro.
+   REF-COMPANY-01: nome/telefone/whatsapp/e-mail MIGRARAM para settings.company_info (Supabase,
+   administravel pelo Admin) — ver hooks/useCompanyInfo.js. Os campos abaixo (endereco/social) sao os
+   PROXIMOS candidatos naturais a essa mesma migracao (arquitetura ja preparada: e so estender o objeto
+   company_info e o form do Admin, sem mudanca de RPC/tabela).
    Camada de constantes: sem imports (regra D2 do test:deps trivialmente satisfeita). */
 export const STORE_INFO = {
-  nome: 'Encanto — Açaí & Marmitas',
   cidade: 'Timbó',
-  telefoneDisplay: '(38) 99220-3620',
-  telefoneDigits: '5538992203620',      // usado em tel:/wa.me
-  email: 'contato@encantoacai.com.br',  // placeholder — ajustar
   endereco: {                            // estrutura preparada (preencher no futuro)
     linha1: 'Rua João Schley, 77',
     linha2: 'Casa 02',

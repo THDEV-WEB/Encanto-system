@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useCallback } from 'react';
-import { WHATSAPP, LOGO } from '../lib/supabase.js';
+import { LOGO } from '../lib/supabase.js';
 import { fmt } from '../utils/format.js';
 import { resolverAdicionais, selecionarFonteAdicionais } from '../utils/addons.js';
 import { prodInCat } from '../utils/catalog.js';
@@ -27,6 +27,7 @@ import { useCatalogNav } from '../hooks/useCatalogNav.js';         // REF-UI-CAT
 import { useSearchSuggestions } from '../hooks/useSearchSuggestions.js'; // REF-UI-SEARCH-01: motor de sugestoes (dados)
 import { useScrollToProduct } from '../hooks/useScrollToProduct.js';     // REF-UI-SEARCH-01: navegacao ate o produto + realce
 import { useDeliveryEta } from '../hooks/useDeliveryEta.js';             // REF-DELIVERY-01: tempo de entrega (config unica Supabase)
+import { useCompanyInfo } from '../hooks/useCompanyInfo.js';             // REF-COMPANY-01: dados institucionais (config unica Supabase)
 import { AddressProvider, useAddress } from '../address/index.js'; // REF-CHECKOUT-ADDRESS-01: fonte unica do endereco (provider)
 import { LazySection } from '../components/ui/LazySection.jsx';
 import { SuccessPage } from '../components/checkout/SuccessPage.jsx';
@@ -128,9 +129,12 @@ function StoreAppContent({ onAdmin }) {
   /* REF-DELIVERY-01: tempo estimado de entrega (config unica no Supabase). Lido UMA vez aqui e distribuido
      por props aos consumidores (DeliveryBar + SuccessPage) -> Single Source of Truth, sem duplicacao. */
   const deliveryEta = useDeliveryEta();
+  /* REF-COMPANY-01: dados institucionais da empresa (config unica no Supabase). O whatsapp oficial
+     alimenta o checkout (SuccessPage) SEMPRE a partir do cadastro da empresa — nunca mais hardcoded. */
+  const companyInfo = useCompanyInfo();
 
   if (page==='checkout') return <CheckoutPage cart={cart} deliveryMode={deliveryMode} onBack={()=>setPage('home')} onSuccess={msg=>{setWaMsg(msg);setPage('success');}}/>;
-  if (page==='success')  return <SuccessPage  msg={waMsg} cart={cart} onBack={()=>setPage('home')} deliveryEta={deliveryEta} deliveryMode={deliveryMode}/>;
+  if (page==='success')  return <SuccessPage  msg={waMsg} cart={cart} onBack={()=>setPage('home')} deliveryEta={deliveryEta} deliveryMode={deliveryMode} whatsapp={companyInfo.whatsapp}/>;
 
   return (
     <div className="app">
@@ -564,7 +568,7 @@ function StoreAppContent({ onAdmin }) {
               <p style={{fontSize:12,color:'var(--gray-400)',marginBottom:12}}>
                 Ainda precisa de ajuda?{' '}
                 <a
-                  href={`https://wa.me/5538992203620`}
+                  href={`https://wa.me/${companyInfo.whatsapp}`}
                   target="_blank"
                   style={{color:'var(--amarelo)',fontWeight:600,textDecoration:'underline'}}>
                   Entre em contato com a gente
@@ -638,9 +642,11 @@ function StoreAppContent({ onAdmin }) {
         </>
       )}
 
-      {/* ── ALT 7: Botão WhatsApp flutuante ── */}
+      {/* ── ALT 7: Botão WhatsApp flutuante ── REF-COMPANY-01: some por completo (sem quebrar layout)
+          quando o admin desativa companyInfo.whatsappFloatEnabled. */}
+      {companyInfo.whatsappFloatEnabled && (
       <a
-        href={`https://wa.me/${WHATSAPP}`}
+        href={`https://wa.me/${companyInfo.whatsapp}`}
         target="_blank"
         className="wa-float"
         title="Fale conosco pelo WhatsApp">
@@ -650,6 +656,7 @@ function StoreAppContent({ onAdmin }) {
           <span className="l2">Fale conosco</span>
         </div>
       </a>
+      )}
 
     </div>
   );
