@@ -6,6 +6,7 @@ import { AdminCategorias } from './AdminCategorias.jsx';
 import { AdminAdicionais } from './AdminAdicionais.jsx';
 import { AdminStatus } from './AdminStatus.jsx';
 import { AdminDeliveryEta } from './AdminDeliveryEta.jsx';   // REF-DELIVERY-01: config do tempo de entrega
+import { AdminEmpresa } from './AdminEmpresa.jsx';           // REF-COMPANY-01: dados institucionais da empresa
 import { AdminFidelidade } from './AdminFidelidade.jsx';
 import { AdminHealth } from './AdminHealth.jsx';
 import { AdminMinhaConta } from './AdminMinhaConta.jsx'; // REF-CUSTOMER-01 · Parte 3
@@ -19,11 +20,12 @@ export function AdminPanel({ admin, onExit, onLogout }) {
     {id:'categorias',icon:'🏷️', label:'Categorias'},
     {id:'adicionais',icon:'➕', label:'Adicionais'},
     {id:'status',    icon:'🏪', label:'Status'},
+    {id:'empresa',   icon:'🏢', label:'Empresa'},
     {id:'fidelidade',icon:'🎁', label:'Fidelidade'},
     {id:'saude',     icon:'🩺', label:'Saúde'},
     {id:'minhaconta',icon:'👤', label:'Minha Conta'},
   ];
-  const titles = {dashboard:'Dashboard',pedidos:'Pedidos',products:'Produtos',categorias:'Categorias',adicionais:'Adicionais',status:'Status da Loja',fidelidade:'Fidelidade',saude:'Saúde do Sistema',minhaconta:'Minha Conta'};
+  const titles = {dashboard:'Dashboard',pedidos:'Pedidos',products:'Produtos',categorias:'Categorias',adicionais:'Adicionais',status:'Status da Loja',empresa:'Dados da Empresa',fidelidade:'Fidelidade',saude:'Saúde do Sistema',minhaconta:'Minha Conta'};
   return (
     <div className="admin-layout">
       <div className="admin-sidebar">
@@ -54,6 +56,7 @@ export function AdminPanel({ admin, onExit, onLogout }) {
           {tab==='categorias' && <AdminCategorias/>}
           {tab==='adicionais' && <AdminAdicionais/>}
           {tab==='status'     && <><AdminStatus/><AdminDeliveryEta/></>}
+          {tab==='empresa'    && <AdminEmpresa/>}
           {tab==='fidelidade' && <AdminFidelidade/>}
           {tab==='saude'      && <AdminHealth/>}
           {tab==='minhaconta' && <AdminMinhaConta admin={admin}/>}
