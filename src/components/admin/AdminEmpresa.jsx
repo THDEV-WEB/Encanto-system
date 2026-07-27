@@ -17,8 +17,11 @@ export function AdminEmpresa() {
 
   /* ── Campos de contato: SELECAO pendente, so grava no "Salvar". Telefone/whatsapp sao exibidos
      FORMATADOS ((DD) 9NNNN-NNNN) para edicao — o admin pode digitar em qualquer formato (com ou sem
-     mascara), o servidor normaliza. "mudou" compara os DIGITOS normalizados (nunca a pontuacao digitada). */
-  const [nome, setNome] = useState(info.nome);
+     mascara), o servidor normaliza. "mudou" compara os DIGITOS normalizados (nunca a pontuacao digitada).
+     REF-COMPANY-02: nome dividido em nomeCurto (superficies compactas: cabecalho, sidebar do admin,
+     login, comanda) e nomeCompleto (titulo do site, documentos) — ver ADR. */
+  const [nomeCurto, setNomeCurto] = useState(info.nomeCurto);
+  const [nomeCompleto, setNomeCompleto] = useState(info.nomeCompleto);
   const [telefone, setTelefone] = useState(formatarTelefoneBR(info.telefone));
   const [whatsapp, setWhatsapp] = useState(formatarTelefoneBR(info.whatsapp));
   const [email, setEmail] = useState(info.email);
@@ -27,11 +30,13 @@ export function AdminEmpresa() {
 
   // quando o oficial muda (mount/sync/outro save), os campos refletem o novo oficial
   useEffect(() => {
-    setNome(info.nome); setTelefone(formatarTelefoneBR(info.telefone));
+    setNomeCurto(info.nomeCurto); setNomeCompleto(info.nomeCompleto);
+    setTelefone(formatarTelefoneBR(info.telefone));
     setWhatsapp(formatarTelefoneBR(info.whatsapp)); setEmail(info.email);
-  }, [info.nome, info.telefone, info.whatsapp, info.email]);
+  }, [info.nomeCurto, info.nomeCompleto, info.telefone, info.whatsapp, info.email]);
 
-  const mudou = nome.trim() !== info.nome
+  const mudou = nomeCurto.trim() !== info.nomeCurto
+    || nomeCompleto.trim() !== info.nomeCompleto
     || normalizePhoneBR(telefone) !== info.telefone
     || normalizePhoneBR(whatsapp) !== info.whatsapp
     || email.trim().toLowerCase() !== info.email;
@@ -39,12 +44,13 @@ export function AdminEmpresa() {
   const salvar = async () => {
     if (!mudou || salvando) return;
     setSalvando(true); setMsg(null);
-    const r = await salvarCompanyInfo({ nome, telefone, whatsapp, email });
+    const r = await salvarCompanyInfo({ nomeCurto, nomeCompleto, telefone, whatsapp, email });
     setSalvando(false);
     if (r.ok) {
       setMsg({ tipo: 'ok', texto: 'Dados da empresa salvos com sucesso.' });
       // reflete o valor CONFIRMADO (normalizado) pelo servidor nos campos
-      setNome(r.info.nome); setTelefone(formatarTelefoneBR(r.info.telefone));
+      setNomeCurto(r.info.nomeCurto); setNomeCompleto(r.info.nomeCompleto);
+      setTelefone(formatarTelefoneBR(r.info.telefone));
       setWhatsapp(formatarTelefoneBR(r.info.whatsapp)); setEmail(r.info.email);
     } else {
       setMsg({ tipo: 'erro', texto: r.error || 'Não foi possível salvar.' });
@@ -101,9 +107,20 @@ export function AdminEmpresa() {
         <div style={{ padding: '20px' }}>
           <div className="form-row" style={{ marginBottom: 16 }}>
             <div className="form-group">
-              <label className="form-label">Nome da empresa</label>
-              <input data-testid="empresa-form-nome" className="form-input" value={nome}
-                onChange={(e) => { setNome(e.target.value); setMsg(null); }} />
+              <label className="form-label">Nome curto</label>
+              <input data-testid="empresa-form-nome-curto" className="form-input" value={nomeCurto}
+                onChange={(e) => { setNomeCurto(e.target.value); setMsg(null); }} />
+              <p style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 4 }}>
+                Cabeçalho da loja, painel admin, login e comanda impressa.
+              </p>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Nome completo</label>
+              <input data-testid="empresa-form-nome-completo" className="form-input" value={nomeCompleto}
+                onChange={(e) => { setNomeCompleto(e.target.value); setMsg(null); }} />
+              <p style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 4 }}>
+                Título do site e documentos.
+              </p>
             </div>
           </div>
           <div className="form-row" style={{ marginBottom: 16 }}>
