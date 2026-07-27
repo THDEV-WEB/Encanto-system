@@ -484,3 +484,13 @@ Crescer o seed do `address_gazetteer` para uma lista realmente abrangente de bai
 ### 18.6 Próximos passos
 
 Onda 5 — UX: número/complemento/referência uniformes nas 3 abas (hoje só CEP tem os 3 campos completos) + estados de erro granulares (§7 do ADR) substituindo os `alert()` bloqueantes.
+
+### 18.7 Diretriz de sustentabilidade do `address_gazetteer` (registro de governança, aprovação do dono 2026-07-27)
+
+**D-GAZETTEER-BOUNDARY:** o `address_gazetteer` é, permanentemente, uma **camada de apoio/fallback local** — nunca deve evoluir para uma base de endereços completa nem substituir os provedores geográficos (Mapbox/Nominatim/Photon continuam sendo a fonte de coordenadas/geocoding real). Objetivo único e contínuo: corrigir casos **conhecidos** da região atendida, não ser exaustivo.
+
+Diretrizes operacionais para qualquer crescimento futuro desta tabela:
+- **Evitar duplicidade** — já garantido estruturalmente pelo índice único `address_gazetteer_uniq (cidade, tipo, nome_normalizado)` da Onda 4; um `INSERT` duplicado (mesmo com grafia/acentuação diferente) falha por constraint, não silenciosamente.
+- **Registrar origem do dado quando fizer sentido** — o schema atual não tem coluna de proveniência; recomendação registrada aqui (não implementada nesta onda, para não interromper o fluxo por algo de baixo impacto) é adicionar uma coluna `origem text` (ex.: `'confirmado_ao_vivo'`, `'admin'`, `'importado'`) na próxima vez que a tabela for tocada por qualquer motivo — natural, barato, não urgente.
+- **Manter baixa complexidade** — sem lógica de geocoding própria (a tabela não guarda `lat/lng`; só nomes canônicos que corrigem a QUERY antes de sair pro provedor real, ver D-GAZETTEER-ORDER). Sem pipeline de importação automática, sem sincronização com fontes externas.
+- **Manutenção simples pelo administrador no futuro** — hoje é só `INSERT`/`DELETE` via SQL editor (documentado no §18.5); uma aba de admin dedicada é candidata natural quando/se o volume justificar, não uma fase já planejada.
