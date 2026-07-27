@@ -2,9 +2,18 @@
 -- `timestamp without time zone`, restaura admin_orders_search/admin_orders_stats/orders_health
 -- para as versoes anteriores (naive-safe, capturadas ao vivo em 2026-07-27) e remove dia_loja().
 -- Lossless: sessao e UTC, entao `col::timestamp` desfaz exatamente `col AT TIME ZONE 'UTC'`.
+--
+-- Mesma restricao do Postgres na direcao inversa (ALTER COLUMN TYPE recusa rodar enquanto
+-- order_logs/order_status_durations dependerem da coluna) — dropa as 2 views antes, recria depois,
+-- com a MESMA definicao/security_invoker/grants (ver REF-DATETIME-01b-schema-timestamptz.sql para
+-- a analise completa de dependencias). Idempotente.
 BEGIN;
 
--- ── 1) orders_health() volta ao estado da Fase 1 (hop duplo, naive-safe) ────────────────────────
+-- ── 1) Dropa as 2 views (idempotente) ────────────────────────────────────────────────────────
+DROP VIEW IF EXISTS public.order_status_durations;
+DROP VIEW IF EXISTS public.order_logs;
+
+-- ── 2) orders_health() volta ao estado da Fase 1 (hop duplo, naive-safe) ────────────────────────
 CREATE OR REPLACE FUNCTION public.orders_health()
  RETURNS jsonb
  LANGUAGE sql
@@ -49,7 +58,7 @@ AS $function$
   );
 $function$;
 
--- ── 2) admin_orders_stats() volta a original (REF-ADMIN-03) ─────────────────────────────────────
+-- ── 3) admin_orders_stats() volta a original (REF-ADMIN-03) ─────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.admin_orders_stats()
 RETURNS jsonb
 LANGUAGE sql
@@ -79,10 +88,10 @@ AS $$
   );
 $$;
 
--- ── 3) admin_orders_search volta a assinatura naive (DROP+CREATE, regrant) ──────────────────────
+-- ── 4) admin_orders_search volta a assinatura naive (DROP+CREATE, regrant) ──────────────────────
 DROP FUNCTION IF EXISTS public.admin_orders_search(text, text, int, timestamptz, uuid);
 
-CREATE FUNCTION public.admin_orders_search(
+CREATE OR REPLACE FUNCTION public.admin_orders_search(
   p_search text DEFAULT NULL,
   p_status text DEFAULT NULL,
   p_limit int DEFAULT 20,
@@ -125,19 +134,65 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.admin_orders_search(text, text, int, timestamp without time zone, uuid) TO PUBLIC, anon, authenticated, service_role;
 
--- ── 4) Remove o helper novo ───────────────────────────────────────────────────────────────────
+-- ── 5) Remove o helper novo ───────────────────────────────────────────────────────────────────
 DROP FUNCTION IF EXISTS public.dia_loja(timestamptz);
 
--- ── 5) Schema: timestamptz -> naive (lossless, sessao=UTC) ──────────────────────────────────────
-ALTER TABLE public.orders           ALTER COLUMN created_at TYPE timestamp without time zone USING created_at::timestamp;
-ALTER TABLE public.order_events     ALTER COLUMN created_at TYPE timestamp without time zone USING created_at::timestamp;
-ALTER TABLE public.customers        ALTER COLUMN created_at TYPE timestamp without time zone USING created_at::timestamp;
-ALTER TABLE public.products         ALTER COLUMN created_at TYPE timestamp without time zone USING created_at::timestamp;
-ALTER TABLE public.categories       ALTER COLUMN created_at TYPE timestamp without time zone USING created_at::timestamp;
-ALTER TABLE public.addresses        ALTER COLUMN created_at TYPE timestamp without time zone USING created_at::timestamp;
-ALTER TABLE public.adicionais       ALTER COLUMN created_at TYPE timestamp without time zone USING created_at::timestamp;
-ALTER TABLE public.settings         ALTER COLUMN created_at TYPE timestamp without time zone USING created_at::timestamp;
-ALTER TABLE public.application_logs ALTER COLUMN created_at TYPE timestamp without time zone USING created_at::timestamp;
+-- ── 6) Schema: timestamptz -> naive (lossless, sessao=UTC), idempotente ─────────────────────────
+DO $$
+DECLARE
+  t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY[
+    'orders', 'order_events', 'customers', 'products', 'categories',
+    'addresses', 'adicionais', 'settings', 'application_logs'
+  ]
+  LOOP
+    IF (
+      SELECT data_type FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = t AND column_name = 'created_at'
+    ) IS DISTINCT FROM 'timestamp without time zone' THEN
+      EXECUTE format(
+        'ALTER TABLE public.%I ALTER COLUMN created_at TYPE timestamp without time zone USING created_at::timestamp',
+        t
+      );
+    END IF;
+  END LOOP;
+END $$;
+
+-- ── 7) Recria as 2 views (definicao identica; security_invoker=true; grants) ────────────────────
+CREATE OR REPLACE VIEW public.order_logs
+WITH (security_invoker = true)
+AS
+SELECT id,
+    request_id,
+    NULLIF(entity_id, ''::text)::uuid AS order_id,
+    payload,
+    message,
+    sqlstate,
+    context,
+    NULL::text AS detalhe,
+    rpc,
+    version AS versao,
+    origin AS origem,
+    duration_ms AS duracao_ms,
+    created_at
+FROM application_logs
+WHERE module = 'orders'::text;
+
+GRANT ALL ON public.order_logs TO anon, authenticated, service_role;
+
+CREATE OR REPLACE VIEW public.order_status_durations
+WITH (security_invoker = true)
+AS
+SELECT order_id,
+    status_novo AS status,
+    created_at AS entrou_em,
+    lead(created_at) OVER (PARTITION BY order_id ORDER BY created_at) AS saiu_em,
+    lead(created_at) OVER (PARTITION BY order_id ORDER BY created_at) - created_at AS duracao
+FROM order_events e
+WHERE status_novo IS NOT NULL;
+
+GRANT ALL ON public.order_status_durations TO anon, authenticated, service_role;
 
 COMMIT;
 

@@ -142,6 +142,32 @@ try {
         record('DT7', 'admin_orders_search(null,null,3,null,null) executa sem erro', v, d);
       }
       out('');
+
+      // DT8 — order_logs/order_status_durations sobreviveram ao DROP+CREATE com security_invoker=true
+      // (perder isso seria regressao de seguranca: a view voltaria a rodar como o DONO, ignorando RLS).
+      {
+        const r = await client.query(`SELECT relname, reloptions FROM pg_class WHERE relnamespace='public'::regnamespace AND relname IN ('order_logs','order_status_durations')`);
+        const byName = Object.fromEntries(r.rows.map(x => [x.relname, x.reloptions || []]));
+        const okLogs = (byName.order_logs || []).includes('security_invoker=true');
+        const okDur = (byName.order_status_durations || []).includes('security_invoker=true');
+        const ok = r.rowCount === 2 && okLogs && okDur;
+        if (ok) passes++; else failures++;
+        out(`  [${ok ? 'PASS' : 'FAIL'}] DT8 order_logs + order_status_durations existem com security_invoker=true`);
+        out(`         -> encontradas: ${r.rowCount}/2 · order_logs=${JSON.stringify(byName.order_logs)} · order_status_durations=${JSON.stringify(byName.order_status_durations)}`);
+      }
+      out('');
+
+      // DT9 — as 2 views seguem consultaveis (sobreviveram ao DROP+CREATE em torno do ALTER).
+      {
+        let v = 'FAIL', d = '';
+        try {
+          const a = await client.query(`SELECT count(*)::int AS n FROM public.order_logs`);
+          const b = await client.query(`SELECT count(*)::int AS n FROM public.order_status_durations`);
+          v = 'PASS'; d = `order_logs=${a.rows[0].n} linha(s) · order_status_durations=${b.rows[0].n} linha(s)`;
+        } catch (e) { v = 'FAIL'; d = redact(e.message).split('\n')[0]; }
+        record('DT9', 'order_logs/order_status_durations sao consultaveis sem erro', v, d);
+      }
+      out('');
     }
   }
   out('');
