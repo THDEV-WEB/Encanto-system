@@ -19,10 +19,16 @@
 import { createClient } from '@supabase/supabase-js';
 import { ADMIN_AUTH_STORAGE_KEY } from '../constants/authStorage.js';
 
-/* -- Config (via variaveis de ambiente VITE_*) -- */
-export const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
-export const SUPA_KEY = import.meta.env.VITE_SUPABASE_KEY;
-export const RPC_TIMEOUT = Number(import.meta.env.VITE_RPC_TIMEOUT) || 12000; /* ms; configurável, fallback seguro */
+/* -- Config (via variaveis de ambiente VITE_*) --
+   REF-ADDRESS-02 · Onda 4: `import.meta.env` só existe sob o Vite (dev/build) — scripts Node puros que
+   importem este módulo de verdade (não só análise estática de texto) travavam no module-eval, antes até
+   do try/catch de baixo poder agir. A guarda preserva o padrão LITERAL `import.meta.env.VITE_X` em cada
+   ramo (é o que o Vite substitui estaticamente no build) — só decide qual ramo roda, zero mudança de
+   comportamento onde import.meta.env já existe (dev/build reais). */
+const TEM_VITE_ENV = typeof import.meta.env !== 'undefined';
+export const SUPA_URL = TEM_VITE_ENV ? import.meta.env.VITE_SUPABASE_URL : undefined;
+export const SUPA_KEY = TEM_VITE_ENV ? import.meta.env.VITE_SUPABASE_KEY : undefined;
+export const RPC_TIMEOUT = Number(TEM_VITE_ENV ? import.meta.env.VITE_RPC_TIMEOUT : undefined) || 12000; /* ms; configurável, fallback seguro */
 export const LOGO     = '/logo.jpg'; /* REF-AUDIT-01: era base64 em logo.js (inflava o bundle JS ~46KB) -> arquivo em /public, cacheavel */
 
 /* Migração 1x: uma sessão de Admin salva ANTES desta onda vive sob a chave default do supabase-js

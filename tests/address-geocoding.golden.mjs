@@ -12,6 +12,7 @@ import { criarWaterfall, ORDEM_PADRAO } from '../src/address/services/geocoding/
 import { provider as nominatimProvider } from '../src/address/services/geocoding/providers/nominatimProvider.js';
 import { provider as photonProvider } from '../src/address/services/geocoding/providers/photonProvider.js';
 import { provider as mapboxProvider } from '../src/address/services/geocoding/providers/mapboxProvider.js';
+import { corrigir as corrigirComGazetteer } from '../src/address/services/geocoding/gazetteerCorrector.js';
 
 let fail = 0;
 const check = async (m, fn) => { try { await fn(); console.error('  ok ' + m); } catch (e) { fail++; console.error('  x  ' + m + ' — ' + (e?.message ?? e)); } };
@@ -138,6 +139,47 @@ await check('waterfall.reverso: TODOS falham -> LANÇA (preserva o contrato de n
   const a = fakeProvider('a', { reversoFn: async () => { throw new Error('rede fora'); } });
   const b = fakeProvider('b', { reversoFn: async () => null });
   await assert.rejects(() => criarWaterfall([a, b]).reverso(1, 2));
+});
+
+/* ── REF-ADDRESS-02 · Onda 4 — 2ª rodada via gazetteerCorrector (D-GAZETTEER-ORDER), corrigirFn injetado ── */
+await check('waterfall.sugestoes: 1ª rodada com resultado -> NUNCA chama o corretor (D-GAZETTEER-ORDER)', async () => {
+  let chamouCorretor = false;
+  const a = fakeProvider('a', { sugestoesFn: async () => [{ address: { road: 'X' } }] });
+  const corrigirFalso = async (q) => { chamouCorretor = true; return q; };
+  await criarWaterfall([a], corrigirFalso).sugestoes('rua x');
+  assert.equal(chamouCorretor, false);
+});
+await check('waterfall.sugestoes: 1ª rodada vazia + corretor acha nome diferente -> 2ª rodada com o nome corrigido', async () => {
+  const chamadas = [];
+  const a = fakeProvider('a', {
+    sugestoesFn: async (q) => { chamadas.push(q); return q === 'Rua João Schlei' ? [{ address: { road: 'Rua João Schlei' } }] : []; },
+  });
+  const corrigirFalso = async (q) => (q === 'Rua Joao Schlay' ? 'Rua João Schlei' : q);
+  const r = await criarWaterfall([a], corrigirFalso).sugestoes('Rua Joao Schlay');
+  assert.deepEqual(chamadas, ['Rua Joao Schlay', 'Rua João Schlei']);
+  assert.equal(r[0].address.road, 'Rua João Schlei');
+});
+await check('waterfall.sugestoes: corretor não acha nada melhor (devolve a mesma query) -> não repete a chamada, devolve []', async () => {
+  let vezes = 0;
+  const a = fakeProvider('a', { sugestoesFn: async () => { vezes++; return []; } });
+  const corrigirFalso = async (q) => q; // sem correção
+  const r = await criarWaterfall([a], corrigirFalso).sugestoes('endereço inexistente');
+  assert.deepEqual(r, []);
+  assert.equal(vezes, 1); // não tenta de novo com a MESMA query
+});
+await check('waterfall real (instância default) usa gazetteerCorrector real como corrigirFn padrão', async () => {
+  const a = fakeProvider('a', { sugestoesFn: async () => [] });
+  // sem injetar corrigirFn -> usa o default (gazetteerCorrector real); sem db (env de teste), corrigir()
+  // devolve a query intacta por design (graceful degradation) -> resultado permanece []
+  const r = await criarWaterfall([a]).sugestoes('qualquer coisa');
+  assert.deepEqual(r, []);
+});
+
+/* ── gazetteerCorrector: degradação graciosa sem banco (ambiente de teste = db null) ── */
+await check('gazetteerCorrector.corrigir: sem banco (env de teste) devolve a query intacta, nunca lança', async () => {
+  assert.equal(await corrigirComGazetteer('Rua Joao Schlay'), 'Rua Joao Schlay');
+  assert.equal(await corrigirComGazetteer(''), '');
+  assert.equal(await corrigirComGazetteer('ab'), 'ab'); // curta demais, nem tentaria a RPC
 });
 
 console.log(fail === 0

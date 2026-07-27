@@ -1,6 +1,6 @@
 # ADR REF-ADDRESS-02 — Arquitetura profissional do módulo de endereços
 
-- **Status:** 🚀 **EXECUÇÃO EM ANDAMENTO — Ondas 1 (schema), 2 (repository+validator) e 3 (waterfall de geocoding) CONCLUÍDAS e VALIDADAS (2026-07-27).** Onda 0 (pesquisa) encerrada por decisão do dono: evidências coletadas são suficientes, decisões de baixo impacto passam a ser tomadas autonomamente pelo arquiteto responsável (esta ADR), só decisões arquiteturais críticas interrompem o fluxo.
+- **Status:** 🚀 **EXECUÇÃO EM ANDAMENTO — Ondas 1 (schema), 2 (repository+validator), 3 (waterfall de geocoding) e 4 (busca fuzzy local `pg_trgm`) CONCLUÍDAS e VALIDADAS (2026-07-27).** Onda 0 (pesquisa) encerrada por decisão do dono: evidências coletadas são suficientes, decisões de baixo impacto passam a ser tomadas autonomamente pelo arquiteto responsável (esta ADR), só decisões arquiteturais críticas interrompem o fluxo.
   ⚠️ **Ressalva registrada explicitamente (aprovação do dono da Onda 3):** dentro da Onda 3, a **arquitetura** está validada e a **implementação** do adapter Mapbox está concluída, mas a **integração real com a API do Mapbox segue PENDENTE** até existir `VITE_MAPBOX_TOKEN` + 1 rodada de teste de integração — ver §17.0. Não tratar "Onda 3 concluída" como "Mapbox testado contra a API real".
 - **Escopo:** domínio `src/address/` (busca/autocomplete/geocoding/formulário/mapa), persistência de endereço em `orders`, e o desenho (não implementação) de uma futura `DeliveryAreaService`.
 - **Não-escopo:** checkout (fluxo de pagamento), catálogo, fidelidade, comanda térmica — nenhum desses é tocado nesta fase.
@@ -444,3 +444,43 @@ Sem `VITE_MAPBOX_TOKEN`, a cadeia ativa hoje é Nominatim → Photon. Isso já �
 ### 17.7 Próximos passos
 
 Onda 4 — camada de busca fuzzy local (`pg_trgm` + `unaccent`, este último já instalado no banco desde a introspecção da Onda 1) sobre uma tabela curada de bairros/ruas conhecidas das 3 cidades atendidas.
+
+---
+
+## 18. Execução — Onda 4 (Busca fuzzy local — `pg_trgm`), 2026-07-27
+
+### 18.1 Implementado
+
+- **`migrations/REF-ADDRESS-02-onda4-gazetteer.sql`** (+ rollback): instala `pg_trgm` (não estava instalada; `unaccent` já estava desde a Onda 1); cria `public.immutable_unaccent(text)` — wrapper `IMMUTABLE` de `unaccent`, necessário porque a introspecção real mostrou `unaccent(text)` como `STABLE` nesta base (não `IMMUTABLE`), o que bloquearia coluna gerada/índice funcional direto; cria `public.address_gazetteer` (`cidade, tipo['bairro'|'rua'], nome, nome_normalizado` gerado via `immutable_unaccent(lower(nome))`, índice GIN trigram); RLS com leitura pública (`anon`+`authenticated` — dado de referência, sem PII) e escrita só `authenticated`; RPC `public.buscar_gazetteer(query, cidade, limit)` (similaridade de trigrama, threshold 0.3 fixo na função). Seed inicial: 4 linhas (Timbó — bairros Araponguinhas/Estados, ruas João Schlei/Amazonas), só os nomes **confirmados ao vivo** nas Ondas 0/3.
+- **`address/services/geocoding/gazetteerCorrector.js`**: chama `buscar_gazetteer` (mesmo cliente/timeout de `addressRepository.js`), nunca lança — falha degrada pra query original intacta.
+- **`waterfallGeocoder.js`**: `sugestoes` ganhou 2ª rodada — se a query original voltar vazia de **todos** os providers, tenta corrigir via gazetteer e roda a cadeia de novo com o nome corrigido (D-GAZETTEER-ORDER, §18.2). `criarWaterfall(providers, corrigirFn)` agora aceita os dois como dependências injetadas.
+
+### 18.2 Decisões ratificadas pelo arquiteto
+
+| ID | Decisão | Justificativa |
+|---|---|---|
+| **D-GAZETTEER-ORDER** | Corretor só é chamado depois que **todos** os providers já voltaram vazios da query original — não corrige de antemão | Uma busca que já funciona nunca é alterada; efeito colateral zero para o caminho feliz; ataca exatamente o caso de falha total |
+| **D-IMMUTABLE-UNACCENT** | Wrapper `immutable_unaccent` fixando o dicionário explícito (`'public.unaccent'::regdictionary`), não o `unaccent(text)` de 1 argumento | Confirmado por introspecção: a forma de 1 argumento é `STABLE` nesta base (depende da config de busca textual corrente) — inválida em coluna gerada/índice funcional. Padrão documentado do próprio Postgres |
+| **D-GAZETTEER-RLS** | Leitura pública (`anon`+`authenticated`), escrita só `authenticated`, mesmo padrão do catálogo (categorias/produtos) — não o padrão de `orders`/`addresses` (RPC-only) | Dado 100% não-sensível (nome de rua/bairro público); não há razão para esconder de `anon`, e RPC-only seria complexidade sem ganho de segurança real aqui |
+| **D-SEED-MINIMO** | Seed inicial = só 4 linhas, as confirmadas ao vivo nesta sessão — não uma lista abrangente dos bairros/ruas reais das 3 cidades | Não tenho uma lista autoritativa completa; inventar linhas seria fabricar dado. Crescer essa lista é **curadoria de conteúdo** (`INSERT` puro, sem deploy) — registrado como trabalho futuro, não bloqueia a infraestrutura |
+| **D-LIB-SUPABASE-ENV-GUARD** | Corrigido `lib/supabase.js` (arquivo compartilhado por todo o app) para não lançar quando importado fora do Vite | Achado ao rodar o teste novo: `import.meta.env` não existe em Node puro — `addressRepository.js` (Onda 2) já tinha essa mesma exposição latente, só nunca tinha sido exercitada por um import real. Guarda preserva o padrão literal `import.meta.env.VITE_X` (o que o Vite substitui no build) — zero mudança de comportamento no app real, provado pela suíte completa + build depois da mudança |
+
+### 18.3 Testes e resultado (evidência real, não hipotética)
+
+- **`tests/address-geocoding.golden.mjs`** ganhou 5 casos novos (2ª rodada do waterfall com `corrigirFn` injetado — nunca chama se a 1ª rodada já achou algo, corrige e re-tenta quando a 1ª volta vazia, não repete quando o corretor não acha nada melhor) + `gazetteerCorrector.corrigir` degradando sem banco. **20/20 PASS.**
+- **`tests/address.guard.mjs`** — invariante (11): isolamento do `buscar_gazetteer` + prova de que a correção só roda depois dos providers (D-GAZETTEER-ORDER). **PASS.**
+- **Migration aplicada de verdade** (via conexão administrativa) e verificada por introspecção direta: `pg_trgm` instalada, `immutable_unaccent.provolatile='i'` (IMMUTABLE confirmado), seed com 4 linhas.
+- **`scripts/address-gazetteer-test.mjs`** (novo, `npm run test:address-gazetteer`) rodou contra o banco real: leitura pública funciona, escrita direta do anon é negada (RLS), e — o teste mais importante — **`buscar_gazetteer('Rua Joao Schlay', 'Timbó')` acha 'Rua João Schlei' com 68% de similaridade**, o achado real da Onda 0 agora resolvido por uma camada própria, sem depender da disponibilidade do Photon. **5/5 PASS, 0 FAIL.**
+- **Suíte completa:** 30/30 gates do domínio + `vite build` limpo (594 módulos) + 9/9 render goldens idênticos.
+
+### 18.4 Comportamento real hoje
+
+A cadeia completa (com o gazetteer) já está ativa em produção assim que este commit for deployado: qualquer busca sem resultado nos 3 providers externos agora tenta, como último recurso antes de desistir, casar contra os nomes conhecidos localmente — determinístico, rápido (índice GIN), e não depende de nenhum serviço externo estar no ar.
+
+### 18.5 Trabalho futuro registrado (não bloqueia esta onda)
+
+Crescer o seed do `address_gazetteer` para uma lista realmente abrangente de bairros/ruas de Timbó/Indaial/Blumenau é curadoria de conteúdo (o dono, ou quem conhece a área de entrega, pode fazer via `INSERT` no SQL editor a qualquer momento — zero código/deploy). Uma futura aba de administração para isso é candidata natural a uma fase própria, não registrada como onda numerada ainda.
+
+### 18.6 Próximos passos
+
+Onda 5 — UX: número/complemento/referência uniformes nas 3 abas (hoje só CEP tem os 3 campos completos) + estados de erro granulares (§7 do ADR) substituindo os `alert()` bloqueantes.

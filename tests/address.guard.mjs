@@ -14,7 +14,10 @@
          save_structured_address (mesmo princípio da (1)/(2), agora para a persistência estruturada).
      (10) REF-ADDRESS-02 · Onda 3 — geocodingService.js delega sugestoes/reverso ao waterfallGeocoder
           (não chama nominatimService direto); Mapbox/Photon preservam as URLs externas EXATAS; Mapbox
-          fica indisponível sem VITE_MAPBOX_TOKEN (modo degradado, nunca quebra sem a chave). */
+          fica indisponível sem VITE_MAPBOX_TOKEN (modo degradado, nunca quebra sem a chave).
+     (11) REF-ADDRESS-02 · Onda 4 — gazetteerCorrector.js é o ÚNICO lugar que fala com a RPC
+          buscar_gazetteer; nunca lança (degrada pra query original); waterfallGeocoder só o chama
+          depois de TODOS os providers voltarem vazios (D-GAZETTEER-ORDER). */
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
@@ -137,6 +140,25 @@ check('(10) Mapbox fica indisponível sem VITE_MAPBOX_TOKEN (modo degradado, nun
 check('(10) waterfall.reverso lança em falha total (preserva o contrato original — confirmMap propaga sem try/catch)', () => {
   const wf = strip(read('address/services/geocoding/waterfallGeocoder.js'));
   assert.ok(/throw ultimoErro/.test(wf), 'reverso deve lançar (nunca devolver null) quando todos os provedores falham');
+});
+
+/* (11) REF-ADDRESS-02 · Onda 4 — gazetteer isolado */
+check('(11) gazetteerCorrector é o único lugar que chama buscar_gazetteer', () => {
+  const ARQ = 'address/services/geocoding/gazetteerCorrector.js';
+  const outros = files.filter((f) => f.startsWith('address/') && f !== ARQ);
+  const comRpc = outros.filter((f) => /buscar_gazetteer/.test(strip(read(f))));
+  assert.deepStrictEqual(comRpc, [], `buscar_gazetteer referenciada fora do gazetteerCorrector: ${JSON.stringify(comRpc)}`);
+  const corretor = strip(read(ARQ));
+  assert.ok(/db\.rpc\(\s*['"]buscar_gazetteer['"]/.test(corretor), 'gazetteerCorrector deve chamar a RPC buscar_gazetteer via db.rpc');
+  assert.ok(/catch\s*\{\s*return query;\s*\}/.test(corretor), 'gazetteerCorrector nunca deve lançar — falha degrada pra query original');
+});
+check('(11) waterfall só chama o corretor DEPOIS de todos os providers (D-GAZETTEER-ORDER)', () => {
+  const wf = strip(read('address/services/geocoding/waterfallGeocoder.js'));
+  const idxTentarProviders = wf.indexOf('async function tentarProviders');
+  const idxSugestoes = wf.indexOf('async function sugestoes');
+  const idxCorrigirFn = wf.indexOf('corrigirFn(query)');
+  assert.ok(idxTentarProviders > -1 && idxSugestoes > idxTentarProviders, 'tentarProviders deve existir antes de sugestoes usá-lo');
+  assert.ok(idxCorrigirFn > wf.indexOf('const primeira'), 'correção via gazetteer só pode ser chamada depois da 1ª tentativa (primeira)');
 });
 
 console.log(fail === 0
