@@ -57,7 +57,7 @@ export function comandaTexto(vm) {
 
   linhas.push('');
   linhas.push(v.rodape || '');
-  linhas.push('Encanto Delivery');
+  linhas.push(v.loja?.nomeFooter || '');
 
   return linhas.join('\n');
 }

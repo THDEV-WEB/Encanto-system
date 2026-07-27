@@ -133,7 +133,7 @@ export function comandaHTML(vm, opts = {}) {
     <hr class="rule">
     <div class="center rodape">
       <div>${esc(v.rodape)}</div>
-      <div style="font-weight:800">Encanto Delivery</div>
+      <div style="font-weight:800">${esc(v.loja?.nomeFooter)}</div>
     </div>
   </div>
 </body></html>`;

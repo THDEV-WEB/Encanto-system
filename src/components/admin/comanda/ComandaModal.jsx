@@ -3,6 +3,7 @@
    de largura (80mm/58mm) + Imprimir/Reimprimir. Chrome do modal em estilo inline (nao depende do index.css).
    Sem estado de dados: deriva tudo do pedido via o dominio puro (buildComanda -> comandaHTML). */
 import { useMemo, useState } from 'react';
+import { useCompanyInfo } from '../../../hooks/useCompanyInfo.js';   // REF-COMPANY-02: nome curto na comanda
 import { buildComanda } from './comandaModel.js';
 import { comandaHTML } from './comandaHtml.js';
 import { comandaTexto } from './comandaTexto.js';
@@ -31,11 +32,12 @@ const paperBtn = (on) => ({
 });
 
 export function ComandaModal({ order, numero, totalPedidos, onClose }) {
+  const companyInfo = useCompanyInfo();
   const [paper, setPaper] = useState('80mm');
   const [copiado, setCopiado] = useState(false);
   const vm = useMemo(
-    () => buildComanda(order, { numero, totalPedidosCliente: totalPedidos }),
-    [order, numero, totalPedidos],
+    () => buildComanda(order, { numero, totalPedidosCliente: totalPedidos, companyInfo }),
+    [order, numero, totalPedidos, companyInfo],
   );
   const html  = useMemo(() => comandaHTML(vm, { paper }), [vm, paper]);
   const texto = useMemo(() => comandaTexto(vm), [vm]);

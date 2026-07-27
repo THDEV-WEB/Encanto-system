@@ -95,9 +95,14 @@ export const refCurtaDoPedido = (id) => {
 
 /* ── API principal ────────────────────────────────────────────────────────────────────────
    order  : linha de orders com order_items(...) e customers(name,phone) embutidos (DS.getPedidos).
-   opts   : { numero?, totalPedidosCliente? }  (o painel passa o mesmo numero que exibe na tabela). */
+   opts   : { numero?, totalPedidosCliente?, companyInfo? }  (o painel passa o mesmo numero que exibe
+            na tabela; companyInfo vem de useCompanyInfo() em ComandaModal.jsx — este modulo continua
+            PURO, nunca importa services/company/* — REF-COMPANY-02). */
 export function buildComanda(order, opts = {}) {
   const o = order || {};
+  /* nome curto da empresa (fallback 'Encanto' cobre chamadas sem companyInfo, ex.: testes). "DELIVERY"/
+     "Delivery" fica fixo no codigo — rotulo de tipo de documento (como tipoLabel), nao parte do nome. */
+  const nomeCurto = (opts.companyInfo && opts.companyInfo.nomeCurto) || 'Encanto';
   const itensRaw = Array.isArray(o.order_items) ? o.order_items : [];
   const tipo = tipoDoPedido(o);
 
@@ -123,7 +128,11 @@ export function buildComanda(order, opts = {}) {
   const totalPedidosCliente = Number.isFinite(opts.totalPedidosCliente) ? opts.totalPedidosCliente : null;
 
   return {
-    loja: { nome: 'ENCANTO DELIVERY', linha2: 'Marmitas • Açaí' },
+    loja: {
+      nome:       `${nomeCurto.toUpperCase()} DELIVERY`,
+      nomeFooter: `${nomeCurto} Delivery`,
+      linha2:     'Marmitas • Açaí',
+    },
     tipo,
     tipoLabel: tipo === 'retirada' ? 'RETIRADA' : 'ENTREGA',
     numero: numeroFormatado(opts.numero, o),

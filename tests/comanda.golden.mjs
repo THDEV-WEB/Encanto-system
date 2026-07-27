@@ -144,5 +144,16 @@ check('texto: nunca fabrica HTML-escape (conteudo cru, plano)', () => {
   assert.ok(txt.includes('A<b>&"x'), 'texto plano preserva o nome cru (destino é clipboard/WhatsApp, não HTML)');
 });
 
+/* ── REF-COMPANY-02: loja.nome/nomeFooter derivam de opts.companyInfo.nomeCurto (fallback 'Encanto'
+   cobre as chamadas acima, sem opts.companyInfo — prova que a fiacao ponta-a-ponta nao e codigo morto). ── */
+check('vm com companyInfo custom: cabecalho e rodape derivam do mesmo nomeCurto', () => {
+  const vmC = buildComanda(pedidoRetirada, { numero: 1, companyInfo: { nomeCurto: 'Sabor Real' } });
+  assert.equal(vmC.loja.nome, 'SABOR REAL DELIVERY');
+  assert.equal(vmC.loja.nomeFooter, 'Sabor Real Delivery');
+  assert.ok(comandaHTML(vmC).includes('SABOR REAL DELIVERY'));
+  assert.ok(comandaHTML(vmC).includes('Sabor Real Delivery'));
+  assert.ok(comandaTexto(vmC).includes('Sabor Real Delivery'));
+});
+
 console.log(fail === 0 ? '\nOK comanda.golden — view-model + HTML termico + texto simples estaveis' : `\nFALHA comanda.golden — ${fail} caso(s)`);
 process.exit(fail ? 1 : 0);
