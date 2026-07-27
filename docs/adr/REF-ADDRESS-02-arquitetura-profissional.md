@@ -1,8 +1,7 @@
 # ADR REF-ADDRESS-02 — Arquitetura profissional do módulo de endereços
 
-- **Status:** 🚀 **EXECUÇÃO EM ANDAMENTO — Ondas 1 (schema), 2 (repository+validator), 3 (waterfall de geocoding), 4 (busca fuzzy local `pg_trgm`) e 5 (UX número/complemento/referência + erros granulares) CONCLUÍDAS e VALIDADAS (2026-07-27).** Onda 0 (pesquisa) encerrada por decisão do dono: evidências coletadas são suficientes, decisões de baixo impacto passam a ser tomadas autonomamente pelo arquiteto responsável (esta ADR), só decisões arquiteturais críticas interrompem o fluxo.
-  ⚠️ **Ressalva registrada explicitamente (aprovação do dono da Onda 3):** dentro da Onda 3, a **arquitetura** está validada e a **implementação** do adapter Mapbox está concluída, mas a **integração real com a API do Mapbox segue PENDENTE** até existir `VITE_MAPBOX_TOKEN` + 1 rodada de teste de integração — ver §17.0. Não tratar "Onda 3 concluída" como "Mapbox testado contra a API real".
-  ✅ **Onda 6 (liga `create_order`/checkout ao endereço estruturado) CONCLUÍDA e VALIDADA (2026-07-27)** — migration `REF-ADDRESS-02-onda6-create-order.sql` aplicada pelo dono (SQL Editor) e validação ao vivo contra o banco real (`test:address-onda6-orders`, `BEGIN...ROLLBACK`, nenhuma escrita persiste): **8/8 PASS** — ver §20.
+- **Status:** ✅ **CONCLUÍDA (2026-07-27) — Ondas 1 a 6 implementadas, testadas e validadas; encerramento formal aprovado pelo dono — ver §21.** Onda 7 (`DeliveryAreaService`) permanece reservada como desenho futuro, sem implementação, condicionada a nova aprovação explícita.
+  ⚠️ **Ressalva que permanece válida mesmo com a referência encerrada:** a **integração real com a API do Mapbox segue PENDENTE** até existir `VITE_MAPBOX_TOKEN` + 1 rodada de teste de integração — ver §17.0 e §21.4. A cadeia efetiva em produção hoje é Nominatim → Photon → gazetteer local.
 - **Escopo:** domínio `src/address/` (busca/autocomplete/geocoding/formulário/mapa), persistência de endereço em `orders`, e o desenho (não implementação) de uma futura `DeliveryAreaService`.
 - **Não-escopo:** checkout (fluxo de pagamento), catálogo, fidelidade, comanda térmica — nenhum desses é tocado nesta fase.
 - **Por que "REF-ADDRESS-02" e não "01":** o nome "REF-ADDRESS-01" já está em uso — foi a extração do `AddressModal` monolítico para o domínio `src/address/` (commit `aaedc2c`, zero-UX). Esta fase é uma reformulação de arquitetura muito mais profunda (provedor, modelo de dados persistido, fuzzy search, UX), então recebe o próximo número da mesma trilha. Depende de REF-ADDRESS-01 e REF-CHECKOUT-ADDRESS-01 (ambas concluídas).
@@ -598,3 +597,109 @@ Hash e confirmação de push no resumo da conversa (não neste documento, para n
 ### 20.8 Próximos passos
 
 Onda 7 (reservada) — desenho (não implementação) da `DeliveryAreaService`: zona/raio/taxa por área/distância/favoritos, conforme o plano original do ADR (§8). Nenhuma onda de implementação nova foi aprovada além desta.
+
+---
+
+## 21. Encerramento da REF-ADDRESS-02 (aprovação do dono, 2026-07-27)
+
+**Todas as ondas de implementação aprovadas (1 a 6) estão concluídas e validadas.** A Onda 7 (`DeliveryAreaService`) permanece só como desenho reservado no plano original (§5, §8) — **não deve ser iniciada sem nova aprovação explícita**. Esta seção consolida a referência inteira num único lugar; as seções 0–20 continuam sendo o registro detalhado de cada decisão e cada onda.
+
+### 21.1 Objetivo da referência
+
+Elevar o módulo de endereços de um nível MVP (busca frágil, número às vezes descartado em silêncio, mensagens de erro genéricas, texto livre sem estrutura) para uma arquitetura profissional: modelo estruturado de endereço, busca tolerante a erro de grafia, provedores de geocoding desacoplados por interface (trocáveis sem refatorar o domínio), erros granulares por causa, e o vínculo real desse endereço estruturado ao pedido — preservando 100% de compatibilidade com o que já existia (checkout, comanda térmica, pedidos antigos).
+
+### 21.2 Arquitetura final do módulo
+
+```
+src/address/                          (única porta pública: index.js — barreira garantida por teste estrutural)
+  services/
+    geocoding/
+      providers/
+        mapboxProvider.js             # 1º da cadeia — implementado, integração real com a API PENDENTE (sem token no ambiente)
+        nominatimProvider.js          # 2º da cadeia — em produção desde antes desta referência
+        photonProvider.js             # 3º da cadeia — busca tolerante a erro de grafia (resolveu o achado da Onda 0)
+      gazetteerCorrector.js           # 4º recurso — só entra se os 3 providers voltarem vazios (D-GAZETTEER-ORDER)
+      waterfallGeocoder.js            # orquestra a cadeia inteira; injetável/testável sem rede
+    geocodingService.js               # delega sugestoes/reverso ao waterfall; porCep inalterado (ViaCEP)
+  repository/
+    addressRepository.js              # única camada que persiste endereço estruturado (RPC save_structured_address)
+  validators/
+    addressValidators.js              # confidenceValida, enderecoValidoParaEntrega
+  utils/
+    addressModel.js                   # modelo canônico único (rua/numero/.../referencia/placeId/provider/confidence)
+    addressErrors.js                  # erros granulares (ADR §7): gps_desabilitado/permissao_negada/servico_indisponivel/sem_internet
+  hooks/
+    useAddress.js, useAddressSearch.js
+  components/
+    AddressModal/Search/Form/Map/Summary/AddressDetalhesEntrega.jsx  # número/complemento/referência uniformes nas 3 abas
+
+Banco (Postgres/Supabase):
+  addresses            (reaproveitada, dormente antes desta referência — agora ativa)
+  address_gazetteer     (nova — camada de apoio local, pg_trgm, NUNCA um provedor completo — D-GAZETTEER-BOUNDARY)
+  orders.endereco_id    (FK pré-existente, dormente antes desta referência — agora ligada pelo checkout)
+  RPCs SECURITY DEFINER: save_structured_address, buscar_gazetteer, create_order (corpo estendido, assinatura intacta)
+```
+
+Desvio deliberado do desenho original (§5): a tabela curada de ruas/bairros **não** é um provedor a mais na cadeia declarada em `ORDEM_PADRAO` — é um corretor de 2ª rodada, acionado só quando os 3 providers externos voltam vazios (D-GAZETTEER-ORDER, Onda 4). `DeliveryAreaService` não foi implementada — o encaixe (mesmo padrão `service + RPC + hook` de `deliveryEta.js`) continua reservado, sem código.
+
+### 21.3 Decisões arquiteturais relevantes (consolidado)
+
+| ID | Decisão | Onda |
+|---|---|---|
+| D-WATERFALL | Cadeia de fallback entre provedores (não "trocar X por Y") — Mapbox → Nominatim → Photon → gazetteer local | 3/4 |
+| D-GAZETTEER-ORDER | Corretor local só roda depois que todos os providers externos já voltaram vazios da query original | 4 |
+| D-GAZETTEER-BOUNDARY | `address_gazetteer` é permanentemente camada de apoio/fallback — nunca uma base de endereços completa nem substituto dos provedores reais | 4 |
+| D-IMMUTABLE-UNACCENT | Wrapper `IMMUTABLE` explícito sobre `unaccent` (a forma de 1 argumento é `STABLE` nesta base — achado por introspecção, não suposição) | 4 |
+| D-MAPA-NUMERO-OPCIONAL | Número continua obrigatório em CEP/busca, mas não na aba de Mapa (evita endurecer um caminho que já funciona sem número) | 5 |
+| D-NOTFOUND-VS-INDISPONIVEL | Limitação aceita conscientemente: "não encontrado" e "serviço fora do ar" continuam indistinguíveis na busca por texto (ver §21.4) | 5 |
+| D-ENDERECO-ID-VIA-PORDER | Vínculo do pedido ao endereço viaja dentro do `p_order` jsonb já existente, não como parâmetro novo — assinatura de `create_order` fica intacta | 6 |
+| D-ENDERECO-NUNCA-BLOQUEIA | Falha ao gravar o endereço estruturado nunca impede o pedido de ser criado (mesmo contrato de `addressRepository.salvar` desde a Onda 2) | 2/6 |
+| D-ENDERECO-SEM-CACHE-DE-RETRY | Cada tentativa de checkout regrava o endereço estruturado (sem cache entre retries) — evita vincular um endereço editado no meio do caminho | 6 |
+
+### 21.4 Limitações conhecidas (registradas, não escondidas)
+
+- **Integração real com a API do Mapbox continua PENDENTE.** O adapter está implementado e testado com providers falsos (sem rede), mas nunca foi exercitado contra a API real — não existe `VITE_MAPBOX_TOKEN`/conta neste ambiente. Hoje, na prática, a cadeia efetiva é Nominatim → Photon → gazetteer local (Mapbox fica indisponível e é pulado). Quando o token existir, uma bateria pequena de integração é suficiente — nenhuma refatoração é esperada.
+- **`endereco_nao_encontrado` e `servico_indisponivel` continuam indistinguíveis** na busca por texto (D-NOTFOUND-VS-INDISPONIVEL) — o waterfall foi desenhado para nunca lançar em falha total. `sem_internet` cobre o caso mais comum via `navigator.onLine`, mas não cobre "todos os 3 provedores estão fora do ar com internet normal".
+- **Seed do `address_gazetteer` é mínimo por design** (4 linhas — só o que foi confirmado ao vivo nesta referência). Crescer essa lista é curadoria de conteúdo futura (SQL puro), não um gap de arquitetura.
+- **`addressRepository.salvar()` nunca preenche `customer_id`** no endereço gravado — o campo existe desde a Onda 2, mas nenhum fluxo o popula ainda. Vincular ao cliente logado é um enriquecimento natural fora do escopo desta referência.
+- **Endereços órfãos são possíveis** (checkout que falha depois do endereço já ter sido gravado, ou o vínculo não ser aplicado por qualquer motivo) — sem rotina de limpeza; tabela pequena, sem custo de escala relevante hoje.
+- **Os `alert()` de campo obrigatório** ("Informe o número da residência") não foram convertidos para o padrão de erro granular (§7) — são uma categoria diferente (validação de campo, não falha de busca/geocoding).
+
+### 21.5 Impactos no sistema
+
+- **Checkout:** continua funcionando 100% como antes para quem não usa os campos novos — nenhuma mudança de comportamento visível quando o endereço estruturado não pode ser gravado. Passa a persistir, adicionalmente, um vínculo real (`orders.endereco_id`) para pedidos de entrega.
+- **Banco:** duas tabelas antes dormentes (`addresses`, e a FK `orders.endereco_id`) passam a ser ativamente escritas; uma tabela nova e pequena (`address_gazetteer`) entra em produção como camada de apoio, com escrita restrita a `authenticated`.
+- **`create_order`:** corpo estendido, assinatura e grants existentes (`anon`/`authenticated`/`service_role`) intocados — zero necessidade de reconceder permissões.
+- **Nenhum outro domínio foi tocado** (catálogo, fidelidade, comanda térmica, admin) — escopo respeitado do início ao fim, conforme definido no §"Não-escopo" desta ADR.
+- **Uma correção lateral real** foi feita em `lib/supabase.js` (Onda 4) — um bug pré-existente (acesso a `import.meta.env` sem guarda, quebrava fora do Vite) que nunca tinha sido exercitado antes desta referência; corrigido preservando o padrão literal que o Vite substitui no build, zero mudança de comportamento em produção.
+
+### 21.6 Evidências de validação
+
+- **Suíte de domínio:** 30/30 arquivos de teste + `vite build` limpo, mantidos verdes ao longo de todas as 6 ondas.
+- **`tests/checkout.golden.mjs`** (o fluxo mais protegido do projeto): todos os snapshots e pins de fonte continuam batendo, incluindo os 4 pins novos da Onda 6.
+- **`tests/address.render.mjs`:** 12/12 casos — âncora `GOLDEN_MODAL_SEARCH` (estado idle, byte-a-byte do monólito original de antes desta referência inteira) permanece idêntica, prova mecânica de zero regressão visual no caminho mais usado.
+- **`tests/address.guard.mjs`:** 11 invariantes estruturais (isolamento de I/O, fronteira única do domínio, isolamento de cada novo arquivo).
+- **`tests/address-geocoding.golden.mjs`:** normalizadores dos 3 providers + orquestração do waterfall + gazetteer, sem rede real.
+- **3 scripts reais contra o banco** (todos `BEGIN...ROLLBACK`, nenhuma escrita persiste): `test:address-schema` (Onda 1, 8/8 PASS), `test:address-gazetteer` (Onda 4, 5/5 PASS, incluindo a prova ao vivo de que "Rua Joao Schlay" acha "Rua João Schlei" com 68% de similaridade), `test:address-onda6-orders` (Onda 6, 8/8 PASS, incluindo vínculo real via JOIN e os dois casos de vínculo inválido tratado graciosamente).
+- **3 migrations aplicadas e verificadas por introspecção direta** no banco de produção (Onda 1, Onda 4, Onda 6) — todas aditivas, todas com rollback companion testável.
+
+### 21.7 Relação completa dos commits da referência
+
+| Commit | Onda | Descrição |
+|---|---|---|
+| `866c1a3` | 1 | Schema estruturado de endereço (fundação) |
+| `39d5f7c` | 1 | Fecha Onda 1 — migration aplicada, 8/8 testes reais PASS |
+| `b2fba85` | 2 | Repository + validator do endereço estruturado |
+| `d84e59b` | 3 | Waterfall de geocoding (Mapbox → Nominatim → Photon) |
+| `aba7ecc` | 3 | Registra explicitamente status pendente da integração Mapbox |
+| `54d399e` | 4 | Busca fuzzy local (`pg_trgm`) sobre tabela curada |
+| `d5ca975` | 4 | Registra diretriz de sustentabilidade do gazetteer |
+| `8475f15` | 5a | Número/complemento/referência uniformes nas 3 abas |
+| `44cdd04` | 5b | Erros granulares (ADR §7) + fecha documentação da Onda 5 |
+| `6f56b88` | 6 | Liga `create_order`/checkout ao endereço estruturado |
+
+Todos os 10 commits foram enviados a `origin/main` no dia 2026-07-27 — nenhum trabalho local pendente de push nesta referência.
+
+### 21.8 Status final
+
+**REF-ADDRESS-02 — CONCLUÍDA.** Onda 7 (`DeliveryAreaService`) permanece reservada como desenho futuro, condicionada a nova aprovação explícita do dono.
