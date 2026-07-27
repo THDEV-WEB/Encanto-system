@@ -1,6 +1,7 @@
 # ADR REF-ADDRESS-02 — Arquitetura profissional do módulo de endereços
 
-- **Status:** 🚀 **EXECUÇÃO EM ANDAMENTO — Ondas 1 (schema) e 2 (repository+validator) CONCLUÍDAS e VALIDADAS; Onda 3 (waterfall de geocoding, Mapbox principal) CONCLUÍDA e VALIDADA (2026-07-27).** Onda 0 (pesquisa) encerrada por decisão do dono: evidências coletadas são suficientes, decisões de baixo impacto passam a ser tomadas autonomamente pelo arquiteto responsável (esta ADR), só decisões arquiteturais críticas interrompem o fluxo.
+- **Status:** 🚀 **EXECUÇÃO EM ANDAMENTO — Ondas 1 (schema), 2 (repository+validator) e 3 (waterfall de geocoding) CONCLUÍDAS e VALIDADAS (2026-07-27).** Onda 0 (pesquisa) encerrada por decisão do dono: evidências coletadas são suficientes, decisões de baixo impacto passam a ser tomadas autonomamente pelo arquiteto responsável (esta ADR), só decisões arquiteturais críticas interrompem o fluxo.
+  ⚠️ **Ressalva registrada explicitamente (aprovação do dono da Onda 3):** dentro da Onda 3, a **arquitetura** está validada e a **implementação** do adapter Mapbox está concluída, mas a **integração real com a API do Mapbox segue PENDENTE** até existir `VITE_MAPBOX_TOKEN` + 1 rodada de teste de integração — ver §17.0. Não tratar "Onda 3 concluída" como "Mapbox testado contra a API real".
 - **Escopo:** domínio `src/address/` (busca/autocomplete/geocoding/formulário/mapa), persistência de endereço em `orders`, e o desenho (não implementação) de uma futura `DeliveryAreaService`.
 - **Não-escopo:** checkout (fluxo de pagamento), catálogo, fidelidade, comanda térmica — nenhum desses é tocado nesta fase.
 - **Por que "REF-ADDRESS-02" e não "01":** o nome "REF-ADDRESS-01" já está em uso — foi a extração do `AddressModal` monolítico para o domínio `src/address/` (commit `aaedc2c`, zero-UX). Esta fase é uma reformulação de arquitetura muito mais profunda (provedor, modelo de dados persistido, fuzzy search, UX), então recebe o próximo número da mesma trilha. Depende de REF-ADDRESS-01 e REF-CHECKOUT-ADDRESS-01 (ambas concluídas).
@@ -387,6 +388,18 @@ Onda 1 fechada. Seguindo para a **Onda 2** (Repository + Validator — camada JS
 ---
 
 ## 17. Execução — Onda 3 (Waterfall de geocoding), 2026-07-27
+
+### 17.0 Status do provedor Mapbox — registro explícito (aprovação do dono, 2026-07-27)
+
+> **Esta seção existe para que ninguém, no futuro, leia "Onda 3 concluída" e presuma que a integração com o Mapbox foi validada de ponta a ponta. Não foi.** Três coisas diferentes, três status diferentes:
+>
+> | O quê | Status |
+> |---|---|
+> | Arquitetura (interface desacoplada, waterfall, troca de provedor sem refatorar consumidores) | ✅ **Validada** |
+> | Implementação do adapter Mapbox (código, normalizador, modo degradado sem token) | ✅ **Concluída** |
+> | Integração real com a API do Mapbox (formato de resposta real, autenticação, rate limit real) | ⏳ **PENDENTE** — bloqueada até existir `VITE_MAPBOX_TOKEN` + 1 rodada de teste de integração contra a API de verdade |
+>
+> Quando o token existir: só uma bateria pequena de teste de integração (confirmar que `normalizarFeatureMapbox` continua compatível com a resposta real) — **nenhuma refatoração esperada** se o formato bater com a documentação usada aqui (§17.1). Até lá, o Mapbox nunca é exercitado em produção (`disponivel()===false`), então não há risco de quebra — só o risco, teoricamente menor, de o normalizador precisar de ajuste no dia em que for ativado.
 
 ### 17.1 Implementado
 
