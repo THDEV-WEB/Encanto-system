@@ -22,7 +22,10 @@ pedir confirmação. **NÃO commitar** até apresentar o relatório final para a
   `window.onerror`/`unhandledrejection` e breadcrumbs de console/fetch/click/navegação — não reimplementa
   nada disso (o app já tem um coletor forense PRÓPRIO e TEMPORÁRIO em `index.html`, REF-BOOT-02, que
   também escuta esses eventos; múltiplos listeners no mesmo evento são normais e não conflitam — REF-BOOT-02
-  não é tocado nem removido, é uma frente separada e ainda pendente do dono).
+  não é tocado nem removido nesta REF, é uma frente separada). **Atualização 2026-07-27:** REF-BOOT-02
+  fechada — o loader infinito relatado tinha 2 causas de dispositivo/vetor (WhatsApp in-app browser não
+  abrindo a URL; JavaScript desativado no navegador do aparelho), nenhuma bug de código. A instrumentação
+  v3 (coletor + `boot_diag`) segue no `index.html` até o dono decidir removê-la.
 - **Error Boundary**: preserva as DUAS boundaries existentes (`main.jsx` RootBoundary,
   `ProductModalBoundary.jsx`) — só adiciona `capturarErroReact()` dentro do `componentDidCatch` de cada
   uma (a segunda nem tinha `componentDidCatch`; hoje um erro ali é 100% silencioso). Nenhuma UI de
