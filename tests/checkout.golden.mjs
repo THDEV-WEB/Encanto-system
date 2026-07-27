@@ -15,7 +15,12 @@
          força atualizar o golden. É o elo golden↔código-real possível SEM extração.
    NÃO usa mocks que escondam comportamento: o cálculo é 100% domínio real; a estrutura é
    espelho verificado contra a fonte. Sem banco, rede, React ou localStorage.
-   ADR: docs/adr/REF-APP-01-B2-checkout-golden.md */
+   ADR: docs/adr/REF-APP-01-B2-checkout-golden.md
+
+   REF-ADDRESS-02 · Onda 6: order.endereco_id (uuid opcional, viaja dentro de p_order) — pin novo (pinCk)
+   trava que CheckoutPage.jsx só chama addressRepository.salvar() em entrega (nunca em retirada) e nunca
+   deixa essa chamada bloquear o checkout (contrato de addressRepository.salvar: nunca lança, null em
+   falha). Ver docs/adr/REF-ADDRESS-02-arquitetura-profissional.md §20. */
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -31,8 +36,8 @@ const check = (m, fn) => { try { fn(); } catch (e) { fail++; console.error('✗'
    O espelho (antes fiel à montagem inline do submit) foi substituído pelo IMPORT REAL; os pins de
    fonte (§B) garantem que a montagem real mora no order-domain. buildRpcPayload segue local (só mapeia
    buildOrderArgs → chaves p_ da RPC create_order de services/DataService.js). */
-function buildRpcPayload(cart, form, endereco, requestId) {
-  const { customer, order, items } = buildOrderArgs(cart, form, endereco, requestId);
+function buildRpcPayload(cart, form, endereco, requestId, enderecoId) {
+  const { customer, order, items } = buildOrderArgs(cart, form, endereco, requestId, enderecoId);
   return { p_customer: customer, p_order: order, p_items: items, p_request_id: requestId ?? null };
 }
 
@@ -53,7 +58,7 @@ const ENDERECO = 'Rua A, 100, Centro';
 
 const GOLDEN_PAYLOAD = {
   p_customer: { name: 'Maria Teste', phone: '38999990000' },
-  p_order: { total: 56, status: 'recebido', payment_method: 'pix', address: 'Rua A, 100, Centro', observacoes: 'sem cebola' },
+  p_order: { total: 56, status: 'recebido', payment_method: 'pix', address: 'Rua A, 100, Centro', observacoes: 'sem cebola', endereco_id: null },
   p_items: [
     { product_id: '11111111-1111-4111-8111-111111111111', nome_produto: 'Açaí 500ml', quantity: 2, price: 22, preco_unitario: 22,
       adicionais: [{ nome: 'Leite Ninho', preco: 2 }, { nome: 'Granola', preco: 2 }], observacoes: 'sem cebola' },
@@ -103,6 +108,11 @@ check('7. contratos null (adicionais [] / observacoes null / obs → null)', () 
   assert.strictEqual(p.p_items[1].observacoes, null);
   assert.strictEqual(p.p_order.observacoes, 'sem cebola');
 });
+check('7b. endereco_id (Onda 6): ausente -> null; presente -> passthrough', () => {
+  assert.strictEqual(buildRpcPayload(cart, FORM, ENDERECO, REQ).p_order.endereco_id, null);
+  const ID = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+  assert.strictEqual(buildRpcPayload(cart, FORM, ENDERECO, REQ, ID).p_order.endereco_id, ID);
+});
 /* Onda 5.2: view-model do resumo (o componente passa a consumir buildCheckoutView, sem recalcular preço).
    Congela nome/qty/valor por item + total — o resumo renderizado deve permanecer idêntico ao anterior. */
 check('8. buildCheckoutView reproduz o resumo (nome/qty/valor + total)', () => {
@@ -121,12 +131,15 @@ check('8. buildCheckoutView reproduz o resumo (nome/qty/valor + total)', () => {
 console.error('— (B) PIN DE FONTE (montagem em src/utils/orderPayload.js + savePedido em services/DataService.js)');
 const OD  = readFileSync(new URL('../src/utils/orderPayload.js', import.meta.url), 'utf8');
 const SVC = readFileSync(new URL('../src/services/DataService.js', import.meta.url), 'utf8');
+const CK  = readFileSync(new URL('../src/components/checkout/CheckoutPage.jsx', import.meta.url), 'utf8');
 const pinOD  = (m, re) => check('pin: ' + m, () => assert.ok(re.test(OD),  'expressão-chave ausente/alterada no order-domain — atualize o golden: ' + m));
 const pinSvc = (m, re) => check('pin: ' + m, () => assert.ok(re.test(SVC), 'expressão-chave ausente/alterada no savePedido (DataService) — atualize o golden: ' + m));
+const pinCk  = (m, re) => check('pin: ' + m, () => assert.ok(re.test(CK),  'expressão-chave ausente/alterada no submit (CheckoutPage) — atualize o golden: ' + m));
 pinOD("order.status 'recebido'",        /status:\s*'recebido'/);
 pinOD('order.total = cart.total',       /total:\s*cart\.total/);
 pinOD('order.observacoes = obs||null',  /observacoes:\s*form\.obs\s*\|\|\s*null/);
 pinOD('order.address = endereco (FONTE UNICA — nao form.endereco)', /address:\s*endereco\b/);
+pinOD('order.endereco_id = enderecoId ?? null (REF-ADDRESS-02 Onda 6)', /endereco_id:\s*enderecoId\s*\?\?\s*null/);
 check('pin: order.address NAO vem de form.endereco', () => assert.ok(!/address:\s*form\.endereco/.test(OD), 'address nao pode voltar a sair de form.endereco (fonte unica quebrada)'));
 pinOD('item.product_id = isUuid?id:null', /product_id:\s*isUuid\(i\.id\)\s*\?\s*i\.id\s*:\s*null/);
 pinOD('item.price = pu',                /price:\s*pu/);
@@ -136,6 +149,8 @@ pinOD('item.observacoes = i.obs||null', /observacoes:\s*i\.obs\s*\|\|\s*null/);
 pinOD('pu = precoUnitario(i)',          /const\s+pu\s*=\s*precoUnitario\(i\)/);
 pinSvc('savePedido → rpc create_order',  /d\.rpc\('create_order',\s*\{/);
 pinSvc('rpc args p_customer/p_order/p_items/p_request_id', /p_customer:\s*cliente,\s*p_order:\s*order,\s*p_items:\s*itens,\s*p_request_id:\s*requestId\s*\?\?\s*null/);
+pinCk('endereco estruturado so persiste em entrega, nunca bloqueia (Onda 6)', /const\s+enderecoId\s*=\s*\(!retirada\s*&&\s*endereco\)\s*\?\s*await\s+addressRepository\.salvar\(endereco\)\s*:\s*null;/);
+pinCk('buildOrderArgs recebe enderecoId (Onda 6)', /buildOrderArgs\(cart,\s*form,\s*enderecoEntrega,\s*requestIdRef\.current,\s*enderecoId\)/);
 
 console.error(fail === 0
   ? '\n✅ checkout.golden OK — payload + mensagem + invariantes congelados; montagem real fixada (pin de fonte)'

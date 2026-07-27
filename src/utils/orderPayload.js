@@ -12,12 +12,14 @@ import { precoUnitario, precoLinha } from './pricing.js';
 import { fmt } from './format.js';
 import { isUuid } from './ids.js';
 
-export function buildOrderArgs(cart, form, endereco, requestId) {
+export function buildOrderArgs(cart, form, endereco, requestId, enderecoId) {
   const customer = { name: form.nome, phone: form.telefone };
   /* REF-CHECKOUT-ADDRESS-01: o endereco vem da FONTE UNICA (dominio Address), passado explicitamente —
-     nunca mais de um form.endereco paralelo. O que e persistido no pedido e EXATAMENTE o exibido/confirmado. */
+     nunca mais de um form.endereco paralelo. O que e persistido no pedido e EXATAMENTE o exibido/confirmado.
+     REF-ADDRESS-02 · Onda 6: enderecoId (uuid de addresses, ou null p/ retirada/offline/legado) viaja dentro
+     do MESMO p_order jsonb — create_order le p_order->>'endereco_id' e grava em orders.endereco_id. */
   const order = { total: cart.total, status: 'recebido', payment_method: form.pagamento,
-                  address: endereco, observacoes: form.obs || null };
+                  address: endereco, observacoes: form.obs || null, endereco_id: enderecoId ?? null };
   const items = cart.items.map(i => {
     const pu = precoUnitario(i);
     return {

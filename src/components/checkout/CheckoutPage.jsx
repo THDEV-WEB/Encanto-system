@@ -13,7 +13,7 @@ import { buildOrderArgs, buildWhatsAppMessage, buildCheckoutView } from '../../u
 import { DS } from '../../services/DataService.js';
 import { LOYALTY_EVENT } from '../../services/loyalty/index.js';   // REF-LOYALTY-01: avisa a loja p/ re-buscar o estado oficial
 import { STORE_INFO } from '../../constants/storeInfo.js';
-import { useAddress, AddressSummary } from '../../address/index.js';   // REF-CHECKOUT-ADDRESS-01: FONTE UNICA do endereco
+import { useAddress, AddressSummary, addressRepository } from '../../address/index.js';   // REF-CHECKOUT-ADDRESS-01: FONTE UNICA do endereco
 import { lerGuestIdentity, salvarGuestIdentity } from '../../utils/guestIdentity.js'; // REF-CUSTOMER-01: cache local so p/ visitante
 import { registrarBreadcrumb, marcarPedido } from '../../lib/sentry.js'; // REF-OBS-01/REF-SENTRY-01: no-op sem VITE_SENTRY_DSN
 
@@ -84,10 +84,15 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode }) {
       requestIdRef.current = localStorage.getItem(STORAGE_KEYS.REQ_ID) || newRequestId();
       try { localStorage.setItem(STORAGE_KEYS.REQ_ID, requestIdRef.current); } catch (e) {}
     }
+    /* REF-ADDRESS-02 · Onda 6: persiste o endereço estruturado (só entrega — retirada usa o endereço da
+       loja, sem endereço do cliente) para linkar orders.endereco_id. NUNCA bloqueia o checkout: falha
+       (offline/timeout) devolve null (mesmo contrato de savePedido) e o pedido segue exatamente como
+       hoje — só o texto em order.address, endereco_id fica null (idêntico aos 80 pedidos existentes). */
+    const enderecoId = (!retirada && endereco) ? await addressRepository.salvar(endereco) : null;
     /* Montagem do pedido no order-domain (Onda 5.2 · Trilha B): buildOrderArgs concentra a
        lógica pura que antes vivia inline aqui (precoUnitario por item, product_id uuid/null,
        contratos null). Σ(price*quantity) reconcilia com orders.total. */
-    const { customer, order, items } = buildOrderArgs(cart, form, enderecoEntrega, requestIdRef.current);
+    const { customer, order, items } = buildOrderArgs(cart, form, enderecoEntrega, requestIdRef.current, enderecoId);
     /* GATE (fonte única de verdade): a persistência bem-sucedida é o evento que autoriza TODAS as ações
        seguintes. savePedido devolve o order_id em sucesso, ou null em falha (validação/rollback/timeout). */
     const orderId = await DS.savePedido(customer, order, items, requestIdRef.current);

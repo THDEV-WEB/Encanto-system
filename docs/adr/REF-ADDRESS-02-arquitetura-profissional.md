@@ -2,6 +2,7 @@
 
 - **Status:** 🚀 **EXECUÇÃO EM ANDAMENTO — Ondas 1 (schema), 2 (repository+validator), 3 (waterfall de geocoding), 4 (busca fuzzy local `pg_trgm`) e 5 (UX número/complemento/referência + erros granulares) CONCLUÍDAS e VALIDADAS (2026-07-27).** Onda 0 (pesquisa) encerrada por decisão do dono: evidências coletadas são suficientes, decisões de baixo impacto passam a ser tomadas autonomamente pelo arquiteto responsável (esta ADR), só decisões arquiteturais críticas interrompem o fluxo.
   ⚠️ **Ressalva registrada explicitamente (aprovação do dono da Onda 3):** dentro da Onda 3, a **arquitetura** está validada e a **implementação** do adapter Mapbox está concluída, mas a **integração real com a API do Mapbox segue PENDENTE** até existir `VITE_MAPBOX_TOKEN` + 1 rodada de teste de integração — ver §17.0. Não tratar "Onda 3 concluída" como "Mapbox testado contra a API real".
+  ✅ **Onda 6 (liga `create_order`/checkout ao endereço estruturado) CONCLUÍDA e VALIDADA (2026-07-27)** — migration `REF-ADDRESS-02-onda6-create-order.sql` aplicada pelo dono (SQL Editor) e validação ao vivo contra o banco real (`test:address-onda6-orders`, `BEGIN...ROLLBACK`, nenhuma escrita persiste): **8/8 PASS** — ver §20.
 - **Escopo:** domínio `src/address/` (busca/autocomplete/geocoding/formulário/mapa), persistência de endereço em `orders`, e o desenho (não implementação) de uma futura `DeliveryAreaService`.
 - **Não-escopo:** checkout (fluxo de pagamento), catálogo, fidelidade, comanda térmica — nenhum desses é tocado nesta fase.
 - **Por que "REF-ADDRESS-02" e não "01":** o nome "REF-ADDRESS-01" já está em uso — foi a extração do `AddressModal` monolítico para o domínio `src/address/` (commit `aaedc2c`, zero-UX). Esta fase é uma reformulação de arquitetura muito mais profunda (provedor, modelo de dados persistido, fuzzy search, UX), então recebe o próximo número da mesma trilha. Depende de REF-ADDRESS-01 e REF-CHECKOUT-ADDRESS-01 (ambas concluídas).
@@ -535,3 +536,65 @@ Além disso, quando uma sugestão escolhida na busca tem `_confidence !== 'exact
 ### 19.5 Próximos passos
 
 Onda 6 — ligar o checkout: `create_order` ganha `p_address_id` opcional (corpo da função já capturado por introspecção na Onda 1, sem incerteza), `addressRepository.salvar()` passa a ser chamado no fluxo real de checkout, `orders.endereco_id` deixa de estar sempre vazio. Onda mais sensível até aqui — único caminho de escrita de 100% dos pedidos — isolada de propósito das anteriores.
+
+---
+
+## 20. Execução — Onda 6 (Liga `create_order`/checkout ao endereço estruturado), 2026-07-27
+
+Diretriz do dono para esta onda: máximo isolamento, preservar integralmente o comportamento atual de `create_order`, compatibilidade garantida com pedidos antigos, zero regressão no checkout, e validação mais rigorosa que as ondas anteriores (evidência real de que pedidos continuam sendo criados, endereço persiste corretamente, pedidos antigos continuam funcionando).
+
+### 20.1 Ground truth (introspecção antes de escrever a migration)
+
+Corpo de `create_order` capturado de novo por introspecção direta — **idêntico** ao capturado na Onda 1 (nenhuma mudança nas 5 ondas intermediárias, confirmando o registro do ADR §0). `orders.endereco_id` (uuid, FK → `addresses(id)`) e o índice já existiam desde antes da Onda 1; **80/80 pedidos** no banco têm `endereco_id IS NULL` — confirma que nenhum caminho grava nessa coluna hoje.
+
+### 20.2 Decisões arquiteturais tomadas
+
+| ID | Decisão | Justificativa |
+|---|---|---|
+| **D-ENDERECO-ID-VIA-PORDER** | `endereco_id` viaja **dentro** do `p_order` jsonb já existente (mesmo veículo de `address`/`payment_method`/`observacoes`), **não** como um 5º parâmetro posicional novo na função | A assinatura de `create_order` (4 parâmetros) fica **byte-a-byte igual**. Nenhum re-`GRANT` necessário, nenhuma mudança no contrato de chamada de `DS.savePedido`. Desvio deliberado do que o §19.5 previa (`p_address_id` como novo parâmetro) — decisão de baixo impacto, tomada autonomamente: o resultado funcional é idêntico, o risco é estritamente menor |
+| **D-ENDERECO-ID-CAST-PROTEGIDO** | O cast `::uuid` de `p_order->>'endereco_id'` fica **dentro** do bloco `begin...exception when others` (mesmo padrão já usado para `item->>'product_id'`), nunca no `declare` | Um valor malformado (não-uuid) ou um uuid válido mas inexistente (viola a FK) tem que devolver `{ok:false, error, sqlstate}` — igual a qualquer outra validação da função — e **nunca** propagar uma exceção crua ao chamador. Provado por teste real (§20.4, CO3/CO4) |
+| **D-ENDERECO-NUNCA-BLOQUEIA** | `addressRepository.salvar()` é chamado no `CheckoutPage.submit()` só quando `!retirada` (entrega) e nunca impede o pedido de prosseguir — falha (offline/timeout) devolve `null` (mesmo contrato já estabelecido na Onda 2) e o checkout segue exatamente como hoje, só com `endereco_id` ficando `NULL` | O texto (`order.address`) já é a fonte confirmada/exibida ao cliente desde REF-CHECKOUT-ADDRESS-01; o vínculo estruturado é um enriquecimento, não um requisito para o pedido existir. Bloquear o checkout por uma falha nessa gravação secundária criaria um risco novo, pior que o problema que a onda resolve |
+| **D-ENDERECO-SEM-CACHE-DE-RETRY** | Cada tentativa de `submit()` (inclusive um retry manual após falha de `create_order`) chama `addressRepository.salvar()` de novo, sem cachear o `enderecoId` entre tentativas | Cachear evitaria uma linha extra em `addresses` no caso raro de retry-após-falha, mas criaria uma classe de bug pior: se o cliente **editar o endereço** entre duas tentativas (o modal permite isso a qualquer momento), um cache reaproveitaria um `enderecoId` de um endereço que não é mais o exibido. Simplicidade + correção > uma linha órfã ocasional em `addresses` (tabela sem custo de escala relevante) |
+
+### 20.3 Implementado
+
+- **`migrations/REF-ADDRESS-02-onda6-create-order.sql`** (+ rollback): `CREATE OR REPLACE FUNCTION create_order` com a **mesma assinatura** (`p_customer jsonb, p_order jsonb, p_items jsonb, p_request_id uuid DEFAULT NULL`) — só o corpo muda: o `INSERT INTO orders` ganha a coluna `endereco_id`, lida de `nullif(btrim(p_order->>'endereco_id'), '')::uuid` dentro do bloco protegido. Rollback restaura o corpo capturado por introspecção (idêntico nas duas capturas, Onda 1 e Onda 6).
+- **`src/utils/orderPayload.js`**: `buildOrderArgs(cart, form, endereco, requestId, enderecoId)` — novo 5º parâmetro opcional, adiciona `order.endereco_id = enderecoId ?? null`. Aditivo: chamadas antigas com 4 argumentos continuam funcionando, só que agora `p_order` sempre carrega a chave (`null` quando ausente).
+- **`src/components/checkout/CheckoutPage.jsx`**: antes de montar `buildOrderArgs`, quando `!retirada && endereco`, chama `addressRepository.salvar(endereco)` e usa o retorno (uuid ou `null`) como `enderecoId`. Retirada nunca chama (endereço é o da loja, não do cliente — comportamento intocado).
+
+### 20.4 Testes e resultado (evidência real, exigida com rigor extra pelo dono)
+
+- **`tests/checkout.golden.mjs`** (o golden mais protegido do projeto — "fluxo sagrado"): `GOLDEN_PAYLOAD.p_order` ganha `endereco_id: null` (comportamento hoje, sem quebrar nenhum snapshot existente); caso novo 7b prova passthrough (`ausente → null`, `presente → valor exato`); 2 pins de fonte novos (`pinOD`) travam a linha exata `endereco_id: enderecoId ?? null` em `orderPayload.js`; 2 pins novos (`pinCk`, categoria nova neste golden, lendo `CheckoutPage.jsx` pela primeira vez) travam que a chamada a `addressRepository.salvar` só acontece com `!retirada` e nunca bloqueia (`? await ... : null`), e que `enderecoId` realmente chega em `buildOrderArgs`. **Resultado: PASS.**
+- **`scripts/address-onda6-orders-test.mjs`** (novo, `npm run test:address-onda6-orders`, mesmo molde `BEGIN...ROLLBACK` role `anon` dos scripts anteriores — nenhuma escrita persiste): 6 casos direto contra `create_order` real —
+  - **CO1** — pedido **sem** `endereco_id` (formato legado, simula uma chamada antiga) → cria normalmente, `orders.endereco_id` fica `NULL`;
+  - **CO2** — pedido **com** `endereco_id` de um endereço real (criado via `save_structured_address` na mesma transação) → `JOIN orders↔addresses` confirma o vínculo E os dados gravados (rua exata);
+  - **CO3** — `endereco_id` malformado (não é uuid) → `{ok:false, error, sqlstate}`, **nunca** exceção crua;
+  - **CO4** — `endereco_id` válido mas inexistente (viola a FK) → `{ok:false, error, sqlstate}`, **nunca** exceção crua;
+  - **CO5** — idempotência (mesmo `request_id`, 2 chamadas) continua intacta com `endereco_id` no payload: mesmo `order_id`, `idempotent:true`, 1 única linha;
+  - **CO6** — assinatura de `create_order` continua `(jsonb,jsonb,jsonb,uuid)` — os grants existentes (`anon`/`authenticated`/`service_role`) permanecem válidos sem re-`GRANT`.
+  Relatório verificado por SHA256 do corpo do relatório (mesmo padrão dos scripts anteriores). **Executado ao vivo depois da migration aplicada pelo dono: 8/8 PASS, 0 FAIL.** Achado durante a 1ª execução (corrigido antes de reportar): as leituras de verificação (`SELECT` em `orders`/`addresses` para conferir o que `create_order` gravou) inicialmente tentavam rodar como `anon` — que nunca teve acesso direto de leitura a `orders` (por desenho da `HARDEN-ORDERS-RLS`, só via RPC). Era um bug do **script de teste**, não da migration (`create_order`, sendo `SECURITY DEFINER`, já grava certo independente de quem chama); corrigido alternando o papel só em torno da leitura de verificação (`RESET ROLE` / `SET LOCAL ROLE anon`), mantendo as chamadas a `create_order`/`save_structured_address` como `anon` (fiel ao caminho real de um visitante no checkout).
+  - **CO1:** pedido sem `endereco_id` → criado (`order_id` real retornado), `orders.endereco_id` lido de volta = `NULL`.
+  - **CO2:** endereço real criado via `save_structured_address` + pedido com esse `endereco_id` → `JOIN orders↔addresses` confirma `endereco_id` E a rua gravada (`"Rua Onda6 Teste"`) batendo exatamente.
+  - **CO3:** `endereco_id: "nao-e-um-uuid"` → `{"ok":false,"error":"invalid input syntax for type uuid...","sqlstate":"22P02"}` — gracioso, sem exceção crua.
+  - **CO4:** `endereco_id` de um uuid válido mas inexistente → `{"ok":false,"error":"...violates foreign key constraint \"orders_endereco_id_fkey\"","sqlstate":"23503"}` — gracioso, sem exceção crua.
+  - **CO5:** 2ª chamada com o mesmo `request_id` → mesmo `order_id`, `idempotent:true`, 1 única linha em `orders` para aquele `request_id`.
+  - **CO6:** `pronargs=4`, tipos `["jsonb","jsonb","jsonb","uuid"]` — assinatura intacta.
+  - **RB1 (pós-`ROLLBACK`):** os 5 pedidos de teste somem — confirma que nada da suíte persistiu no banco real.
+- **Suíte de domínio completa** (`npm run test:domain`, 30 arquivos) + `vite build` — sem regressão em nenhum dos outros 29 arquivos (inclusive `deps.audit`, que continua sem inversão de dependência com `addressRepository` agora importado por `CheckoutPage.jsx`) + `render.smoke` (14 folhas, sem mudança visual — esta onda não toca JSX de tela nenhuma, só o `submit`).
+
+### 20.5 Ordem de deploy segura (por que não há janela de risco)
+
+O código frontend (este commit) pode ser deployado **antes** da migration ser aplicada, sem nenhum efeito colateral negativo: o `create_order` **atual** (pré-migration) ignora silenciosamente qualquer chave desconhecida dentro do jsonb `p_order` — `endereco_id` chega, não é lido, o pedido é criado exatamente como hoje. O único efeito enquanto a migration não roda é que `addressRepository.salvar()` passa a gravar endereços estruturados reais em `addresses` (a partir de agora, todo checkout de entrega grava um endereço), só que **ainda não linkados** a nenhum pedido — não é perda de dado, é um vínculo que se completa sozinho, sem nenhuma ação extra, no primeiro pedido criado depois da migration aplicada.
+
+### 20.6 Trabalho futuro registrado (não bloqueia esta onda)
+
+- `addressRepository.salvar()` nunca preenche `customer_id` no endereço gravado (campo existe no payload desde a Onda 2, mas nenhum fluxo popula) — vincular ao cliente logado no momento do checkout é um enriquecimento natural, fora do escopo desta onda (que é só ligar `orders↔addresses`).
+- Endereços órfãos (criados por um checkout que falhou depois da gravação do endereço, ou pela janela descrita em §20.5) não têm nenhuma rotina de limpeza — tabela pequena, sem custo de escala relevante hoje; candidato a um job de manutenção futuro, não urgente.
+
+### 20.7 Commit e push
+
+Hash e confirmação de push no resumo da conversa (não neste documento, para não duplicar rastro).
+
+### 20.8 Próximos passos
+
+Onda 7 (reservada) — desenho (não implementação) da `DeliveryAreaService`: zona/raio/taxa por área/distância/favoritos, conforme o plano original do ADR (§8). Nenhuma onda de implementação nova foi aprovada além desta.
