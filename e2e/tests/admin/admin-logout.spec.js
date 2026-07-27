@@ -37,7 +37,9 @@ test.describe('sair do Admin', { tag: '@writes' }, () => {
 
     await page.locator('[data-testid="header-admin-btn"]').click();
     await expect(page.locator('[data-testid="admin-login-senha"]')).toBeVisible();
-    await adminLoginPage.submitButton.click();
+    // REF-UX-SESSION-01: sessão ainda válida ("Ver loja" não desloga) — "Entrar" acha a sessão e pede
+    // confirmação explícita antes de entrar (não pula mais direto pro painel com 1 clique).
+    await adminLoginPage.entrarReaproveitandoSessao();
     await expect(adminPanel.tab('dashboard')).toBeVisible();
   });
 

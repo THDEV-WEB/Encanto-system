@@ -34,12 +34,13 @@ test.describe('Minha Conta (Admin)', { tag: '@writes' }, () => {
 
     // Recarrega — confirma que persistiu de verdade na sessão (user_metadata), não só no state local.
     // REF-STABILITY-02: o reload volta pra Loja (sem exceção); reentra no Admin via engrenagem + Entrar
-    // (a sessão continua válida, reaproveitada sem pedir senha de novo).
+    // (a sessão continua válida, reaproveitada sem pedir senha de novo — REF-UX-SESSION-01 exige
+    // confirmar explicitamente antes de entrar).
     await page.reload();
     await expect(page.locator('[data-prod]').first()).toBeVisible();
     await page.locator('[data-testid="header-admin-btn"]').click();
     await expect(page.locator('[data-testid="admin-login-senha"]')).toBeVisible();
-    await page.getByRole('button', { name: /Entrar/ }).click();
+    await adminLoginPage.entrarReaproveitandoSessao();
     await expect(adminPanel.tab('dashboard')).toBeVisible();
     await adminPanel.abrirAba('minhaconta');
     await expect(page.locator('[data-testid="minhaconta-admin-nome"]')).toHaveValue('Admin E2E Teste');

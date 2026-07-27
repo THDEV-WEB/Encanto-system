@@ -22,7 +22,14 @@
      ESPERADO (a Loja sempre monta num F5), então a premissa do teste deixou de existir.
 
    REF-ADMIN-03 · Onda 2: `db` tem storageKey EXPLÍCITO (constants/authStorage.js) — este spec importa
-   a MESMA constante em vez de reconstruir a chave default do supabase-js a partir da URL. */
+   a MESMA constante em vez de reconstruir a chave default do supabase-js a partir da URL.
+
+   REF-UX-SESSION-01 (UX, sem tocar autenticação): o clique em "Entrar" continua sendo o ÚNICO gatilho
+   que consulta a sessão salva (nada muda aqui) — mas quando ela é reaproveitável, uma tela de
+   confirmação aparece antes de entrar ("Sessão administrativa encontrada" / Continuar como Administrador
+   / Usar outra conta), para deixar explícito que nenhuma senha foi validada nesse caminho. Os testes que
+   já provavam reaproveitamento de sessão agora usam `adminLoginPage.entrarReaproveitandoSessao()`
+   (clica "Entrar" + confirma) em vez de um único clique. Novo teste dedicado cobre "Usar outra conta". */
 import { test, expect } from '../../fixtures/index.js';
 import { AdminLoginPage } from '../../pages/AdminLoginPage.js';
 import { AdminPanelPage } from '../../pages/AdminPanel.page.js';
@@ -92,9 +99,10 @@ test.describe('sessão do Admin', { tag: '@writes' }, () => {
     await expect(page.locator('[data-testid="admin-login-senha"]')).toBeVisible();
     await expect(adminPanel.tab('dashboard')).toHaveCount(0);
 
-    // Só o clique em "Entrar" consulta a sessão — reaproveita sem pedir credencial de novo.
+    // Só o clique em "Entrar" consulta a sessão — reaproveita sem pedir credencial de novo, mas exige
+    // confirmação explícita (REF-UX-SESSION-01) antes de entrar de fato.
     const adminLoginPage = new AdminLoginPage(page);
-    await adminLoginPage.submitButton.click();
+    await adminLoginPage.entrarReaproveitandoSessao();
     await expect(adminPanel.tab('dashboard')).toBeVisible();
 
     await context.close();
@@ -113,10 +121,11 @@ test.describe('sessão do Admin', { tag: '@writes' }, () => {
     await expect(page.locator('[data-prod]').first()).toBeVisible();
     await expect(adminPanel.tab('dashboard')).toHaveCount(0);
 
-    // A sessão continua válida (persistência normal): engrenagem + Entrar restaura sem digitar senha.
+    // A sessão continua válida (persistência normal): engrenagem + Entrar + confirmar restaura sem
+    // digitar senha (REF-UX-SESSION-01: confirmação explícita antes de entrar).
     await page.locator('[data-testid="header-admin-btn"]').click();
     await expect(page.locator('[data-testid="admin-login-senha"]')).toBeVisible();
-    await adminLoginPage.submitButton.click();
+    await adminLoginPage.entrarReaproveitandoSessao();
     await expect(adminPanel.tab('dashboard')).toBeVisible();
   });
 
@@ -139,7 +148,7 @@ test.describe('sessão do Admin', { tag: '@writes' }, () => {
     await expect(page.locator('[data-testid="admin-login-senha"]')).toBeVisible();
     await expect(adminPanel.tab('dashboard')).toHaveCount(0);
 
-    await adminLoginPage.submitButton.click();
+    await adminLoginPage.entrarReaproveitandoSessao();
     await expect(adminPanel.tab('dashboard')).toBeVisible();
   });
 
@@ -160,7 +169,7 @@ test.describe('sessão do Admin', { tag: '@writes' }, () => {
     await expect(adminPanel.tab('dashboard')).toHaveCount(0);
     await expect(page.locator('[data-testid="admin-login-senha"]')).toBeVisible();
 
-    await adminLoginPage.submitButton.click();
+    await adminLoginPage.entrarReaproveitandoSessao();
     await expect(adminPanel.tab('dashboard')).toBeVisible();
 
     await context.close();
@@ -226,7 +235,7 @@ test.describe('sessão do Admin', { tag: '@writes' }, () => {
 
     await page.locator('[data-testid="header-admin-btn"]').click();
     await expect(page.locator('[data-testid="admin-login-senha"]')).toBeVisible(); // login, não o painel direto
-    await adminLoginPage.submitButton.click();
+    await adminLoginPage.entrarReaproveitandoSessao();
     await expect(adminPanel.tab('dashboard')).toBeVisible(); // migrou e restaurou — sem digitar senha
 
     const chaves = await page.evaluate((chaveAntiga) => ({
@@ -235,6 +244,43 @@ test.describe('sessão do Admin', { tag: '@writes' }, () => {
     }), chaveLegada);
     expect(chaves.nova).toBe(true);   // sessão agora vive na chave centralizada
     expect(chaves.antiga).toBe(false); // chave antiga limpa (não fica lixo duplicado)
+
+    await context.close();
+  });
+
+  test('tela de confirmação: "Usar outra conta" desloga de verdade e permite login por credencial real (REF-UX-SESSION-01)', async ({ browser, baseURL }) => {
+    test.skip(!E2E_ENV_PRONTO, 'ambiente de E2E não configurado (.env.e2e)');
+
+    const context = await contextComSessaoAdmin(browser, baseURL);
+    const page = await context.newPage();
+    const adminPanel = new AdminPanelPage(page);
+    const adminLoginPage = new AdminLoginPage(page);
+
+    await adminLoginPage.goto();
+    await adminLoginPage.submitButton.click();
+
+    // Sessão reaproveitável encontrada: tela de confirmação aparece, painel ainda não — nenhuma senha
+    // foi validada até aqui.
+    await expect(adminLoginPage.sessaoEncontrada).toBeVisible();
+    await expect(adminLoginPage.continuarButton).toBeVisible();
+    await expect(adminPanel.tab('dashboard')).toHaveCount(0);
+
+    // "Usar outra conta" desloga de verdade (mesma chamada de sair() em useAdminSession.js) e volta
+    // ao formulário normal.
+    await adminLoginPage.usarOutraContaButton.click();
+    await expect(adminLoginPage.senhaInput).toBeVisible();
+    await expect(adminLoginPage.sessaoEncontrada).toHaveCount(0);
+
+    // Prova que a sessão morreu de verdade (não é só um reset de estado local no React): clicar
+    // "Entrar" de novo, sem sessão nenhuma pra reaproveitar, cai direto em "Digite a senha" — nunca
+    // mais pula pra tela de confirmação sozinho.
+    await adminLoginPage.submitButton.click();
+    await expect(adminLoginPage.erroMensagem).toHaveText('Digite a senha');
+    await expect(adminLoginPage.sessaoEncontrada).toHaveCount(0);
+
+    // Login por credencial real continua funcionando normalmente depois de "Usar outra conta".
+    await adminLoginPage.login(ADMIN_FIXTURE.email, ADMIN_FIXTURE.senha);
+    await expect(adminPanel.tab('dashboard')).toBeVisible();
 
     await context.close();
   });
