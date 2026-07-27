@@ -53,15 +53,19 @@ try {
   out('— Fingerprint — Project ' + projectRef(host, user) + ' · sessao ' + meta.who + ' · TIMEZONE=' + meta.tz + ' · ' + meta.utc + ' UTC');
   out('');
 
-  out('— Pre-requisito: orders_health() ja tem o fix aplicado (REF-DATETIME-01-orders-health-fix.sql) —');
+  out('— Pre-requisito: orders_health() ja tem o fix aplicado (Fase 1: AT TIME ZONE inline, OU Fase 2a: dia_loja()) —');
   {
     const src = (await client.query(`SELECT pg_get_functiondef(p.oid) AS def FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname='orders_health'`)).rows[0]?.def || '';
     const semCurrentDate = !src.includes('current_date');
-    const comFuso = src.includes("America/Sao_Paulo");
-    const ok = semCurrentDate && comFuso;
+    // Fase 1 escreve AT TIME ZONE 'America/Sao_Paulo' inline; Fase 2a simplifica pra dia_loja()
+    // (que ja embute o fuso por dentro) — a string 'America/Sao_Paulo' some do corpo de
+    // orders_health() nesse caso, sem que isso signifique regressao. Aceita qualquer um dos 2 sinais.
+    const comFusoInline = src.includes('America/Sao_Paulo');
+    const comDiaLoja = src.includes('dia_loja(');
+    const ok = semCurrentDate && (comFusoInline || comDiaLoja);
     if (ok) passes++; else failures++;
-    out(`  [${ok ? 'PASS' : 'FAIL'}] DT1 orders_health() usa AT TIME ZONE, nao current_date cru`);
-    out(`         -> sem 'current_date': ${semCurrentDate} · com 'America/Sao_Paulo': ${comFuso}`);
+    out(`  [${ok ? 'PASS' : 'FAIL'}] DT1 orders_health() usa fuso da loja, nao current_date cru`);
+    out(`         -> sem 'current_date': ${semCurrentDate} · AT TIME ZONE inline (Fase 1): ${comFusoInline} · dia_loja() (Fase 2a): ${comDiaLoja}`);
     if (!ok) { throw new Error('Migration REF-DATETIME-01-orders-health-fix.sql ainda nao foi aplicada — abortando o restante da suite.'); }
   }
   out('');
