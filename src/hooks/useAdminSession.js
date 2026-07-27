@@ -79,7 +79,13 @@ export function useAdminSession() {
      em ambos os casos só depois de is_admin()===true) e abrirLogin (engrenagem) são as DUAS únicas
      ações do usuário que mudam `mode` para fora de 'store'. verLoja NÃO desloga — sessão permanece
      válida (persistência normal); F5 depois volta pra Loja (não mais direto pro Admin), mas "Entrar"
-     reaproveita sem pedir senha de novo. sair() é o único logout real. */
+     reaproveita sem pedir senha de novo. sair() é o único logout real.
+
+     REF-UX-SESSION-01 (UX, não mexe aqui): no branch de reaproveitamento, `entrar` só é chamado depois
+     de um clique EXTRA de confirmação em AdminLogin.jsx ("Continuar como Administrador") — para deixar
+     explícito que nenhuma senha foi validada. O gatilho que CONSULTA a sessão continua sendo só o
+     clique em "Entrar" (invariante da REF-STABILITY-02, acima); a confirmação é só mais uma decisão do
+     usuário antes de chamar esta função, que em si não mudou. */
   const entrar = useCallback((u) => { setAdmin(u); setMode('admin'); }, []);
   const abrirLogin = useCallback(() => { setMode('login'); }, []);
   const verLoja = useCallback(() => { setMode('store'); }, []);
