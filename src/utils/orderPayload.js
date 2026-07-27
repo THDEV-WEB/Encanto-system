@@ -33,8 +33,8 @@ export function buildOrderArgs(cart, form, endereco, requestId) {
   return { customer, order, items, requestId };
 }
 
-export function buildWhatsAppMessage(cart, form, endereco) {
-  let msg = `*🛍️ Novo Pedido - Encanto*\n\n`;
+export function buildWhatsAppMessage(cart, form, endereco, nomeCurto = 'Encanto') {
+  let msg = `*🛍️ Novo Pedido - ${nomeCurto}*\n\n`;
   msg += `*Cliente:* ${form.nome}\n*Telefone:* ${form.telefone}\n*Endereço:* ${endereco}\n\n*📋 Itens:*\n`;
   cart.items.forEach(i => {
     msg += `• ${i.nome} x${i.qty} — ${fmt(precoLinha(i))}\n`;

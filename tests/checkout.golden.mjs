@@ -73,6 +73,12 @@ console.error('— (A) GOLDEN DE DOMÍNIO (payload + mensagem + invariantes)');
 const cart = mkCart();
 check('1. snapshot do payload (byte-a-byte)', () => assert.deepStrictEqual(buildRpcPayload(cart, FORM, ENDERECO, REQ), GOLDEN_PAYLOAD));
 check('2. snapshot da mensagem WhatsApp',     () => assert.strictEqual(buildWhatsAppMessage(cart, FORM, ENDERECO), GOLDEN_MSG));
+/* REF-COMPANY-02: nomeCurto e o 4o parametro (default 'Encanto', usado acima sem quebrar o snapshot).
+   Prova que a fiacao ate CheckoutPage/companyInfo.nomeCurto nao e codigo morto. */
+check('2b. nomeCurto customizado troca o nome no cabecalho da mensagem', () => {
+  const msg = buildWhatsAppMessage(cart, FORM, ENDERECO, 'Empório Teste');
+  assert.ok(msg.startsWith('*🛍️ Novo Pedido - Empório Teste*'));
+});
 check('3. reconciliação Σ(price×qty)=total',  () => {
   const p = buildRpcPayload(cart, FORM, ENDERECO, REQ);
   const soma = p.p_items.reduce((a, it) => a + it.price * it.quantity, 0);

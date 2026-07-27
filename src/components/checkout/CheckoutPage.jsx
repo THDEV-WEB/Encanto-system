@@ -5,6 +5,7 @@
    (utils/ids) e STORAGE_KEYS (constants) sao dependencias PRE-EXISTENTES do submit (idempotency key/localStorage). */
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../../hooks/useAuth.js';
+import { useCompanyInfo } from '../../hooks/useCompanyInfo.js';   // REF-COMPANY-02: nome curto na mensagem do WhatsApp
 import { useBusinessHours } from '../../hooks/useBusinessHours.js';   // REF-BUSINESS-HOURS-01: bloqueio fora do horario
 import { STORAGE_KEYS } from '../../constants/storage.js';
 import { newRequestId } from '../../utils/ids.js';
@@ -23,6 +24,7 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode }) {
      fica TRAVADO (=identidade, ja coletada no 1o acesso) — garante o vinculo, sem re-orfanar o pedido.
      Guest (nao logado) segue 100% editavel: guest checkout intocado. */
   const { isLogged, customer, status } = useAuth();
+  const companyInfo = useCompanyInfo();
   /* REF-CHECKOUT-ADDRESS-01: o endereco de entrega vem da FONTE UNICA (dominio Address, mesmo objeto do
      header). O checkout NAO tem mais um endereco proprio; edita o mesmo objeto pelo mesmo AddressModal
      (abrirModal). Retirada nao usa endereco de entrega — usa o endereco da loja. */
@@ -109,7 +111,7 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode }) {
        selo — apenas avisa a loja para re-buscar o estado oficial (get_my_loyalty) e refletir o novo
        selo do proprio cliente logado. Guest acumula na conta do telefone e ve ao logar depois. */
     try { window.dispatchEvent(new Event(LOYALTY_EVENT)); } catch (e) {}
-    const msg = buildWhatsAppMessage(cart, form, enderecoEntrega);
+    const msg = buildWhatsAppMessage(cart, form, enderecoEntrega, companyInfo.nomeCurto);
     setLoading(false);
     submittingRef.current = false;
     requestIdRef.current = null;   // próximo pedido recebe nova idempotency key
