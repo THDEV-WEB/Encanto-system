@@ -4,6 +4,13 @@
    Fonte de verdade: o que ESTA persistido no pedido. NUNCA fabrica dado que o checkout nao gravou
    (troco, taxa de entrega, tamanho como campo proprio, split proteina/acompanhamento) — ver ADR.
 
+   REF-COMANDA-ENDERECO-01: o bloco de endereco agora prefere o endereco ESTRUTURADO (orders.endereco_id
+   -> addresses, religado na REF-ADDRESS-02 · Onda 6) quando o pedido tem esse vinculo — e a unica fonte
+   que sabe mostrar complemento/referencia, que o texto livre em orders.address nunca carrega de forma
+   confiavel. Pedido sem vinculo (todo o historico anterior a Onda 6, ou qualquer falha no fetch) cai no
+   texto livre de sempre, sem nenhuma mudanca de comportamento — nunca soma as duas fontes na mesma
+   comanda (evitaria duplicar rua/numero/bairro).
+
    Importa so utils/format (folha pura). Contrato de retorno estavel (buildComanda -> objeto sempre
    preenchido; campos ausentes viram null/[] — nunca undefined), para comandaHtml/testes nao precisarem
    de guardas defensivas. */
@@ -69,6 +76,26 @@ function enderecoEmLinhas(address) {
   return linhas.length ? linhas : [raw];
 }
 
+/* REF-COMANDA-ENDERECO-01: endereco ESTRUTURADO (orders.endereco_id -> addresses, religado na
+   REF-ADDRESS-02 · Onda 6). Quando existe, SUBSTITUI enderecoEmLinhas (nunca soma às linhas do texto
+   livre — evita duplicar rua/numero/bairro, que o texto já mostra) e é a ÚNICA fonte capaz de exibir
+   complemento/referência, que o texto livre nunca carrega de forma confiável (nenhuma das 3 abas do
+   checkout inclui "referência" no rótulo; "complemento" só entra no texto pela aba CEP). Cada linha só
+   aparece se o campo existir — nunca fabrica "Complemento:" ou "Ponto de referência:" vazios. */
+function enderecoEstruturadoEmLinhas(e) {
+  if (!e) return null;
+  const nv = (v) => (v != null && String(v).trim()) ? String(v).trim() : '';
+  const linhas = [];
+  const ruaNumero = [nv(e.rua), nv(e.numero)].filter(Boolean).join(', ');
+  if (ruaNumero) linhas.push(ruaNumero);
+  if (nv(e.complemento)) linhas.push(nv(e.complemento));
+  const bairroCidade = [nv(e.bairro), [nv(e.cidade), nv(e.estado)].filter(Boolean).join(' - ')].filter(Boolean).join(' — ');
+  if (bairroCidade) linhas.push(bairroCidade);
+  if (nv(e.cep)) linhas.push('CEP ' + nv(e.cep));
+  if (nv(e.referencia)) linhas.push('Ponto de referência: ' + nv(e.referencia));
+  return linhas.length ? linhas : null;
+}
+
 const PAGAMENTO_LABEL = {
   dinheiro: 'Dinheiro',
   pix: 'PIX',
@@ -95,9 +122,10 @@ export const refCurtaDoPedido = (id) => {
 
 /* ── API principal ────────────────────────────────────────────────────────────────────────
    order  : linha de orders com order_items(...) e customers(name,phone) embutidos (DS.getPedidos).
-   opts   : { numero?, totalPedidosCliente?, companyInfo? }  (o painel passa o mesmo numero que exibe
-            na tabela; companyInfo vem de useCompanyInfo() em ComandaModal.jsx — este modulo continua
-            PURO, nunca importa services/company/* — REF-COMPANY-02). */
+   opts   : { numero?, totalPedidosCliente?, companyInfo?, enderecoEstruturado? }  (o painel passa o
+            mesmo numero que exibe na tabela; companyInfo vem de useCompanyInfo() em ComandaModal.jsx
+            — este modulo continua PURO, nunca importa services/company/*, REF-COMPANY-02;
+            enderecoEstruturado vem de DS.getPedidoEndereco — REF-COMANDA-ENDERECO-01). */
 export function buildComanda(order, opts = {}) {
   const o = order || {};
   /* nome curto da empresa (fallback 'Encanto' cobre chamadas sem companyInfo, ex.: testes). "DELIVERY"/
@@ -145,7 +173,9 @@ export function buildComanda(order, opts = {}) {
       telefone: (o?.customers?.phone && String(o.customers.phone).trim()) || '—',
       totalPedidos: totalPedidosCliente,
     },
-    endereco: tipo === 'retirada' ? null : { linhas: enderecoEmLinhas(o?.address) || [] },
+    /* REF-COMANDA-ENDERECO-01: estruturado (opts.enderecoEstruturado) vence quando existe — texto
+       livre é só o fallback (pedido sem vínculo: legado, ou fetch ainda não resolvido). */
+    endereco: tipo === 'retirada' ? null : { linhas: enderecoEstruturadoEmLinhas(opts.enderecoEstruturado) || enderecoEmLinhas(o?.address) || [] },
     pagamento: {
       forma: PAGAMENTO_LABEL[o?.payment_method] || (o?.payment_method ? String(o.payment_method) : '—'),
       troco: null,   // GAP: troco nao e persistido pelo checkout (ADR). Nunca fabricar.

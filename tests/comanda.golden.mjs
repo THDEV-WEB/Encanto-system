@@ -93,6 +93,61 @@ check('vm retirada: sem endereco, item COMBO, totalPedidos null quando ausente',
   assert.equal(vmR.cliente.totalPedidos, null);
 });
 
+/* ── REF-COMANDA-ENDERECO-01: endereco ESTRUTURADO vence o texto livre, quando existe ── */
+check('vm entrega + enderecoEstruturado completo: complemento e referencia aparecem, texto livre é ignorado', () => {
+  const vm = buildComanda(pedidoEntrega, {
+    numero: 42,
+    enderecoEstruturado: {
+      rua: 'Rua das Flores', numero: '123', complemento: 'Apto 4, Bloco B',
+      bairro: 'Centro', cidade: 'Timbó', estado: 'SC', cep: '89120-000',
+      referencia: 'Perto do mercado',
+    },
+  });
+  assert.deepEqual(vm.endereco.linhas, [
+    'Rua das Flores, 123',
+    'Apto 4, Bloco B',
+    'Centro — Timbó - SC',
+    'CEP 89120-000',
+    'Ponto de referência: Perto do mercado',
+  ]);
+});
+check('vm entrega + enderecoEstruturado SEM complemento: linha de complemento não aparece', () => {
+  const vm = buildComanda(pedidoEntrega, {
+    enderecoEstruturado: { rua: 'Rua X', numero: '10', bairro: 'B', cidade: 'C', estado: 'SC', referencia: 'Ref' },
+  });
+  assert.ok(!vm.endereco.linhas.some((l) => l.includes('Bloco')));
+  assert.deepEqual(vm.endereco.linhas, ['Rua X, 10', 'B — C - SC', 'Ponto de referência: Ref']);
+});
+check('vm entrega + enderecoEstruturado SEM referencia: linha "Ponto de referência" não aparece', () => {
+  const vm = buildComanda(pedidoEntrega, {
+    enderecoEstruturado: { rua: 'Rua X', numero: '10', bairro: 'B', cidade: 'C', estado: 'SC' },
+  });
+  assert.ok(!vm.endereco.linhas.some((l) => l.startsWith('Ponto de referência')));
+});
+check('vm entrega + enderecoEstruturado TOTALMENTE vazio: cai no texto livre (nunca fabrica linha vazia)', () => {
+  const vm = buildComanda(pedidoEntrega, { enderecoEstruturado: { rua: '', numero: '', complemento: '', bairro: '', cidade: '', estado: '', cep: '', referencia: '' } });
+  assert.deepEqual(vm.endereco.linhas, ['Rua das Flores', '123', 'Centro', 'Timbó']);   // fallback = golden original
+});
+check('vm entrega SEM enderecoEstruturado (opts ausente): comportamento 100% igual ao anterior (compat. pedido legado)', () => {
+  const vm = buildComanda(pedidoEntrega, { numero: 42 });
+  assert.deepEqual(vm.endereco.linhas, ['Rua das Flores', '123', 'Centro', 'Timbó']);
+});
+check('vm retirada + enderecoEstruturado presente: ainda assim sem endereco (retirada nunca mostra endereco do cliente)', () => {
+  const vm = buildComanda(pedidoRetirada, { enderecoEstruturado: { rua: 'Rua X', numero: '1', referencia: 'Ref' } });
+  assert.equal(vm.endereco, null);
+});
+check('HTML/texto: complemento e referencia aparecem na comanda impressa quando o vinculo existe', () => {
+  const vm = buildComanda(pedidoEntrega, {
+    enderecoEstruturado: { rua: 'Rua das Flores', numero: '123', complemento: 'Apto 4', bairro: 'Centro', referencia: 'Perto do mercado' },
+  });
+  const html = comandaHTML(vm);
+  const texto = comandaTexto(vm);
+  assert.ok(html.includes('Apto 4'));
+  assert.ok(html.includes('Ponto de referência: Perto do mercado'));
+  assert.ok(texto.includes('Apto 4'));
+  assert.ok(texto.includes('Ponto de referência: Perto do mercado'));
+});
+
 /* ── HTML termico ── */
 const htmlE = comandaHTML(vmE);
 check('HTML entrega: cabecalho, tipo, itens, obs, subtotal', () => {

@@ -133,12 +133,17 @@ export function AdminPedidos() {
   const [statusFiltro, setStatusFiltro] = useState('todos');
   const { orders, loading, temMais, carregarMais, refresh } = useOrdersPagina({ busca, status: statusFiltro });
   const { stats, refresh: refreshStats } = useOrdersStats(0); // só agregados globais — a lista é a de useOrdersPagina
-  const [comanda, setComanda] = useState(null);   // { order, count }
+  const [comanda, setComanda] = useState(null);   // { order, count, endereco }
 
+  /* REF-COMANDA-ENDERECO-01: endereco estruturado só é útil em entrega (retirada não tem endereço do
+     cliente — comandaModel já ignora); busca em paralelo com o contador, mesmo padrão de sempre. */
   const abrirComanda = async (order) => {
-    setComanda({ order, count: null });
-    const count = await DS.countPedidosByCustomer(order.customer_id);
-    setComanda((c) => (c && c.order?.id === order.id ? { ...c, count } : c));
+    setComanda({ order, count: null, endereco: null });
+    const [count, endereco] = await Promise.all([
+      DS.countPedidosByCustomer(order.customer_id),
+      tipoDoPedido(order) === 'retirada' ? Promise.resolve(null) : DS.getPedidoEndereco(order.id),
+    ]);
+    setComanda((c) => (c && c.order?.id === order.id ? { ...c, count, endereco } : c));
   };
 
   const atualizar = () => { refresh(); refreshStats(); };
@@ -205,7 +210,7 @@ export function AdminPedidos() {
         </div>
       </div>
       {comanda && (
-        <ComandaModal order={comanda.order} totalPedidos={comanda.count} onClose={() => setComanda(null)} />
+        <ComandaModal order={comanda.order} totalPedidos={comanda.count} endereco={comanda.endereco} onClose={() => setComanda(null)} />
       )}
     </div>
   );

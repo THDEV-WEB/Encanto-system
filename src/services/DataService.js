@@ -195,6 +195,15 @@ export const DS = {
     const r = await this.run(d=>d.from('orders').select('id',{count:'exact',head:true}).eq('customer_id',customerId));
     return typeof r.count === 'number' ? r.count : null;
   },
+  /* REF-COMANDA-ENDERECO-01 — endereco ESTRUTURADO (rua/numero/complemento/bairro/cidade/estado/cep/
+     referencia) de UM pedido, via RPC so-leitura admin_order_endereco (JOIN orders.endereco_id ->
+     addresses, SECURITY INVOKER — RLS de sempre). null para pedidos sem vinculo (legado, retirada,
+     ou qualquer falha) — comandaModel cai no texto livre nesse caso, sem quebrar nada. */
+  async getPedidoEndereco(orderId) {
+    if (!orderId) return null;
+    const r = await this.run(d=>d.rpc('admin_order_endereco', { p_order_id: orderId }));
+    return r.data ?? null;
+  },
   /* REF-ORDER-01 · Parte 3 — estado das notificacoes de UM pedido (fila notification_outbox, so admin via RLS).
      Observabilidade no painel: mostra o que foi/sera enviado por status. ANTES da migration aplicada a
      tabela nao existe -> a query falha e devolvemos [] (degrada sem quebrar a UI). */

@@ -1,7 +1,10 @@
 /* components/admin/comanda/ComandaModal.jsx — REF-ORDER-01 · Parte 1.
    Modal do painel admin: PREVIEW fiel (iframe srcDoc com o MESMO HTML da impressao — WYSIWYG) + selecao
    de largura (80mm/58mm) + Imprimir/Reimprimir. Chrome do modal em estilo inline (nao depende do index.css).
-   Sem estado de dados: deriva tudo do pedido via o dominio puro (buildComanda -> comandaHTML). */
+   Sem estado de dados: deriva tudo do pedido via o dominio puro (buildComanda -> comandaHTML).
+   `endereco` (REF-COMANDA-ENDERECO-01): endereco estruturado do pedido (DS.getPedidoEndereco), buscado
+   pelo pai (AdminPedidos) — chega null enquanto carrega ou quando o pedido nao tem vinculo (comandaModel
+   cai no texto livre nesse caso). */
 import { useMemo, useState } from 'react';
 import { useCompanyInfo } from '../../../hooks/useCompanyInfo.js';   // REF-COMPANY-02: nome curto na comanda
 import { buildComanda } from './comandaModel.js';
@@ -31,13 +34,13 @@ const paperBtn = (on) => ({
   background: on ? '#f9edf6' : '#fff', color: on ? '#A62786' : '#6B5D50',
 });
 
-export function ComandaModal({ order, numero, totalPedidos, onClose }) {
+export function ComandaModal({ order, numero, totalPedidos, endereco, onClose }) {
   const companyInfo = useCompanyInfo();
   const [paper, setPaper] = useState('80mm');
   const [copiado, setCopiado] = useState(false);
   const vm = useMemo(
-    () => buildComanda(order, { numero, totalPedidosCliente: totalPedidos, companyInfo }),
-    [order, numero, totalPedidos, companyInfo],
+    () => buildComanda(order, { numero, totalPedidosCliente: totalPedidos, companyInfo, enderecoEstruturado: endereco }),
+    [order, numero, totalPedidos, companyInfo, endereco],
   );
   const html  = useMemo(() => comandaHTML(vm, { paper }), [vm, paper]);
   const texto = useMemo(() => comandaTexto(vm), [vm]);
