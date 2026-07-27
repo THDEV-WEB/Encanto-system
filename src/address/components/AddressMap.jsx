@@ -1,16 +1,24 @@
-/* address/components/AddressMap.jsx — REF-ADDRESS-01.
-   Aba "Ver no mapa": mapa Leaflet interativo + número + confirmar. Extraído do bloco `tab==='map'` do
-   AddressModal. A inicialização/destruição do Leaflet e o reverse-geocode saem para services
-   (mapService/geocodingService via o motor useAddressSearch) — o componente não faz `fetch` nem carrega o
-   CDN à mão. Ciclo de vida correto: como este componente só existe enquanto a aba mapa está ativa, o
-   efeito [] cria o mapa ao montar e o destrói ao desmontar (fecha o vazamento de listeners do original,
-   que não limpava quando o Leaflet já estava carregado). Aparência/parâmetros do mapa inalterados. */
+/* address/components/AddressMap.jsx — REF-ADDRESS-01 (+ REF-ADDRESS-02 · Onda 5).
+   Aba "Ver no mapa": mapa Leaflet interativo + número/complemento/referência + confirmar. Extraído do
+   bloco `tab==='map'` do AddressModal. A inicialização/destruição do Leaflet e o reverse-geocode saem
+   para services (mapService/geocodingService via o motor useAddressSearch) — o componente não faz
+   `fetch` nem carrega o CDN à mão. Ciclo de vida correto: como este componente só existe enquanto a aba
+   mapa está ativa, o efeito [] cria o mapa ao montar e o destrói ao desmontar (fecha o vazamento de
+   listeners do original, que não limpava quando o Leaflet já estava carregado). Aparência/parâmetros do
+   mapa inalterados.
+
+   Onda 5: ganha complemento/referência (só tinha número) via AddressDetalhesEntrega — `numeroObrigatorio`
+   fica false aqui de propósito: confirmar sem número já era um caminho válido nesta aba (usa o pino
+   default) e endurecer isso agora bloquearia um fluxo que hoje funciona — decisão registrada no ADR §19. */
 import { useEffect, useRef } from 'react';
 import { carregarLeaflet, criarMapa, destruirMapa } from '../services/mapService.js';
 import { formatarCoord } from '../utils/coordinates.js';
-import { AddressActions } from './AddressActions.jsx';
+import { AddressDetalhesEntrega } from './AddressDetalhesEntrega.jsx';
 
-export function AddressMap({ mapPin, mapAddr, cepNumero, onNumeroChange, onConfirm, aoArrastarPino, aoClicarPino }) {
+export function AddressMap({
+  mapPin, mapAddr, cepNumero, onNumeroChange, complemento, onComplementoChange,
+  referencia, onReferenciaChange, onConfirm, aoArrastarPino, aoClicarPino,
+}) {
   const mapRef = useRef(null);
   const leafRef = useRef(null);
 
@@ -44,13 +52,14 @@ export function AddressMap({ mapPin, mapAddr, cepNumero, onNumeroChange, onConfi
           📍 {mapAddr}
         </div>
       )}
-      <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--gray-600)', display: 'block', margin: '10px 0 4px' }}>
-        Número da residência
-      </label>
-      <input className="addr-search-input" style={{ marginBottom: 10 }}
-        placeholder="Ex: 77" value={cepNumero}
-        onChange={e => onNumeroChange(e.target.value)} />
-      <AddressActions onConfirm={onConfirm} label="✅ Confirmar localização no mapa" />
+      <div style={{ marginTop: 10 }}>
+        <AddressDetalhesEntrega
+          numero={cepNumero} onNumeroChange={onNumeroChange}
+          complemento={complemento} onComplementoChange={onComplementoChange}
+          referencia={referencia} onReferenciaChange={onReferenciaChange}
+          onConfirm={onConfirm} confirmLabel="✅ Confirmar localização no mapa"
+          numeroObrigatorio={false} />
+      </div>
       <p style={{ fontSize: 10, color: 'var(--gray-400)', textAlign: 'center', marginTop: 6 }}>
         Lat: {formatarCoord(mapPin.lat)} · Lng: {formatarCoord(mapPin.lng)}
       </p>

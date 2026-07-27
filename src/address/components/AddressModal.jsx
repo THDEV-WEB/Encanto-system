@@ -53,6 +53,15 @@ export function AddressModal({ onClose, onSelect }) {
               onPick={eng.pick}
               onGoCep={() => eng.setTab('cep')}
               onGoMap={() => eng.setTab('map')}
+              pickedItem={eng.pickedItem}
+              onVoltar={eng.voltarParaSugestoes}
+              numero={eng.cepNumero}
+              onNumeroChange={eng.setCepNumero}
+              complemento={eng.complemento}
+              onComplementoChange={eng.setComplemento}
+              referencia={eng.referencia}
+              onReferenciaChange={eng.setReferencia}
+              onConfirm={eng.confirmSearch}
             />
           )}
 
@@ -66,6 +75,8 @@ export function AddressModal({ onClose, onSelect }) {
               onNumeroChange={eng.setCepNumero}
               complemento={eng.complemento}
               onComplementoChange={eng.setComplemento}
+              referencia={eng.referencia}
+              onReferenciaChange={eng.setReferencia}
               onConfirm={eng.confirmCEP}
             />
           )}
@@ -76,6 +87,10 @@ export function AddressModal({ onClose, onSelect }) {
               mapAddr={eng.mapAddr}
               cepNumero={eng.cepNumero}
               onNumeroChange={eng.setCepNumero}
+              complemento={eng.complemento}
+              onComplementoChange={eng.setComplemento}
+              referencia={eng.referencia}
+              onReferenciaChange={eng.setReferencia}
               onConfirm={eng.confirmMap}
               aoArrastarPino={eng.aoArrastarPino}
               aoClicarPino={eng.aoClicarPino}

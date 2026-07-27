@@ -1,14 +1,48 @@
-/* address/components/AddressSearch.jsx — REF-ADDRESS-01.
+/* address/components/AddressSearch.jsx — REF-ADDRESS-01 (+ REF-ADDRESS-02 · Onda 5).
    Aba "Buscar endereço" (apresentacional): campo de busca + GPS + estados (loading/sugestões/não
    encontrado/dicas). Extraído VERBATIM do bloco `tab==='search'` do AddressModal. Toda lógica (busca,
    GPS, seleção) vem por props do motor useAddressSearch; a formatação das sugestões vem de utils/. O foco
-   automático no campo ao entrar na aba é preservado (o componente monta quando a aba fica ativa). */
+   automático no campo ao entrar na aba é preservado (o componente monta quando a aba fica ativa).
+
+   Onda 5: escolher uma sugestão não confirma mais direto — `pickedItem` (truthy) troca a lista de
+   sugestões por AddressDetalhesEntrega (número/complemento/referência), igual às outras 2 abas (ADR §6).
+   Com `pickedItem` nulo o markup do estado idle é BYTE-IGUAL ao de antes (prova: GOLDEN_MODAL_SEARCH,
+   o âncora do monólito original, continua passando sem mudar uma linha). */
 import { useEffect, useRef } from 'react';
 import { sugestaoMain, sugestaoSub } from '../utils/addressFormat.js';
+import { AddressDetalhesEntrega } from './AddressDetalhesEntrega.jsx';
 
-export function AddressSearch({ query, onQueryChange, status, suggestions, onGPS, onPick, onGoCep, onGoMap }) {
+export function AddressSearch({
+  query, onQueryChange, status, suggestions, onGPS, onPick, onGoCep, onGoMap,
+  pickedItem, onVoltar, numero, onNumeroChange, complemento, onComplementoChange,
+  referencia, onReferenciaChange, onConfirm,
+}) {
   const inputRef = useRef(null);
   useEffect(() => { inputRef.current?.focus(); }, []);   // foco ao entrar na aba (= efeito [tab] original)
+
+  if (pickedItem) {
+    return (
+      <>
+        <div style={{
+          padding: '8px 12px', background: 'var(--grape-pale)', borderRadius: 8,
+          fontSize: 13, color: 'var(--amarelo)', fontWeight: 600, marginBottom: 8,
+        }}>
+          📍 {sugestaoMain(pickedItem)}
+        </div>
+        <button type="button" onClick={onVoltar} style={{
+          background: 'none', border: 'none', color: 'var(--grape)', fontSize: 12, fontWeight: 700,
+          cursor: 'pointer', padding: 0, marginBottom: 10, fontFamily: 'var(--font-body)',
+        }}>
+          ← Escolher outro endereço
+        </button>
+        <AddressDetalhesEntrega
+          numero={numero} onNumeroChange={onNumeroChange}
+          complemento={complemento} onComplementoChange={onComplementoChange}
+          referencia={referencia} onReferenciaChange={onReferenciaChange}
+          onConfirm={onConfirm} confirmLabel="✅ Confirmar endereço" />
+      </>
+    );
+  }
 
   return (
     <>
