@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useCompanyInfo } from '../../hooks/useCompanyInfo.js';   // REF-COMPANY-02: nome curto na sidebar
 import { AdminDashboard } from './AdminDashboard.jsx';
 import { AdminPedidos } from './AdminPedidos.jsx';
 import { AdminProducts } from './AdminProducts.jsx';
@@ -12,6 +13,7 @@ import { AdminHealth } from './AdminHealth.jsx';
 import { AdminMinhaConta } from './AdminMinhaConta.jsx'; // REF-CUSTOMER-01 · Parte 3
 
 export function AdminPanel({ admin, onExit, onLogout }) {
+  const companyInfo = useCompanyInfo();
   const [tab, setTab] = useState('dashboard');
   const tabs = [
     {id:'dashboard', icon:'📊', label:'Dashboard'},
@@ -29,7 +31,7 @@ export function AdminPanel({ admin, onExit, onLogout }) {
   return (
     <div className="admin-layout">
       <div className="admin-sidebar">
-        <div className="admin-logo">✨ <span>Encanto</span></div>
+        <div className="admin-logo">✨ <span>{companyInfo.nomeCurto}</span></div>
         <nav className="admin-nav">
           {tabs.map(t=>(
             <div key={t.id} data-testid={`admin-tab-${t.id}`} className={`admin-nav-item ${tab===t.id?'active':''}`} onClick={()=>setTab(t.id)}>

@@ -150,7 +150,7 @@ function StoreAppContent({ onAdmin }) {
         {/* Coluna esquerda: logo */}
         <div className="header-brand-col">
           {LOGO && <img loading="lazy"
-            src={LOGO} alt="Encanto" className="header-brand-logo"
+            src={LOGO} alt={companyInfo.nomeCurto} className="header-brand-logo"
             onClick={()=>{
               /* Acesso oculto: 5 cliques rápidos na logo */
               const now = Date.now();
@@ -171,7 +171,7 @@ function StoreAppContent({ onAdmin }) {
         <div className="header-logo">
           <div className="header-logo-text">
             <span className="brand-name" style={{display:'flex',alignItems:'baseline',gap:7}}>
-              Encanto
+              {companyInfo.nomeCurto}
               <span style={{
                 /* REF-UI-CATEGORY-01 (refino UX): cidade — secundaria, porem legivel sobre a foto do
                    banner (saiu de .55 "lavado" p/ .9 + text-shadow). Sem virar destaque. */
@@ -233,6 +233,7 @@ function StoreAppContent({ onAdmin }) {
         suggestions={suggestions}
         onPickCategory={onPickCategoria}
         onPickProduct={onPickProduto}
+        brandName={companyInfo.nomeCurto}
       />
       {/* ── STRIP MOBILE (celular) — REF-UI-CATEGORY-01 Fase 4: abas horizontais + lupa, surge ao rolar.
           Fixed; oculto em >=768px (la e a barra do desktop). ── */}

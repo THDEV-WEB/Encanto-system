@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { db } from '../../lib/supabase.js';
 import { registrarBreadcrumb } from '../../lib/sentry.js'; // REF-OBS-01: no-op sem VITE_SENTRY_DSN
+import { useCompanyInfo } from '../../hooks/useCompanyInfo.js'; // REF-COMPANY-02: get_company_info e publico, funciona pre-auth
 
 export function AdminLogin({ onLogin }) {
+  const companyInfo = useCompanyInfo();
   const [email,   setEmail]   = useState('as992203620@gmail.com');
   const [pass,    setPass]    = useState('');
   const [err,     setErr]     = useState('');
@@ -64,7 +66,7 @@ export function AdminLogin({ onLogin }) {
     <div className="admin-login">
       <div className="admin-login-card">
         <div style={{fontSize:42,textAlign:'center',marginBottom:8}}>🔐</div>
-        <h2>Encanto Admin</h2>
+        <h2>{companyInfo.nomeCurto} Admin</h2>
         <p>Painel administrativo da loja</p>
         <div className="form-group">
           <label className="form-label">E-mail</label>
