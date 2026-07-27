@@ -7,10 +7,14 @@
    A Edge Function mantem um espelho TS destes templates (supabase/functions/whatsapp-notify/templates.ts)
    — manter em sincronia; o snapshot em tests/whatsapp-templates.golden.mjs trava a copy canonica.
 
-   Placeholders suportados: {{cliente}} {{numero}} {{tempo}}. */
+   Placeholders suportados: {{cliente}} {{numero}} {{tempo}} {{empresa}}.
+   REF-COMPANY-02: {{empresa}} vem do NOME CURTO institucional (settings.company_info.nomeCurto),
+   snapshotado no enqueue (enc_enqueue_notification) — mesmo modelo de frescor ja usado para
+   cliente/numero/tempo (ver ADR REF-COMPANY-02 §Decisao B: staleness aceitavel, sem busca ao vivo
+   duplicada nos dois runtimes de disparo). */
 
 export const NOTIFY_TEMPLATES = Object.freeze({
-  recebido: `🍽️ Encanto Delivery
+  recebido: `🍽️ {{empresa}}
 
 Olá, {{cliente}}.
 Recebemos seu pedido #{{numero}}.
@@ -21,26 +25,26 @@ Tempo estimado:
 
 Obrigado pela preferência.`,
 
-  preparo: `👨‍🍳 Encanto Delivery
+  preparo: `👨‍🍳 {{empresa}}
 
 Seu pedido #{{numero}}
 já está sendo preparado.
 Em breve seguirá para a próxima etapa.`,
 
-  pronto: `✅ Encanto Delivery
+  pronto: `✅ {{empresa}}
 
 Seu pedido #{{numero}}
 está pronto.
 Se for retirada, já pode ser buscado.
 Se for entrega, nosso entregador sairá em instantes.`,
 
-  entrega: `🛵 Encanto Delivery
+  entrega: `🛵 {{empresa}}
 
 Seu pedido #{{numero}}
 acabou de sair para entrega.
 Já está a caminho.`,
 
-  entregue: `❤️ Encanto Delivery
+  entregue: `❤️ {{empresa}}
 
 Seu pedido foi entregue.
 Esperamos que tenha gostado.
@@ -56,7 +60,7 @@ export const temTemplate = (status) => Object.prototype.hasOwnProperty.call(NOTI
 /* Renderiza o template do status substituindo os placeholders. PURO e tolerante:
    - status sem template -> retorna null (o chamador NAO envia nada);
    - placeholder sem valor correspondente -> vira string vazia (nunca deixa "{{x}}" cru).
-   vars: { cliente?, numero?, tempo? } */
+   vars: { cliente?, numero?, tempo?, empresa? } */
 export function renderTemplate(status, vars = {}) {
   const tpl = NOTIFY_TEMPLATES[status];
   if (!tpl) return null;

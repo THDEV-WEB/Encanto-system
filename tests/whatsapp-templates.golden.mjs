@@ -20,17 +20,19 @@ check("'cancelado' NAO tem template (nao notifica)", () => {
   assert.equal(renderTemplate('cancelado', {}), null);
 });
 
-check('render recebido substitui cliente/numero/tempo', () => {
-  const txt = renderTemplate('recebido', { cliente: 'Ana', numero: 'A1B2C', tempo: TEMPO_ESTIMADO.entrega });
+check('render recebido substitui cliente/numero/tempo/empresa', () => {
+  const txt = renderTemplate('recebido', { cliente: 'Ana', numero: 'A1B2C', tempo: TEMPO_ESTIMADO.entrega, empresa: 'Encanto' });
+  assert.ok(txt.startsWith('🍽️ Encanto'));
   assert.ok(txt.includes('Olá, Ana.'));
   assert.ok(txt.includes('pedido #A1B2C'));
   assert.ok(txt.includes('35 a 45 min'));
   assert.ok(!/\{\{/.test(txt), 'sobrou placeholder cru');
 });
-check('render preparo/pronto/entrega usam numero', () => {
+check('render preparo/pronto/entrega usam numero/empresa', () => {
   for (const s of ['preparo', 'pronto', 'entrega']) {
-    const txt = renderTemplate(s, { numero: 'X9' });
+    const txt = renderTemplate(s, { numero: 'X9', empresa: 'Empório Teste' });
     assert.ok(txt.includes('#X9'), `${s} sem numero`);
+    assert.ok(txt.includes('Empório Teste'), `${s} nao refletiu o nome custom`);
     assert.ok(!/\{\{/.test(txt), `${s} deixou placeholder`);
   }
 });
@@ -50,6 +52,19 @@ check('espelho TS da Edge Function em sincronia com o canonico', () => {
   const ts = readFileSync(tsPath, 'utf8');
   for (const s of COM_TEMPLATE) {
     assert.ok(ts.includes(NOTIFY_TEMPLATES[s]), `template '${s}' divergente entre .js e templates.ts`);
+  }
+});
+
+/* PARIDADE JS (canonico) x SQL (enc_render_message, dispatcher SQL-nativo agendado via pg_cron — o
+   caminho de envio provavelmente ativo em producao). REF-COMPANY-02: esta checagem NAO existia antes
+   (a 3a copia das mensagens tinha ficado fora do golden desde a REF-ORDER-01b) — fecha essa lacuna.
+   So confere a migration NOVA (REF-COMPANY-02-notify-empresa.sql); a antiga (REF-ORDER-01b) fica
+   congelada como registro historico, nunca editada em vigor. */
+check('enc_render_message (SQL, migrations/REF-COMPANY-02-notify-empresa.sql) em sincronia com o canonico', () => {
+  const sqlPath = fileURLToPath(new URL('../migrations/REF-COMPANY-02-notify-empresa.sql', import.meta.url));
+  const sql = readFileSync(sqlPath, 'utf8');
+  for (const s of COM_TEMPLATE) {
+    assert.ok(sql.includes(NOTIFY_TEMPLATES[s]), `template '${s}' divergente entre .js e enc_render_message`);
   }
 });
 

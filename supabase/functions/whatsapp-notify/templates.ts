@@ -3,9 +3,11 @@
 // MANTER EM SINCRONIA: a copy canonica e o .js do frontend; o snapshot em
 // tests/whatsapp-templates.golden.mjs trava o texto. Este arquivo existe porque a Edge Function roda em
 // Deno e nao importa o bundle do browser. Ao editar mensagens, edite AMBOS e rode o golden.
+// REF-COMPANY-02: {{empresa}} chega pronto em vars (snapshot feito no enqueue, enc_enqueue_notification) -
+// esta funcao so faz substituicao generica, nunca consulta company_info diretamente.
 
 export const NOTIFY_TEMPLATES: Record<string, string> = {
-  recebido: `🍽️ Encanto Delivery
+  recebido: `🍽️ {{empresa}}
 
 Olá, {{cliente}}.
 Recebemos seu pedido #{{numero}}.
@@ -16,26 +18,26 @@ Tempo estimado:
 
 Obrigado pela preferência.`,
 
-  preparo: `👨‍🍳 Encanto Delivery
+  preparo: `👨‍🍳 {{empresa}}
 
 Seu pedido #{{numero}}
 já está sendo preparado.
 Em breve seguirá para a próxima etapa.`,
 
-  pronto: `✅ Encanto Delivery
+  pronto: `✅ {{empresa}}
 
 Seu pedido #{{numero}}
 está pronto.
 Se for retirada, já pode ser buscado.
 Se for entrega, nosso entregador sairá em instantes.`,
 
-  entrega: `🛵 Encanto Delivery
+  entrega: `🛵 {{empresa}}
 
 Seu pedido #{{numero}}
 acabou de sair para entrega.
 Já está a caminho.`,
 
-  entregue: `❤️ Encanto Delivery
+  entregue: `❤️ {{empresa}}
 
 Seu pedido foi entregue.
 Esperamos que tenha gostado.
