@@ -1,6 +1,6 @@
 # ADR REF-ADDRESS-02 — Arquitetura profissional do módulo de endereços
 
-- **Status:** 🚀 **EXECUÇÃO EM ANDAMENTO — Onda 1 (schema) CONCLUÍDA e VALIDADA (migration aplicada pelo dono + suíte real 8/8 PASS, 2026-07-27); Onda 2 em andamento.** Onda 0 (pesquisa) encerrada por decisão do dono (2026-07-27): evidências coletadas são suficientes, decisões de baixo impacto passam a ser tomadas autonomamente pelo arquiteto responsável (esta ADR), só decisões arquiteturais críticas interrompem o fluxo.
+- **Status:** 🚀 **EXECUÇÃO EM ANDAMENTO — Ondas 1 (schema) e 2 (repository+validator) CONCLUÍDAS e VALIDADAS; Onda 3 (waterfall de geocoding, Mapbox principal) CONCLUÍDA e VALIDADA (2026-07-27).** Onda 0 (pesquisa) encerrada por decisão do dono: evidências coletadas são suficientes, decisões de baixo impacto passam a ser tomadas autonomamente pelo arquiteto responsável (esta ADR), só decisões arquiteturais críticas interrompem o fluxo.
 - **Escopo:** domínio `src/address/` (busca/autocomplete/geocoding/formulário/mapa), persistência de endereço em `orders`, e o desenho (não implementação) de uma futura `DeliveryAreaService`.
 - **Não-escopo:** checkout (fluxo de pagamento), catálogo, fidelidade, comanda térmica — nenhum desses é tocado nesta fase.
 - **Por que "REF-ADDRESS-02" e não "01":** o nome "REF-ADDRESS-01" já está em uso — foi a extração do `AddressModal` monolítico para o domínio `src/address/` (commit `aaedc2c`, zero-UX). Esta fase é uma reformulação de arquitetura muito mais profunda (provedor, modelo de dados persistido, fuzzy search, UX), então recebe o próximo número da mesma trilha. Depende de REF-ADDRESS-01 e REF-CHECKOUT-ADDRESS-01 (ambas concluídas).
@@ -375,3 +375,59 @@ PASS: 8 · FAIL: 0 · NO PERSISTED WRITES
 ### 15.6 Próximos passos
 
 Onda 1 fechada. Seguindo para a **Onda 2** (Repository + Validator — camada JS pura, sem dependência de banco).
+
+---
+
+## 16. Execução — Onda 2 (Repository + Validator), 2026-07-27
+
+**Implementado:** `addressModel.js` ganhou `referencia/placeId/provider/confidence` (aditivo — defaults não mudam nenhum consumidor existente; os 9 casos golden de render continuam byte-a-byte idênticos). Validators novos e puros: `confidenceValida` (espelha o `CHECK` da Onda 1) e `enderecoValidoParaEntrega` (número sempre obrigatório; coordenadas só quando `confidence==='exact'` — a distinção do achado §0.2). Novo `address/repository/addressRepository.js`, única camada que fala com `save_structured_address` (mesmo cliente/timeout de `DataService.savePedido`), isolamento provado por guard novo. Nada disso é consumido por UI/checkout ainda (reservado para a Onda 6).
+
+**Commit:** `b2fba85`, pushed. **Testes:** 29/29 gates do domínio + build limpo.
+
+---
+
+## 17. Execução — Onda 3 (Waterfall de geocoding), 2026-07-27
+
+### 17.1 Implementado
+
+Arquitetura de provedores desacoplada por interface comum (`{nome, disponivel(), sugestoes(query), reverso(lat,lng)}`), cada um normalizando sua resposta bruta para o MESMO shape que `nominatimService.js` já produz (`{address:{road,house_number,suburb,...}, display_name, lat, lon}`) — é o que permite trocar/somar provedor sem tocar em `addressFormat.js`/`useAddressSearch.js`/nenhum componente:
+
+- **`address/services/geocoding/providers/nominatimProvider.js`** — adapter fino sobre o `nominatimService.js` existente (intocado, URLs preservadas).
+- **`address/services/geocoding/providers/photonProvider.js`** — o provedor que resolveu o achado da Onda 0 ("Schlay"→"Schlei"). Endpoint de busca testado AO VIVO nesta referência; endpoint de reverse segue a documentação pública, não testado ao vivo.
+- **`address/services/geocoding/providers/mapboxProvider.js`** — provedor principal escolhido pelo dono (Free Tier). Lê `VITE_MAPBOX_TOKEN`; sem ela, `disponivel()===false` e o waterfall pula direto pro próximo (modo degradado, mesmo princípio de `lib/supabase.js`). **Implementado a partir da documentação pública do Geocoding API v5 — NÃO testado contra a API real** (sem token/conta neste ambiente). Ativa sozinho assim que a env var existir.
+- **`address/services/geocoding/waterfallGeocoder.js`** — orquestrador: `criarWaterfall(providers)` aceita lista injetada (testável sem rede); ordem padrão `[mapbox, nominatim, photon]`; pula indisponível, cai no próximo em erro OU vazio.
+- **`geocodingService.js`** — `sugestoes`/`reverso` passam a delegar ao waterfall. Contrato externo preservado.
+- **`utils/addressFormat.js`** — nova função pura `inferirConfidence(item)` (mesma distinção do §0.2: `house_number` presente = `exact`; só `road` = `street_level`; nem isso = `approximate`), usada pelos 3 adapters.
+
+### 17.2 Decisões ratificadas pelo arquiteto (autonomia delegada)
+
+| ID | Decisão | Justificativa |
+|---|---|---|
+| **D-PHOTON-PUBLIC** | Fallback usa a instância pública demo do Photon (`photon.komoot.io`), não uma instância self-hosted | Self-host exigiria provisionar servidor — fora do escopo desta sessão; a instância pública já é gratuita/sem chave e foi validada ao vivo na Onda 0. Self-host fica como evolução futura registrada, não bloqueia o valor entregue agora |
+| **D-CONTRATO-REVERSO** | `waterfallGeocoder.reverso` **lança** (nunca devolve `null`) quando todos os provedores falham | Achado da revisão: `useAddressSearch.js`'s `confirmMap` chama `geocoding.reverso` **sem try/catch próprio** (propagação intencional, documentada no serviço original) — devolver `null` quebraria esse call-site com `TypeError` não tratado. Corrigido antes de testar/commitar |
+| **D-CONFIDENCE-LOCAL** | `inferirConfidence` vive em `addressFormat.js` (pure), não dentro de cada provider | Função provider-agnóstica — os 3 adapters chamam a mesma, evita 3 implementações divergentes da mesma regra |
+| **D-MAPBOX-HONESTO** | Adapter Mapbox implementado e commitado mesmo sem poder testar contra a API real | Arquitetura pronta, ativa sozinha com a env var; risco isolado pelo try/catch do waterfall (se o formato divergir do documentado, cai pro próximo provedor em vez de quebrar a busca) |
+
+### 17.3 Achado de revisão corrigido antes do commit
+
+Ao revisar `useAddressSearch.js` antes de testar, encontrei que 1 dos 4 call-sites de `geocoding.reverso` (`confirmMap`) não tem try/catch — o desenho original do Nominatim service já documentava essa propagação intencional. Minha primeira versão do waterfall devolvia `null` em falha total, o que teria introduzido uma regressão real (crash silencioso nesse fluxo). Corrigido para lançar, preservando o contrato exato — ver D-CONTRATO-REVERSO.
+
+### 17.4 Testes e resultado
+
+- **`tests/address-geocoding.golden.mjs`** (novo, `npm run test:address-geocoding`) — 15 casos, tudo sem rede: normalizadores Photon/Mapbox com fixtures representativos (incluindo o caso real "número descartado → street_level"), disponibilidade dos providers reais, ordem padrão, e 8 casos de orquestração do waterfall com providers FALSOS injetados (usa o 1º que funciona, pula indisponível, cai em erro, cai em vazio, `reverso` lança em falha total). **15/15 PASS.**
+- **`tests/address.unit.mjs`** — `inferirConfidence` (5 casos novos). **PASS.**
+- **`tests/address.guard.mjs`** — invariante (10) novo: delegação `geocodingService`→`waterfallGeocoder` provada estruturalmente, URLs do Photon/Mapbox preservadas, Mapbox degrada sem token, `reverso` lança (não devolve null). **PASS.**
+- **Suíte completa:** 30/30 gates do domínio + `vite build` limpo (593 módulos).
+- **Render goldens:** 9/9 casos continuam byte-a-byte idênticos — zero mudança visual (esperado: nada na UI lê `_provider`/`_confidence` ainda).
+
+### 17.5 Comportamento real hoje (antes de qualquer token do Mapbox)
+
+Sem `VITE_MAPBOX_TOKEN`, a cadeia ativa hoje é Nominatim → Photon. Isso já é uma melhora real e imediata: buscas que davam 0 resultado no Nominatim cru (como "Rua João Schlay") agora caem no Photon, que tem tolerância a erro de grafia — sem precisar de nenhuma conta/chave nova. Mapbox entra como principal automaticamente no dia em que a env var for configurada.
+
+### 17.6 Commit e push
+
+`git commit` + `git push origin main` — hash e confirmação no resumo da conversa (não neste documento, para não duplicar rastro).
+
+### 17.7 Próximos passos
+
+Onda 4 — camada de busca fuzzy local (`pg_trgm` + `unaccent`, este último já instalado no banco desde a introspecção da Onda 1) sobre uma tabela curada de bairros/ruas conhecidas das 3 cidades atendidas.

@@ -10,7 +10,7 @@ import {
 import { CENTRO_PADRAO, formatarCoord, dentroDaArea } from '../src/address/utils/coordinates.js';
 import {
   normalizarEndereco, chaveDedupe, sugestaoMain, sugestaoSub, curtaSugestao, curtaGps, curtaCep,
-  linhaReversaMapa, linhaConfirmarMapa,
+  linhaReversaMapa, linhaConfirmarMapa, inferirConfidence,
 } from '../src/address/utils/addressFormat.js';
 import { montarEndereco, enderecoPreenchido, ENDERECO_VAZIO } from '../src/address/utils/addressModel.js';
 
@@ -117,6 +117,15 @@ check('curtaCep (com e sem complemento)', () => {
   assert.equal(curtaCep(cepData, '77', 'Casa 02'), 'Rua X, 77 Casa 02 — Centro');
   assert.equal(curtaCep(cepData, ' 88 ', ''), 'Rua X, 88 — Centro');
 });
+check('inferirConfidence: REF-ADDRESS-02 Onda 3 — mesma distinção provada ao vivo no ADR §0.2', () => {
+  assert.equal(inferirConfidence({ address: { road: 'Rua Amazonas', house_number: '533' } }), 'exact');
+  // caso real do achado: rua casada, número descartado pelo provedor -> street_level, não exact
+  assert.equal(inferirConfidence({ address: { road: 'Rua Amazonas' } }), 'street_level');
+  assert.equal(inferirConfidence({ address: {} }), 'approximate');
+  assert.equal(inferirConfidence({}), 'approximate');
+  assert.equal(inferirConfidence(null), 'approximate');
+});
+
 check('linhaReversaMapa x linhaConfirmarMapa (diferença suburb||neighbourhood vs suburb preservada)', () => {
   assert.equal(linhaReversaMapa(a), 'Rua João Schlay, 77, Centro, Timbó');
   assert.equal(linhaConfirmarMapa(a), 'Rua João Schlay, 77, Centro, Timbó');

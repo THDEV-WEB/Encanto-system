@@ -11,7 +11,10 @@
      (6) validators/ e utils/ são PUROS (sem React/JSX/fetch/localStorage/window) — lógica reutilizável.
      (7) O AddressModal monolítico foi removido (decomposição efetiva).
      (9) REF-ADDRESS-02 · Onda 2 — addressRepository.js é o ÚNICO lugar que fala com o RPC
-         save_structured_address (mesmo princípio da (1)/(2), agora para a persistência estruturada). */
+         save_structured_address (mesmo princípio da (1)/(2), agora para a persistência estruturada).
+     (10) REF-ADDRESS-02 · Onda 3 — geocodingService.js delega sugestoes/reverso ao waterfallGeocoder
+          (não chama nominatimService direto); Mapbox/Photon preservam as URLs externas EXATAS; Mapbox
+          fica indisponível sem VITE_MAPBOX_TOKEN (modo degradado, nunca quebra sem a chave). */
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
@@ -110,6 +113,30 @@ check('(9) addressRepository é o único lugar que chama save_structured_address
   const repo = strip(read(REPO));
   assert.ok(/db\.rpc\(\s*['"]save_structured_address['"]/.test(repo), 'repository deve chamar a RPC save_structured_address via db.rpc');
   assert.ok(/from\s+['"]\.\.\/\.\.\/lib\/supabase\.js['"]/.test(repo), 'repository deve usar o mesmo cliente db de lib/supabase.js (mesmo padrão de create_order)');
+});
+
+/* (10) REF-ADDRESS-02 · Onda 3 — waterfall de geocoding: delegação + URLs preservadas + Mapbox degradado sem token */
+check('(10) geocodingService delega ao waterfallGeocoder (não fala com nominatimService direto)', () => {
+  const svc = strip(read('address/services/geocodingService.js'));
+  assert.ok(/from\s+['"]\.\/geocoding\/waterfallGeocoder\.js['"]/.test(svc), 'geocodingService deve importar de ./geocoding/waterfallGeocoder.js');
+  assert.ok(!/from\s+['"]\.\/nominatimService\.js['"]/.test(svc), 'geocodingService NÃO deve mais importar nominatimService direto (delega ao waterfall)');
+  assert.ok(/waterfallGeocoder\.sugestoes/.test(svc) && /waterfallGeocoder\.reverso/.test(svc), 'sugestoes/reverso devem delegar ao waterfallGeocoder');
+});
+check('(10) providers do waterfall preservam as URLs externas EXATAS (Photon/Mapbox)', () => {
+  const photon = read('address/services/geocoding/providers/photonProvider.js');
+  assert.ok(photon.includes('https://photon.komoot.io/api/'), 'URL de busca do Photon');
+  assert.ok(photon.includes('https://photon.komoot.io/reverse'), 'URL de reverse do Photon');
+  const mapbox = read('address/services/geocoding/providers/mapboxProvider.js');
+  assert.ok(mapbox.includes('https://api.mapbox.com/geocoding/v5/mapbox.places/'), 'URL do Mapbox Geocoding v5');
+});
+check('(10) Mapbox fica indisponível sem VITE_MAPBOX_TOKEN (modo degradado, nunca quebra sem a chave)', () => {
+  const mapbox = strip(read('address/services/geocoding/providers/mapboxProvider.js'));
+  assert.ok(/VITE_MAPBOX_TOKEN/.test(mapbox), 'deve ler VITE_MAPBOX_TOKEN do env');
+  assert.ok(/disponivel:\s*\(\)\s*=>\s*!!TOKEN/.test(mapbox), 'disponivel() deve depender só da presença do token');
+});
+check('(10) waterfall.reverso lança em falha total (preserva o contrato original — confirmMap propaga sem try/catch)', () => {
+  const wf = strip(read('address/services/geocoding/waterfallGeocoder.js'));
+  assert.ok(/throw ultimoErro/.test(wf), 'reverso deve lançar (nunca devolver null) quando todos os provedores falham');
 });
 
 console.log(fail === 0

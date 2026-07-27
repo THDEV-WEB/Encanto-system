@@ -8,6 +8,18 @@
 /* [road, house_number] — base de várias exibições. */
 function ruaNumero(a = {}) { return [a.road, a.house_number].filter(Boolean).join(', '); }
 
+/* REF-ADDRESS-02 · Onda 3 — infere o nível de confiança de um item bruto no shape Nominatim
+   ({address:{road,house_number,...}}), a partir só do que o provedor efetivamente devolveu. É a
+   distinção provada ao vivo no ADR §0.2: "Rua Amazonas 533" casava a rua mas descartava o número em
+   silêncio — um match a nível de rua NÃO é o mesmo que um match exato, mesmo quando o provedor "responde
+   algo". Provider-agnóstico (usado pelos 3 adapters do waterfall: Mapbox/Nominatim/Photon). */
+export function inferirConfidence(item) {
+  const addr = (item && item.address) || {};
+  if (addr.house_number) return 'exact';
+  if (addr.road) return 'street_level';
+  return 'approximate';
+}
+
 /* Normaliza o `address` do Nominatim para o shape canônico do pedido {rua,numero,bairro,cidade,estado,cep}.
    `completa:true` (usado em pick) inclui os fallbacks extras (quarter/municipality) do original; o GPS
    usa a variante enxuta. */
