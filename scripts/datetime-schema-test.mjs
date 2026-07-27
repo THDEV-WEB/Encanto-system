@@ -89,6 +89,63 @@ try {
   }
   out('');
 
+  out('— Fase 2a (REF-DATETIME-01b-schema-timestamptz): checks condicionais —');
+  {
+    const hasDiaLoja = (await client.query(`SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname='dia_loja'`)).rowCount > 0;
+    if (!hasDiaLoja) {
+      out('  [SKIP] Fase 2a ainda nao aplicada (dia_loja() nao existe) — rode migrations/REF-DATETIME-01b-schema-timestamptz.sql para habilitar DT4/DT5/DT6.');
+    } else {
+      // DT4 — as 9 colunas-base agora sao timestamptz.
+      {
+        const need = ['orders', 'order_events', 'customers', 'products', 'categories', 'addresses', 'adicionais', 'settings', 'application_logs'];
+        const r = await client.query(`SELECT table_name, data_type FROM information_schema.columns WHERE table_schema='public' AND column_name='created_at' AND table_name = ANY($1)`, [need]);
+        const naive = r.rows.filter(x => x.data_type !== 'timestamp with time zone').map(x => x.table_name);
+        const achadas = r.rows.map(x => x.table_name);
+        const faltando = need.filter(t => !achadas.includes(t));
+        const ok = naive.length === 0 && faltando.length === 0;
+        if (ok) passes++; else failures++;
+        out(`  [${ok ? 'PASS' : 'FAIL'}] DT4 9 colunas created_at sao timestamptz`);
+        out(`         -> ${ok ? 'todas as 9 confirmadas timestamptz' : 'ainda naive: ' + naive.join(',') + (faltando.length ? ' | tabela(s) nao encontrada(s): ' + faltando.join(',') : '')}`);
+      }
+      out('');
+
+      // DT5 — grants de admin_orders_search batem com o baseline capturado na auditoria (2026-07-27).
+      {
+        const BASELINE = ['PUBLIC', 'anon', 'authenticated', 'postgres', 'service_role'].sort();
+        const r = await client.query(`SELECT grantee FROM information_schema.routine_privileges WHERE routine_schema='public' AND routine_name='admin_orders_search' AND privilege_type='EXECUTE' ORDER BY grantee`);
+        const atual = r.rows.map(x => x.grantee).sort();
+        const ok = JSON.stringify(atual) === JSON.stringify(BASELINE);
+        if (ok) passes++; else failures++;
+        out(`  [${ok ? 'PASS' : 'FAIL'}] DT5 grants EXECUTE de admin_orders_search == baseline pre-migration`);
+        out(`         -> baseline: [${BASELINE.join(', ')}] · atual: [${atual.join(', ')}]`);
+      }
+      out('');
+
+      // DT6 — dia_loja() sanity: instante perto da meia-noite UTC cai no dia local anterior.
+      {
+        const r = (await client.query(`SELECT public.dia_loja('2026-01-15 02:00:00+00'::timestamptz) AS d`)).rows[0];
+        const iso = r.d instanceof Date ? r.d.toISOString().slice(0, 10) : String(r.d).slice(0, 10);
+        const ok = iso === '2026-01-14';
+        if (ok) passes++; else failures++;
+        out(`  [${ok ? 'PASS' : 'FAIL'}] DT6 dia_loja('2026-01-15 02:00:00+00') = 2026-01-14 (America/Sao_Paulo)`);
+        out(`         -> obtido: ${iso}`);
+      }
+      out('');
+
+      // DT7 — admin_orders_search pagina normalmente com cursor timestamptz.
+      {
+        let v = 'FAIL', d = '';
+        try {
+          const r = await client.query(`SELECT * FROM public.admin_orders_search(null, null, 3, null, null)`);
+          v = 'PASS'; d = `retornou ${r.rowCount} linha(s) sem erro`;
+        } catch (e) { v = 'FAIL'; d = redact(e.message).split('\n')[0]; }
+        record('DT7', 'admin_orders_search(null,null,3,null,null) executa sem erro', v, d);
+      }
+      out('');
+    }
+  }
+  out('');
+
   out('— Resumo —  PASS: ' + passes + '  ·  FAIL: ' + failures);
   out('— Fingerprint — commit ' + git('rev-parse HEAD') + ' · branch ' + git('rev-parse --abbrev-ref HEAD') + ' · Node ' + process.version + ' · ' + (Date.now() - startedMs) + ' ms · started ' + startedIso);
   out('');
