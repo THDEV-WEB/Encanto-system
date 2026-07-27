@@ -1,6 +1,6 @@
 # ADR REF-ADDRESS-02 — Arquitetura profissional do módulo de endereços
 
-- **Status:** 🚀 **EXECUÇÃO EM ANDAMENTO — Ondas 1 (schema), 2 (repository+validator), 3 (waterfall de geocoding) e 4 (busca fuzzy local `pg_trgm`) CONCLUÍDAS e VALIDADAS (2026-07-27).** Onda 0 (pesquisa) encerrada por decisão do dono: evidências coletadas são suficientes, decisões de baixo impacto passam a ser tomadas autonomamente pelo arquiteto responsável (esta ADR), só decisões arquiteturais críticas interrompem o fluxo.
+- **Status:** 🚀 **EXECUÇÃO EM ANDAMENTO — Ondas 1 (schema), 2 (repository+validator), 3 (waterfall de geocoding), 4 (busca fuzzy local `pg_trgm`) e 5 (UX número/complemento/referência + erros granulares) CONCLUÍDAS e VALIDADAS (2026-07-27).** Onda 0 (pesquisa) encerrada por decisão do dono: evidências coletadas são suficientes, decisões de baixo impacto passam a ser tomadas autonomamente pelo arquiteto responsável (esta ADR), só decisões arquiteturais críticas interrompem o fluxo.
   ⚠️ **Ressalva registrada explicitamente (aprovação do dono da Onda 3):** dentro da Onda 3, a **arquitetura** está validada e a **implementação** do adapter Mapbox está concluída, mas a **integração real com a API do Mapbox segue PENDENTE** até existir `VITE_MAPBOX_TOKEN` + 1 rodada de teste de integração — ver §17.0. Não tratar "Onda 3 concluída" como "Mapbox testado contra a API real".
 - **Escopo:** domínio `src/address/` (busca/autocomplete/geocoding/formulário/mapa), persistência de endereço em `orders`, e o desenho (não implementação) de uma futura `DeliveryAreaService`.
 - **Não-escopo:** checkout (fluxo de pagamento), catálogo, fidelidade, comanda térmica — nenhum desses é tocado nesta fase.
@@ -494,3 +494,44 @@ Diretrizes operacionais para qualquer crescimento futuro desta tabela:
 - **Registrar origem do dado quando fizer sentido** — o schema atual não tem coluna de proveniência; recomendação registrada aqui (não implementada nesta onda, para não interromper o fluxo por algo de baixo impacto) é adicionar uma coluna `origem text` (ex.: `'confirmado_ao_vivo'`, `'admin'`, `'importado'`) na próxima vez que a tabela for tocada por qualquer motivo — natural, barato, não urgente.
 - **Manter baixa complexidade** — sem lógica de geocoding própria (a tabela não guarda `lat/lng`; só nomes canônicos que corrigem a QUERY antes de sair pro provedor real, ver D-GAZETTEER-ORDER). Sem pipeline de importação automática, sem sincronização com fontes externas.
 - **Manutenção simples pelo administrador no futuro** — hoje é só `INSERT`/`DELETE` via SQL editor (documentado no §18.5); uma aba de admin dedicada é candidata natural quando/se o volume justificar, não uma fase já planejada.
+
+---
+
+## 19. Execução — Onda 5 (UX: número/complemento/referência + erros granulares), 2026-07-27
+
+Dividida em 2 commits (5a e 5b) — primeira onda desta referência que muda telas de verdade (Ondas 1-4 eram 100% invisíveis, comprovado pelos render goldens byte-a-byte). Por isso cada golden alterado foi **capturado da saída real do React** (rodar o teste, ler o "obtido", só então virar golden) em vez de escrito à mão — elimina erro de transcrição de atributo/ordem.
+
+### 19.1 Onda 5a — número/complemento/referência uniformes nas 3 abas
+
+**Implementado:** nova `AddressDetalhesEntrega.jsx` (número*/complemento/referência + confirmar), compartilhada pelas 3 abas em vez de campos duplicados inline. A aba de busca ganhou a peça que faltava (ADR §6): escolher uma sugestão não confirma mais direto com o que o provedor devolveu — guarda em `pickedItem` e pede número/complemento/referência primeiro, igual CEP/Mapa já faziam parcialmente. "Referência" é o único campo sem nenhum precedente nas 3 abas.
+
+**Achado corrigido durante a implementação:** `confirmMap` tinha 2 branches que **nunca** incluíam `numero` no meta estruturado, mesmo quando o usuário digitava um — o número só entrava como texto dentro do label. Era exatamente o problema que motivou a Onda 0 inteira, sobrevivendo intacto até agora na aba Mapa. Corrigido: número/rua/bairro/etc vão pro meta nos dois branches.
+
+`pick()`/`confirmSearch` também propagam `provider`/`confidence` — campos que a Onda 2 já tinha em `addressModel.js`, mas nenhum fluxo populava ainda.
+
+**Decisão (D-MAPA-NUMERO-OPCIONAL):** número continua **obrigatório** em CEP e no novo passo da busca (mesmo padrão já existente), mas **não** virou obrigatório no Mapa (`numeroObrigatorio={false}`) — endurecer isso agora bloquearia um caminho que hoje funciona sem número (confirma com o pino default). Registrado aqui em vez de fabricar um risco novo sem necessidade.
+
+### 19.2 Onda 5b — erros granulares (ADR §7)
+
+**Implementado:** novo `address/utils/addressErrors.js` (puro) — `ERRO_MENSAGENS` + `tipoErroGeolocalizacao(code)` (mapeia `GeolocationPositionError.code`: 1=`permissao_negada`; 2/3 convergem em `servico_indisponivel`) + `criarErro(tipo)`. Novo estado `erro` no hook, substituindo os 2 `alert()` de GPS por notícia inline: `gps_desabilitado`, `permissao_negada`, `servico_indisponivel`, `sem_internet` (via `navigator.onLine`, checado antes de tentar buscar OU usar GPS). Trocar de aba limpa o erro pendente (evita mensagem "fantasma").
+
+Além disso, quando uma sugestão escolhida na busca tem `_confidence !== 'exact'` (achado do ADR §0.2 — rua casada, número não confirmado pelo provedor), um aviso equivalente a `confianca_baixa` aparece na tela de detalhes — informativo, não bloqueia a confirmação.
+
+**Limitação registrada, não resolvida agora (D-NOTFOUND-VS-INDISPONIVEL):** `endereco_nao_encontrado` (zero resultados genuínos) e `servico_indisponivel` (provedores fora do ar) continuam **indistinguíveis** na busca por texto — o `waterfallGeocoder.sugestoes()` foi desenhado na Onda 3 pra nunca lançar (sempre `[]` em falha total, ver `tentarProviders`), então hoje as duas causas convergem pro mesmo `status:'notfound'`. Resolver isso exigiria mudar o contrato de retorno do waterfall (ex.: `{resultados, todosFalharam}`) — mudança maior, fora do escopo desta onda; `sem_internet` cobre o caso mais comum de "está tudo fora do ar" via `navigator.onLine` antes mesmo de tentar. `fora_da_area` segue reservado (depende da futura `DeliveryAreaService`, ADR §5).
+
+**Escopo deliberadamente fora desta onda:** os `alert('Informe o número da residência.')` em `confirmCEP`/`confirmSearch`/`confirmMap` (validação de campo obrigatório) não foram convertidos — são uma categoria diferente dos 7 estados do ADR §7 (que tratam de falha de busca/geocoding, não de campo vazio); convertê-los exigiria um padrão de "erro inline por campo" que não foi desenhado nesta onda.
+
+### 19.3 Testes e resultado
+
+- **`tests/address.unit.mjs`**: +3 casos (`tipoErroGeolocalizacao`, `criarErro`, cobertura dos 4 tipos alcançáveis de `ERRO_MENSAGENS`).
+- **`tests/address.render.mjs`**: 12 casos (era 9) — 2 goldens existentes atualizados (`AddressForm(found)`, `AddressMap` ganham referência) + 3 casos novos (`AddressSearch` com `pickedItem`, com `erro`, com confiança baixa). **Âncora `GOLDEN_MODAL_SEARCH` (estado idle, byte-a-byte do monólito original) permanece idêntica sem mudar 1 linha** — prova mecânica de que nada no estado inicial mudou.
+- **`tests/address.guard.mjs`**: `addressErrors.js` incluído na lista de arquivos puros verificados (invariante 6).
+- **Suíte completa:** 30/30 gates do domínio + `vite build` limpo (596 módulos) + 12/12 render goldens.
+
+### 19.4 Commits
+
+5a: número/complemento/referência uniformes. 5b: erros granulares. Hashes e confirmação de push no resumo da conversa.
+
+### 19.5 Próximos passos
+
+Onda 6 — ligar o checkout: `create_order` ganha `p_address_id` opcional (corpo da função já capturado por introspecção na Onda 1, sem incerteza), `addressRepository.salvar()` passa a ser chamado no fluxo real de checkout, `orders.endereco_id` deixa de estar sempre vazio. Onda mais sensível até aqui — único caminho de escrita de 100% dos pedidos — isolada de propósito das anteriores.

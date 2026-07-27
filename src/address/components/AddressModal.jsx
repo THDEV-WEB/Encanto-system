@@ -53,6 +53,7 @@ export function AddressModal({ onClose, onSelect }) {
               onPick={eng.pick}
               onGoCep={() => eng.setTab('cep')}
               onGoMap={() => eng.setTab('map')}
+              erro={eng.erro}
               pickedItem={eng.pickedItem}
               onVoltar={eng.voltarParaSugestoes}
               numero={eng.cepNumero}

@@ -13,6 +13,7 @@ import {
   linhaReversaMapa, linhaConfirmarMapa, inferirConfidence,
 } from '../src/address/utils/addressFormat.js';
 import { montarEndereco, enderecoPreenchido, ENDERECO_VAZIO } from '../src/address/utils/addressModel.js';
+import { ERRO_MENSAGENS, tipoErroGeolocalizacao, criarErro } from '../src/address/utils/addressErrors.js';
 
 let fail = 0;
 const check = (m, fn) => { try { fn(); console.error('  ok ' + m); } catch (e) { fail++; console.error('  x  ' + m + ' — ' + (e?.message ?? e)); } };
@@ -158,6 +159,24 @@ check('enderecoPreenchido: só true com label', () => {
   assert.equal(enderecoPreenchido(null), false);
   assert.equal(enderecoPreenchido({ label: '' }), false);
   assert.equal(enderecoPreenchido({ label: 'Rua A' }), true);
+});
+
+/* ── REF-ADDRESS-02 · Onda 5b — erros granulares (ADR §7) ── */
+check('tipoErroGeolocalizacao: code 1=permissao_negada; 2/3 convergem em servico_indisponivel', () => {
+  assert.equal(tipoErroGeolocalizacao(1), 'permissao_negada');
+  assert.equal(tipoErroGeolocalizacao(2), 'servico_indisponivel');
+  assert.equal(tipoErroGeolocalizacao(3), 'servico_indisponivel');
+  assert.equal(tipoErroGeolocalizacao(undefined), 'servico_indisponivel');
+});
+check('criarErro: tipo conhecido usa a mensagem de ERRO_MENSAGENS; desconhecido cai num fallback', () => {
+  for (const tipo of Object.keys(ERRO_MENSAGENS)) {
+    assert.deepEqual(criarErro(tipo), { tipo, mensagem: ERRO_MENSAGENS[tipo] });
+  }
+  assert.equal(criarErro('tipo_inexistente').tipo, 'tipo_inexistente');
+  assert.ok(criarErro('tipo_inexistente').mensagem.length > 0);
+});
+check('ERRO_MENSAGENS: os 4 tipos alcançáveis existem (fora_da_area fica de fora — depende de DeliveryAreaService futura)', () => {
+  assert.deepEqual(Object.keys(ERRO_MENSAGENS).sort(), ['gps_desabilitado', 'permissao_negada', 'sem_internet', 'servico_indisponivel'].sort());
 });
 
 console.log(fail === 0 ? '\nOK address.unit — validators + utils + model congelados (equivalência ao original + fonte única)' : '\nFALHA address.unit — ' + fail + ' caso(s)');

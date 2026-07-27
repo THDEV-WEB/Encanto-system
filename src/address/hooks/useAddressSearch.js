@@ -6,11 +6,15 @@
    (c) toda validação vem de validators/ e toda formatação de utils/. Cada handler reproduz EXATAMENTE o
    comportamento do call-site original (URLs, guardas, strings e payloads do onSelect inalterados).
 
-   Onda 5: `pickedItem` guarda a sugestão escolhida na aba de busca ANTES de confirmar — a aba passa a
+   Onda 5a: `pickedItem` guarda a sugestão escolhida na aba de busca ANTES de confirmar — a aba passa a
    pedir número/complemento/referência como as outras 2, em vez de confirmar direto com o que o provedor
    devolveu (era exatamente a lacuna documentada no ADR §6/§0.2: número nunca devia depender só do que o
    geocoder "adivinhou"). `referencia` é novo e compartilhado pelas 3 abas (mesmo padrão que `cepNumero`/
-   `complemento` já eram compartilhados entre CEP e Mapa). */
+   `complemento` já eram compartilhados entre CEP e Mapa).
+
+   Onda 5b: `erro` substitui os `alert()` de GPS/localização por estado granular (ADR §7) — cada causa
+   (GPS ausente, permissão negada, serviço indisponível, sem internet) tem tipo/mensagem próprios em
+   addressErrors.js, prontos pra UI mostrar inline em vez de bloquear com um alert genérico. */
 
 import { useState, useEffect, useCallback } from 'react';
 import { geocoding } from '../services/geocodingService.js';
@@ -19,6 +23,9 @@ import {
   normalizarEndereco, curtaSugestao, curtaGps, curtaCep, linhaReversaMapa, linhaConfirmarMapa,
 } from '../utils/addressFormat.js';
 import { CENTRO_PADRAO, formatarCoord } from '../utils/coordinates.js';
+import { criarErro, tipoErroGeolocalizacao } from '../utils/addressErrors.js';
+
+const online = () => typeof navigator === 'undefined' || navigator.onLine !== false; // SSR-safe: sem navigator = assume online
 
 export function useAddressSearch({ onSelect }) {
   const [tab, setTab] = useState('search');          // search | cep | map
@@ -28,11 +35,15 @@ export function useAddressSearch({ onSelect }) {
   const [pickedItem, setPickedItem] = useState(null); // sugestão escolhida na aba busca, pendente de número/complemento/referência
   const [suggestions, setSuggestions] = useState([]);
   const [status, setStatus] = useState('idle');      // idle|loading|found|notfound|gps
+  const [erro, setErro] = useState(null);            // { tipo, mensagem } | null — ADR §7
   const [cepQuery, setCepQuery] = useState('');
   const [cepData, setCepData] = useState(null);
   const [cepNumero, setCepNumero] = useState('');
   const [mapPin, setMapPin] = useState({ lat: CENTRO_PADRAO.lat, lng: CENTRO_PADRAO.lng });
   const [mapAddr, setMapAddr] = useState('');
+
+  /* Trocar de aba descarta qualquer erro pendente da aba anterior (evita mensagem "fantasma" ao voltar). */
+  const mudarTab = useCallback((id) => { setTab(id); setErro(null); }, []);
 
   /* ── Busca por CEP (ViaCEP, debounce 400ms) ── */
   const buscarCEP = useCallback(async (cep) => {
@@ -55,9 +66,13 @@ export function useAddressSearch({ onSelect }) {
     setCepQuery(v); setStatus('idle'); setCepData(null);
   }, []);
 
-  /* ── Busca por texto (Nominatim, debounce 450ms) ── */
+  /* ── Busca por texto (waterfall Mapbox->Nominatim->Photon->gazetteer, debounce 450ms) ──
+     Onda 5b: checa navigator.onLine ANTES de tentar — sem internet é distinguível de "zero resultados"
+     (o waterfall nunca lança, então sem esse check as duas causas ficariam indistinguíveis; ver ADR §7). */
   const searchAddress = useCallback(async (q) => {
-    if (!queryValida(q)) { setSuggestions([]); setStatus('idle'); return; }
+    if (!queryValida(q)) { setSuggestions([]); setStatus('idle'); setErro(null); return; }
+    if (!online()) { setSuggestions([]); setStatus('idle'); setErro(criarErro('sem_internet')); return; }
+    setErro(null);
     setStatus('loading');
     try {
       const res = await geocoding.sugestoes(q);
@@ -70,9 +85,14 @@ export function useAddressSearch({ onSelect }) {
   /* Editar o texto de novo depois de ter escolhido uma sugestão descarta a escolha (volta pras sugestões). */
   const mudarQuery = useCallback((v) => { setQuery(v); setPickedItem(null); }, []);
 
-  /* ── GPS (geolocalização + reverse-geocode) ── */
+  /* ── GPS (geolocalização + reverse-geocode) — Onda 5b: erro granular (ADR §7) em vez de alert() genérico.
+     Ao ACHAR a posição, o reverse-geocode continua tolerante (catch preserva o fallback de coordenadas
+     cruas — comportamento intocado); só a falha em OBTER a posição (permissão/GPS/timeout) ganhou causa
+     própria. */
   const usarGPS = useCallback(() => {
-    if (!navigator.geolocation) { alert('GPS indisponível.'); return; }
+    setErro(null);
+    if (!online()) { setErro(criarErro('sem_internet')); return; }
+    if (typeof navigator === 'undefined' || !navigator.geolocation) { setErro(criarErro('gps_desabilitado')); return; }
     setStatus('gps');
     navigator.geolocation.getCurrentPosition(async (pos) => {
       const { latitude: lat, longitude: lng } = pos.coords;
@@ -83,7 +103,7 @@ export function useAddressSearch({ onSelect }) {
         const n = normalizarEndereco(a);   // variante enxuta (GPS)
         onSelect(short + (n.bairro ? ' — ' + n.bairro : ''), { lat, lng, rua: n.rua, numero: n.numero, bairro: n.bairro, cidade: n.cidade, estado: n.estado, cep: n.cep });
       } catch { onSelect(formatarCoord(lat) + ', ' + formatarCoord(lng), { lat, lng }); }
-    }, () => { setStatus('idle'); alert('Não foi possível obter a localização.'); });
+    }, (posErro) => { setStatus('idle'); setErro(criarErro(tipoErroGeolocalizacao(posErro && posErro.code))); });
   }, [onSelect]);
 
   /* ── Selecionar uma sugestão da busca: guarda e pede número/complemento/referência (Onda 5) — não
@@ -94,6 +114,7 @@ export function useAddressSearch({ onSelect }) {
     setCepNumero('');
     setComplemento('');
     setReferencia('');
+    setErro(null);
   }, []);
   const voltarParaSugestoes = useCallback(() => setPickedItem(null), []);
 
@@ -160,12 +181,12 @@ export function useAddressSearch({ onSelect }) {
   }, []);
 
   return {
-    tab, setTab,
+    tab, setTab: mudarTab,
     query, setQuery: mudarQuery,
     complemento, setComplemento,
     referencia, setReferencia,
     pickedItem, voltarParaSugestoes,
-    suggestions, status,
+    suggestions, status, erro,
     cepQuery, cepData, cepNumero, setCepNumero,
     mapPin, mapAddr,
     mudarCep, usarGPS, pick, confirmSearch, confirmCEP, confirmMap, aoArrastarPino, aoClicarPino,

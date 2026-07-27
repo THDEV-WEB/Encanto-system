@@ -94,7 +94,7 @@ check('(8) CheckoutPage consome a fonte única e não tem endereço próprio (se
 
 /* (6) validators/utils puros */
 check('(6) validators/ e utils/ são puros (sem React/JSX/fetch/localStorage/window)', () => {
-  for (const f of ['address/validators/addressValidators.js', 'address/utils/addressFormat.js', 'address/utils/coordinates.js']) {
+  for (const f of ['address/validators/addressValidators.js', 'address/utils/addressFormat.js', 'address/utils/coordinates.js', 'address/utils/addressErrors.js']) {
     const code = strip(read(f));
     assert.ok(!/from ['"]react['"]/.test(code), `${f} não pode importar React`);
     assert.ok(!/\.jsx['"]/.test(code), `${f} não pode importar JSX`);

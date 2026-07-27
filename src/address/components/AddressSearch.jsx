@@ -4,16 +4,25 @@
    GPS, seleção) vem por props do motor useAddressSearch; a formatação das sugestões vem de utils/. O foco
    automático no campo ao entrar na aba é preservado (o componente monta quando a aba fica ativa).
 
-   Onda 5: escolher uma sugestão não confirma mais direto — `pickedItem` (truthy) troca a lista de
+   Onda 5a: escolher uma sugestão não confirma mais direto — `pickedItem` (truthy) troca a lista de
    sugestões por AddressDetalhesEntrega (número/complemento/referência), igual às outras 2 abas (ADR §6).
    Com `pickedItem` nulo o markup do estado idle é BYTE-IGUAL ao de antes (prova: GOLDEN_MODAL_SEARCH,
-   o âncora do monólito original, continua passando sem mudar uma linha). */
+   o âncora do monólito original, continua passando sem mudar uma linha).
+
+   Onda 5b: `erro` (ADR §7) substitui os `alert()` de GPS por uma notícia inline; quando a sugestão
+   escolhida não tem confiança 'exact' (achado do ADR §0.2 — match só de rua, número não confirmado pelo
+   provedor), um aviso equivalente aparece na tela de detalhes, sem bloquear a confirmação. */
 import { useEffect, useRef } from 'react';
 import { sugestaoMain, sugestaoSub } from '../utils/addressFormat.js';
 import { AddressDetalhesEntrega } from './AddressDetalhesEntrega.jsx';
 
+const AVISO_ESTILO = {
+  padding: '8px 10px', background: '#FEF3C7', border: '1px solid #FDE68A',
+  borderRadius: 8, fontSize: 12, color: '#92400E', lineHeight: 1.5, marginBottom: 10,
+};
+
 export function AddressSearch({
-  query, onQueryChange, status, suggestions, onGPS, onPick, onGoCep, onGoMap,
+  query, onQueryChange, status, suggestions, onGPS, onPick, onGoCep, onGoMap, erro,
   pickedItem, onVoltar, numero, onNumeroChange, complemento, onComplementoChange,
   referencia, onReferenciaChange, onConfirm,
 }) {
@@ -35,6 +44,9 @@ export function AddressSearch({
         }}>
           ← Escolher outro endereço
         </button>
+        {pickedItem._confidence && pickedItem._confidence !== 'exact' && (
+          <div style={AVISO_ESTILO}>⚠️ Encontramos a rua, mas não confirmamos o número exato — confira o número abaixo.</div>
+        )}
         <AddressDetalhesEntrega
           numero={numero} onNumeroChange={onNumeroChange}
           complemento={complemento} onComplementoChange={onComplementoChange}
@@ -54,6 +66,7 @@ export function AddressSearch({
           ? <><span style={{ display: 'inline-block', animation: 'spin .8s linear infinite' }}>⏳</span> Obtendo localização...</>
           : <><span>🎯</span> Usar minha localização atual</>}
       </button>
+      {erro && <div style={{ ...AVISO_ESTILO, marginTop: 10 }}>⚠️ {erro.mensagem}</div>}
       {status === 'loading' && (
         <div style={{ textAlign: 'center', padding: '20px', color: 'var(--gray-400)' }}>
           <div className="spinner" style={{ margin: '0 auto 8px' }} /><p style={{ fontSize: 13 }}>Buscando...</p>
