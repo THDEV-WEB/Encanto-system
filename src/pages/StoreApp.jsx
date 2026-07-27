@@ -35,9 +35,7 @@ import { CheckoutPage } from '../components/checkout/CheckoutPage.jsx';
 import { DS } from '../services/DataService.js';                       // REF-CLIENTE-02: catalogo atual p/ recompra
 import { montarRecompra } from '../components/pedidos/recompra.js';   // REF-CLIENTE-02 Onda 4 (regras puras)
 
-let _cpStore = false;   // REF-BOOT-02 v2: checkpoint render-phase da loja (uma vez)
 export function StoreApp({ onAdmin }) {
-  if (!_cpStore) { _cpStore = true; try { if (typeof window !== 'undefined' && window.__ENC_BOOT__ && window.__ENC_BOOT__.step) window.__ENC_BOOT__.step('CP-StoreApp-render', 'StoreApp() render-phase'); } catch { /* noop */ } }
   /* REF-CHECKOUT-ADDRESS-01: a loja inteira (Header + Checkout) vive sob o AddressProvider — FONTE UNICA
      do endereco de entrega. O AddressModal e renderizado uma unica vez pelo provider (overlay sobre o
      Header ou o Checkout). App.jsx nao ganha responsabilidade: o provider e escopo da loja. */
