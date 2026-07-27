@@ -9,6 +9,9 @@ export function AdminLogin({ onLogin }) {
   const [pass,    setPass]    = useState('');
   const [err,     setErr]     = useState('');
   const [loading, setLoading] = useState(false);
+  // REF-UX-SESSION-01: sessão reaproveitável encontrada no clique em "Entrar" — aguarda confirmação
+  // explícita do usuário antes de entrar, para deixar claro que nenhuma senha foi validada agora.
+  const [sessaoEncontrada, setSessaoEncontrada] = useState(null);
 
   const login = async () => {
     if (!db) { setErr('Supabase indisponível. Recarregue a página.'); return; }
@@ -16,15 +19,16 @@ export function AdminLogin({ onLogin }) {
 
     /* REF-STABILITY-02: "Entrar" é o ÚNICO momento em que a sessão salva é consultada/reaproveitada —
        nunca antes (nem no boot, nem ao abrir esta tela via engrenagem/hash). Se já existir uma sessão
-       válida E autorizada (is_admin()), entra direto, sem exigir e-mail/senha de novo. Sessão inexistente/
-       expirada ou sem privilégio de admin: cai no login normal por credencial (abaixo), sem erro nenhum
-       exibido por essa tentativa silenciosa. */
+       válida E autorizada (is_admin()), a REF-UX-SESSION-01 mostra uma tela de confirmação explícita
+       (abaixo) em vez de entrar direto — nenhuma mudança em QUANDO a sessão é consultada, só em como o
+       resultado é comunicado. Sessão inexistente/expirada ou sem privilégio de admin: cai no login normal
+       por credencial (abaixo), sem erro nenhum exibido por essa tentativa silenciosa. */
     const { data: sessaoAtual } = await db.auth.getSession();
     if (sessaoAtual?.session?.access_token) {
       const { data: souAdminSessaoAtual, error: erroSessaoAtual } = await db.rpc('is_admin');
       if (!erroSessaoAtual && souAdminSessaoAtual === true) {
-        registrarBreadcrumb('admin: sessao existente reaproveitada (Entrar)');
-        onLogin({ email: sessaoAtual.session.user?.email ?? email, session: sessaoAtual.session });
+        registrarBreadcrumb('admin: sessao existente encontrada, aguardando confirmacao (Entrar)');
+        setSessaoEncontrada({ email: sessaoAtual.session.user?.email ?? email, session: sessaoAtual.session });
         setLoading(false);
         return;
       }
@@ -62,6 +66,47 @@ export function AdminLogin({ onLogin }) {
     onLogin({ email, session: data.session });
     setLoading(false);
   };
+
+  // REF-UX-SESSION-01: confirma a entrada com a sessão já encontrada — mesma chamada que o branch de
+  // reaproveitamento fazia direto antes desta ref, só que agora depende de um clique explícito extra.
+  const continuarComoAdmin = () => {
+    registrarBreadcrumb('admin: sessao existente reaproveitada (confirmada)');
+    onLogin(sessaoEncontrada);
+  };
+
+  // REF-UX-SESSION-01: recusa a sessão encontrada — desloga de verdade (mesma chamada de sair() em
+  // useAdminSession.js) e volta ao formulário normal para um login por credencial real.
+  const usarOutraConta = async () => {
+    if (db) { try { await db.auth.signOut(); } catch { /* best-effort */ } }
+    registrarBreadcrumb('admin: sessao existente recusada (usar outra conta)');
+    setSessaoEncontrada(null);
+    setPass('');
+    setErr('');
+  };
+
+  if (sessaoEncontrada) {
+    return (
+      <div className="admin-login">
+        <div className="admin-login-card" data-testid="admin-login-sessao-encontrada">
+          <div style={{fontSize:42,textAlign:'center',marginBottom:8}}>🔐</div>
+          <h2>{companyInfo.nomeCurto} Admin</h2>
+          <p>Sessão administrativa encontrada</p>
+          <p style={{fontSize:13,color:'var(--gray-700)',marginTop:-16,marginBottom:24}}>
+            <strong>{sessaoEncontrada.email}</strong> já está autenticado neste navegador.
+            Nenhuma senha foi validada agora — você está continuando uma sessão já autenticada.
+          </p>
+          <button className="login-btn" data-testid="admin-login-continuar" onClick={continuarComoAdmin}>
+            Continuar como Administrador
+          </button>
+          <button className="btn-secondary" data-testid="admin-login-usar-outra-conta" onClick={usarOutraConta}
+            style={{width:'100%',marginTop:10,textAlign:'center'}}>
+            Usar outra conta
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="admin-login">
       <div className="admin-login-card">
