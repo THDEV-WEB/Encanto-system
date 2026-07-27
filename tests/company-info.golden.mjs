@@ -11,8 +11,8 @@ const check = (m, fn) => { try { fn(); console.error('  ok ' + m); } catch (e) {
 
 console.error('— DEFAULT_COMPANY_INFO (fallback do modo degradado)');
 
-check('DEFAULT_COMPANY_INFO tem os 5 campos v1 e nenhum vazio', () => {
-  for (const k of ['nome', 'telefone', 'whatsapp', 'email', 'whatsappFloatEnabled']) {
+check('DEFAULT_COMPANY_INFO tem os 6 campos (REF-COMPANY-02: nome dividido) e nenhum vazio', () => {
+  for (const k of ['nomeCurto', 'nomeCompleto', 'telefone', 'whatsapp', 'email', 'whatsappFloatEnabled']) {
     assert.ok(k in DEFAULT_COMPANY_INFO, `campo ausente: ${k}`);
   }
   assert.equal(typeof DEFAULT_COMPANY_INFO.whatsappFloatEnabled, 'boolean');
@@ -43,12 +43,20 @@ check('patch vazio -> aceito sem alterar nada (equivalente a no-op)', () => {
   const r = validarPatchCompanyInfo({});
   assert.deepEqual(r.patch, {});
 });
-check('nome valido (>=2 chars, trim) -> normalizado', () => {
-  const r = validarPatchCompanyInfo({ nome: '  Encanto  ' });
-  assert.equal(r.patch.nome, 'Encanto');
+check('nomeCurto valido (>=2 chars, trim) -> normalizado', () => {
+  const r = validarPatchCompanyInfo({ nomeCurto: '  Encanto  ' });
+  assert.equal(r.patch.nomeCurto, 'Encanto');
 });
-check('nome invalido (<2 chars) -> erro', () => {
-  const r = validarPatchCompanyInfo({ nome: 'A' });
+check('nomeCurto invalido (<2 chars) -> erro', () => {
+  const r = validarPatchCompanyInfo({ nomeCurto: 'A' });
+  assert.ok(r.erro);
+});
+check('nomeCompleto valido (>=2 chars, trim) -> normalizado', () => {
+  const r = validarPatchCompanyInfo({ nomeCompleto: '  Encanto — Açaí & Marmitas  ' });
+  assert.equal(r.patch.nomeCompleto, 'Encanto — Açaí & Marmitas');
+});
+check('nomeCompleto invalido (<2 chars) -> erro', () => {
+  const r = validarPatchCompanyInfo({ nomeCompleto: 'A' });
   assert.ok(r.erro);
 });
 check('telefone/whatsapp com mascara -> normalizados para E.164 (mesmo normalizePhoneBR do projeto)', () => {

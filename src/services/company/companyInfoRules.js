@@ -7,7 +7,8 @@
 import { normalizePhoneBR } from '../notifications/WhatsAppService.js';
 
 export const DEFAULT_COMPANY_INFO = {
-  nome: 'Encanto — Açaí & Marmitas',
+  nomeCurto: 'Encanto',
+  nomeCompleto: 'Encanto — Açaí & Marmitas',
   telefone: '5547992722920',
   whatsapp: '5547992722920',
   email: 'contato@encantoacai.com.br',
@@ -31,10 +32,15 @@ export function formatarTelefoneBR(digits) {
    Retorna { patch } normalizado ou { erro }. */
 export function validarPatchCompanyInfo(patch) {
   const p = { ...patch };
-  if ('nome' in p) {
-    const n = String(p.nome || '').trim();
-    if (n.length < 2) return { erro: 'Informe o nome da empresa (mínimo 2 caracteres).' };
-    p.nome = n;
+  if ('nomeCurto' in p) {
+    const n = String(p.nomeCurto || '').trim();
+    if (n.length < 2) return { erro: 'Informe o nome curto da empresa (mínimo 2 caracteres).' };
+    p.nomeCurto = n;
+  }
+  if ('nomeCompleto' in p) {
+    const n = String(p.nomeCompleto || '').trim();
+    if (n.length < 2) return { erro: 'Informe o nome completo da empresa (mínimo 2 caracteres).' };
+    p.nomeCompleto = n;
   }
   if ('telefone' in p) {
     const t = normalizePhoneBR(p.telefone);
