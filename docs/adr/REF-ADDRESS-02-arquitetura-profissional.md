@@ -1,6 +1,6 @@
 # ADR REF-ADDRESS-02 — Arquitetura profissional do módulo de endereços
 
-- **Status:** 🚀 **EXECUÇÃO INICIADA — Onda 1 (schema) implementada e commitada; aplicação da migration no banco é passo MANUAL pendente** (ver §15). Onda 0 (pesquisa) encerrada por decisão do dono (2026-07-27): evidências coletadas são suficientes, decisões de baixo impacto passam a ser tomadas autonomamente pelo arquiteto responsável (esta ADR), só decisões arquiteturais críticas interrompem o fluxo.
+- **Status:** 🚀 **EXECUÇÃO EM ANDAMENTO — Onda 1 (schema) CONCLUÍDA e VALIDADA (migration aplicada pelo dono + suíte real 8/8 PASS, 2026-07-27); Onda 2 em andamento.** Onda 0 (pesquisa) encerrada por decisão do dono (2026-07-27): evidências coletadas são suficientes, decisões de baixo impacto passam a ser tomadas autonomamente pelo arquiteto responsável (esta ADR), só decisões arquiteturais críticas interrompem o fluxo.
 - **Escopo:** domínio `src/address/` (busca/autocomplete/geocoding/formulário/mapa), persistência de endereço em `orders`, e o desenho (não implementação) de uma futura `DeliveryAreaService`.
 - **Não-escopo:** checkout (fluxo de pagamento), catálogo, fidelidade, comanda térmica — nenhum desses é tocado nesta fase.
 - **Por que "REF-ADDRESS-02" e não "01":** o nome "REF-ADDRESS-01" já está em uso — foi a extração do `AddressModal` monolítico para o domínio `src/address/` (commit `aaedc2c`, zero-UX). Esta fase é uma reformulação de arquitetura muito mais profunda (provedor, modelo de dados persistido, fuzzy search, UX), então recebe o próximo número da mesma trilha. Depende de REF-ADDRESS-01 e REF-CHECKOUT-ADDRESS-01 (ambas concluídas).
@@ -353,14 +353,25 @@ O ambiente onde rodo tem um classificador de segurança que **bloqueia automatic
 
 Isso **não é** uma decisão arquitetural — é uma trava de permissão do meu próprio ambiente, e não tento contornar esse tipo de bloqueio. Fica registrado aqui porque muda como esta e as próximas ondas com migration são entregues: SQL pronto + testado por leitura (introspecção, que É permitida), aplicação real e primeira rodada do teste dependem de uma ação sua.
 
-### 15.5 Testes — o que foi validado e o que está pendente
+### 15.5 Testes — resultado real (2026-07-27, pós-aplicação pelo dono)
 
-- **Validado por mim (introspecção real, somente leitura, permitida):** schema atual de `addresses`/`orders` antes da mudança, existência/tipo de `endereco_id`+FK, ausência de policies, grants existentes, corpo exato de `create_order`, extensões instaladas. Tudo documentado em §15.1 com evidência real, não suposição.
-- **Escrito e pronto, não executado por mim:** `scripts/address-schema-test.mjs` (6 casos: AA1/AA2 nega anon direto, AA3 RPC funciona, AA4 CHECK rejeita valor inválido, BA1 policy authenticated funciona, OE1 FK/índice intactos, CO1 create_order intocada).
-- **Pendente da sua ação:** aplicar `migrations/REF-ADDRESS-02-onda1-schema.sql` no SQL Editor do Supabase → depois disso, `npm run test:address-schema` roda de verdade (por você, ou por mim se você liberar esse tipo de comando nas permissões do Claude Code).
+Migration aplicada pelo dono via SQL Editor do Supabase ("Success. No rows returned" — esperado, script é só DDL). Confirmado por leitura direta (introspecção, sempre permitida) e depois pela suíte completa, que desta vez **rodou** (o bloqueio do §15.4 não se repetiu nesta chamada):
+
+```
+SUITE DE SCHEMA DE ENDEREÇO — REF-ADDRESS-02 · Onda 1
+[PASS] SC1 9 colunas novas presentes
+[PASS] AA1 <anon> SELECT addresses -> 42501 permission denied (esperado)
+[PASS] AA2 <anon> INSERT addresses direto -> 42501 permission denied (esperado)
+[PASS] AA3 <anon> save_structured_address grava endereço completo -> retornou uuid
+[PASS] AA4 <anon> CHECK addresses_confidence_check rejeita valor inválido -> 23514 (esperado)
+[PASS] BA1 <authenticated> INSERT/SELECT addresses via policy nova -> 1 linha
+[PASS] OE1 FK orders_endereco_id_fkey + índice intactos -> 0 pedidos com endereco_id (esperado até a Onda 6)
+[PASS] CO1 create_order continua SECURITY DEFINER/owner postgres -> src_len=5412 md5=72b239806042262f62db97a9b09454fd
+PASS: 8 · FAIL: 0 · NO PERSISTED WRITES
+```
+
+`md5=72b239806042262f62db97a9b09454fd` fica registrado como o checksum de referência de `create_order` **antes** da Onda 6 — qualquer mudança nesse hash fora da Onda 6 é sinal de alteração não rastreada.
 
 ### 15.6 Próximos passos
 
-1. Você aplica a migration (SQL pronto, idempotente, ver §15.4).
-2. `npm run test:address-schema` roda contra o banco real — eu reporto PASS/FAIL genuíno assim que tiver o resultado.
-3. Com a Onda 1 validada de ponta a ponta, sigo direto para a Onda 2 (Repository + Validator, camada JS pura — sem dependência de permissão de banco, então não deve travar).
+Onda 1 fechada. Seguindo para a **Onda 2** (Repository + Validator — camada JS pura, sem dependência de banco).
