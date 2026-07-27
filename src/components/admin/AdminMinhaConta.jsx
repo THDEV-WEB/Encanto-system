@@ -8,11 +8,7 @@
    hoje so tem id/user_id/created_at, sem papel/permissao — isso e uma REF propria). */
 import { useState } from 'react';
 import { db } from '../../lib/supabase.js';
-
-function formatarData(iso) {
-  if (!iso) return '—';
-  try { return new Date(iso).toLocaleString('pt-BR'); } catch { return '—'; }
-}
+import { fmtDataHoraLoja } from '../../utils/format.js';
 
 const btnSalvar = (desabilitado) => ({
   padding: '10px 18px', borderRadius: 10, border: 'none',
@@ -78,7 +74,7 @@ export function AdminMinhaConta({ admin }) {
           {msgPerfil && <p data-testid="minhaconta-admin-msg-perfil" style={msgStyle(msgPerfil.tipo)}>{msgPerfil.texto}</p>}
 
           <p style={{ fontSize: 12, color: 'var(--gray-400)', marginTop: 16 }}>
-            Último login: {formatarData(user?.last_sign_in_at)} · Conta criada em: {formatarData(user?.created_at)}
+            Último login: {fmtDataHoraLoja(user?.last_sign_in_at)} · Conta criada em: {fmtDataHoraLoja(user?.created_at)}
           </p>
         </div>
       </div>

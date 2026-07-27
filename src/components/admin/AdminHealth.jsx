@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { DS } from '../../services/DataService.js';
-import { fmt, fmtDate } from '../../utils/format.js';
+import { fmt, fmtDataHoraLoja } from '../../utils/format.js';
 import { Spinner } from '../ui/Spinner.jsx';
 
 /* HARDEN-06: painel de Saúde/Observabilidade — consome orders_health() (só agregados, sem PII). */
@@ -52,7 +52,7 @@ export function AdminHealth() {
             </div>
           )}
           <div style={{marginTop:16,fontSize:12,color:'var(--gray-500)'}}>
-            Pedidos 7d: {h.pedidos_7d} · 24h: {h.pedidos_24h} · Logs: {h.logs_total} · Atualizado: {fmtDate(h.gerado_em)}
+            Pedidos 7d: {h.pedidos_7d} · 24h: {h.pedidos_24h} · Logs: {h.logs_total} · Atualizado: {fmtDataHoraLoja(h.gerado_em)}
           </div>
         </>
       )}

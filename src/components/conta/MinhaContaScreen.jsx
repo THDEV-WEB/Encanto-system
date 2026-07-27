@@ -10,7 +10,7 @@ import { useMinhaConta } from '../../hooks/useMinhaConta.js';
 import { ScreenModal } from '../menu/ScreenModal.jsx';
 import { Toast } from '../ui/Toast.jsx';
 import { nomeExibicao, inicialExibicao, avatarUrlDe, telefoneExibicao } from '../menu/userDisplay.js';
-import { fmtDate } from '../../utils/format.js';
+import { fmtDataHoraLoja } from '../../utils/format.js';
 
 const soDigitos = (s) => (s || '').replace(/\D/g, '');
 
@@ -91,7 +91,7 @@ export function MinhaContaScreen({ onClose }) {
         <div style={secTitle}>Dados da conta</div>
         <div style={dado}><span style={roleta}>E-mail</span><strong style={{ fontSize: 13, textAlign: 'right', wordBreak: 'break-all' }}>{mc.email || '—'}</strong></div>
         <div style={dado}><span style={roleta}>Telefone</span><strong style={{ fontSize: 13 }}>{telefoneExibicao(customer)}</strong></div>
-        <div style={dado}><span style={roleta}>Membro desde</span><strong style={{ fontSize: 13 }}>{mc.criadoEm ? fmtDate(mc.criadoEm) : '—'}</strong></div>
+        <div style={dado}><span style={roleta}>Membro desde</span><strong style={{ fontSize: 13 }}>{mc.criadoEm ? fmtDataHoraLoja(mc.criadoEm) : '—'}</strong></div>
       </div>
 
       {/* Editar nome + telefone */}
