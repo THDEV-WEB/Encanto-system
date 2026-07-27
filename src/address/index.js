@@ -9,3 +9,5 @@ export { useAddress } from './hooks/useAddress.js';
 export { useAddressSearch } from './hooks/useAddressSearch.js';
 export { montarEndereco, enderecoPreenchido, ENDERECO_VAZIO } from './utils/addressModel.js';
 export { geocoding } from './services/geocodingService.js';
+export { addressRepository } from './repository/addressRepository.js';
+export { enderecoValidoParaEntrega, confidenceValida } from './validators/addressValidators.js';

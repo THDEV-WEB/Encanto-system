@@ -9,7 +9,9 @@
      (4) A persistência do endereço vive no hook useAddress (fonte da sincronização local).
      (5) O barrel expõe AddressModal + useAddress (fronteira única do domínio).
      (6) validators/ e utils/ são PUROS (sem React/JSX/fetch/localStorage/window) — lógica reutilizável.
-     (7) O AddressModal monolítico foi removido (decomposição efetiva). */
+     (7) O AddressModal monolítico foi removido (decomposição efetiva).
+     (9) REF-ADDRESS-02 · Onda 2 — addressRepository.js é o ÚNICO lugar que fala com o RPC
+         save_structured_address (mesmo princípio da (1)/(2), agora para a persistência estruturada). */
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
@@ -97,6 +99,17 @@ check('(6) validators/ e utils/ são puros (sem React/JSX/fetch/localStorage/win
 /* (7) monólito removido */
 check('(7) AddressModal monolítico foi removido', () => {
   assert.ok(!existsSync(SRC + 'components/AddressModal.jsx'), 'src/components/AddressModal.jsx deve ter sido removido');
+});
+
+/* (9) REF-ADDRESS-02 · Onda 2 — persistência estruturada isolada no repository */
+check('(9) addressRepository é o único lugar que chama save_structured_address', () => {
+  const REPO = 'address/repository/addressRepository.js';
+  const outros = files.filter((f) => f.startsWith('address/') && f !== REPO);
+  const comRpc = outros.filter((f) => /save_structured_address/.test(strip(read(f))));
+  assert.deepStrictEqual(comRpc, [], `save_structured_address referenciada fora do repository: ${JSON.stringify(comRpc)}`);
+  const repo = strip(read(REPO));
+  assert.ok(/db\.rpc\(\s*['"]save_structured_address['"]/.test(repo), 'repository deve chamar a RPC save_structured_address via db.rpc');
+  assert.ok(/from\s+['"]\.\.\/\.\.\/lib\/supabase\.js['"]/.test(repo), 'repository deve usar o mesmo cliente db de lib/supabase.js (mesmo padrão de create_order)');
 });
 
 console.log(fail === 0

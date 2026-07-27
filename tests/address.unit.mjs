@@ -3,7 +3,10 @@
    Cada asserção congela a saída EXATA que os handlers do AddressModal original produziam inline, provando
    que a extração para utils/validators é equivalente (zero mudança de comportamento). */
 import assert from 'node:assert/strict';
-import { cepValido, queryValida, numeroPreenchido, respostaCepOk, coordenadasValidas } from '../src/address/validators/addressValidators.js';
+import {
+  cepValido, queryValida, numeroPreenchido, respostaCepOk, coordenadasValidas,
+  confidenceValida, enderecoValidoParaEntrega,
+} from '../src/address/validators/addressValidators.js';
 import { CENTRO_PADRAO, formatarCoord, dentroDaArea } from '../src/address/utils/coordinates.js';
 import {
   normalizarEndereco, chaveDedupe, sugestaoMain, sugestaoSub, curtaSugestao, curtaGps, curtaCep,
@@ -45,6 +48,26 @@ check('coordenadasValidas: finitas e dentro dos limites (preparo/segurança)', (
   assert.equal(coordenadasValidas(NaN, 0), false);
   assert.equal(coordenadasValidas(200, 0), false);
   assert.equal(coordenadasValidas('a', 'b'), false);
+});
+
+/* ── REF-ADDRESS-02 · Onda 2 — validadores novos (ainda não ligados a nenhum fluxo) ── */
+check('confidenceValida: mesmo conjunto do CHECK addresses_confidence_check (migration Onda 1)', () => {
+  assert.equal(confidenceValida('exact'), true);
+  assert.equal(confidenceValida('street_level'), true);
+  assert.equal(confidenceValida('approximate'), true);
+  assert.equal(confidenceValida(null), true);
+  assert.equal(confidenceValida(undefined), true);
+  assert.equal(confidenceValida('chutometro'), false);
+  assert.equal(confidenceValida(''), false);
+});
+check('enderecoValidoParaEntrega: número sempre obrigatório; coordenadas só quando confidence=exact', () => {
+  assert.equal(enderecoValidoParaEntrega(null), false);
+  assert.equal(enderecoValidoParaEntrega({ label: 'Rua A' }), false); // sem número
+  assert.equal(enderecoValidoParaEntrega({ label: 'Rua A', numero: '  ' }), false); // número em branco
+  assert.equal(enderecoValidoParaEntrega({ label: 'Rua A', numero: '100' }), true); // sem confidence -> não exige coords
+  assert.equal(enderecoValidoParaEntrega({ label: 'Rua A', numero: '100', confidence: 'street_level' }), true);
+  assert.equal(enderecoValidoParaEntrega({ label: 'Rua A', numero: '100', confidence: 'exact' }), false); // exact sem coords válidas
+  assert.equal(enderecoValidoParaEntrega({ label: 'Rua A', numero: '100', confidence: 'exact', lat: -26.7, lng: -49.2 }), true);
 });
 
 /* ── Coordinates ── */
@@ -104,11 +127,18 @@ check('linhaReversaMapa x linhaConfirmarMapa (diferença suburb||neighbourhood v
 
 /* ── addressModel (REF-CHECKOUT-ADDRESS-01): objeto canônico da FONTE ÚNICA ── */
 check('montarEndereco: (label, meta) -> objeto canônico completo', () => {
-  const meta = { rua: 'Rua A', numero: '100', bairro: 'Centro', cidade: 'Timbó', estado: 'SC', cep: '89120-000', complemento: 'Casa 2', lat: -26.7, lng: -49.2, full: 'Rua A, 100, Centro, Timbó' };
+  const meta = {
+    rua: 'Rua A', numero: '100', bairro: 'Centro', cidade: 'Timbó', estado: 'SC', cep: '89120-000',
+    complemento: 'Casa 2', lat: -26.7, lng: -49.2, full: 'Rua A, 100, Centro, Timbó',
+    referencia: 'perto do mercado', placeId: 'osm-123', provider: 'nominatim', confidence: 'exact',
+  };
   assert.deepEqual(montarEndereco('Rua A, 100', meta), { label: 'Rua A, 100', ...meta });
 });
-check('montarEndereco: meta ausente -> defaults ("" e lat/lng null)', () => {
-  assert.deepEqual(montarEndereco('X'), { label: 'X', rua: '', numero: '', bairro: '', cidade: '', estado: '', cep: '', complemento: '', lat: null, lng: null, full: '' });
+check('montarEndereco: meta ausente -> defaults ("" / null, inclusive nos campos da Onda 2)', () => {
+  assert.deepEqual(montarEndereco('X'), {
+    label: 'X', rua: '', numero: '', bairro: '', cidade: '', estado: '', cep: '', complemento: '',
+    lat: null, lng: null, full: '', referencia: '', placeId: '', provider: '', confidence: null,
+  });
 });
 check('montarEndereco: sem label -> ENDERECO_VAZIO (null)', () => {
   assert.equal(montarEndereco('', { rua: 'x' }), ENDERECO_VAZIO);
