@@ -1,0 +1,18 @@
+{
+  "id": "/encanto/",
+  "name": "Encanto – Açaí & Marmitas",
+  "short_name": "Encanto",
+  "description": "Peça açaí e marmitas do Encanto: cardápio completo, entrega, retirada e programa de fidelidade direto do seu celular.",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "start_url": "/encanto/",
+  "scope": "/encanto/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#6B1F5D",
+  "categories": ["food", "shopping"],
+  "icons": [
+    { "src": "/encanto/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/encanto/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
