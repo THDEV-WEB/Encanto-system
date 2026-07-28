@@ -1,7 +1,9 @@
 # REF-MOBILE-01 — Fundação Mobile (PWA Ready + Capacitor Ready)
 
-**Status:** 🚧 Em execução — Ondas 1–4 (Manifest, Ícones, Head mobile/SEO, este ADR) concluídas e
-commitadas; Ondas 5–7 (Validação, Service Worker, Testes finais) em andamento na mesma sessão.
+**Status:** ✅ Ondas 1–7 implementadas, testadas e commitadas (todas na mesma sessão): Manifest, Ícones,
+Head mobile/SEO, este ADR, Validação técnica automatizada, Service Worker, Testes finais — 29/29 domínio
++ 113/113 E2E, zero regressão. Pendente: push, deploy e validação em produção (dispositivo real) — ver
+Encerramento.
 **Depende de:** [REF-BRAND-01](REF-BRAND-01-dominio-institucional.md) (o app vive sob o sub-path
 `/encanto/`, via rewrite/proxy do domínio institucional — todo `start_url`/`scope`/path de ícone desta
 REF herda essa decisão). Precedente de [REF-COMPANY-02](REF-COMPANY-02-nome-em-toda-parte.md): nome
@@ -146,32 +148,6 @@ nosso SW: Service Workers só podem controlar fetches cujo destino esteja dentro
 registro (`/encanto/` em `valionsistemas.com.br`) — garantia estrutural da própria especificação, não
 uma configuração nossa.
 
-## Onda 6 — Service Worker
-
-`npm install -D vite-plugin-pwa`; `vite.config.js` (plugin `pwaPlugin`, D8); `src/hooks/usePwaUpdate.js`
-(novo — registra o SW, expõe `{novaVersaoDisponivel, atualizar, dispensar}`); `App.jsx` (+2 linhas de
-import, +1 linha de hook, +1 bloco `<Toast>` condicional ao lado de `content`, dentro do `<AppShell>` já
-existente — zero mudança na árvore de roteamento/estado existente).
-
-**Verificação (empírica, não suposição):**
-- `npm run build`: gera `dist/encanto/sw.js` (1889 bytes) + `dist/encanto/workbox-*.js`; precache de 16
-  entradas (~1,2 MB — App Shell completo: JS/CSS/HTML/ícones/manifest).
-- `sw.js` inspecionado por completo: `precacheAndRoute([...16 arquivos same-origin...])` +
-  `cleanupOutdatedCaches()` + `clientsClaim()` + 1 `NavigationRoute`. Nenhuma outra rota. Busca por
-  `supabase`/`google` no `sw.js` e no `workbox-*.js`: zero ocorrência real (só a constante interna
-  inerte `googleAnalytics`, de uma feature do Workbox que não é habilitada nesta configuração).
-- Script Playwright dedicado (descartável, não commitado) contra `vite preview` real: SW instala e
-  ativa; após reload, a página fica CONTROLADA (`clientsClaim` confirmado); navegação para
-  `/encanto/?code=fake&state=fake` responde 200, preserva a query string exatamente, o app renderiza
-  normalmente (não trava no loader) — e **a resposta desta navegação é confirmada como vinda do próprio
-  Service Worker** (`response.fromServiceWorker() === true`, via API nativa do Playwright), provando que
-  o cenário testado é o cenário real (`NavigationRoute` de fato interceptou), não uma simulação teórica.
-- `npm run test:domain`: 29/29 verde.
-- `npm run test:e2e` (suíte completa, Chromium): **113/113 verde**, incluindo
-  `auth/login-google-trigger.spec.js` ("clicar em Continuar com Google chama
-  `signInWithOAuth(provider=google)`") e todos os specs de sessão/checkout/carrinho/catálogo — zero
-  regressão.
-
 ### D9 — Capacitor-Ready: decisões registradas, nada implementado agora
 
 Sem adicionar `@capacitor/core` nem qualquer dependência nova, ficam registradas as decisões que
@@ -261,13 +237,52 @@ Checklist entregue ao dono na seção de Encerramento.
 
 ## Onda 6 — Service Worker
 
-*(preenchida ao final da Onda 6)*
+`npm install -D vite-plugin-pwa`; `vite.config.js` (plugin `pwaPlugin`, D8); `src/hooks/usePwaUpdate.js`
+(novo — registra o SW, expõe `{novaVersaoDisponivel, atualizar, dispensar}`); `App.jsx` (+2 linhas de
+import, +1 linha de hook, +1 bloco `<Toast>` condicional ao lado de `content`, dentro do `<AppShell>` já
+existente — zero mudança na árvore de roteamento/estado existente). Commit `11778c1`.
+
+**Verificação (empírica, não suposição):**
+- `npm run build`: gera `dist/encanto/sw.js` (1889 bytes) + `dist/encanto/workbox-*.js`; precache de 16
+  entradas (~1,2 MB — App Shell completo: JS/CSS/HTML/ícones/manifest).
+- `sw.js` inspecionado por completo: `precacheAndRoute([...16 arquivos same-origin...])` +
+  `cleanupOutdatedCaches()` + `clientsClaim()` + 1 `NavigationRoute`. Nenhuma outra rota. Busca por
+  `supabase`/`google` no `sw.js` e no `workbox-*.js`: zero ocorrência real (só a constante interna
+  inerte `googleAnalytics`, de uma feature do Workbox que não é habilitada nesta configuração).
+- Script Playwright dedicado (descartável, não commitado) contra `vite preview` real: SW instala e
+  ativa; após reload, a página fica CONTROLADA (`clientsClaim` confirmado); navegação para
+  `/encanto/?code=fake&state=fake` responde 200, preserva a query string exatamente, o app renderiza
+  normalmente (não trava no loader) — e **a resposta desta navegação é confirmada como vinda do próprio
+  Service Worker** (`response.fromServiceWorker() === true`, via API nativa do Playwright), provando que
+  o cenário testado é o cenário real (`NavigationRoute` de fato interceptou), não uma simulação teórica.
+- `npm run test:domain`: 29/29 verde.
+- `npm run test:e2e` (suíte completa, Chromium): **113/113 verde**, incluindo
+  `auth/login-google-trigger.spec.js` ("clicar em Continuar com Google chama
+  `signInWithOAuth(provider=google)`") e todos os specs de sessão/checkout/carrinho/catálogo — zero
+  regressão.
 
 ## Onda 7 — Testes finais
 
-*(preenchida ao final da Onda 7)*
+- `rm -rf dist && npm run build`: limpo, do zero. `sw.js`/`workbox-*.js` gerados normalmente.
+- `npm run test:domain`: **29/29 scripts, 309 asserções individuais, 100% verde.**
+- `npm run test:e2e` (suíte completa, Chromium): **113/113 verde**, reexecutada do zero após a Onda 6
+  (2ª vez, confirmando reprodutibilidade) — zero regressão em qualquer fluxo (auth/sessão/checkout/
+  carrinho/catálogo/busca/admin).
+- **Lighthouse real: tentado, não obtido neste ambiente.** O Chrome (via `chrome-launcher`, apontado
+  para o binário do Chromium do Playwright) inicia e conecta normalmente, mas o processo falha na
+  limpeza do próprio diretório temporário (`EPERM` ao apagar `%TEMP%\lighthouse.*` no Windows) antes de
+  gravar o relatório — falha da ferramenta/ambiente (permissão de arquivo no Windows), não do app.
+  Não é um resultado escondido por dar errado: a auditoria de prontidão desta REF se apoia nas validações
+  próprias (Ondas 5–6, mais específicas ao risco real do projeto do que um score genérico) em vez de um
+  número de Lighthouse. Recomendado rodar `npx lighthouse` num ambiente Linux/Mac (ou Chrome DevTools
+  manualmente, aba Lighthouse) quando o dono quiser esse número — deve funcionar sem o problema de
+  permissão específico do Windows.
+- Validação manual real (Android Chrome, Samsung Internet, Safari iOS) — checklist na seção de
+  Encerramento, a executar pelo dono após o deploy.
 
-## Verificação (Ondas 1–4)
+**Nenhuma regressão encontrada em nenhuma camada de teste.**
+
+## Verificação (Ondas 1–3, por onda)
 
 - `npm run build`: limpo após cada onda (3×).
 - `npm run test:domain`: 29/29 verde após cada onda (3×) — nenhum arquivo de `src/` tocado por estas 3
@@ -275,6 +290,8 @@ Checklist entregue ao dono na seção de Encerramento.
 - Manifest validado por leitura direta do `dist/encanto/manifest.json` gerado (paths absolutos batendo
   com `/encanto/`).
 - `favicon.ico` validado carregando de volta via `System.Drawing.Icon` (arquivo estruturalmente correto).
+
+(Ver Ondas 5–7 acima para a validação de viewport/mobile, Service Worker e a rodada final completa.)
 
 ## Limitações conhecidas
 
@@ -287,6 +304,13 @@ Checklist entregue ao dono na seção de Encerramento.
   Recomendações).
 - Nenhuma decisão de Capacitor desta REF foi implementada em código (D9) — são registros para quando o
   Capacitor for de fato adotado, propositalmente.
+- Lighthouse real não pôde ser executado neste ambiente Windows (falha de permissão do `chrome-launcher`
+  ao limpar seu próprio diretório temporário, alheia ao app — ver Onda 7). A prontidão desta REF foi
+  validada por verificação própria (manifest/ícones/head/SW inspecionados diretamente + Playwright), não
+  por um score de Lighthouse.
+- Validação em dispositivo real (Android Chrome, Samsung Internet, Safari iOS) não pôde ser feita a
+  partir deste ambiente (sem hardware físico nem emulador/simulador disponíveis) — checklist entregue ao
+  dono para rodar após o deploy (ver Encerramento).
 
 ## Recomendações para futuras REFs
 

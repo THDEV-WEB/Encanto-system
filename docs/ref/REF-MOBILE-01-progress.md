@@ -10,7 +10,8 @@ fornecido pelo dono durante a auditoria, salvo em `public/icon-encanto.png` ante
 
 ## Estado atual
 
-🚧 EM EXECUÇÃO — Ondas 1–6 concluídas e commitadas. Onda 7 (testes finais) em andamento na mesma sessão.
+✅ ONDAS 1–7 CONCLUÍDAS E COMMITADAS (todas na mesma sessão). Falta: atualizar índice de ADRs, push,
+deploy, validação em produção e encerramento formal.
 
 ## Onda 1 — Web App Manifest
 
@@ -57,7 +58,12 @@ empírica de que o cenário mais delicado desta onda é seguro. `test:domain` 29
 
 ## Onda 7 — Testes finais
 
-Status: ⏳ EM ANDAMENTO.
+Status: ✅ CONCLUÍDA. Build limpo do zero (`rm -rf dist && npm run build`). `test:domain` 29/29 (309
+asserções). `test:e2e` completo (Chromium) reexecutado do zero: **113/113**, 2ª execução confirmando
+reprodutibilidade após a Onda 6. Lighthouse real tentado (via `chrome-launcher` apontado pro Chromium do
+Playwright) — falhou por um `EPERM` de permissão do Windows ao limpar seu próprio diretório temporário
+(falha da ferramenta/ambiente, não do app); não bloqueia o encerramento, a prontidão já está coberta
+pelas validações próprias das Ondas 5–6. Zero regressão em qualquer camada de teste.
 
 ## Arquivos modificados até aqui
 
