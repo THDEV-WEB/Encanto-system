@@ -35,6 +35,7 @@ const CartSidebar     = (await import('../src/components/CartSidebar.jsx')).Cart
 const DeliveryBar     = (await import('../src/components/DeliveryBar.jsx')).DeliveryBar;   // REF-UI-HEADER-02
 const SearchSuggestions = (await import('../src/components/search/SearchSuggestions.jsx')).SearchSuggestions;   // REF-UI-SEARCH-01
 const StoreHighlights = (await import('../src/components/StoreHighlights.jsx')).StoreHighlights;   // REF-UI-TOPBAR-01
+const ValionCredit    = (await import('../src/components/ValionCredit.jsx')).ValionCredit;   // REF-BRAND-02
 
 /* Casos: props FIXAS + snapshot CONGELADO (Onda 4 acrescenta as folhas visuais AQUI) */
 const CASES = [
@@ -148,6 +149,12 @@ const CASES = [
     nome: 'StoreHighlights(recompensa)',
     el: () => h(StoreHighlights, { loyaltyReward: true, onLoyalty: () => {} }),
     snap: '<div class="store-chips"><div class="store-chip store-chip--stars"><span class="store-chip-stars" aria-hidden="true"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg></span><span class="store-chip-label">Entrega Rápida</span></div><button type="button" class="store-chip store-chip--loyalty store-chip--reward"><span class="store-chip-ico" aria-hidden="true">🎁</span><span class="store-chip-label">Recompensa disponível!</span></button></div>',
+  },
+  {
+    /* REF-BRAND-02: assinatura institucional do rodapé (substitui "Plataforma desenvolvida por TH System") */
+    nome: 'ValionCredit',
+    el: () => h(ValionCredit),
+    snap: '<a class="valion-credit-link" href="https://valionsistemas.com.br" target="_blank" rel="noopener noreferrer" aria-label="Valion Sistemas — visitar site institucional (abre em nova guia)"><span class="valion-eyebrow">Plataforma desenvolvida por</span><span class="valion-word"><img class="valion-v-icon" src="undefinedvalion-mark.png" alt="" loading="lazy"/><b>ALION</b><i>SISTEMAS</i></span><span class="valion-underline" aria-hidden="true"></span><span class="valion-tagline">Soluções digitais que impulsionam negócios.</span></a>',
   },
 ];
 

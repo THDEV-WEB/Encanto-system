@@ -34,6 +34,7 @@ import { SuccessPage } from '../components/checkout/SuccessPage.jsx';
 import { CheckoutPage } from '../components/checkout/CheckoutPage.jsx';
 import { DS } from '../services/DataService.js';                       // REF-CLIENTE-02: catalogo atual p/ recompra
 import { montarRecompra } from '../components/pedidos/recompra.js';   // REF-CLIENTE-02 Onda 4 (regras puras)
+import { ValionCredit } from '../components/ValionCredit.jsx';        // REF-BRAND-02: assinatura institucional do rodape
 
 export function StoreApp({ onAdmin }) {
   /* REF-CHECKOUT-ADDRESS-01: a loja inteira (Header + Checkout) vive sob o AddressProvider — FONTE UNICA
@@ -381,9 +382,8 @@ function StoreAppContent({ onAdmin }) {
           }))}
         </>
 
-      <div style={{padding:'32px 16px',textAlign:'center',color:'var(--gray-400)',fontSize:13}}>
-        <p>Plataforma desenvolvida por TH System</p>
-        <p style={{marginTop:4}}>📱 (38) 99220-3620</p>
+      <div style={{padding:'32px 16px',textAlign:'center'}}>
+        <ValionCredit />
       </div>
       </div>{/* /app-content */}
 

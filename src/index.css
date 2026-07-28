@@ -1346,3 +1346,53 @@ img{display:block;max-width:100%}
 
 /* spinner de carregamento (estado inicial) */
 @keyframes s{to{transform:rotate(360deg)}}
+
+/* ---- VALION CREDIT (REF-BRAND-02) ----
+   Assinatura institucional no rodapé, no lugar do antigo "Plataforma desenvolvida por TH System".
+   Regra do dono: ZERO fundo/card/borda/divisor proprios -- nenhuma declaracao de background aqui,
+   de proposito; o bloco herda o que ja estiver atras dele (mesmo padding do texto antigo: 32px 16px,
+   ver StoreApp.jsx). Cores extraidas do arquivo de marca oficial (medidas via PowerShell/
+   System.Drawing): navy #070E20, azul #0E68F7 (marca/imagem) e #0B4FBE (texto pequeno -- o azul
+   original mede 4.34:1 contra --creme, abaixo do minimo AA de 4.5:1 pra texto; este tom escurecido,
+   mesma familia, mede 6.56:1). Tagline em #494D56 (tom do proprio arquivo, mede 7.6:1). */
+.valion-credit-link{
+  display:inline-flex;flex-direction:column;align-items:center;
+  text-decoration:none;color:inherit;border-radius:8px;
+  transition:transform .18s ease;
+}
+.valion-credit-link:hover{transform:translateY(-2px)}
+.valion-credit-link:focus-visible{outline:2px solid #070E20;outline-offset:4px}
+
+.valion-eyebrow{
+  font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--gray-500);margin-bottom:8px;
+}
+
+.valion-word{display:inline-flex;align-items:baseline;line-height:1;white-space:nowrap}
+.valion-v-icon{
+  height:1.55em;width:auto;align-self:flex-start;
+  transform:translateY(.16em);margin-right:.02em;
+  transition:transform .18s ease;
+}
+.valion-credit-link:hover .valion-v-icon,
+.valion-credit-link:focus-visible .valion-v-icon{transform:translateY(.16em) rotate(-4deg)}
+.valion-word b{font-size:22px;color:#070E20;font-weight:700;letter-spacing:.005em}
+.valion-word i{
+  font-size:18px;color:#0B4FBE;font-weight:600;font-style:normal;
+  letter-spacing:.03em;margin-left:.30em;
+}
+
+.valion-underline{
+  width:0;height:1.5px;background:#0B4FBE;border-radius:2px;
+  transition:width .22s ease;margin-top:3px;
+}
+.valion-credit-link:hover .valion-underline,
+.valion-credit-link:focus-visible .valion-underline{width:100%}
+
+.valion-tagline{font-size:12px;color:#494D56;max-width:300px;line-height:1.45;margin-top:6px}
+
+@media (prefers-reduced-motion:reduce){
+  .valion-credit-link,.valion-v-icon,.valion-underline{transition:none!important}
+  .valion-credit-link:hover{transform:none}
+  .valion-credit-link:hover .valion-v-icon{transform:translateY(.16em)}
+}
