@@ -8,6 +8,8 @@ import { AdminPanel } from './components/admin/AdminPanel.jsx';
 import { StoreApp } from './pages/StoreApp.jsx';
 import { AuthProvider } from './providers/AuthProvider.jsx'; // AUTH-01: sessao do CLIENTE (envolve so a loja)
 import { useAdminSession } from './hooks/useAdminSession.js'; // REF-ADMIN-01 · Onda 2: sessao do ADMIN (restauracao + logout real)
+import { usePwaUpdate } from './hooks/usePwaUpdate.js'; // REF-MOBILE-01 Onda 6: Service Worker (aviso de nova versao, nunca troca sozinho)
+import { Toast } from './components/ui/Toast.jsx';
 
 /* ============================================================
    ENCANTO DELIVERY — React 18 + Supabase v2
@@ -100,6 +102,7 @@ import { useAdminSession } from './hooks/useAdminSession.js'; // REF-ADMIN-01 ·
 /* ── Root ────────────────────────────────────────────────────── */
 function App() {
   const { mode, admin, entrar, abrirLogin, verLoja, sair } = useAdminSession();
+  const { novaVersaoDisponivel, atualizar, dispensar } = usePwaUpdate(); // REF-MOBILE-01 Onda 6
 
   let content;
   if (mode==='login')      content = <AdminLogin onLogin={entrar}/>;
@@ -113,6 +116,14 @@ function App() {
   return (
     <AppShell>
       {content}
+      {novaVersaoDisponivel && (
+        <Toast tipo="sucesso" duracao={0} onClose={dispensar}>
+          Nova versão disponível.{' '}
+          <button onClick={atualizar} style={{ border: 'none', background: 'none', color: 'var(--grape)', fontWeight: 700, cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>
+            Atualizar agora
+          </button>
+        </Toast>
+      )}
     </AppShell>
   );
 }

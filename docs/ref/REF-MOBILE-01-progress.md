@@ -10,7 +10,7 @@ fornecido pelo dono durante a auditoria, salvo em `public/icon-encanto.png` ante
 
 ## Estado atual
 
-🚧 EM EXECUÇÃO — Ondas 1–4 concluídas e commitadas. Ondas 5–7 em andamento na mesma sessão.
+🚧 EM EXECUÇÃO — Ondas 1–6 concluídas e commitadas. Onda 7 (testes finais) em andamento na mesma sessão.
 
 ## Onda 1 — Web App Manifest
 
@@ -45,11 +45,19 @@ pública HTTPS de verdade para o dono instalar — ver checklist na seção de E
 
 ## Onda 6 — Service Worker
 
-Status: ⏳ EM ANDAMENTO.
+Status: ✅ CONCLUÍDA. `vite-plugin-pwa` instalado (dev-only; `npm audit --omit=dev` = 0 vulnerabilidades
+em produção). `vite.config.js` (D8: `manifest:false`, `registerType:'prompt'`, sem `runtimeCaching`,
+`devOptions.enabled:false`). `src/hooks/usePwaUpdate.js` (novo) + `App.jsx` (Toast de "nova versão
+disponível", persistente até o clique). `sw.js` gerado inspecionado por completo: só precache same-origin
++ 1 NavigationRoute, zero referência a Supabase/Google. Validação crítica (Playwright dedicado, não
+commitado): navegação de retorno do OAuth (`?code=...`) confirmada como servida PELO PRÓPRIO SW
+(`response.fromServiceWorker()`) e ainda assim preserva a query string/renderiza normalmente — prova
+empírica de que o cenário mais delicado desta onda é seguro. `test:domain` 29/29 + `test:e2e` **113/113**
+(incluindo o spec que testa o disparo do login Google) — zero regressão.
 
 ## Onda 7 — Testes finais
 
-Status: ⏳ PENDENTE.
+Status: ⏳ EM ANDAMENTO.
 
 ## Arquivos modificados até aqui
 
@@ -60,12 +68,17 @@ Status: ⏳ PENDENTE.
   `favicon-32.png`, `favicon-16.png` (novos)
 - `docs/adr/REF-MOBILE-01-fundacao-mobile.md` (novo)
 - `docs/ref/REF-MOBILE-01-progress.md` (novo, este arquivo)
-- Nenhum arquivo de `src/` alterado até aqui — zero superfície de regressão em runtime nas Ondas 1–4.
+- `package.json`/`package-lock.json` — `vite-plugin-pwa` (devDependency)
+- `vite.config.js` — plugin `pwaPlugin` (Onda 6)
+- `src/hooks/usePwaUpdate.js` (novo, Onda 6)
+- `src/App.jsx` — hook `usePwaUpdate` + Toast de atualização (Onda 6)
+- Ondas 1–5: nenhum arquivo de `src/` alterado. Onda 6: `App.jsx` + 1 hook novo, ambos cobertos por
+  `test:domain` (29/29) e `test:e2e` (113/113) após a mudança.
 
 ## Pendências para o encerramento
 
-- Onda 5: validação mobile (checklist manual + automatizado onde possível).
-- Onda 6: Service Worker (cache seguro + estratégia de atualização, sem tocar Supabase/OAuth/Auth).
 - Onda 7: suíte de testes final completa (domínio + E2E) + checklist de regressão.
 - Atualizar `docs/adr/README.md` (índice oficial de ADRs) com a entrada da REF-MOBILE-01.
+- Checklist de validação manual em dispositivo real (Android Chrome, Samsung Internet, Safari iOS) +
+  confirmação de login Google real — a entregar ao dono, pós-deploy.
 - Push + deploy (Vercel) + validação em produção + encerramento formal.

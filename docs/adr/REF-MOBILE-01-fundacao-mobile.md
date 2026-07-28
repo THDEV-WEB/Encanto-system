@@ -107,9 +107,70 @@ Para preview de link compartilhado (WhatsApp/Instagram), a marca por extenso (co
 reconhecível que o símbolo isolado — o inverso do critério usado para o ícone de app (D2), onde o texto
 atrapalha em tamanho pequeno. `logo.jpg` já existia, nenhum ativo novo foi necessário.
 
-### D8 — Service Worker: escopo restrito, `network-only` para Supabase/OAuth *(Onda 6)*
+### D8 — Service Worker via `vite-plugin-pwa`, sem `runtimeCaching`, `registerType: "prompt"`
 
-*(preenchido ao final da Onda 6 — ver seção própria abaixo)*
+Escolhido `vite-plugin-pwa` (Workbox por baixo) em vez de escrever o Service Worker à mão: o precache
+manifest com hash/revisão por arquivo (invalidação correta a cada deploy) é gerado e mantido pela própria
+ferramenta — reduz diretamente a superfície do maior risco identificado na auditoria (usuário preso numa
+versão velha por bug de cache "feito à mão"). `npm audit` aponta 10 avisos, todos em dependências de
+BUILD do `workbox-build` (nunca chegam ao bundle do navegador) — `npm audit --omit=dev` confirma **zero
+vulnerabilidade em produção**; não corrigidos com `--force` porque isso forçaria upgrades MAJOR
+(Vite 5→8, `vite-plugin-pwa` 0.x→1.2) fora do escopo desta REF.
+
+Configuração (`vite.config.js`):
+- `manifest: false` — o `public/manifest.json` próprio (Onda 1) e o `<link rel="manifest">` próprio
+  (já commitados/validados) continuam sendo a única fonte; o plugin cuida SÓ do Service Worker.
+- `registerType: 'prompt'` + `injectRegister: false` — nada troca de versão sozinho. O registro roda
+  manualmente (`src/hooks/usePwaUpdate.js`, consumido por `App.jsx`), exibindo um aviso "Nova versão
+  disponível" (reaproveita `components/ui/Toast.jsx`, `duracao={0}` = persistente até o clique) — nunca
+  um reload forçado/silencioso no meio de um checkout.
+- **Sem nenhuma entrada de `runtimeCaching`** — por design do Workbox, uma rota só é interceptada
+  (`event.respondWith`) se casar com o precache ou com um `runtimeCaching` explícito; qualquer request
+  fora disso (Supabase REST/Auth, `accounts.google.com`) passa direto pra rede, como se o SW não
+  existisse. O `sw.js` gerado (inspecionado byte a byte) confirma: só 16 arquivos same-origin no precache
+  (JS/CSS/HTML/ícones do build) + 1 `NavigationRoute` — nenhuma referência a `supabase`/`google` em lugar
+  nenhum do arquivo gerado.
+- `devOptions.enabled: false` (default) — o SW nunca ativa em `vite dev`/`vite --mode e2e` (o
+  `webServer` do Playwright sobe via dev server, não build) — a suíte E2E inteira roda sem Service
+  Worker, zero risco estrutural de interferência nos specs existentes.
+
+**O único ponto realmente delicado — `NavigationRoute` intercepta o retorno do OAuth Google:** o
+`navigateFallback` gera uma rota que serve `index.html` do cache para QUALQUER navegação same-origin,
+incluindo a volta do Google (`.../encanto/?code=...&state=...`). Isso é seguro porque (a) o conteúdo do
+`index.html` é estático e idêntico independente de query string — não há nada renderizado no servidor a
+partir dela; (b) `window.location.search` reflete a URL de navegação real, **independente** de como os
+bytes do documento foram servidos (cache ou rede); (c) `dbCliente` (`detectSessionInUrl: true`,
+`flowType: 'pkce'`) processa o `?code=` inteiramente em JS no cliente, depois do carregamento — o mesmo
+comportamento com ou sem SW. A navegação de IDA (usuário → `accounts.google.com`) nunca passa perto do
+nosso SW: Service Workers só podem controlar fetches cujo destino esteja dentro do MESMO origin do
+registro (`/encanto/` em `valionsistemas.com.br`) — garantia estrutural da própria especificação, não
+uma configuração nossa.
+
+## Onda 6 — Service Worker
+
+`npm install -D vite-plugin-pwa`; `vite.config.js` (plugin `pwaPlugin`, D8); `src/hooks/usePwaUpdate.js`
+(novo — registra o SW, expõe `{novaVersaoDisponivel, atualizar, dispensar}`); `App.jsx` (+2 linhas de
+import, +1 linha de hook, +1 bloco `<Toast>` condicional ao lado de `content`, dentro do `<AppShell>` já
+existente — zero mudança na árvore de roteamento/estado existente).
+
+**Verificação (empírica, não suposição):**
+- `npm run build`: gera `dist/encanto/sw.js` (1889 bytes) + `dist/encanto/workbox-*.js`; precache de 16
+  entradas (~1,2 MB — App Shell completo: JS/CSS/HTML/ícones/manifest).
+- `sw.js` inspecionado por completo: `precacheAndRoute([...16 arquivos same-origin...])` +
+  `cleanupOutdatedCaches()` + `clientsClaim()` + 1 `NavigationRoute`. Nenhuma outra rota. Busca por
+  `supabase`/`google` no `sw.js` e no `workbox-*.js`: zero ocorrência real (só a constante interna
+  inerte `googleAnalytics`, de uma feature do Workbox que não é habilitada nesta configuração).
+- Script Playwright dedicado (descartável, não commitado) contra `vite preview` real: SW instala e
+  ativa; após reload, a página fica CONTROLADA (`clientsClaim` confirmado); navegação para
+  `/encanto/?code=fake&state=fake` responde 200, preserva a query string exatamente, o app renderiza
+  normalmente (não trava no loader) — e **a resposta desta navegação é confirmada como vinda do próprio
+  Service Worker** (`response.fromServiceWorker() === true`, via API nativa do Playwright), provando que
+  o cenário testado é o cenário real (`NavigationRoute` de fato interceptou), não uma simulação teórica.
+- `npm run test:domain`: 29/29 verde.
+- `npm run test:e2e` (suíte completa, Chromium): **113/113 verde**, incluindo
+  `auth/login-google-trigger.spec.js` ("clicar em Continuar com Google chama
+  `signInWithOAuth(provider=google)`") e todos os specs de sessão/checkout/carrinho/catálogo — zero
+  regressão.
 
 ### D9 — Capacitor-Ready: decisões registradas, nada implementado agora
 
@@ -180,10 +241,12 @@ ferramenta de verificação pontual, não infraestrutura de teste permanente):**
 - `manifest.json` buscado via HTTP real (`vite preview`, respeitando `base: /encanto/`): `start_url`,
   `scope`, `display` e os 2 ícones do array batem com o esperado; todos os 6 arquivos de ícone/favicon
   respondem 200.
-- Boot real da app (Chromium desktop 1280×800): zero erros de console além do aviso já existente e
-  esperado ("Supabase init erro: supabaseUrl is required", modo degradado por não haver `.env` de
-  produção neste ambiente — não é regressão desta REF); `viewport` sem `maximum-scale` e com
-  `viewport-fit=cover`; `theme-color`/`manifest`/`apple-touch-icon` presentes no DOM renderizado.
+- Boot real da app (Chromium desktop 1280×800, `.env` local com credenciais reais do Supabase de
+  produção — mesmo `.env` usado por `npm run dev`): **zero erros de console**; `viewport` sem
+  `maximum-scale` e com `viewport-fit=cover`; `theme-color`/`manifest`/`apple-touch-icon` presentes no
+  DOM renderizado. (O aviso "Supabase init erro: supabaseUrl is required" só aparece nos testes de
+  domínio via `node` puro — `import.meta.env` não existe fora do Vite — nunca no browser real; não é
+  regressão desta REF.)
 - 2 viewports mobile emulados via engine Chromium (412×915 "Android-like" e 390×844 "iPhone-like"):
   zero overflow horizontal, screenshot conferido visualmente — header, ícone, chips, cardápio renderizam
   normalmente, sem quebra de layout introduzida pela mudança de viewport/head.
