@@ -176,3 +176,19 @@ rollback: nenhum (mudança 100% de configuração externa, zero linha de código
 - **DMARC em modo `p=reject` desde o início:** rejeitado — sem histórico de envio pelo domínio novo,
   começar em `p=none` (report-only) é a prática segura; endurecer depois de confirmar entregabilidade
   estável é trabalho de uma REF futura, não desta.
+
+## Resultado final (Ondas 2-7)
+
+Implementado exatamente como planejado, com 2 ajustes descobertos durante a execução:
+
+1. **DMARC do Resend vinha sugerido no ápice** (`_dmarc`, não `_dmarc.mail.encanto...`) — corrigido
+   antes da publicação, mantendo o isolamento por produto decidido na Onda 1a.
+2. **`rate_limit_email_sent` (teto de 2 e-mails/hora) continua ativo mesmo com SMTP customizado** —
+   não é exclusivo do mailer padrão como o texto original desta ADR presumia; é um teto de abuso do
+   GoTrue independente do transporte. Corrigido para `30`/hora como parte da Onda 4.
+
+Validado ao vivo em produção: OTP (login completo, sessão real criada), recuperação de senha
+(disparo confirmado), troca de e-mail (via sandbox oficial do Resend `delivered@resend.dev`, zero
+risco à conta real), logout, e Google OAuth (revalidado nos 3 domínios após cada mudança, `302`
+intacto em todos os momentos). `test:domain` e `test:e2e` (113/113) verdes — nenhum código de
+aplicação foi alterado nesta REF. Detalhe completo por onda: `docs/ref/REF-AUTH-03-progress.md`.
