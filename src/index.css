@@ -1370,12 +1370,16 @@ img{display:block;max-width:100%}
 
 .valion-word{display:inline-flex;align-items:baseline;line-height:1;white-space:nowrap}
 .valion-v-icon{
-  height:1.55em;width:auto;align-self:flex-start;
-  transform:translateY(.16em);margin-right:.02em;
+  /* REF-BRAND-02 (ajuste fino): imagem recortada rente ao pixel visivel (sem padding
+     transparente sobrando) -- a borda de baixo da img already e' a ponta do "V", entao o
+     align-items:baseline do pai (padrao de elemento substituido = borda inferior) encosta o
+     "V" na linha de base de "ALION" sem transform manual nenhum. */
+  height:1.55em;width:auto;align-self:baseline;
+  margin-right:-5px;transform:translateY(-2px);
   transition:transform .18s ease;
 }
 .valion-credit-link:hover .valion-v-icon,
-.valion-credit-link:focus-visible .valion-v-icon{transform:translateY(.16em) rotate(-4deg)}
+.valion-credit-link:focus-visible .valion-v-icon{transform:translateY(-2px) rotate(-4deg)}
 .valion-word b{font-size:22px;color:#070E20;font-weight:700;letter-spacing:.005em}
 .valion-word i{
   font-size:18px;color:#0B4FBE;font-weight:600;font-style:normal;
