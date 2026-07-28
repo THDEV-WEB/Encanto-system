@@ -76,7 +76,9 @@ uso real. Isso é o gap que esta REF fecha.
 
 ## Onda 1 — Decisão arquitetural
 
-**Domínio de envio: subdomínio dedicado, não o ápice.** Proposta: `mail.valionsistemas.com.br`.
+**Domínio de envio: subdomínio dedicado por PRODUTO, não o ápice e não um "mail." genérico
+compartilhado.** Decisão (revisada após comparação técnica formal Onda 1a, ver abaixo):
+`mail.encanto.valionsistemas.com.br`.
 
 Por quê um subdomínio e não `valionsistemas.com.br` direto:
 - Isola a reputação de envio transacional (OTP) da reputação do domínio institucional — se o volume
@@ -88,21 +90,42 @@ Por quê um subdomínio e não `valionsistemas.com.br` direto:
   mesmo domínio entraria em conflito. Um subdomínio dedicado nunca disputa esse espaço.
 - É a prática recomendada pelo próprio Resend para domínios que também servem outros propósitos.
 
-**Remetente proposto:** `"Encanto" <nao-responda@mail.valionsistemas.com.br>` — nome de exibição
-igual ao já usado em toda a UI (`useCompanyInfo`/REF-COMPANY-02), endereço não-respondido porque não
-há caixa de entrada monitorada do outro lado (sem suporte via e-mail hoje).
+**Onda 1a — Revisão do dono (escopo por produto, não por empresa):** comparação técnica formal entre
+`valionsistemas.com.br` (ápice), `mail.valionsistemas.com.br` (subdomínio único, compartilhado por
+toda a Valion) e `mail.encanto.valionsistemas.com.br` (subdomínio escopado por produto). Decisão do
+dono: adotar subdomínio **por produto** como padrão arquitetural da Valion, não um "mail." genérico
+compartilhado entre sistemas. Motivo: a Valion já estabeleceu o padrão de subdomínio por produto
+(`encanto.valionsistemas.com.br` já existe para o Encanto); um "mail." único compartilhado juntaria a
+reputação de envio de sistemas completamente diferentes (públicos/clientes distintos) na mesma
+identidade de remetente — o mesmo problema de "blast radius" que motivou tirar o envio do ápice, só
+reaparecendo um nível abaixo. Com escopo por produto, um incidente de deliverability de um sistema
+(ex.: Encanto) nunca afeta a reputação de envio de outro (ex.: um futuro ERP ou CRM da Valion).
+**Padrão estabelecido para todos os sistemas futuros da Valion:**
+`mail.<produto>.valionsistemas.com.br` (`mail.encanto...`, `mail.erp...`, `mail.crm...`, etc.) — cada
+produto isolado, ápice institucional livre para e-mail corporativo (Google Workspace ou equivalente).
+
+**Remetente proposto:** `"Encanto" <nao-responda@mail.encanto.valionsistemas.com.br>` — nome de
+exibição igual ao já usado em toda a UI (`useCompanyInfo`/REF-COMPANY-02), endereço não-respondido
+porque não há caixa de entrada monitorada do outro lado (sem suporte via e-mail hoje).
 
 **DNS necessários (valores exatos só são gerados quando o domínio é adicionado no painel do
 Resend — os nomes de registro abaixo são fixos, os valores são específicos da conta):**
 
 | Tipo | Host | Finalidade |
 |---|---|---|
-| TXT | `mail.valionsistemas.com.br` (ou `send.mail...`, Resend especifica) | SPF (`v=spf1 include:amazonses.com ~all`) |
-| TXT | `resend._domainkey.mail.valionsistemas.com.br` | DKIM (chave pública RSA, gerada pelo Resend) |
-| MX | `mail.valionsistemas.com.br` | Recebimento de bounce/complaint (`feedback-smtp...amazonses.com`) |
-| TXT (opcional, recomendado) | `_dmarc.mail.valionsistemas.com.br` | `v=DMARC1; p=none;` — modo report-only inicial, sem risco de bloquear entrega própria |
+| TXT | `mail.encanto.valionsistemas.com.br` (ou `send.mail...`, Resend especifica) | SPF (`v=spf1 include:amazonses.com ~all`) |
+| TXT | `resend._domainkey.mail.encanto.valionsistemas.com.br` | DKIM (chave pública RSA, gerada pelo Resend) |
+| MX | `mail.encanto.valionsistemas.com.br` | Recebimento de bounce/complaint (`feedback-smtp...amazonses.com`) |
+| TXT (opcional, recomendado) | `_dmarc.mail.encanto.valionsistemas.com.br` | `v=DMARC1; p=none;` — modo report-only inicial, sem risco de bloquear entrega própria |
 
-Todos os 4 registros vão no MESMO provedor DNS já usado (Registro.br, mesma zona de
+Nota sobre herança de DMARC: sem um registro `_dmarc` próprio no subdomínio de envio, a checagem de
+alinhamento sobe até achar o primeiro `_dmarc` publicado na cadeia (`encanto.valionsistemas.com.br` →
+`valionsistemas.com.br`). Como nenhum dos dois tem DMARC hoje, o registro específico acima
+(`_dmarc.mail.encanto...`) é o que efetivamente entra em vigor para o e-mail transacional — mantém a
+política de envio do Encanto independente de qualquer DMARC que a Valion venha a publicar no ápice
+para e-mail corporativo depois.
+
+Todos os registros vão no MESMO provedor DNS já usado (Registro.br, mesma zona de
 `valionsistemas.com.br` onde o CNAME de `encanto.valionsistemas.com.br` já foi criado nesta mesma
 sessão) — nenhuma ferramenta nova.
 
@@ -114,7 +137,7 @@ sessão) — nenhuma ferramenta nova.
   "smtp_port": 465,
   "smtp_user": "resend",
   "smtp_pass": "<API key do Resend>",
-  "smtp_admin_email": "nao-responda@mail.valionsistemas.com.br",
+  "smtp_admin_email": "nao-responda@mail.encanto.valionsistemas.com.br",
   "smtp_sender_name": "Encanto",
   "smtp_max_frequency": 60
 }
@@ -146,6 +169,10 @@ rollback: nenhum (mudança 100% de configuração externa, zero linha de código
   (memória do projeto) era especificamente para Resend — sem motivo para reabrir essa escolha.
 - **Verificar o ápice `valionsistemas.com.br` direto no Resend:** rejeitado pelo motivo de isolamento
   de MX/reputação acima.
+- **Subdomínio único compartilhado `mail.valionsistemas.com.br` (proposta original desta REF,
+  substituída na Onda 1a):** rejeitado por não escalar para múltiplos produtos da Valion — juntaria a
+  reputação de envio de sistemas com públicos completamente diferentes na mesma identidade de
+  remetente, reproduzindo um nível abaixo o mesmo problema que motivou tirar o envio do ápice.
 - **DMARC em modo `p=reject` desde o início:** rejeitado — sem histórico de envio pelo domínio novo,
   começar em `p=none` (report-only) é a prática segura; endurecer depois de confirmar entregabilidade
   estável é trabalho de uma REF futura, não desta.

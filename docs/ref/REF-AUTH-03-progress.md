@@ -29,9 +29,17 @@ Ver seção "Onda 0" do ADR para o levantamento completo. Resumo executivo:
 
 ## Onda 1 — Planejamento (concluído)
 
-Decisão: subdomínio dedicado `mail.valionsistemas.com.br` (não o ápice), remetente
-`"Encanto" <nao-responda@mail.valionsistemas.com.br>`, DNS na mesma zona Registro.br já em uso.
-Justificativa completa, tabela de registros DNS e payload exato do PATCH de SMTP: ver ADR.
+Decisão original: subdomínio dedicado `mail.valionsistemas.com.br` (não o ápice). Revisada na
+**Onda 1a** (comparação técnica formal pedida pelo dono, ápice vs. subdomínio único vs. subdomínio
+por produto): decisão final é **`mail.encanto.valionsistemas.com.br`** — subdomínio escopado por
+PRODUTO, não um "mail." genérico compartilhado por toda a Valion. Padrão estabelecido para sistemas
+futuros: `mail.<produto>.valionsistemas.com.br`. Remetente:
+`"Encanto" <nao-responda@mail.encanto.valionsistemas.com.br>`. Justificativa completa, tabela de
+registros DNS e payload exato do PATCH de SMTP: ver ADR (seção "Onda 1a").
+
+Nota de nomenclatura: o dono se referiu a esta decisão como "REF-AUTH-02" no chat — mantido aqui como
+REF-AUTH-03 por já ser o número reservado desde o início da sessão para este trabalho de SMTP
+(REF-AUTH-02 é outra referência, já concluída, sobre sessão Loja/Admin).
 
 ## Onda 2 — Ação externa (BLOQUEADA — depende do dono)
 
@@ -41,7 +49,7 @@ cadastrado — não é um valor previsível antes disso). Passos exatos entregue
 resumo aqui para retomada:
 
 1. Criar conta em resend.com (ou reaproveitar, se já existir).
-2. Add Domain → `mail.valionsistemas.com.br`.
+2. Add Domain → `mail.encanto.valionsistemas.com.br`.
 3. Resend mostra 3-4 registros DNS (SPF/DKIM/MX/opcionalmente DMARC) → adicionar na zona de
    `valionsistemas.com.br` no Registro.br (mesmo painel "modo avançado" já usado na REF-BRAND-01).
 4. Aguardar Resend marcar o domínio como "Verified" (propagação DNS, normalmente minutos a poucas
