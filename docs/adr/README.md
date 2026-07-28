@@ -59,6 +59,28 @@ Decisões de produto/arquitetura registradas como design, ainda **não implement
 
 🔐 [REF-UX-SESSION-01 — Confirmação explícita ao reaproveitar sessão do Admin](REF-UX-SESSION-01-confirmacao-de-sessao-admin.md) — **Implementada e em produção (3/3 ondas); sem migration (UX pura)**. Uma auditoria de segurança provou que a impressão de "Admin aceita qualquer senha" não era bypass de credencial: é reaproveitamento legítimo de sessão (`is_admin()` server-side, `signInWithPassword` intocado), só que silencioso. O invariante da REF-STABILITY-02 (sessão só pode ser consultada dentro do clique em "Entrar", nunca no `mount`/boot — corrige um bug real de flash no mobile) eliminou a solução óbvia de checagem antecipada; a solução adotada só muda o que acontece **depois** desse clique quando a sessão é reaproveitável — uma tela de confirmação ("Sessão administrativa encontrada" / Continuar como Administrador / Usar outra conta) substitui a entrada silenciosa. Zero mudança em `signInWithPassword`/`is_admin()`/`getSession()`/RLS/fluxo de Cliente. Achado real da Onda 2: rodar a suíte `e2e/tests/admin` completa (não só o spec principal) revelou 2 outros arquivos com o mesmo padrão de 1-clique não listados na auditoria inicial (`admin-logout.spec.js`, `admin-minha-conta.spec.js`), corrigidos junto. 61/61 specs de `e2e/tests/admin` verdes contra `encanto-e2e`; `test:domain` 29/29 verde.
 
+📱 [REF-MOBILE-01 — Fundação Mobile (PWA Ready + Capacitor Ready)](REF-MOBILE-01-fundacao-mobile.md) —
+**Implementada e em produção (7/7 ondas); sem migration.** Primeira REF do projeto a tornar o Encanto um
+PWA instalável, preservando 100% da arquitetura/checkout/catálogo/admin/autenticação existentes. Auditoria
+prévia (prontidão ~25% PWA / ~40% Android / ~30% iOS via Capacitor) mediu a ausência total de manifest,
+ícones e Service Worker. Onda 1: `public/manifest.json` (`start_url`/`scope`=`/encanto/`, `display:
+standalone`). Onda 2: conjunto de ícones a partir de um símbolo isolado (panela+açaí, sem texto) fornecido
+pelo dono — `icon-192/512.png` (`purpose:"any maskable"`, sem duplicar arquivo), `apple-touch-icon.png`,
+`favicon.ico` (empacotado à mão, sem ferramenta externa). Onda 3: `viewport-fit=cover` + remoção de
+`maximum-scale` (ativa o `env(safe-area-inset-*)` já existente no CSS, antes sempre `0`), theme-color,
+Apple meta tags, Open Graph/Twitter Card; `robots.txt` deliberadamente **não** criado (só funciona na raiz
+do domínio, que pertence ao repo da landing institucional, fora de escopo). Onda 6 (a mais delicada):
+Service Worker via `vite-plugin-pwa`/Workbox, `registerType:'prompt'` (nunca troca de versão sozinho —
+aviso próprio via `Toast.jsx` existente), **sem nenhuma entrada de `runtimeCaching`** (Supabase/Google
+nunca são interceptados — confirmado inspecionando o `sw.js` gerado byte a byte) e `devOptions.enabled:
+false` (SW nunca ativa em dev/E2E). Validação crítica: a volta do OAuth Google (`?code=...`) foi
+confirmada, via `response.fromServiceWorker()` do Playwright, como servida pelo próprio SW e mesmo assim
+preserva a query string e renderiza normalmente — o único ponto realmente delicado da REF, testado
+empiricamente, não só por dedução. `test:domain` 29/29 + `test:e2e` **113/113** (2 execuções completas,
+incluindo o spec de disparo do login Google) — zero regressão. Registra também a estratégia
+"Capacitor-Ready" (D9): nenhuma linha de Capacitor nesta REF, só as decisões que evitam retrabalho quando
+ele for adotado (OAuth via deep link, `base` de build dual, `window.print()` do Admin, Sentry nativo).
+
 ## Sequência da evolução arquitetural
 
 ```

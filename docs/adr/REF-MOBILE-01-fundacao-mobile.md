@@ -322,3 +322,26 @@ existente — zero mudança na árvore de roteamento/estado existente). Commit `
   implementada aqui de propósito.
 - Adicionar 1-2 projetos de emulação mobile (`devices['Pixel 7']`, `devices['iPhone 14']`) ao
   `e2e/playwright.config.js` — hoje só Desktop Chrome/Firefox/Safari são testados.
+
+## Encerramento
+
+Checklist de validação manual em dispositivo real — só é conclusivo com a URL pública de produção
+(`https://valionsistemas.com.br/encanto`), depois do deploy:
+
+1. **Android Chrome:** abrir a URL; o menu (⋮) deve oferecer "Adicionar à tela inicial"/"Instalar app";
+   confirmar que o ícone instalado é o símbolo (panela+açaí) e não um genérico; abrir o app instalado e
+   confirmar que abre em `standalone` (sem barra de endereço).
+2. **Samsung Internet:** mesmo teste do Android Chrome (motor Chromium — mesma expectativa).
+3. **Safari iOS:** Compartilhar → "Adicionar à Tela de Início"; confirmar ícone correto; abrir e
+   confirmar `standalone`; em um iPhone com notch/Dynamic Island, confirmar que o conteúdo não fica
+   escondido atrás da barra de status (efeito do `viewport-fit=cover` + `env(safe-area-inset-*)`).
+4. **Login Google real** (com o Service Worker ativo, PWA instalado ou não): confirmar que
+   "Continuar com Google" completa o login normalmente — validação empírica final do ponto mais delicado
+   desta REF (D8), já testado estruturalmente nesta sessão (ver Onda 6) mas nunca com uma conta Google
+   real de ponta a ponta.
+5. **Atualização:** depois de um próximo deploy, confirmar que o aviso "Nova versão disponível" aparece
+   para quem já tinha o app aberto/instalado, e que "Atualizar agora" realmente troca de versão.
+6. **Chrome Desktop / Edge:** confirmar o ícone de instalação na barra de endereço; instalar e conferir
+   janela própria (sem abas do navegador).
+
+**Resultado do deploy e desta validação:** *(preencher após o push/deploy)*
