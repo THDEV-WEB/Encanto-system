@@ -10,7 +10,7 @@ test.describe('boot da loja', { tag: '@read-only' }, () => {
     const erros = [];
     page.on('pageerror', (err) => erros.push(err));
 
-    await page.goto('/');
+    await page.goto('/encanto/'); // REF-BRAND-01: app sob /encanto/
 
     // o loader estático (index.html) some assim que o React faz o commit da árvore real
     await expect(page.locator('#enc-loader')).toHaveCount(0, { timeout: 15_000 });

@@ -24,9 +24,15 @@ export const AuthService = {
   /* Credenciais (Google / e-mail OTP). */
   async signInWithGoogle() {
     if (!dbCliente) return semAuth();
+    /* REF-BRAND-01: origin sozinho volta pra raiz do dominio (landing), nao pro app — app agora vive
+       sob /encanto/. BASE_URL (injetado pelo Vite a partir de `base` em vite.config.js) fecha o
+       caminho de volta certo. Precisa estar na allow-list de Redirect URLs do Supabase Auth. */
+    const redirectTo = typeof window !== 'undefined'
+      ? window.location.origin + import.meta.env.BASE_URL
+      : undefined;
     return dbCliente.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined },
+      options: { redirectTo },
     });
   },
   async signInWithEmailOtp(email) {

@@ -8,12 +8,15 @@ export class StorePage {
   }
 
   async goto() {
-    await this.page.goto('/');
+    /* REF-BRAND-01: app servido sob /encanto/ (base do Vite) — path explicito aqui em vez de
+       depender de baseURL+'/' (um '/' absoluto no goto() escapa qualquer path da baseURL, pela
+       resolucao de URL do WHATWG; nao seria reescrito para /encanto/ sozinho). */
+    await this.page.goto('/encanto/');
   }
 
   /** Acesso ao Admin — mesma rota que a app real usa (App.jsx le location.hash), sem seletor algum. */
   async gotoAdmin() {
-    await this.page.goto('/#admin-encanto');
+    await this.page.goto('/encanto/#admin-encanto');
   }
 
   productCard(prodId) {

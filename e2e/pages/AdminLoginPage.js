@@ -11,7 +11,7 @@
 export class AdminLoginPage {
   constructor(page) { this.page = page; }
 
-  async goto() { await this.page.goto('/#admin-encanto'); }
+  async goto() { await this.page.goto('/encanto/#admin-encanto'); } // REF-BRAND-01: app sob /encanto/
 
   get emailInput()  { return this.page.locator('[data-testid="admin-login-email"]'); }
   get senhaInput()  { return this.page.locator('[data-testid="admin-login-senha"]'); }

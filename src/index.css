@@ -251,7 +251,9 @@ img{display:block;max-width:100%}
      viewport. O unico elemento fixo do topo passa a ser a navegacao de categorias (.enc-stickybar /
      .enc-mobile-strip). `.app` tem isolation:isolate; o header estatico pinta ABAIXO da barra fixa. */
   position:static;
-  background: #3B0764 url('/header-bg.jpg') center 65%/cover no-repeat;
+  /* REF-BRAND-01: url() absoluto ('/header-bg.jpg') nao e reescrito pelo Vite com base != '/' -> a
+     var CSS abaixo e setada inline (style, ver StoreApp.jsx) com import.meta.env.BASE_URL. */
+  background: #3B0764 var(--header-bg-url) center 65%/cover no-repeat;
   padding:10px 16px;
   display:flex;align-items:center;gap:16px;
   min-height:128px;

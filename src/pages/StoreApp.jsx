@@ -143,7 +143,9 @@ function StoreAppContent({ onAdmin }) {
       {dockedAtTop && <div className="enc-stickybar-spacer" aria-hidden="true" />}
 
       {/* ── HEADER PRINCIPAL (roxo) ── */}
-      <header className="header">
+      {/* REF-BRAND-01: --header-bg-url setada aqui (nao em index.css) pois url('/header-bg.jpg')
+          absoluto nao e reescrito pelo Vite quando base != '/' (app agora servido sob /encanto/). */}
+      <header className="header" style={{ '--header-bg-url': `url(${import.meta.env.BASE_URL}header-bg.jpg)` }}>
 
         {/* Coluna esquerda: logo */}
         <div className="header-brand-col">

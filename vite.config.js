@@ -23,9 +23,15 @@ const sentryUploadPronto = !!(process.env.SENTRY_AUTH_TOKEN && process.env.SENTR
    deploy, o problema NÃO é este arquivo — é SENTRY_AUTH_TOKEN/SENTRY_ORG/SENTRY_PROJECT ausentes nas
    env vars do PROJETO NA VERCEL (Project Settings → Environment Variables → Production). */
 
-// Config mínima — apenas o plugin React (JSX). Nada de mágica adicional
-// para manter o comportamento o mais próximo possível do sistema atual.
+/* REF-BRAND-01: app passa a ser servido sob o sub-path /encanto/ (dominio institucional
+   valionsistemas.com.br na raiz e' a landing nova; /encanto e' este app, via proxy/rewrite no
+   projeto Vercel da landing). `base` faz o Vite prefixar toda referencia a asset gerada
+   (index.html, imports ES) com /encanto/ — padrao oficial do Vite pra deploy em sub-path.
+   `outDir: 'dist/encanto'` faz a SAIDA FISICA do build bater exatamente com a URL, sem precisar
+   de rewrite nenhum dentro do proprio projeto Vercel do Encanto (outputDirectory continua 'dist',
+   ver vercel.json). Afeta tambem dev/preview/e2e local: tudo passa a servir sob /encanto/. */
 export default defineConfig({
+  base: '/encanto/',
   plugins: [
     react(),
     ...(sentryUploadPronto ? [sentryVitePlugin({
@@ -33,13 +39,14 @@ export default defineConfig({
       project: process.env.SENTRY_PROJECT,
       authToken: process.env.SENTRY_AUTH_TOKEN,
       release: { name: RELEASE },
-      sourcemaps: { filesToDeleteAfterUpload: ['dist/**/*.map'] }, // sobe pro Sentry, nunca fica público no dist
+      sourcemaps: { filesToDeleteAfterUpload: ['dist/encanto/**/*.map'] }, // sobe pro Sentry, nunca fica público no dist (REF-BRAND-01: outDir mudou)
     })] : []),
   ],
   define: {
     __APP_RELEASE__: JSON.stringify(RELEASE),
   },
   build: {
+    outDir: 'dist/encanto',
     // Só gera .map quando há credencial pra subir pro Sentry E apagar do dist depois (plugin acima) —
     // sem isso, gerar .map deixaria o mapa do código-fonte publicamente acessível no Vercel (adivinhando
     // a URL), sem nenhum benefício (ninguém pra consumi-lo). 'hidden' = sem sourceMappingURL no JS final

@@ -29,7 +29,11 @@ const TEM_VITE_ENV = typeof import.meta.env !== 'undefined';
 export const SUPA_URL = TEM_VITE_ENV ? import.meta.env.VITE_SUPABASE_URL : undefined;
 export const SUPA_KEY = TEM_VITE_ENV ? import.meta.env.VITE_SUPABASE_KEY : undefined;
 export const RPC_TIMEOUT = Number(TEM_VITE_ENV ? import.meta.env.VITE_RPC_TIMEOUT : undefined) || 12000; /* ms; configurável, fallback seguro */
-export const LOGO     = '/logo.jpg'; /* REF-AUDIT-01: era base64 em logo.js (inflava o bundle JS ~46KB) -> arquivo em /public, cacheavel */
+/* REF-AUDIT-01: era base64 em logo.js (inflava o bundle JS ~46KB) -> arquivo em /public, cacheavel.
+   REF-BRAND-01: prefixado com BASE_URL (não mais '/logo.jpg' fixo) -> continua correto agora que o
+   app é servido sob /encanto/ (Vite injeta BASE_URL no build; TEM_VITE_ENV cobre os scripts Node que
+   importam este módulo fora do Vite, mesmo padrão das constantes acima). */
+export const LOGO     = `${TEM_VITE_ENV ? import.meta.env.BASE_URL : '/'}logo.jpg`;
 
 /* Migração 1x: uma sessão de Admin salva ANTES desta onda vive sob a chave default do supabase-js
    (sb-<ref>-auth-token) — nunca reconstruída via URL aqui (dependência implícita é exatamente o que
