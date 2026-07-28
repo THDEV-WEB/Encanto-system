@@ -10,8 +10,12 @@ fornecido pelo dono durante a auditoria, salvo em `public/icon-encanto.png` ante
 
 ## Estado atual
 
-✅ ONDAS 1–7 CONCLUÍDAS E COMMITADAS (todas na mesma sessão). Falta: atualizar índice de ADRs, push,
-deploy, validação em produção e encerramento formal.
+✅ REF-MOBILE-01 ENCERRADA TECNICAMENTE. Ondas 1–7 concluídas, testadas, documentadas e commitadas
+(8 commits). Push feito (`origin/main` `8781429..e51866a`). CI real no GitHub Actions verde (run
+30406833808: Build/Domínio/E2E). Deploy Vercel confirmado ao vivo (manifest/sw.js/ícones em produção
+com o conteúdo exato desta REF). Única pendência: checklist de validação manual em dispositivo real
+(Android Chrome, Samsung Internet, Safari iOS, login Google real), de responsabilidade do dono — ver
+seção "Encerramento" do ADR.
 
 ## Onda 1 — Web App Manifest
 

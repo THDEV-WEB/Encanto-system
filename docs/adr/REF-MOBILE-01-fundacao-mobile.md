@@ -344,4 +344,21 @@ Checklist de validação manual em dispositivo real — só é conclusivo com a 
 6. **Chrome Desktop / Edge:** confirmar o ícone de instalação na barra de endereço; instalar e conferir
    janela própria (sem abas do navegador).
 
-**Resultado do deploy e desta validação:** *(preencher após o push/deploy)*
+**Resultado do deploy e desta validação:**
+
+- Push: `origin/main` `8781429..e51866a` (8 commits desta REF).
+- CI real no GitHub Actions ([run 30406833808](https://github.com/THDEV-WEB/Encanto-system/actions/runs/30406833808),
+  commit `e51866a`): **Build ✅ (23s) · Testes de domínio ✅ (22s) · E2E Playwright/Chromium ✅ (281s,
+  113/113)** — confirmação independente da máquina local, mesmo resultado.
+- Deploy Vercel (push em `main` = deploy automático, projeto `encanto-system`): confirmado ao vivo —
+  `https://valionsistemas.com.br/encanto/manifest.json`, `.../sw.js` e `.../icon-192.png` respondem 200
+  em produção, com o CONTEÚDO exato desta REF (`manifest.json` byte a byte igual ao commitado; `index.html`
+  com `theme-color`/`apple-touch-icon`/`<link rel="manifest">` presentes).
+- Itens 1–6 do checklist manual (Android Chrome, Samsung Internet, Safari iOS, login Google real,
+  atualização do SW, Chrome Desktop/Edge) **seguem pendentes do dono** — exigem dispositivo físico/conta
+  Google real, indisponíveis neste ambiente de agente. Recomendado rodar em até alguns dias (não são
+  bloqueantes: toda a lógica foi validada estruturalmente + via E2E real; são a confirmação final de UX
+  em hardware real).
+
+**REF-MOBILE-01 encerrada tecnicamente** — implementação, testes e deploy 100% concluídos; validação de
+UX em dispositivo real é a única pendência, de responsabilidade do dono.
