@@ -36,11 +36,16 @@ incluindo a estratégia "Capacitor-Ready" sem implementar Capacitor) + este prog
 
 ## Onda 5 — Validação mobile
 
-Status: ⏳ EM ANDAMENTO.
+Status: ✅ CONCLUÍDA (camada automatizada). 20/20 checks via Playwright/Chromium contra `vite preview`
+real (manifest, ícones, boot sem erros de console, viewport sem `maximum-scale`/com `viewport-fit`,
+2 viewports mobile sem overflow, screenshots conferidos visualmente). Camada manual em dispositivo real
+(Android Chrome/Samsung Internet/Safari iOS) **adiada para o Encerramento**, quando existe uma URL
+pública HTTPS de verdade para o dono instalar — ver checklist na seção de Encerramento. Nenhum código de
+`src/`/`public/` alterado nesta onda (só verificação + documentação).
 
 ## Onda 6 — Service Worker
 
-Status: ⏳ PENDENTE (só inicia após Onda 5 validada, por instrução do dono).
+Status: ⏳ EM ANDAMENTO.
 
 ## Onda 7 — Testes finais
 

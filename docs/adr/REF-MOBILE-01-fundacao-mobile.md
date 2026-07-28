@@ -172,7 +172,29 @@ Documentação das decisões acima + estratégia "PWA Ready + Capacitor Ready" (
 
 ## Onda 5 — Validação mobile
 
-*(preenchida ao final da Onda 5)*
+Sem hardware Android/iOS físico neste ambiente (máquina Windows, sessão de agente) — validação dividida
+em duas camadas, deliberadamente:
+
+**Camada automatizada (executada nesta Onda, script ad-hoc via Playwright/Chromium, não commitado —
+ferramenta de verificação pontual, não infraestrutura de teste permanente):**
+- `manifest.json` buscado via HTTP real (`vite preview`, respeitando `base: /encanto/`): `start_url`,
+  `scope`, `display` e os 2 ícones do array batem com o esperado; todos os 6 arquivos de ícone/favicon
+  respondem 200.
+- Boot real da app (Chromium desktop 1280×800): zero erros de console além do aviso já existente e
+  esperado ("Supabase init erro: supabaseUrl is required", modo degradado por não haver `.env` de
+  produção neste ambiente — não é regressão desta REF); `viewport` sem `maximum-scale` e com
+  `viewport-fit=cover`; `theme-color`/`manifest`/`apple-touch-icon` presentes no DOM renderizado.
+- 2 viewports mobile emulados via engine Chromium (412×915 "Android-like" e 390×844 "iPhone-like"):
+  zero overflow horizontal, screenshot conferido visualmente — header, ícone, chips, cardápio renderizam
+  normalmente, sem quebra de layout introduzida pela mudança de viewport/head.
+- **20/20 checks automatizados passaram.**
+
+**Camada manual (real device) — só é conclusiva com uma URL pública, portanto adiada para o
+fechamento (pós-deploy), quando existe um HTTPS real para instalar de verdade:** Android Chrome, Samsung
+Internet, Safari iOS não podem ser emulados com fidelidade suficiente a partir deste ambiente (o motor
+WebKit do Playwright, mesmo se instalado, não reproduz o comportamento real de `safe-area-inset`/
+"Adicionar à Tela de Início" do Safari iOS; não há emulador Android nem simulador iOS disponíveis aqui).
+Checklist entregue ao dono na seção de Encerramento.
 
 ## Onda 6 — Service Worker
 
