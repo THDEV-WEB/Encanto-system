@@ -103,3 +103,25 @@ navegador, Android/iOS home screen, 3 máscaras de Adaptive Icon com zona de seg
 desktop, favicon 16px real), aprovado pelo dono, só então os 6 arquivos derivados foram regenerados.
 `public/icon-encanto.png` agora É o novo recorte (arquivo bruto original recuperável via git history,
 commit `7e1e6fd`). Build limpo + `test:domain` 29/29 (só `public/` mudou).
+
+## Ajuste pós-encerramento — favicon antigo preso no navegador (cache-busting físico)
+
+Status: ✅ CONCLUÍDO. Dono reportou que, após o ajuste do recorte, o navegador (inclusive em janela
+anônima) continuava mostrando o favicon ANTIGO, mesmo o dashboard da Vercel já exibindo o novo. Investigação
+completa confirmou: servidor 100% correto (build local, `dist/encanto/*` idêntico a `public/*` byte a
+byte; produção com `Etag`/`Last-Modified`/`Content-Length` batendo com o arquivo novo; sem CDN/proxy
+terceiro na frente do domínio — DNS aponta direto pra Vercel; `valionsistemas.com.br/favicon.ico` na RAIZ
+é só o fallback de SPA da landing, HTML, não um ícone — irrelevante pra nós, já que nossa página declara
+seus próprios `<link rel="icon">`). Causa raiz: cache de favicon do próprio navegador, que associa o
+ícone à URL (não ao conteúdo) e é notoriamente resistente a `Cache-Control`/hard-refresh — como o Vite
+não hasheia arquivos de `public/`, o favicon manteve a MESMA URL antes/depois da troca de conteúdo,
+gatilho clássico desse comportamento.
+
+Solução aplicada (decisão do dono: versionamento físico do nome do arquivo, não `?v=`): renomeados os 6
+ícones referenciados (`favicon.ico`→`favicon-valion-v2.ico`, `favicon-16.png`→`favicon-valion-16-v2.png`,
+`favicon-32.png`→`favicon-valion-32-v2.png`, `apple-touch-icon.png`→`apple-touch-icon-valion-v2.png`,
+`icon-192.png`→`icon-valion-192-v2.png`, `icon-512.png`→`icon-valion-512-v2.png`) via `git mv` (preserva
+histórico); `index.html` e `manifest.json` atualizados. Confirmado por grep em todo o repo: nenhuma
+referência viva restante aos nomes antigos (só nas próprias docs desta REF, como histórico). Build limpo,
+todos os 6 arquivos + `manifest.json` respondendo 200 com os nomes novos via `vite preview`, `test:domain`
+29/29.

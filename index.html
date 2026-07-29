@@ -9,11 +9,15 @@
 <link rel="canonical" href="https://valionsistemas.com.br/encanto"/>
 <!-- REF-MOBILE-01 Onda 1: Web App Manifest — id/start_url/scope = "/encanto/" (mesmo sub-path servido pelo rewrite institucional, ver docs/adr/REF-BRAND-01) -->
 <link rel="manifest" href="/encanto/manifest.json"/>
-<!-- REF-MOBILE-01 Onda 2: favicons + apple-touch-icon, gerados a partir de public/icon-encanto.png (simbolo isolado, sem texto) -->
-<link rel="icon" href="/encanto/favicon.ico" sizes="any"/>
-<link rel="icon" type="image/png" sizes="32x32" href="/encanto/favicon-32.png"/>
-<link rel="icon" type="image/png" sizes="16x16" href="/encanto/favicon-16.png"/>
-<link rel="apple-touch-icon" href="/encanto/apple-touch-icon.png"/>
+<!-- REF-MOBILE-01 Onda 2: favicons + apple-touch-icon, gerados a partir de public/icon-encanto.png (simbolo isolado, sem texto).
+     Nomes com sufixo "-valion-v2" (cache-busting FISICO, nao query string): navegadores cacheiam favicon por
+     URL de forma persistente, ignorando Cache-Control/Etag (achado real: apos o ajuste de recorte do icone,
+     o favicon antigo continuou aparecendo mesmo em janela anonima, com o servidor ja confirmadamente
+     servindo o arquivo novo). Renomear o arquivo forca o navegador a tratar como recurso nunca visto. -->
+<link rel="icon" href="/encanto/favicon-valion-v2.ico" sizes="any"/>
+<link rel="icon" type="image/png" sizes="32x32" href="/encanto/favicon-valion-32-v2.png"/>
+<link rel="icon" type="image/png" sizes="16x16" href="/encanto/favicon-valion-16-v2.png"/>
+<link rel="apple-touch-icon" href="/encanto/apple-touch-icon-valion-v2.png"/>
 <!-- REF-MOBILE-01 Onda 3: theme-color (chrome do navegador/status bar) + tags Apple para o app rodar em standalone (sem barra de endereço) quando adicionado a tela inicial do iOS -->
 <meta name="theme-color" content="#6B1F5D"/>
 <meta name="mobile-web-app-capable" content="yes"/>

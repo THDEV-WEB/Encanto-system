@@ -183,6 +183,37 @@ evitariam retrabalho quando o Capacitor for de fato adotado:
    pelo plugin `@capacitor/geolocation` seria só uma melhoria opcional de UX de permissão nativa, nunca
    uma exigência.
 
+### D10 — Nomes de arquivo versionados fisicamente (`-valion-v2`), não query string (`?v=`)
+
+**Incidente real:** após o ajuste do recorte (D2/refinamento pós-aprovação), o dono reportou favicon
+antigo preso na aba do navegador — inclusive em janela anônima — enquanto o dashboard da Vercel já
+mostrava o ícone novo. Investigação completa (sem alterar nada até a causa ser confirmada): build local
+byte-a-byte idêntico ao commitado; produção respondendo com `Etag`/`Last-Modified`/`Content-Length` do
+arquivo NOVO em todas as verificações (`valionsistemas.com.br/encanto/*` e `encanto-system.vercel.app/
+encanto/*`); DNS resolve direto pra Vercel, sem CDN/proxy terceiro; `Cache-Control: public, max-age=0,
+must-revalidate` (política correta, pede revalidação sempre). Também checado, a pedido do dono:
+`valionsistemas.com.br/favicon.ico` (raiz do domínio institucional) não é um ícone — é o fallback de SPA
+da landing devolvendo `index.html` como HTML — irrelevante pra nós, já que `/encanto/` declara seus
+próprios `<link rel="icon">` e o navegador não cai nesse fallback quando a página já diz qual ícone usar.
+
+**Causa raiz:** cache de favicon do próprio navegador (Chromium), que associa o ícone à **URL**, não ao
+conteúdo, e é conhecido por ignorar `Cache-Control`/sobreviver a hard-refresh. Como o Vite não hasheia
+arquivos de `public/` (só os que passam pelo pipeline de assets via import), o favicon manteve a MESMA
+URL antes/depois da troca de conteúdo — o gatilho clássico desse comportamento, amplamente documentado.
+
+**Decisão:** versionamento físico do nome do arquivo (`favicon.ico` → `favicon-valion-v2.ico`, etc.),
+não um parâmetro `?v=` na URL — escolha explícita do dono. Efeito prático é o mesmo (URL nova, nunca
+vista pelo navegador, força um fetch limpo), mas o nome físico fica mais legível no dashboard da Vercel/
+DevTools e não depende de nenhuma lógica de query string sendo preservada em toda referência. Renomeados
+via `git mv` (preserva histórico de blame): `favicon.ico`→`favicon-valion-v2.ico`,
+`favicon-16.png`→`favicon-valion-16-v2.png`, `favicon-32.png`→`favicon-valion-32-v2.png`,
+`apple-touch-icon.png`→`apple-touch-icon-valion-v2.png`, `icon-192.png`→`icon-valion-192-v2.png`,
+`icon-512.png`→`icon-valion-512-v2.png`. `index.html` e `manifest.json` atualizados; confirmado por busca
+em todo o repo que nenhuma referência viva aos nomes antigos restou fora da documentação histórica.
+
+**Nota para o futuro:** se o ícone precisar mudar de novo, repetir esse padrão (nome novo, nunca reusar
+uma URL de ícone já publicada) é a forma confiável de evitar o mesmo problema — um `v3`, `v4`, etc.
+
 ## Onda 1 — Web App Manifest
 
 `public/manifest.json` (`id`/`start_url`/`scope` = `/encanto/`, `display: standalone`,
