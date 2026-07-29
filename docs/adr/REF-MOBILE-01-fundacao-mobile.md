@@ -214,6 +214,19 @@ em todo o repo que nenhuma referência viva aos nomes antigos restou fora da doc
 **Nota para o futuro:** se o ícone precisar mudar de novo, repetir esse padrão (nome novo, nunca reusar
 uma URL de ícone já publicada) é a forma confiável de evitar o mesmo problema — um `v3`, `v4`, etc.
 
+### D11 — Simplificação do nome exibido do app (`name` do manifest)
+
+**Pedido do dono:** o `name` original (`"Encanto – Açaí & Marmitas"`, usado desde a Onda 1) foi trocado
+para `"Encanto Marmitaria & Açaiteria"`. `short_name` já era `"Encanto"` desde a Onda 1 e não mudou.
+
+**Por que isso não afeta o nome na tela inicial:** `short_name` é o campo que Android/Chrome (e a maioria
+dos navegadores) usa para o rótulo sob o ícone quando o espaço é limitado — cenário que sempre se aplica
+a ícones de tela inicial. `name` só aparece por extenso em telas com mais espaço (ex.: diálogo de
+instalação do PWA, listagem de apps em configurações). Como `short_name` já era só `"Encanto"`, o rótulo
+na tela inicial já estava correto antes desta mudança e continua assim depois — o ajuste troca apenas o
+nome "longo" institucional, sem tocar em `start_url`, `scope`, `display`, `theme_color`,
+`background_color` ou `icons`.
+
 ## Onda 1 — Web App Manifest
 
 `public/manifest.json` (`id`/`start_url`/`scope` = `/encanto/`, `display: standalone`,

@@ -125,3 +125,14 @@ histórico); `index.html` e `manifest.json` atualizados. Confirmado por grep em 
 referência viva restante aos nomes antigos (só nas próprias docs desta REF, como histórico). Build limpo,
 todos os 6 arquivos + `manifest.json` respondendo 200 com os nomes novos via `vite preview`, `test:domain`
 29/29.
+
+## Ajuste pós-encerramento — simplificação do `name` no manifest
+
+Status: ✅ CONCLUÍDO. Dono pediu simplificar a identificação do app: `name` trocado de
+`"Encanto – Açaí & Marmitas"` para `"Encanto Marmitaria & Açaiteria"`. `short_name` (`"Encanto"`,
+inalterado desde a Onda 1) é o campo que rege o rótulo na tela inicial em Android/Chrome — por isso o app
+já aparecia (e continua aparecendo) só como "Encanto" na home screen, sem depender desta mudança. Demais
+campos confirmados intactos: `start_url`, `scope`, `display`, `theme_color`, `background_color`, `icons`
+(ver D11 no ADR). Build limpo do zero, `dist/encanto/manifest.json` conferido byte a byte contra o
+esperado, `vite preview` real servindo o manifest atualizado em `/encanto/manifest.json`, `test:domain`
+29/29.
