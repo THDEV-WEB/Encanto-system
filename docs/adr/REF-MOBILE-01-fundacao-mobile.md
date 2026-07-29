@@ -197,6 +197,18 @@ D2), `apple-touch-icon.png` (180×180, opaco), `favicon.ico` (D3) + `favicon-32.
 (fallback `<link>` explícito). Redimensionamento em alta qualidade (`HighQualityBicubic`), sem reencode
 com perda adicional. `<link rel="icon"/apple-touch-icon">` em `index.html`. Commit `7e1e6fd`.
 
+**Ajuste pós-aprovação (mesma Onda, revisão de enquadramento):** o dono avaliou a v1 como funcional mas
+"visualmente ainda não profissional" — o símbolo (pote+açaí) ocupava só ~49%×64% do canvas, deixando
+margem magenta demais nas quatro bordas (medido por varredura de pixels, não estimado). Recorte novo,
+nativo (sem upscale — 680×680 do 1080×1080 original, centro (555,565), sem distorcer proporção):
+preenchimento sobe pra ~68%×80%+, cortando só as pontas da folha decorativa (elemento secundário) nas
+bordas — o pote e o açaí (o núcleo realmente identificável) nunca são cortados. `public/icon-encanto.png`
+passa a SER esse novo recorte (o arquivo bruto original do dono continua recuperável via git history,
+commit `7e1e6fd`); os 6 arquivos derivados foram todos regenerados a partir dele. Validado ANTES de
+exportar via mockup HTML (aba do navegador, Android/iOS home screen, 3 máscaras de Adaptive Icon com zona
+de segurança marcada, PWA instalado desktop, favicon 16px real ampliado sem suavização) — aprovado pelo
+dono antes deste commit. `test:domain` 29/29 após a troca (só `public/` mudou, zero `src/`).
+
 ## Onda 3 — Head mobile/SEO
 
 `viewport-fit=cover` + remoção de `maximum-scale` (D4); `theme-color`; `mobile-web-app-capable` +

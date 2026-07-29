@@ -92,3 +92,14 @@ pelas validações próprias das Ondas 5–6. Zero regressão em qualquer camada
 - Checklist de validação manual em dispositivo real (Android Chrome, Samsung Internet, Safari iOS) +
   confirmação de login Google real — a entregar ao dono, pós-deploy.
 - Push + deploy (Vercel) + validação em produção + encerramento formal.
+
+## Ajuste pós-encerramento — refinamento visual do ícone
+
+Status: ✅ CONCLUÍDO. Dono avaliou o ícone da Onda 2 como "funcional mas não profissional" (símbolo
+ocupava só ~49%×64% do canvas). Recorte novo, nativo/sem upscale (680×680 do 1080×1080 original), medido
+por varredura de pixels antes e depois — preenchimento sobe pra ~68%×80%+, cortando só as pontas da folha
+decorativa (a folha, não o pote/açaí). Validado ANTES de exportar via mockup HTML (artifact — aba do
+navegador, Android/iOS home screen, 3 máscaras de Adaptive Icon com zona de segurança, PWA instalado
+desktop, favicon 16px real), aprovado pelo dono, só então os 6 arquivos derivados foram regenerados.
+`public/icon-encanto.png` agora É o novo recorte (arquivo bruto original recuperável via git history,
+commit `7e1e6fd`). Build limpo + `test:domain` 29/29 (só `public/` mudou).
