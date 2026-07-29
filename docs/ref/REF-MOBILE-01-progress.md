@@ -136,3 +136,15 @@ campos confirmados intactos: `start_url`, `scope`, `display`, `theme_color`, `ba
 (ver D11 no ADR). Build limpo do zero, `dist/encanto/manifest.json` conferido byte a byte contra o
 esperado, `vite preview` real servindo o manifest atualizado em `/encanto/manifest.json`, `test:domain`
 29/29.
+
+## Ajuste pós-encerramento — `name` também vira "Encanto" (campo editável da instalação Android)
+
+Status: ✅ CONCLUÍDO. Dono testou a instalação num Android real e viu o campo editável do diálogo
+"Adicionar à tela inicial"/"Instalar app" pré-preenchido com o nome longo institucional — a D11 não
+resolveu porque esse campo é preenchido por `manifest.name`, não por `short_name` (que só rege o rótulo
+final sob o ícone já instalado). `name` alterado para `"Encanto"` (igual a `short_name`) — ver D12 no ADR.
+`start_url`/`scope`/`display`/`theme_color`/`background_color`/`icons` confirmados intactos. Build limpo
+do zero (mesmo hash de JS/CSS — só `public/manifest.json` mudou), `sw.js` regenerado com a mesma estrutura
+(16 entradas de precache, nenhuma mudança em `vite.config.js`), `test:domain` 29/29 (309 asserções),
+`manifest.json`/`sw.js`/ícones/`apple-mobile-web-app-title` conferidos via `vite preview` real — sem
+regressão em PWA/Service Worker/instalação.

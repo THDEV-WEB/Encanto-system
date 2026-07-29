@@ -227,6 +227,26 @@ na tela inicial já estava correto antes desta mudança e continua assim depois 
 nome "longo" institucional, sem tocar em `start_url`, `scope`, `display`, `theme_color`,
 `background_color` ou `icons`.
 
+### D12 — `name` também simplificado para "Encanto" (campo editável do diálogo de instalação)
+
+**Achado do dono, testando no Android real:** ao tocar em "Adicionar à tela inicial"/"Instalar app", o
+diálogo do Chrome mostra um campo de texto **editável e pré-preenchido**, exigindo que o usuário apague o
+texto manualmente para deixar só "Encanto". A D11 (acima) só trocou o `name` por um nome institucional
+mais curto — não eliminou o problema, porque não é o `short_name` que preenche esse campo.
+
+**Causa raiz:** o diálogo de instalação do Chrome/Android pré-preenche o campo editável com `manifest.name`
+(não `short_name` — esse só rege o rótulo final sob o ícone já instalado, cenário da D11). Qualquer valor
+em `name` diferente de `"Encanto"` aparece ali e precisa ser apagado pelo usuário antes de confirmar.
+
+**Decisão:** `name` alterado para `"Encanto"` — agora idêntico a `short_name`. Único jeito de garantir que
+o campo do diálogo de instalação já nasça correto, sem exigir edição. `start_url`, `scope`, `display`,
+`theme_color`, `background_color` e `icons` confirmados intactos (só a string de `name` mudou). Build
+limpo, `sw.js`/precache regenerados sem mudança estrutural (16 entradas, mesmo `vite.config.js`),
+`test:domain` 29/29 (309 asserções), `manifest.json`/`sw.js`/ícones conferidos via `vite preview` real.
+
+**Nota:** `name` e `short_name` iguais é redundante mas intencional aqui — o objetivo explícito é zero
+edição no fluxo de instalação, não diferenciação entre os dois campos.
+
 ## Onda 1 — Web App Manifest
 
 `public/manifest.json` (`id`/`start_url`/`scope` = `/encanto/`, `display: standalone`,
