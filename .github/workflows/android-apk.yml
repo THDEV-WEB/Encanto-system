@@ -58,6 +58,33 @@ jobs:
         working-directory: android
         run: ./gradlew assembleDebug --no-daemon
 
+      # REF-CAP-01: achado do dono na homologacao fisica ("Ocorreu um problema ao analisar o pacote").
+      # `./gradlew assembleDebug` retornar sucesso NAO prova que o .apk resultante e' de fato parseavel
+      # pelo instalador do Android - este step valida isso de verdade, com as MESMAS ferramentas que o
+      # Android usa por baixo (aapt/aapt2 + apksigner, do proprio Android SDK ja pre-instalado no runner),
+      # ANTES do upload. Falha o job (exit != 0) se o APK nao passar - vira gate automatico, nao so' log.
+      - name: Validar integridade do APK (aapt dump badging + apksigner verify)
+        working-directory: android
+        run: |
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          echo "--- arquivo ---"
+          ls -la "$APK"
+          echo "--- sha256 ---"
+          sha256sum "$APK"
+
+          BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -n1)
+          echo "build-tools: $BUILD_TOOLS"
+
+          echo "--- aapt dump badging (confirma que o pacote e' parseavel) ---"
+          if [ -x "${BUILD_TOOLS}aapt" ]; then
+            "${BUILD_TOOLS}aapt" dump badging "$APK"
+          else
+            "${BUILD_TOOLS}aapt2" dump badging "$APK"
+          fi
+
+          echo "--- apksigner verify (confirma assinatura valida) ---"
+          "${BUILD_TOOLS}apksigner" verify --print-certs -v "$APK"
+
       - name: Upload do APK
         uses: actions/upload-artifact@v4
         with:
