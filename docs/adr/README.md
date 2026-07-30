@@ -81,6 +81,17 @@ incluindo o spec de disparo do login Google) — zero regressão. Registra tamb�
 "Capacitor-Ready" (D9): nenhuma linha de Capacitor nesta REF, só as decisões que evitam retrabalho quando
 ele for adotado (OAuth via deep link, `base` de build dual, `window.print()` do Admin, Sentry nativo).
 
+📦 [REF-CAP-01 — Aplicativo Android Nativo (Capacitor)](REF-CAP-01-app-nativo-android.md) — 🚧 **Em
+execução.** Fase 1 (auditoria completa: OAuth Google bloqueado em WebView, conflito `base:'/encanto/'`
+× `webDir` do Capacitor, ausência de toolchain Android nesta máquina, Play Protect, permissões/impressão/
+geolocalização) apresentada e **aprovada pelo dono (2026-07-30)**. Onda 1 (Dual Build) concluída: `vite.
+config.js` único (`defineConfig(({mode})=>…)`, gate `mode==='capacitor'`) gera `dist/capacitor` com
+`base:'/'` e Service Worker desligado (`VitePWA({disable:true})`, plugin mantido no array só para o
+módulo virtual `virtual:pwa-register` continuar resolvendo) — fora do modo `capacitor`, build web
+byte-a-byte idêntico a antes (hashes conferidos), `test:domain` 309/309. Ondas 2–8 (Capacitor/Android
+project/integração nativa/assets/APK/distribuição/documentação) pendentes — ver
+[progress](../ref/REF-CAP-01-progress.md).
+
 ## Sequência da evolução arquitetural
 
 ```

@@ -7,7 +7,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:capacitor": "vite build --mode capacitor",
     "preview": "vite preview",
+    "preview:capacitor": "vite preview --mode capacitor",
     "test:pricing": "node tests/pricing.golden.mjs",
     "test:addons": "node tests/addons.golden.mjs",
     "test:checkout": "node tests/checkout.golden.mjs",

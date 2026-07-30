@@ -49,7 +49,16 @@ const sentryUploadPronto = !!(process.env.SENTRY_AUTH_TOKEN && process.env.SENTR
    - devOptions.enabled:false (default) -> SW nunca ativa em `vite dev`/`vite --mode e2e` (webServer do
      Playwright usa dev server, nao build) - suite E2E roda 100% sem Service Worker, zero risco de
      interferencia nos specs existentes. */
-const pwaPlugin = VitePWA({
+/* REF-CAP-01 Onda 1: `disable` (parametro `desativado`, default false) e' a MESMA chave que ja' desliga o
+   plugin em dev — usada aqui pra desligar tambem no build do Capacitor, SEM remover o plugin do array de
+   plugins. Precisa continuar presente (so' desativado) porque `src/hooks/usePwaUpdate.js` faz
+   `import('virtual:pwa-register')`: e' o proprio vite-plugin-pwa quem fornece esse modulo virtual — sem
+   o plugin no array, o Rollup nao acha o import e o build quebra (testado: "Rollup failed to resolve
+   import virtual:pwa-register"). Com `disable:true`, o modulo virtual continua resolvendo (como stub
+   no-op), o hook roda normalmente e nunca ativa nada — zero comportamento de SW dentro do APK, com ZERO
+   mudanca de codigo em runtime. */
+const buildPwaPlugin = (desativado) => VitePWA({
+  disable: desativado,
   registerType: 'prompt',
   injectRegister: false,
   manifest: false,
@@ -64,32 +73,48 @@ const pwaPlugin = VitePWA({
   },
 });
 
-export default defineConfig({
-  base: '/encanto/',
-  plugins: [
-    react(),
-    pwaPlugin,
-    ...(sentryUploadPronto ? [sentryVitePlugin({
-      org: process.env.SENTRY_ORG,
-      project: process.env.SENTRY_PROJECT,
-      authToken: process.env.SENTRY_AUTH_TOKEN,
-      release: { name: RELEASE },
-      sourcemaps: { filesToDeleteAfterUpload: ['dist/encanto/**/*.map'] }, // sobe pro Sentry, nunca fica público no dist (REF-BRAND-01: outDir mudou)
-    })] : []),
-  ],
-  define: {
-    __APP_RELEASE__: JSON.stringify(RELEASE),
-  },
-  build: {
-    outDir: 'dist/encanto',
-    // Só gera .map quando há credencial pra subir pro Sentry E apagar do dist depois (plugin acima) —
-    // sem isso, gerar .map deixaria o mapa do código-fonte publicamente acessível no Vercel (adivinhando
-    // a URL), sem nenhum benefício (ninguém pra consumi-lo). 'hidden' = sem sourceMappingURL no JS final
-    // (não some sozinho pro navegador; só existe pro upload).
-    sourcemap: sentryUploadPronto ? 'hidden' : false,
-  },
-  server: {
-    port: 5173,
-    open: true,
-  },
+/* REF-CAP-01 Onda 1 (Dual Build): UM SÓ arquivo de config — nunca um vite.config.capacitor.js paralelo —
+   pra eliminar o risco de as duas saídas divergirem em silêncio com o tempo. `mode` (mecanismo nativo do
+   Vite, `vite build --mode capacitor`) é o ÚNICO gate: fora dele (build/dev/preview/e2e — todo o resto do
+   projeto, sem exceção) o resultado é BYTE A BYTE igual a antes desta REF. Os dois pontos que a auditoria
+   da REF-CAP-01 identificou como incompatíveis entre o deploy Web (Vercel, sub-path) e o modelo de
+   `webDir` do Capacitor (que serve o CONTEÚDO da pasta na raiz local do app) ficam isolados aqui:
+   - `base:'/'` -> sem isso, o index.html do Capacitor pediria assets em `/encanto/...`, path que não
+     existe na raiz do WebView local (só existe no servidor Vercel) — todo o JS/CSS 404aria dentro do APK.
+   - Service Worker desativado (`buildPwaPlugin(true)`, ver acima) -> um Service Worker Workbox pressupõe
+     "nova versão = novo fetch de rede"; dentro de um APK empacotado localmente essa premissa não existe
+     (nova versão = novo APK instalado) — zero comportamento de PWA dentro do Capacitor. */
+export default defineConfig(({ mode }) => {
+  const isCapacitor = mode === 'capacitor';
+  const outDir = isCapacitor ? 'dist/capacitor' : 'dist/encanto';
+
+  return {
+    base: isCapacitor ? '/' : '/encanto/',
+    plugins: [
+      react(),
+      buildPwaPlugin(isCapacitor),
+      ...(sentryUploadPronto ? [sentryVitePlugin({
+        org: process.env.SENTRY_ORG,
+        project: process.env.SENTRY_PROJECT,
+        authToken: process.env.SENTRY_AUTH_TOKEN,
+        release: { name: RELEASE },
+        sourcemaps: { filesToDeleteAfterUpload: [`${outDir}/**/*.map`] }, // sobe pro Sentry, nunca fica público no dist (REF-BRAND-01: outDir mudou)
+      })] : []),
+    ],
+    define: {
+      __APP_RELEASE__: JSON.stringify(RELEASE),
+    },
+    build: {
+      outDir,
+      // Só gera .map quando há credencial pra subir pro Sentry E apagar do dist depois (plugin acima) —
+      // sem isso, gerar .map deixaria o mapa do código-fonte publicamente acessível no Vercel (adivinhando
+      // a URL), sem nenhum benefício (ninguém pra consumi-lo). 'hidden' = sem sourceMappingURL no JS final
+      // (não some sozinho pro navegador; só existe pro upload).
+      sourcemap: sentryUploadPronto ? 'hidden' : false,
+    },
+    server: {
+      port: 5173,
+      open: true,
+    },
+  };
 });
