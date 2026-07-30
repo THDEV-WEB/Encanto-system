@@ -1,0 +1,66 @@
+name: Android APK (Capacitor)
+
+# REF-CAP-01 — workflow NOVO, independente de ci.yml (nao altera o pipeline existente).
+# Motivo de existir: esta maquina de desenvolvimento nao tem Java/Android SDK/Gradle instalados (ver
+# D4 no ADR) - runners ubuntu-latest do GitHub ja vem com Android SDK pre-instalado, so falta o JDK
+# (setup-java abaixo) para compilar de verdade. Gatilho manual (workflow_dispatch) de proposito: esta e'
+# a PRIMEIRA vez que o codigo Java desta REF (NativePrintPlugin.java) e' realmente compilado - antes de
+# confiar num gatilho automatico a cada push, queremos ver o resultado de uma execucao deliberada.
+#
+# Gera um APK DEBUG (assinado com a keystore de debug padrao do Android, gerada automaticamente pelo
+# Gradle) - suficiente para instalar e testar num aparelho fisico via `adb install`/download direto.
+# Um APK release assinado (keystore propria + secrets) fica fora do escopo desta onda.
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    name: Build APK debug
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Build web (modo Capacitor - base:'/', sem Service Worker, ver vite.config.js)
+        run: npm run build:capacitor
+
+      - name: Sincronizar Capacitor -> projeto Android
+        run: npx cap sync android
+
+      - name: Java (JDK 21 - exigido pelo AGP 8.13/capacitor.build.gradle, ver D3 no ADR)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Permissão de execução do Gradle Wrapper
+        run: chmod +x android/gradlew
+
+      - name: Gerar APK debug
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Upload do APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: encanto-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30

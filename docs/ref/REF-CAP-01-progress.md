@@ -13,7 +13,8 @@ ver Onda 4. Ver auditoria completa e D1 em
 ## Estado atual
 
 🚧 Ondas 1–5 CONCLUÍDAS (código; Onda 3 sem trabalho adicional — ver D3 do ADR; validação real das Ondas
-4/5 em dispositivo físico fica pra Onda 6). Ondas 6–8 pendentes.
+4/5 em dispositivo físico fica pra Onda 6). Onda 6 EM ANDAMENTO (workflow criado, aguardando push pra
+disparar). Ondas 7–8 pendentes.
 
 ## Onda 1 — Dual Build
 
@@ -127,10 +128,13 @@ Status: ✅ CONCLUÍDA (ver D8 do ADR).
 
 ## Onda 6 — Gerar APK
 
-Status: ⏳ PENDENTE. `Encanto.apk` via GitHub Actions (Android SDK pré-instalado no runner
-`ubuntu-latest` — workflow novo, sem alterar `.github/workflows/ci.yml`). Teste em dispositivo físico:
-instalação, login, pedidos, admin, upload, geolocalização, impressão. Confirmar ausência de alerta do
-Play Protect.
+Status: 🟡 EM ANDAMENTO. `.github/workflows/android-apk.yml` (novo, `workflow_dispatch` manual — não
+altera `ci.yml`): `npm ci` → `build:capacitor` → `cap sync android` → JDK 21 (`actions/setup-java`,
+exigido pelo AGP 8.13/`capacitor.build.gradle`) → `./gradlew assembleDebug` → upload do
+`app-debug.apk` como artefato (30 dias). YAML validado via `js-yaml` (parse limpo). **Ainda não disparado**
+— depende de push pro GitHub (nenhum commit desta REF foi pushed ainda). Pendente: push (aguardando
+confirmação do dono), disparar o workflow, baixar o APK, testar em dispositivo físico (instalação, login,
+pedidos, admin, upload, geolocalização, impressão), confirmar ausência de alerta do Play Protect.
 
 ## Onda 7 — Distribuição
 
@@ -167,5 +171,6 @@ Status: ⏳ PENDENTE. Consolidar ADR/progress, registrar as 3 formas oficiais de
 - `android/app/src/main/res/values/colors.xml` (novo, Onda 5, D8 — corrige lacuna pré-existente do
   template, `colorPrimary`/`colorPrimaryDark`/`colorAccent` não definidos).
 - `package.json`/`package-lock.json` — `@capacitor/assets` (devDependencies) (Onda 5).
+- `.github/workflows/android-apk.yml` (novo, Onda 6 — não altera `ci.yml`).
 - `docs/adr/REF-CAP-01-app-nativo-android.md` (novo, Onda 1; D2–D4 Onda 2)
 - `docs/ref/REF-CAP-01-progress.md` (novo, este arquivo)
