@@ -70,10 +70,11 @@ Play Protect, sem nenhum bump manual de versão.
 
 ## Onda 4 — Integração nativa
 
-Status: ⏳ PENDENTE. Antes de implementar: documentar tecnicamente a decisão do fluxo Google OAuth
-(Browser + Deep Link + PKCE) e seus impactos arquiteturais — instrução explícita do dono, cumprir antes de
-qualquer código deste fluxo. Depois: Redirect Supabase (nova entrada no allow-list), botão físico
-"voltar", permissões (geolocalização), impressão (comanda térmica do admin).
+Status: 🟡 EM ANDAMENTO. Decisão técnica do fluxo Google OAuth (Browser + Deep Link + PKCE) documentada em
+**D5 do ADR** — instrução explícita do dono cumprida, aguardando confirmação antes do código. Escopo
+completo da onda: implementar D5 (branch de plataforma em `AuthService.signInWithGoogle`, `@capacitor/
+browser` + `@capacitor/app`, `intent-filter` do deep link, nova entrada no allow-list do Supabase — passo
+do dono), botão físico "voltar", permissões (geolocalização), impressão (comanda térmica do admin).
 
 ## Onda 5 — Assets
 

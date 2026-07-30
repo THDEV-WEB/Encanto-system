@@ -160,6 +160,70 @@ Gradle (`capacitor.settings.gradle`/`capacitor.build.gradle`), nunca uma invoca�
 assembleDebug`, abrir no Android Studio, ou `npx cap run android`) — ou seja, a Onda 6 (gerar o APK), não
 a integração em si. Mantém-se a recomendação de usar CI (Onda 6) para a compilação real.
 
+### D5 — Google OAuth nativo: Browser do sistema + Deep Link + troca PKCE manual
+
+**Documentado ANTES de qualquer implementação, por pedido explícito do dono.** Cobre o ponto mais delicado
+de toda a REF — o único que toca o fluxo de autenticação do cliente.
+
+**Estado atual (web/PWA, permanece 100% intocado):** `AuthService.signInWithGoogle()`
+(`src/services/AuthService.js:25`) chama `dbCliente.auth.signInWithOAuth({provider:'google', options:
+{redirectTo}})`, que redireciona o próprio navegador para o Google e de volta. `dbCliente` (`lib/
+dbCliente.js`) já usa `detectSessionInUrl:true` + `flowType:'pkce'` — a troca do `?code=` por sessão
+acontece **sozinha**, lida pela biblioteca ao recarregar a página. Único ponto de chamada em todo o
+projeto: `providers/AuthProvider.jsx:53` (`entrarComGoogle`).
+
+**Problema:** dentro da WebView do Capacitor esse redirect é bloqueado pelo próprio Google (política
+anti-WebView-embutida, ver Fase 1). Não é algo que se contorna com configuração — precisa de um transporte
+diferente.
+
+**Decisão — 3 peças novas, isoladas atrás de uma checagem de plataforma:**
+
+1. **Detecção de plataforma:** `Capacitor.isNativePlatform()` (de `@capacitor/core`, já instalado) decide
+   o ramo dentro do próprio `AuthService.signInWithGoogle()` — nenhuma outra camada (`AuthProvider`,
+   `AuthContext`, `LoginScreen`) precisa saber que o Capacitor existe. No navegador/PWA, a função continua
+   fazendo exatamente o que faz hoje.
+2. **No Capacitor:** `signInWithOAuth({provider:'google', options:{redirectTo: DEEP_LINK_URL,
+   skipBrowserRedirect:true}})` — `skipBrowserRedirect` é a opção oficial do supabase-js para os casos em
+   que a própria lib NÃO deve tentar navegar (`window.location.href=url`); em vez disso devolve a URL de
+   consentimento do Google em `data.url`. Essa URL é aberta com `@capacitor/browser`
+   (`Browser.open({url: data.url})`) — o **navegador do sistema** (Custom Tabs no Android), não a WebView
+   do app, o que evita o bloqueio do Google.
+3. **Captura da volta:** `@capacitor/app` (`App.addListener('appUrlOpen', …)`), registrado ANTES de abrir
+   o browser, escuta um esquema de URL customizado dedicado (proposto:
+   `br.com.valionsistemas.encanto://login-callback` — mesmo prefixo do `appId`, D2). Ao disparar, extrai
+   o `?code=` da URL recebida, fecha o browser (`Browser.close()`) e chama
+   `dbCliente.auth.exchangeCodeForSession(code)` manualmente — método já suportado, porque `flowType:
+   'pkce'` já está ativo. Esse método popula a MESMA sessão/`localStorage` que o fluxo automático do
+   navegador populava antes — `onAuthStateChange`/`AuthContext`/`AuthProvider` a partir daqui não mudam
+   nada.
+
+**Impacto arquitetural:**
+- 2 dependências novas: `@capacitor/browser`, `@capacitor/app` (plugins oficiais Capacitor, mesmo mantedor
+  do `core`).
+- `AndroidManifest.xml` (Onda 4): novo `intent-filter` no `MainActivity` para o esquema customizado —
+  padrão documentado do próprio Capacitor para deep links, não uma Activity nova.
+- Supabase Auth: nova entrada no allow-list de Redirect URLs para
+  `br.com.valionsistemas.encanto://login-callback` — configuração do projeto (Management API/dashboard),
+  mesmo mecanismo já usado em REF-AUTH-01/REF-BRAND-01; não é código.
+- `signInWithEmailOtp`/`verifyEmailOtp` (sem redirect) — **inalterados**, não passam por nenhuma dessas 3
+  peças.
+- Sessão do Admin (`db`, `lib/supabase.js`) — **inalterada**, fluxo totalmente separado
+  (`signInWithPassword`, sem OAuth).
+- Cancelamento pelo usuário (fecha o browser sem concluir o login): `@capacitor/browser` expõe um evento
+  `browserFinished` — usado para resolver a chamada com o mesmo formato de erro que a função já retorna
+  hoje (`{data:null, error:{message:...}}`), sem exigir tratamento novo em `AuthProvider`.
+
+**Alternativa considerada e descartada:** plugin de terceiros para login nativo do Google (ex.:
+`@codetrix-studio/capacitor-google-auth`), que obtém o token direto do SDK do Google (sem abrir browser) e
+chamaria `signInWithIdToken`. Rejeitada nesta REF por 2 motivos: (a) não é um plugin oficial do Capacitor —
+mais superfície de manutenção/confiança; (b) exigiria um Client ID OAuth do tipo "Android" novo no Google
+Cloud Console, com o fingerprint SHA-1 da chave de assinatura do APK cadastrado à parte — mais setup do
+que reaproveitar o Client ID "Web" que o Supabase já usa hoje. A abordagem Browser+Deep Link+PKCE já era,
+inclusive, a indicada no pedido original do dono para esta onda.
+
+**Ainda não implementado** — este é só o registro da decisão, conforme pedido. Implementação (código +
+`AndroidManifest.xml` + validação) é o próximo passo da Onda 4, mediante confirmação.
+
 ## Pendências (Ondas 4–8)
 
 Ver [`docs/ref/REF-CAP-01-progress.md`](../ref/REF-CAP-01-progress.md) para o estado onda a onda.
