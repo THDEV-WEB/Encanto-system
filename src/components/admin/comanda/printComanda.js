@@ -1,10 +1,20 @@
 /* components/admin/comanda/printComanda.js — REF-ORDER-01 · Parte 1.
    UNICO ponto IMPURO da comanda (efeito de DOM/print). Imprime o HTML autocontido via IFRAME OCULTO
    (nao window.open -> imune a bloqueador de pop-up) e limpa apos imprimir. Isolado de proposito para
-   que comandaModel/comandaHtml permanecam 100% puros/testaveis. No-op seguro fora do browser. */
+   que comandaModel/comandaHtml permanecam 100% puros/testaveis. No-op seguro fora do browser.
+
+   REF-CAP-01 · Onda 4: dentro do Capacitor, window.print() (mesmo chamado no contentWindow do iframe)
+   nao aciona dialogo nativo nenhum — a WebView "crua" que o Capacitor usa nao tem a integracao que o
+   Chrome tem. Ver lib/nativePrint.js pro racional completo do plugin nativo dedicado. */
+import { Capacitor } from '@capacitor/core';
+import { NativePrint } from '../../../lib/nativePrint.js';
 
 export function printComanda(html) {
   if (typeof document === 'undefined') return false;   // SSR / Node -> no-op
+  if (Capacitor.isNativePlatform()) {
+    NativePrint.print({ html }).catch(() => { /* best-effort — mesmo padrao de erro silencioso do resto deste arquivo */ });
+    return true;
+  }
   try {
     const iframe = document.createElement('iframe');
     iframe.setAttribute('aria-hidden', 'true');

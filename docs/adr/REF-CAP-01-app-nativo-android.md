@@ -221,9 +221,70 @@ Cloud Console, com o fingerprint SHA-1 da chave de assinatura do APK cadastrado 
 que reaproveitar o Client ID "Web" que o Supabase já usa hoje. A abordagem Browser+Deep Link+PKCE já era,
 inclusive, a indicada no pedido original do dono para esta onda.
 
-**Ainda não implementado** — este é só o registro da decisão, conforme pedido. Implementação (código +
-`AndroidManifest.xml` + validação) é o próximo passo da Onda 4, mediante confirmação.
+**Implementado** (confirmação do dono recebida): `src/services/AuthService.js` ganhou `signInWithGoogleNativo()`
+(privada) + o branch `if (Capacitor.isNativePlatform())` dentro de `signInWithGoogle()`. `AndroidManifest.xml`
+ganhou o `intent-filter` do esquema `br.com.valionsistemas.encanto://login-callback` no `MainActivity`
+(mesma `<activity>`, `launchMode="singleTask"` já existente preservado). Build web com hash de bundle
+diferente do anterior (esperado — `AuthService.js` é um arquivo real e compartilhado entre Web/Capacitor,
+diferente da infra pura de build da Onda 1): `@capacitor/core`/`browser`/`app` somam **~10 KB gzip** ao
+bundle web, mesmo nunca sendo usados ali (`Capacitor.isNativePlatform()` retorna `false` de imediato no
+navegador). `test:domain` 309/309 — zero regressão. **Validação real do fluxo (abrir o Google, voltar via
+deep link, trocar o código) só é possível num APK rodando em dispositivo físico — reservada para a Onda 6.**
+Falta ainda, como passo do dono: a nova entrada no allow-list de Redirect URLs do Supabase Auth.
 
-## Pendências (Ondas 4–8)
+### D6 — Botão físico "voltar": resumo imperativo de estado, sem novo router
+
+**Problema:** o app nunca usa History API (SPA 100% *state-driven*) — o comportamento *default* do
+Capacitor pro botão voltar (`history.back()` se houver entrada, senão `App.exitApp()`) sempre cai no
+segundo caso aqui, então **qualquer** modal/carrinho/painel admin aberto seria descartado e o app
+fecharia, em vez de só fechar o que está por cima.
+
+**Decisão:** um único listener central (`hooks/useCapacitorBackButton.js`, novo), registrado em `App.jsx`,
+decide em ordem de prioridade: (1) `mode` `'admin'`/`'login'` → `verLoja()` (volta pra loja, não sai do
+app); (2) dentro da loja, pergunta a um **resumo imperativo** do que está aberto — `StoreApp.jsx` ganhou
+`forwardRef`/`useImperativeHandle` (`temAlgoAberto()`/`fecharTopo()`, cobrindo `page`
+checkout/success, `modal` do produto, `cartOpen`, `showLoyalty`, na mesma ordem em que apareceriam por
+cima) e `StoreMenu.jsx` idem (`temAlgoAberto()`/`fecharTudo()`, cobrindo o drawer e as 7 telas —
+login/pedidos/conta/contato/sobre/termos/fidelidade); (3) nada aberto → `App.exitApp()` explícito (mesmo
+efeito do default nativo). **Nenhum estado existente foi movido, renomeado ou lifted** — só um resumo
+imperativo do que já existia foi exposto, a pedido de um único consumidor (o listener nativo). Fora do
+Capacitor, o hook é no-op (`Capacitor.isNativePlatform()` nunca é `true` no navegador).
+
+**Limitação conhecida, aceita conscientemente:** o painel Admin (`AdminPanel`) não expõe seu próprio
+resumo imperativo — o botão voltar dentro do Admin sempre volta pra loja (`verLoja()`), sem fechar
+primeiro um modal interno do Admin (ex.: um formulário de produto aberto). Ampliar essa cobertura ao Admin
+é um refinamento de UX de baixo risco, não incluído aqui para não expandir o escopo desta onda além do que
+foi pedido ("botão voltar" no contexto do app do cliente).
+
+### D7 — Impressão nativa da comanda: plugin Capacitor LOCAL (Java) + `NativePrint`
+
+**Problema, confirmado por pesquisa (não suposição):** uma `WebView` "crua" — a base de qualquer app
+Capacitor — **não** liga `window.print()` a nenhum diálogo nativo de impressão. Isso é uma integração
+própria do app Chrome (a API pública de `WebView` não expõe esse gancho); `printComanda.js` chama
+`iframe.contentWindow.print()`, que funciona no navegador/PWA mas seria um no-op silencioso dentro do
+Capacitor. A API oficial do Android pra imprimir conteúdo de `WebView` é
+`WebView.createPrintDocumentAdapter()` + `PrintManager` — sempre disparada **nativamente**, nunca como
+reação automática a `window.print()`.
+
+**Decisão:** plugin Capacitor **local** (não é pacote npm — vive só dentro deste projeto Android),
+`NativePrintPlugin.java`, registrado explicitamente em `MainActivity.java` (`registerPlugin(...)`, antes
+de `super.onCreate()` — plugins locais não entram no scan automático que `@capacitor/app`/`@capacitor/
+browser` recebem via `capacitor.plugins.json`). O plugin recebe o HTML já pronto (mesmo `html` que o
+iframe recebia), carrega numa **`WebView` temporária e isolada** (nunca a `WebView` principal do app, que
+mostraria o painel Admin inteiro, não a comanda) e, ao terminar de carregar (`onPageFinished`), aciona
+`createPrintDocumentAdapter()`+`PrintManager` — o mesmo isolamento que o iframe oculto já garantia no
+navegador, só que replicado nativamente. `src/lib/nativePrint.js` (novo) é a ponte JS
+(`registerPlugin('NativePrint')` do `@capacitor/core`); `printComanda.js` ganhou um branch
+`Capacitor.isNativePlatform()` no topo — o caminho do iframe/`window.print()` permanece **100% intocado**
+para navegador/PWA.
+
+**Risco assumido conscientemente e comunicado:** o código Java segue à risca a receita oficial documentada
+pela própria Android (`developer.android.com/guide/topics/text/webview-printing`) e usa só APIs estáveis
+(`PrintManager`, `WebView.createPrintDocumentAdapter`), mas **não pôde ser compilado nem executado nesta
+máquina** (sem JDK/Android SDK, ver D4) — a mesma limitação de ambiente já aceita para toda a Onda 6.
+Validação real (o diálogo de impressão do Android realmente aparece, com o conteúdo certo) fica pendente
+de um build real em dispositivo físico.
+
+## Pendências (Ondas 5–8)
 
 Ver [`docs/ref/REF-CAP-01-progress.md`](../ref/REF-CAP-01-progress.md) para o estado onda a onda.

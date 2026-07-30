@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import AppShell from './AppShell.jsx';
 import './index.css';
 import { precoVitrine } from './utils/pricing.js'; /* eslint-disable-line no-unused-vars */ // TOKEN Regra F (deps.audit.mjs §F): App.jsx deve consumir pricing; consumidor real movido p/ components/admin/AdminProducts.jsx (Onda 6.4). NAO remover sem ajustar a Regra F.
@@ -9,6 +10,7 @@ import { StoreApp } from './pages/StoreApp.jsx';
 import { AuthProvider } from './providers/AuthProvider.jsx'; // AUTH-01: sessao do CLIENTE (envolve so a loja)
 import { useAdminSession } from './hooks/useAdminSession.js'; // REF-ADMIN-01 · Onda 2: sessao do ADMIN (restauracao + logout real)
 import { usePwaUpdate } from './hooks/usePwaUpdate.js'; // REF-MOBILE-01 Onda 6: Service Worker (aviso de nova versao, nunca troca sozinho)
+import { useCapacitorBackButton } from './hooks/useCapacitorBackButton.js'; // REF-CAP-01 Onda 4: botao fisico "voltar" do Android
 import { Toast } from './components/ui/Toast.jsx';
 
 /* ============================================================
@@ -103,6 +105,8 @@ import { Toast } from './components/ui/Toast.jsx';
 function App() {
   const { mode, admin, entrar, abrirLogin, verLoja, sair } = useAdminSession();
   const { novaVersaoDisponivel, atualizar, dispensar } = usePwaUpdate(); // REF-MOBILE-01 Onda 6
+  const storeAppRef = useRef(null); // REF-CAP-01 Onda 4: resumo imperativo do que esta aberto na loja (ver StoreApp.jsx)
+  useCapacitorBackButton({ mode, verLoja, storeRef: storeAppRef });
 
   let content;
   if (mode==='login')      content = <AdminLogin onLogin={entrar}/>;
@@ -110,7 +114,7 @@ function App() {
   /* AUTH-01: a loja (e SO ela) vive dentro do AuthProvider — sessao de cliente isolada do Admin.
      REF-STABILITY-02: todo bootstrap comeca aqui, sem excecao — a sessao do Admin persiste normalmente,
      mas nunca decide a tela inicial sozinha (so o clique em "Entrar" a reaproveita). */
-  else                      content = <AuthProvider><StoreApp onAdmin={abrirLogin}/></AuthProvider>;
+  else                      content = <AuthProvider><StoreApp ref={storeAppRef} onAdmin={abrirLogin}/></AuthProvider>;
 
   /* AppShell envolve TUDO: BackgroundLayer (fundo único, loja + admin) + camada de conteúdo. */
   return (

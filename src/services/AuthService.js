@@ -3,8 +3,61 @@
    e-mail e atributo). Vinculo HIBRIDO por telefone via RPC link_customer_to_auth(phone,email,name).
    NAO importa React/JSX, NAO importa DataService de pedidos, NAO importa pricing/addons/format. */
 import { dbCliente } from '../lib/dbCliente.js';
+import { Capacitor } from '@capacitor/core';
+import { Browser } from '@capacitor/browser';
+import { App as CapacitorApp } from '@capacitor/app';
 
 const semAuth = () => ({ data: null, error: { message: 'auth indisponivel (offline)' } });
+
+/* REF-CAP-01 · Onda 4 (D5): esquema de deep link do login Google nativo. Precisa casar EXATAMENTE com o
+   intent-filter de android/app/src/main/AndroidManifest.xml e com a entrada correspondente no allow-list
+   de Redirect URLs do Supabase Auth (passo do dono, fora do codigo). */
+const DEEP_LINK_LOGIN = 'br.com.valionsistemas.encanto://login-callback';
+
+/* REF-CAP-01 · Onda 4 (D5): Google bloqueia OAuth dentro de WebView embutida (politica anti-webview desde
+   2021) — dentro do Capacitor o login precisa abrir no navegador do SISTEMA (Custom Tabs), nao na WebView
+   do app. `skipBrowserRedirect:true` faz o supabase-js devolver a URL de consentimento em vez de tentar
+   navegar sozinho (`window.location.href=`), que e' o comportamento certo pro browser mas nao existe
+   aqui. A volta e' capturada via deep link (appUrlOpen) — nunca por `detectSessionInUrl` (que so' funciona
+   quando o proprio WebView navega pra URL com ?code=, o que nao acontece nesse fluxo). `flowType:'pkce'`
+   (ja ligado em lib/dbCliente.js) e' o que permite trocar o `code` por sessao manualmente, fora do fluxo
+   automatico. */
+async function signInWithGoogleNativo() {
+  const { data, error } = await dbCliente.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: DEEP_LINK_LOGIN, skipBrowserRedirect: true },
+  });
+  if (error || !data?.url) return { data: null, error: error ?? { message: 'nao foi possivel iniciar o login Google' } };
+
+  return new Promise((resolve) => {
+    let concluido = false;
+    let handleDeepLink;
+    let handleBrowserFechou;
+    const finalizar = (resultado) => {
+      if (concluido) return; // appUrlOpen fecha o Browser -> browserFinished tambem dispara; só o 1º resultado vale
+      concluido = true;
+      handleDeepLink?.remove();
+      handleBrowserFechou?.remove();
+      resolve(resultado);
+    };
+
+    CapacitorApp.addListener('appUrlOpen', async ({ url }) => {
+      if (!url || !url.startsWith(DEEP_LINK_LOGIN)) return; // outro deep link (nao e' o do login) -> ignora
+      try { await Browser.close(); } catch { /* noop */ }
+      let code = null;
+      try { code = new URL(url).searchParams.get('code'); } catch { /* url malformada -> code fica null */ }
+      if (!code) { finalizar({ data: null, error: { message: 'retorno do Google sem codigo' } }); return; }
+      const resultado = await dbCliente.auth.exchangeCodeForSession(code);
+      finalizar(resultado);
+    }).then((h) => { handleDeepLink = h; });
+
+    Browser.addListener('browserFinished', () => {
+      finalizar({ data: null, error: { message: 'login cancelado' } });
+    }).then((h) => { handleBrowserFechou = h; });
+
+    Browser.open({ url: data.url });
+  });
+}
 
 export const AuthService = {
   disponivel: () => !!dbCliente,
@@ -24,6 +77,9 @@ export const AuthService = {
   /* Credenciais (Google / e-mail OTP). */
   async signInWithGoogle() {
     if (!dbCliente) return semAuth();
+    // REF-CAP-01 · Onda 4 (D5): dentro do Capacitor, o redirect de browser abaixo e' bloqueado pelo
+    // proprio Google (WebView embutida) — precisa do fluxo nativo (Browser do sistema + deep link).
+    if (Capacitor.isNativePlatform()) return signInWithGoogleNativo();
     /* REF-BRAND-01: origin sozinho volta pra raiz do dominio (landing), nao pro app — app agora vive
        sob /encanto/. BASE_URL (injetado pelo Vite a partir de `base` em vite.config.js) fecha o
        caminho de volta certo. Precisa estar na allow-list de Redirect URLs do Supabase Auth. */

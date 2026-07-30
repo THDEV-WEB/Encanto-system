@@ -1,7 +1,7 @@
 /* components/menu/StoreMenu.jsx — botão ☰ do header + orquestração do drawer e telas (LOGIN-ARCH-02).
    Auto-contido: StoreApp só renderiza <StoreMenu/> no header (App.jsx intocado). O botão reusa a
    classe do header (mesmo padding/tamanho/raio/hover que carrinho e engrenagem). */
-import { useState } from 'react';
+import { useState, forwardRef, useImperativeHandle } from 'react';
 import { SideDrawer } from './SideDrawer.jsx';
 import { LoginScreen } from './LoginScreen.jsx';
 import { ContatoScreen } from './ContatoScreen.jsx';
@@ -12,11 +12,20 @@ import { CompletarCadastro } from './CompletarCadastro.jsx';
 import { MeusPedidosScreen } from '../pedidos/MeusPedidosScreen.jsx';
 import { MinhaContaScreen } from '../conta/MinhaContaScreen.jsx';
 
-export function StoreMenu({ onRecomprar }) {
+// REF-CAP-01 · Onda 4: forwardRef + useImperativeHandle expõem SÓ um resumo imperativo do estado que já
+// existia (drawer/tela) — nada é movido/renomeado. Único consumidor: o botão físico "voltar" do Android
+// (hooks/useCapacitorBackButton.js), que precisa saber "tem algo aberto aqui?" sem StoreApp/App.jsx
+// precisarem conhecer os detalhes do menu.
+export const StoreMenu = forwardRef(function StoreMenu({ onRecomprar }, ref) {
   const [drawer, setDrawer] = useState(false);
   const [tela, setTela] = useState(null); // login | pedidos | conta | contato | sobre | termos | fidelidade
   const navegar = (t) => { setDrawer(false); setTela(t); };
   const fechar = () => setTela(null);
+
+  useImperativeHandle(ref, () => ({
+    temAlgoAberto: () => drawer || !!tela,
+    fecharTudo: () => { setDrawer(false); setTela(null); },
+  }), [drawer, tela]);
 
   return (
     <>
@@ -38,4 +47,4 @@ export function StoreMenu({ onRecomprar }) {
       <CompletarCadastro />
     </>
   );
-}
+});

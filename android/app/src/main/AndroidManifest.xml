@@ -22,6 +22,18 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- REF-CAP-01 · Onda 4 (D5): volta do login Google nativo (Browser do sistema + deep link).
+                 Esquema precisa casar EXATAMENTE com DEEP_LINK_LOGIN em src/services/AuthService.js e com
+                 a entrada correspondente no allow-list de Redirect URLs do Supabase Auth. launchMode
+                 singleTask (acima, ja existente) garante que o app nao reinicia ao receber o deep link -
+                 o listener appUrlOpen registrado em JS continua vivo pra captura-lo. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="br.com.valionsistemas.encanto" android:host="login-callback" />
+            </intent-filter>
+
         </activity>
 
         <provider
@@ -38,4 +50,13 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- REF-CAP-01 · Onda 4: busca de endereco (src/address/hooks/useAddressSearch.js) usa
+         navigator.geolocation.getCurrentPosition sem nenhum plugin Capacitor dedicado — a Bridge nativa
+         do Capacitor ja intercepta o prompt de geolocalizacao da WebView (onGeolocationPermissionsShowPrompt)
+         e pede a permissao do Android automaticamente, DESDE QUE ela exista aqui no manifest. Nenhuma
+         mudanca de codigo JS necessaria. COARSE + FINE (o Android sempre concede as duas juntas quando
+         FINE e' aceita; COARSE sozinha e' o fallback se o usuario negar FINE). -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 </manifest>

@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback } from 'react';
+import { useState, useMemo, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { LOGO } from '../lib/supabase.js';
 import { fmt } from '../utils/format.js';
 import { resolverAdicionais, selecionarFonteAdicionais } from '../utils/addons.js';
@@ -36,18 +36,21 @@ import { DS } from '../services/DataService.js';                       // REF-CL
 import { montarRecompra } from '../components/pedidos/recompra.js';   // REF-CLIENTE-02 Onda 4 (regras puras)
 import { ValionCredit } from '../components/ValionCredit.jsx';        // REF-BRAND-02: assinatura institucional do rodape
 
-export function StoreApp({ onAdmin }) {
+// REF-CAP-01 · Onda 4: forwardRef repassado até StoreAppContent — único consumidor é o botão físico
+// "voltar" do Android (hooks/useCapacitorBackButton.js via App.jsx), que precisa fechar o que estiver
+// aberto na loja (modal/carrinho/fidelidade/menu) sem StoreApp virar dono de nenhum router novo.
+export const StoreApp = forwardRef(function StoreApp({ onAdmin }, ref) {
   /* REF-CHECKOUT-ADDRESS-01: a loja inteira (Header + Checkout) vive sob o AddressProvider — FONTE UNICA
      do endereco de entrega. O AddressModal e renderizado uma unica vez pelo provider (overlay sobre o
      Header ou o Checkout). App.jsx nao ganha responsabilidade: o provider e escopo da loja. */
   return (
     <AddressProvider>
-      <StoreAppContent onAdmin={onAdmin} />
+      <StoreAppContent onAdmin={onAdmin} ref={ref} />
     </AddressProvider>
   );
-}
+});
 
-function StoreAppContent({ onAdmin }) {
+const StoreAppContent = forwardRef(function StoreAppContent({ onAdmin }, ref) {
   const [page,          setPage]         = useState('home');
   const [search,        setSearch]        = useState('');
   const [modal,         setModal]         = useState(null);
@@ -131,6 +134,21 @@ function StoreAppContent({ onAdmin }) {
   /* REF-COMPANY-01: dados institucionais da empresa (config unica no Supabase). O whatsapp oficial
      alimenta o checkout (SuccessPage) SEMPRE a partir do cadastro da empresa — nunca mais hardcoded. */
   const companyInfo = useCompanyInfo();
+
+  // REF-CAP-01 · Onda 4: resumo imperativo do que está "aberto" na loja, na ordem em que o botão físico
+  // "voltar" do Android deve fechar (o mais recente/por cima primeiro). Nenhum estado novo — só expõe o
+  // que já existe acima (page/modal/cartOpen/showLoyalty) + o que o StoreMenu já expõe (menu/telas).
+  const storeMenuRef = useRef(null);
+  useImperativeHandle(ref, () => ({
+    temAlgoAberto: () => page === 'checkout' || page === 'success' || !!modal || cartOpen || showLoyalty || !!storeMenuRef.current?.temAlgoAberto(),
+    fecharTopo: () => {
+      if (page === 'checkout' || page === 'success') { setPage('home'); return; }
+      if (modal) { setModal(null); return; }
+      if (cartOpen) { setCartOpen(false); return; }
+      if (showLoyalty) { setShowLoyalty(false); return; }
+      storeMenuRef.current?.fecharTudo();
+    },
+  }), [page, modal, cartOpen, showLoyalty]);
 
   if (page==='checkout') return <CheckoutPage cart={cart} deliveryMode={deliveryMode} onBack={()=>setPage('home')} onSuccess={msg=>{setWaMsg(msg);setPage('success');}}/>;
   if (page==='success')  return <SuccessPage  msg={waMsg} cart={cart} onBack={()=>setPage('home')} deliveryEta={deliveryEta} deliveryMode={deliveryMode} whatsapp={companyInfo.whatsapp}/>;
@@ -216,7 +234,7 @@ function StoreAppContent({ onAdmin }) {
           <button className="header-admin-btn" data-testid="header-admin-btn" onClick={onAdmin} title="Painel Admin">
             ⚙️
           </button>
-          <StoreMenu onRecomprar={recomprar} />
+          <StoreMenu ref={storeMenuRef} onRecomprar={recomprar} />
         </div>
 
       </header>
@@ -661,4 +679,4 @@ function StoreAppContent({ onAdmin }) {
 
     </div>
   );
-}
+});

@@ -93,8 +93,14 @@ byte-a-byte idêntico a antes (hashes conferidos), `test:domain` 309/309. Onda 2
 adicional**: o template do Capacitor 8.x já gera `compileSdk`/`targetSdk` 36, AGP 8.13.0, Gradle 8.14.3,
 AndroidX, Java 21, resolvendo a motivação do Play Protect de fábrica) concluídas. Achado que corrige a
 Fase 1: `npx cap sync android` não precisa de JDK/SDK (só cópia de arquivo + config Gradle) — a ausência
-de toolchain nesta máquina só bloqueia a compilação real (Onda 6), prevista via CI. Ondas 4–8 (integração
-nativa/assets/APK/distribuição/documentação) pendentes — ver [progress](../ref/REF-CAP-01-progress.md).
+de toolchain nesta máquina só bloqueia a compilação real (Onda 6), prevista via CI. Onda 4 (integração
+nativa, código completo): OAuth Google via Browser do sistema + deep link + troca PKCE manual (D5,
+documentado ANTES do código a pedido do dono); botão físico "voltar" via resumo imperativo de estado em
+`StoreApp`/`StoreMenu` — sem novo router (D6); permissão de geolocalização só no manifest (zero mudança
+JS); impressão nativa via plugin Capacitor local (`NativePrintPlugin.java` +
+`WebView.createPrintDocumentAdapter`/`PrintManager`, D7) — Java não compilável nesta máquina (sem JDK),
+risco comunicado, validação real reservada pra Onda 6. `test:domain` 309/309. Ondas 5–8 (assets/APK/
+distribuição/documentação) pendentes — ver [progress](../ref/REF-CAP-01-progress.md).
 
 ## Sequência da evolução arquitetural
 

@@ -12,7 +12,8 @@ ver Onda 4. Ver auditoria completa e D1 em
 
 ## Estado atual
 
-🚧 Ondas 1–3 CONCLUÍDAS (Onda 3 sem trabalho adicional — ver D3 do ADR). Ondas 4–8 pendentes.
+🚧 Ondas 1–4 CONCLUÍDAS (código; Onda 3 sem trabalho adicional — ver D3 do ADR; validação real da Onda 4
+em dispositivo físico fica pra Onda 6). Ondas 5–8 pendentes.
 
 ## Onda 1 — Dual Build
 
@@ -70,11 +71,34 @@ Play Protect, sem nenhum bump manual de versão.
 
 ## Onda 4 — Integração nativa
 
-Status: 🟡 EM ANDAMENTO. Decisão técnica do fluxo Google OAuth (Browser + Deep Link + PKCE) documentada em
-**D5 do ADR** — instrução explícita do dono cumprida, aguardando confirmação antes do código. Escopo
-completo da onda: implementar D5 (branch de plataforma em `AuthService.signInWithGoogle`, `@capacitor/
-browser` + `@capacitor/app`, `intent-filter` do deep link, nova entrada no allow-list do Supabase — passo
-do dono), botão físico "voltar", permissões (geolocalização), impressão (comanda térmica do admin).
+Status: ✅ CONCLUÍDA (código). Validação real (dispositivo físico) reservada para a Onda 6.
+
+- **OAuth Google nativo (D5 do ADR):** `AuthService.signInWithGoogle()` ganhou branch
+  `Capacitor.isNativePlatform()` → `signInWithGoogleNativo()` (nova, privada): `signInWithOAuth({...,
+  skipBrowserRedirect:true})` + `Browser.open()` (navegador do sistema) + `CapacitorApp.addListener(
+  'appUrlOpen', …)` (deep link `br.com.valionsistemas.encanto://login-callback`) +
+  `exchangeCodeForSession(code)` manual. `AndroidManifest.xml`: novo `intent-filter` no `MainActivity`
+  (mesmo `launchMode="singleTask"` já existente). Web/PWA **inalterado** (branch nunca entra ali).
+  Pendente, passo do dono: nova entrada no allow-list de Redirect URLs do Supabase Auth.
+- **Botão físico "voltar" (D6 do ADR):** `hooks/useCapacitorBackButton.js` (novo), registrado em
+  `App.jsx`. `StoreApp.jsx` e `StoreMenu.jsx` ganharam `forwardRef`/`useImperativeHandle` (resumo
+  imperativo do que já está aberto — nenhum estado movido/renomeado). Prioridade: admin/login → volta pra
+  loja; dentro da loja, fecha modal/carrinho/fidelidade/menu (o que estiver por cima); nada aberto → sai
+  do app. Limitação aceita conscientemente: painel Admin não expõe resumo próprio (voltar sempre sai pra
+  loja) — fora do escopo pedido para esta onda.
+- **Permissão de geolocalização:** `ACCESS_FINE_LOCATION`/`ACCESS_COARSE_LOCATION` no
+  `AndroidManifest.xml`. Sem mudança de código JS — a Bridge do Capacitor já intercepta o prompt de
+  geolocalização da WebView automaticamente quando a permissão existe no manifest.
+- **Impressão nativa (D7 do ADR):** `NativePrintPlugin.java` (novo, plugin Capacitor LOCAL — não é pacote
+  npm), registrado em `MainActivity.java`. `src/lib/nativePrint.js` (novo, ponte JS via `registerPlugin`).
+  `printComanda.js` ganhou branch `Capacitor.isNativePlatform()` — caminho do iframe/`window.print()`
+  **intocado** pro navegador/PWA. **Risco assumido e comunicado:** código Java segue a receita oficial da
+  Android (`WebView.createPrintDocumentAdapter`+`PrintManager`) mas não pôde ser compilado nesta máquina
+  (sem JDK/SDK) — validação real fica pra Onda 6.
+- Validado: `npm run build` (web, hash de bundle mudou — esperado, `~10 KB` gzip a mais dos 3 plugins
+  Capacitor agora usados por `AuthService.js`/`printComanda.js`, nunca executados no navegador) +
+  `npm run build:capacitor` + `npx cap sync android` (detectou `@capacitor/app`+`@capacitor/browser`
+  automaticamente) + `npm run test:domain` 309/309 — zero regressão.
 
 ## Onda 5 — Assets
 
@@ -102,7 +126,20 @@ Status: ⏳ PENDENTE. Consolidar ADR/progress, registrar as 3 formas oficiais de
 
 - `vite.config.js` — Dual Build (Onda 1).
 - `package.json`/`package-lock.json` — scripts `build:capacitor`/`preview:capacitor` (Onda 1);
-  `@capacitor/core`+`@capacitor/android` (dependencies) e `@capacitor/cli` (devDependencies) (Onda 2).
+  `@capacitor/core`+`@capacitor/android` (dependencies) e `@capacitor/cli` (devDependencies) (Onda 2);
+  `@capacitor/browser`+`@capacitor/app` (dependencies) (Onda 4).
+- `src/services/AuthService.js` — `signInWithGoogleNativo()` + branch de plataforma (Onda 4, D5).
+- `src/hooks/useCapacitorBackButton.js` (novo, Onda 4, D6).
+- `src/pages/StoreApp.jsx`/`src/components/menu/StoreMenu.jsx` — `forwardRef`/`useImperativeHandle`
+  (resumo de estado pro botão voltar, Onda 4, D6).
+- `src/App.jsx` — `useCapacitorBackButton` + `ref` pro `StoreApp` (Onda 4, D6).
+- `src/lib/nativePrint.js` (novo, Onda 4, D7).
+- `src/components/admin/comanda/printComanda.js` — branch de plataforma (Onda 4, D7).
+- `android/app/src/main/AndroidManifest.xml` — `intent-filter` do deep link de login + permissões de
+  geolocalização (Onda 4).
+- `android/app/src/main/java/br/com/valionsistemas/encanto/NativePrintPlugin.java` (novo, Onda 4, D7).
+- `android/app/src/main/java/br/com/valionsistemas/encanto/MainActivity.java` — registro do
+  `NativePrintPlugin` (Onda 4, D7).
 - `capacitor.config.json` (novo, Onda 2)
 - `android/` (novo, Onda 2 — projeto nativo gerado pelo Capacitor, commitado por convenção)
 - `docs/adr/REF-CAP-01-app-nativo-android.md` (novo, Onda 1; D2–D4 Onda 2)

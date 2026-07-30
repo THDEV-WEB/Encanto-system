@@ -68,6 +68,8 @@
   },
   "dependencies": {
     "@capacitor/android": "^8.4.2",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/browser": "^8.0.4",
     "@capacitor/core": "^8.4.2",
     "@sentry/react": "10.68.0",
     "@supabase/supabase-js": "2.39.3",
