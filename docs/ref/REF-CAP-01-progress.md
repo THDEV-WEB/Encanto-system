@@ -12,7 +12,7 @@ ver Onda 4. Ver auditoria completa e D1 em
 
 ## Estado atual
 
-🚧 Onda 1 (Dual Build) CONCLUÍDA. Ondas 2–8 pendentes.
+🚧 Ondas 1–3 CONCLUÍDAS (Onda 3 sem trabalho adicional — ver D3 do ADR). Ondas 4–8 pendentes.
 
 ## Onda 1 — Dual Build
 
@@ -37,14 +37,36 @@ Status: ✅ CONCLUÍDA.
 
 ## Onda 2 — Integração do Capacitor
 
-Status: ⏳ PENDENTE. Instalar `@capacitor/core`/`@capacitor/cli`/`@capacitor/android`, `npx cap init`,
-`capacitor.config` apontando `webDir` para `dist/capacitor` (saída da Onda 1), `npx cap add android`,
-`npx cap sync`.
+Status: ✅ CONCLUÍDA.
+
+- Instalado `@capacitor/core` (`dependencies`) + `@capacitor/cli` (`devDependencies`) + `@capacitor/
+  android` (`dependencies`, convenção oficial do Capacitor) — versão **8.4.2** (atual). `npm audit`: 10
+  vulnerabilidades (1 moderada, 9 altas), todas em devDependencies — `npm audit --omit=dev` = **0** (mesmo
+  padrão já usado para `vite-plugin-pwa`).
+- `npx cap init "Encanto" "br.com.valionsistemas.encanto" --web-dir=dist/capacitor` → `capacitor.config.
+  json` (`appId`/`appName`/`webDir` — ver D2 do ADR pro racional do `appId`).
+- `npx cap add android` → projeto nativo em `android/` (commitado, como é convenção do Capacitor — só
+  `node_modules` fica de fora). O próprio template já traz `android/.gitignore` cobrindo `build/`,
+  `.gradle/`, `local.properties` (path do SDK, específico de cada máquina) e os artefatos que `cap sync`
+  regenera sozinho (web assets copiados, `capacitor.config.json`/`capacitor.plugins.json` internos) — nada
+  extra precisou ser adicionado.
+- `npx cap sync android` → copia `dist/capacitor` para `android/app/src/main/assets/public` + regenera
+  `capacitor.settings.gradle`/`capacitor.build.gradle`. **Achado corrige a Fase 1:** esse passo NÃO invoca
+  Gradle/JDK de verdade (só cópia de arquivo + geração de config) — rodou sem erro apesar da ausência de
+  Java nesta máquina. Ver D4 do ADR: a falta de toolchain só bloqueia a COMPILAÇÃO real (Onda 6), não a
+  integração.
+- Validado: `npm run build` (web) com hash de JS idêntico ao anterior (Capacitor instalado não entra no
+  bundle web, nada o importa) + `npm run test:domain` 309/309 — zero regressão.
 
 ## Onda 3 — Projeto Android
 
-Status: ⏳ PENDENTE. `compileSdkVersion`/`targetSdkVersion`/Gradle/AndroidX nas versões atuais
-recomendadas (resolve o alerta do Play Protect na raiz).
+Status: ✅ CONCLUÍDA — **sem trabalho adicional** (ver D3 do ADR). O template do Capacitor 8.4.2 já gera
+o projeto com `compileSdkVersion`/`targetSdkVersion` **36** (Android 16, atual), `minSdkVersion` **24**,
+Android Gradle Plugin **8.13.0**, Gradle wrapper **8.14.3**, `android.useAndroidX=true`, Java
+**21** — todos objetivamente as versões recomendadas atuais, confirmados lendo os arquivos gerados
+(`android/variables.gradle`, `android/build.gradle`, `android/gradle/wrapper/gradle-wrapper.properties`,
+`android/gradle.properties`, `android/app/capacitor.build.gradle`). Resolve diretamente a motivação do
+Play Protect, sem nenhum bump manual de versão.
 
 ## Onda 4 — Integração nativa
 
@@ -78,6 +100,9 @@ Status: ⏳ PENDENTE. Consolidar ADR/progress, registrar as 3 formas oficiais de
 ## Arquivos modificados até aqui
 
 - `vite.config.js` — Dual Build (Onda 1).
-- `package.json` — scripts `build:capacitor`/`preview:capacitor` (Onda 1).
-- `docs/adr/REF-CAP-01-app-nativo-android.md` (novo)
+- `package.json`/`package-lock.json` — scripts `build:capacitor`/`preview:capacitor` (Onda 1);
+  `@capacitor/core`+`@capacitor/android` (dependencies) e `@capacitor/cli` (devDependencies) (Onda 2).
+- `capacitor.config.json` (novo, Onda 2)
+- `android/` (novo, Onda 2 — projeto nativo gerado pelo Capacitor, commitado por convenção)
+- `docs/adr/REF-CAP-01-app-nativo-android.md` (novo, Onda 1; D2–D4 Onda 2)
 - `docs/ref/REF-CAP-01-progress.md` (novo, este arquivo)

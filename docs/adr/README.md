@@ -88,9 +88,13 @@ geolocalização) apresentada e **aprovada pelo dono (2026-07-30)**. Onda 1 (Dua
 config.js` único (`defineConfig(({mode})=>…)`, gate `mode==='capacitor'`) gera `dist/capacitor` com
 `base:'/'` e Service Worker desligado (`VitePWA({disable:true})`, plugin mantido no array só para o
 módulo virtual `virtual:pwa-register` continuar resolvendo) — fora do modo `capacitor`, build web
-byte-a-byte idêntico a antes (hashes conferidos), `test:domain` 309/309. Ondas 2–8 (Capacitor/Android
-project/integração nativa/assets/APK/distribuição/documentação) pendentes — ver
-[progress](../ref/REF-CAP-01-progress.md).
+byte-a-byte idêntico a antes (hashes conferidos), `test:domain` 309/309. Onda 2 (Capacitor 8.4.2 +
+`android/` nativo, `appId br.com.valionsistemas.encanto`) e Onda 3 (versões modernas — **sem trabalho
+adicional**: o template do Capacitor 8.x já gera `compileSdk`/`targetSdk` 36, AGP 8.13.0, Gradle 8.14.3,
+AndroidX, Java 21, resolvendo a motivação do Play Protect de fábrica) concluídas. Achado que corrige a
+Fase 1: `npx cap sync android` não precisa de JDK/SDK (só cópia de arquivo + config Gradle) — a ausência
+de toolchain nesta máquina só bloqueia a compilação real (Onda 6), prevista via CI. Ondas 4–8 (integração
+nativa/assets/APK/distribuição/documentação) pendentes — ver [progress](../ref/REF-CAP-01-progress.md).
 
 ## Sequência da evolução arquitetural
 

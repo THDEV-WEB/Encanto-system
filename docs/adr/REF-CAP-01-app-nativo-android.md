@@ -118,6 +118,48 @@ WebView nativo sem chrome de navegador não exibe favicon nenhum, e o ícone rea
 recursos nativos (`mipmap-*`, gerados por `@capacitor/assets` na Onda 5), não desses `<link>`. Registrado
 aqui para transparência; não é um bloqueio da Onda 1.
 
-## Pendências (Ondas 2–8)
+### D2 — `appId` do Android: `br.com.valionsistemas.encanto`
+
+**Decisão:** reverse-DNS **estrito** do domínio institucional que o dono realmente possui
+(`valionsistemas.com.br` → `br.com.valionsistemas`), com o app como último segmento (`.encanto`) — mesmo
+padrão recomendado pela própria documentação do Android para quem já tem um domínio próprio. Alternativas
+mais comuns na prática (`com.valionsistemas.encanto`, ignorando o `.br`) foram descartadas por serem menos
+formalmente corretas sem nenhum ganho real.
+
+**Por que decidir agora, e não perguntar:** o `applicationId` é tecnicamente barato de trocar **nesta
+fase** (nenhum APK publicado, nenhuma instalação real em campo) — mudar depois de publicado é que seria
+caro (Play Store trataria como um app novo). Registrado aqui de forma explícita e reversível, não como
+decisão de produto silenciosa.
+
+### D3 — Onda 3 ("versões modernas") já vem satisfeita pelo template do Capacitor 8.x
+
+A auditoria da Fase 1 previu uma Onda 3 dedicada a atualizar `compileSdkVersion`/`targetSdkVersion`/
+AndroidX/Gradle manualmente. Na prática, `npx cap add android` do Capacitor **8.4.2** (a versão mais
+recente, instalada nesta REF) já gera o projeto com:
+
+- `compileSdkVersion`/`targetSdkVersion` = **36** (Android 16, a API mais recente) — resolve diretamente a
+  motivação do Play Protect.
+- `minSdkVersion` = **24** (Android 7.0) — piso razoável, cobre a esmagadora maioria dos aparelhos ativos.
+- Android Gradle Plugin **8.13.0** + Gradle wrapper **8.14.3** (`android/gradle/wrapper/gradle-wrapper.
+  properties`) — ambos atuais.
+- `android.useAndroidX=true` (`android/gradle.properties`) + todas as libs AndroidX em versões recentes
+  (`variables.gradle`).
+- `sourceCompatibility`/`targetCompatibility` Java **21** (`capacitor.build.gradle`).
+
+**Decisão:** não fazer nenhum bump manual de versão — usar os defaults do template tal como vieram, já que
+são objetivamente as versões recomendadas atuais (evidência: geradas pela ferramenta oficial na hora,
+não uma suposição). Onda 3 do plano original **fica sem trabalho adicional**; ver progress doc.
+
+### D4 — `npx cap sync android` NÃO exige JDK/Android SDK (correção de uma suposição da auditoria)
+
+A Fase 1 apontou a ausência de Java/Android SDK/Gradle nesta máquina como bloqueio para "Onda 2". Testado
+na prática: `npx cap add android` + `npx cap sync android` rodaram **sem erro e sem nenhuma dependência de
+JDK** — são só cópia de arquivos (web assets → `android/app/src/main/assets/public`) e geração de config
+Gradle (`capacitor.settings.gradle`/`capacitor.build.gradle`), nunca uma invocação real do
+`./gradlew`/compilador Java. **A ausência de toolchain só bloqueia a COMPILAÇÃO de verdade** (`./gradlew
+assembleDebug`, abrir no Android Studio, ou `npx cap run android`) — ou seja, a Onda 6 (gerar o APK), não
+a integração em si. Mantém-se a recomendação de usar CI (Onda 6) para a compilação real.
+
+## Pendências (Ondas 4–8)
 
 Ver [`docs/ref/REF-CAP-01-progress.md`](../ref/REF-CAP-01-progress.md) para o estado onda a onda.
