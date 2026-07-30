@@ -282,8 +282,13 @@ para navegador/PWA.
 pela própria Android (`developer.android.com/guide/topics/text/webview-printing`) e usa só APIs estáveis
 (`PrintManager`, `WebView.createPrintDocumentAdapter`), mas **não pôde ser compilado nem executado nesta
 máquina** (sem JDK/Android SDK, ver D4) — a mesma limitação de ambiente já aceita para toda a Onda 6.
-Validação real (o diálogo de impressão do Android realmente aparece, com o conteúdo certo) fica pendente
-de um build real em dispositivo físico.
+
+**Atualização (Onda 6):** o risco de COMPILAÇÃO se confirmou infundado — o
+[run 30582093288](https://github.com/THDEV-WEB/Encanto-system/actions/runs/30582093288) do
+`android-apk.yml` compilou `NativePrintPlugin.java` sem nenhum erro na primeira tentativa (Gradle 8.14.3 +
+AGP 8.13.0 + JDK 21, runner `ubuntu-latest`). Ainda pendente: a validação FUNCIONAL real (o diálogo
+nativo de impressão do Android realmente aparece, com o conteúdo certo da comanda) — isso só é observável
+instalando o APK num aparelho físico, fora do alcance deste ambiente.
 
 ### D8 — Assets nativos: `@capacitor/assets` (Easy Mode) a partir do ícone já existente
 

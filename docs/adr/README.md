@@ -103,8 +103,12 @@ risco comunicado, validação real reservada pra Onda 6. `test:domain` 309/309. 
 `@capacitor/assets` gerou ícone adaptativo + splash a partir do `icon-encanto.png` já existente (validado
 visualmente, não só gerado às cegas); achado real corrigido — `colors.xml` não existia no template
 padrão do Capacitor (`colorPrimary`/`colorPrimaryDark`/`colorAccent` indefinidos quebrariam o Gradle),
-agora usa o mesmo `#6B1F5D` do manifest web. Ondas 6–8 (APK/distribuição/documentação) pendentes — ver
-[progress](../ref/REF-CAP-01-progress.md).
+agora usa o mesmo `#6B1F5D` do manifest web. Onda 6: push feito, workflow novo
+`.github/workflows/android-apk.yml` (`workflow_dispatch`, não altera `ci.yml`) disparado via API —
+**build automatizada CONCLUÍDA COM SUCESSO** (`ci.yml` + `android-apk.yml` ambos verdes; a primeira
+compilação real do `NativePrintPlugin.java` da D7 passou sem erros). Falta a validação manual em
+dispositivo físico (dono) + entrada no allow-list do Supabase (dono). Ondas 7–8 (distribuição/
+documentação) pendentes — ver [progress](../ref/REF-CAP-01-progress.md).
 
 ## Sequência da evolução arquitetural
 

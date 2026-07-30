@@ -12,9 +12,10 @@ ver Onda 4. Ver auditoria completa e D1 em
 
 ## Estado atual
 
-🚧 Ondas 1–5 CONCLUÍDAS (código; Onda 3 sem trabalho adicional — ver D3 do ADR; validação real das Ondas
-4/5 em dispositivo físico fica pra Onda 6). Onda 6 EM ANDAMENTO (workflow criado, aguardando push pra
-disparar). Ondas 7–8 pendentes.
+🚧 Ondas 1–5 CONCLUÍDAS. Onda 6: build automatizada do APK **CONCLUÍDA COM SUCESSO** (push feito, `ci.yml`
++ `android-apk.yml` verdes, primeira compilação real do `NativePrintPlugin.java` sem erros) — falta só a
+validação manual em dispositivo físico (dono) + a entrada no allow-list do Supabase (dono). Ondas 7–8
+pendentes.
 
 ## Onda 1 — Dual Build
 
@@ -128,13 +129,27 @@ Status: ✅ CONCLUÍDA (ver D8 do ADR).
 
 ## Onda 6 — Gerar APK
 
-Status: 🟡 EM ANDAMENTO. `.github/workflows/android-apk.yml` (novo, `workflow_dispatch` manual — não
-altera `ci.yml`): `npm ci` → `build:capacitor` → `cap sync android` → JDK 21 (`actions/setup-java`,
-exigido pelo AGP 8.13/`capacitor.build.gradle`) → `./gradlew assembleDebug` → upload do
-`app-debug.apk` como artefato (30 dias). YAML validado via `js-yaml` (parse limpo). **Ainda não disparado**
-— depende de push pro GitHub (nenhum commit desta REF foi pushed ainda). Pendente: push (aguardando
-confirmação do dono), disparar o workflow, baixar o APK, testar em dispositivo físico (instalação, login,
-pedidos, admin, upload, geolocalização, impressão), confirmar ausência de alerta do Play Protect.
+Status: 🟡 EM ANDAMENTO (build automatizada CONCLUÍDA COM SUCESSO; validação em dispositivo físico segue
+pendente — depende do dono).
+
+- Push feito (`2b9e0f0..8164f6c` em `origin/main`, 6 commits desta REF). `ci.yml` existente rodou sobre
+  esse código automaticamente ([run 30581874670](https://github.com/THDEV-WEB/Encanto-system/actions/runs/30581874670))
+  — **success** (build/domain-tests/e2e).
+- `.github/workflows/android-apk.yml` disparado manualmente via API (`workflow_dispatch`, token fornecido
+  pelo dono só para essa chamada) — [run 30582093288](https://github.com/THDEV-WEB/Encanto-system/actions/runs/30582093288),
+  **success**, 126s. Todos os 14 steps verdes, incluindo **a primeira compilação real do
+  `NativePrintPlugin.java` desta REF** (D7 do ADR) — o risco assumido por não conseguir compilar
+  localmente (sem JDK/SDK nesta máquina) se confirmou infundado: Gradle 8.14.3 + AGP 8.13.0 + JDK 21
+  compilaram o plugin sem nenhum erro na primeira tentativa. Artefato `encanto-debug-apk` (APK debug,
+  assinado com a keystore de debug padrão do Android), **5.59 MB**, expira em 30 dias
+  (2026-08-29) — baixável em Actions → esse run → Artifacts, na interface do GitHub.
+- **Pendente (dono, física):** baixar o APK, instalar num Android real, validar instalação, login (Google
+  nativo — Onda 4/D5 — e e-mail OTP), pedidos, painel admin, upload de imagem, geolocalização, impressão
+  (D7 — a única peça cujo comportamento *visual/funcional* real, não só a compilação, segue não verificado
+  neste ambiente), e confirmar ausência do alerta do Play Protect que motivou a REF inteira. Falta também
+  o passo já registrado no D5: nova entrada no allow-list de Redirect URLs do Supabase Auth para
+  `br.com.valionsistemas.encanto://login-callback` — sem isso, o login Google nativo não vai completar
+  mesmo com o app instalado corretamente.
 
 ## Onda 7 — Distribuição
 
