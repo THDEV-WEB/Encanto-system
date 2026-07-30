@@ -107,8 +107,12 @@ agora usa o mesmo `#6B1F5D` do manifest web. Onda 6: push feito, workflow novo
 `.github/workflows/android-apk.yml` (`workflow_dispatch`, não altera `ci.yml`) disparado via API —
 **build automatizada CONCLUÍDA COM SUCESSO** (`ci.yml` + `android-apk.yml` ambos verdes; a primeira
 compilação real do `NativePrintPlugin.java` da D7 passou sem erros). Falta a validação manual em
-dispositivo físico (dono) + entrada no allow-list do Supabase (dono). Ondas 7–8 (distribuição/
-documentação) pendentes — ver [progress](../ref/REF-CAP-01-progress.md).
+dispositivo físico (dono) + entrada no allow-list do Supabase (dono). Onda 7 (D9): rota real
+`/encanto/download` via `rewrite` novo no `vercel.json` (projeto não tinha fallback de SPA nenhum
+configurado) + `DownloadScreen.jsx`/`useDownloadPage.js` novos; botão já funcional, mas o arquivo
+`Encanto.apk` **deliberadamente ainda não publicado** — só após validação física, pra não expor um
+binário não testado no site em produção (push já dispara deploy automático). Onda 8 (documentação final)
+pendente — ver [progress](../ref/REF-CAP-01-progress.md).
 
 ## Sequência da evolução arquitetural
 

@@ -331,6 +331,34 @@ lacuna encontrada.
 de imagem). `npm audit --omit=dev` permanece **0** — mesmo padrão já aceito pra `vite-plugin-pwa`/
 `@capacitor/cli`.
 
-## Pendências (Ondas 6–8)
+### D9 — Distribuição: rota real via `vercel.json` rewrite; APK publicado só após validação física
+
+**Problema:** o pedido era uma URL real e compartilhável (`https://valionsistemas.com.br/encanto/download`),
+não um hash como o acesso ao Admin (`#admin-encanto`) usa. Path real exige que o **servidor** (Vercel)
+saiba servir o bundle React pra essa URL — investigação confirmou que este projeto **não tinha nenhum
+fallback de SPA configurado** em `vercel.json` (só o `redirects` da raiz institucional): sem uma regra
+explícita, `/encanto/download` bateria direto no host estático e devolveria 404 antes do bundle carregar.
+
+**Decisão:** `vercel.json` ganhou `"rewrites": [{"source":"/encanto/download","destination":"/encanto/index.html"}]`
+— escopado só a esse path novo (não um catch-all `/encanto/(.*)`, pra não alterar como nenhum outro path
+existente já resolve, ex.: `/encanto/assets/...` continua servido como arquivo real). Dentro do bundle,
+`hooks/useDownloadPage.js` (novo) faz o mesmo tipo de checagem 1x-no-mount que `useAdminSession.js` já usa
+pro hash do Admin, só que comparando `window.location.pathname`. `App.jsx` intercepta **depois** de todos
+os hooks (regra dos hooks preservada) e **antes** do branch `mode` normal, renderizando
+`components/DownloadScreen.jsx` (novo) — uma página standalone, fora da árvore Loja/Admin.
+
+**Decisão consciente — o arquivo `Encanto.apk` ainda não foi publicado:** o botão da página já é
+funcional, apontando pra `/encanto/downloads/Encanto.apk` — mas esse arquivo **ainda não existe** no
+repositório. O motivo: o APK gerado na Onda 6 é um build DEBUG que só teve a **compilação** validada (CI
+verde); a validação **funcional** num aparelho físico real (login, pedidos, impressão, ausência do alerta
+Play Protect) é uma pendência explícita do dono, ainda em aberto. Como qualquer push nesta REF já dispara
+deploy automático de produção (Vercel), publicar um link de download real e funcionando *antes* dessa
+validação colocaria um binário não testado ao alcance de qualquer visitante do site — um risco
+desnecessário quando o pedido original já era explícito sobre não automatizar a distribuição
+("Não implementar atualização automática de APK... apenas preparar distribuição"). A infraestrutura está
+100% pronta; falta só colocar o arquivo validado em `public/downloads/Encanto.apk` (passo manual,
+deliberadamente fora desta execução).
+
+## Pendências (Onda 8)
 
 Ver [`docs/ref/REF-CAP-01-progress.md`](../ref/REF-CAP-01-progress.md) para o estado onda a onda.

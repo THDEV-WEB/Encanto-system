@@ -11,6 +11,8 @@ import { AuthProvider } from './providers/AuthProvider.jsx'; // AUTH-01: sessao 
 import { useAdminSession } from './hooks/useAdminSession.js'; // REF-ADMIN-01 · Onda 2: sessao do ADMIN (restauracao + logout real)
 import { usePwaUpdate } from './hooks/usePwaUpdate.js'; // REF-MOBILE-01 Onda 6: Service Worker (aviso de nova versao, nunca troca sozinho)
 import { useCapacitorBackButton } from './hooks/useCapacitorBackButton.js'; // REF-CAP-01 Onda 4: botao fisico "voltar" do Android
+import { useDownloadPage } from './hooks/useDownloadPage.js'; // REF-CAP-01 Onda 7: /encanto/download (distribuicao do APK)
+import { DownloadScreen } from './components/DownloadScreen.jsx';
 import { Toast } from './components/ui/Toast.jsx';
 
 /* ============================================================
@@ -107,6 +109,12 @@ function App() {
   const { novaVersaoDisponivel, atualizar, dispensar } = usePwaUpdate(); // REF-MOBILE-01 Onda 6
   const storeAppRef = useRef(null); // REF-CAP-01 Onda 4: resumo imperativo do que esta aberto na loja (ver StoreApp.jsx)
   useCapacitorBackButton({ mode, verLoja, storeRef: storeAppRef });
+  const isDownloadPage = useDownloadPage(); // REF-CAP-01 Onda 7
+
+  // /encanto/download e' uma pagina standalone (fora de Loja/Admin) — mesmo padrao do acesso ao Admin por
+  // hash (useAdminSession), so' que por path real (precisa do rewrite em vercel.json). Curto-circuita
+  // ANTES do mode-branch normal, mas DEPOIS de todos os hooks (regra dos hooks preservada).
+  if (isDownloadPage) return <AppShell><DownloadScreen/></AppShell>;
 
   let content;
   if (mode==='login')      content = <AdminLogin onLogin={entrar}/>;

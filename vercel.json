@@ -3,5 +3,8 @@
   "outputDirectory": "dist",
   "redirects": [
     { "source": "/", "destination": "/encanto", "permanent": false }
+  ],
+  "rewrites": [
+    { "source": "/encanto/download", "destination": "/encanto/index.html" }
   ]
 }

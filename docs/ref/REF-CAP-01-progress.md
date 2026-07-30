@@ -14,8 +14,9 @@ ver Onda 4. Ver auditoria completa e D1 em
 
 🚧 Ondas 1–5 CONCLUÍDAS. Onda 6: build automatizada do APK **CONCLUÍDA COM SUCESSO** (push feito, `ci.yml`
 + `android-apk.yml` verdes, primeira compilação real do `NativePrintPlugin.java` sem erros) — falta só a
-validação manual em dispositivo físico (dono) + a entrada no allow-list do Supabase (dono). Ondas 7–8
-pendentes.
+validação manual em dispositivo físico (dono) + a entrada no allow-list do Supabase (dono). Onda 7
+CONCLUÍDA (infraestrutura de distribuição pronta; arquivo do APK propositalmente ainda não publicado — ver
+seção da onda). Onda 8 pendente.
 
 ## Onda 1 — Dual Build
 
@@ -153,8 +154,37 @@ pendente — depende do dono).
 
 ## Onda 7 — Distribuição
 
-Status: ⏳ PENDENTE. Rota `/encanto/download` + botão "Baixar aplicativo Android". Sem atualização
-automática de APK nesta REF.
+Status: ✅ CONCLUÍDA (infraestrutura). Arquivo do APK em si ainda não colocado — decisão deliberada, ver
+abaixo.
+
+- `vercel.json`: novo `rewrites` (`/encanto/download` → `/encanto/index.html`). Achado: este projeto não
+  tinha NENHUM fallback de SPA configurado (só `redirects` da raiz institucional pra `/encanto`) — sem
+  esse rewrite, visitar `/encanto/download` batia direto no host estático do Vercel e devolvia 404 antes
+  do bundle React sequer carregar. Rewrite escopado só a esse path novo — nenhum outro comportamento de
+  rota existente foi tocado.
+- `hooks/useDownloadPage.js` (novo): mesma técnica já usada pelo acesso ao Admin
+  (`useAdminSession.js`, `window.location.hash==='#admin-encanto'`), só que por **path real** (pedido
+  explícito do dono era uma URL de verdade, compartilhável) em vez de hash. Checado 1x no mount.
+- `components/DownloadScreen.jsx` (novo): página standalone (fora de Loja/Admin), botão "Baixar aplicativo
+  Android" (`<a download href="/encanto/downloads/Encanto.apk">`), aviso sobre "fontes desconhecidas"
+  (instalação fora da Play Store), link de volta pro site.
+- `App.jsx`: `useDownloadPage()` + curto-circuito **depois** de todos os hooks (regra dos hooks
+  preservada), **antes** do branch normal `mode`. Página "Encanto" hardcoded aceito aqui pelo mesmo
+  precedente já registrado em REF-COMPANY-02 (`company-name.guard.mjs` só cobre uma lista fixa de
+  arquivos; este não entra nela — página de distribuição, não superfície de produto).
+- Validado: `npm run build` limpo, `test:domain` 309/309, **verificação real via Playwright** (não só
+  suposição): `/encanto/download` renderiza o título/botão certos, `href` do botão resolve pro path
+  esperado, zero erro de console; `/encanto/` (loja normal) segue carregando sem regressão.
+
+**Decisão deliberada — arquivo do APK ainda não publicado:** o botão aponta pra
+`/encanto/downloads/Encanto.apk`, um caminho **que ainda não existe** no repositório. O APK gerado na
+Onda 6 é um build DEBUG que passou na compilação mas **ainda não foi validado num aparelho físico** pelo
+dono (pendência já registrada na Onda 6). Como qualquer push nesta REF já dispara deploy automático de
+produção (Vercel, `push main = deploy`), publicar agora um botão de download real e funcionando
+significaria colocar um binário não testado ao alcance de qualquer visitante — por isso a infraestrutura
+foi construída 100% funcional (é só colocar o arquivo no lugar certo), mas o arquivo em si fica como
+próximo passo manual, depois da validação em dispositivo real. "Sem atualização automática de APK" já era
+uma restrição explícita do pedido original — isso só estende o mesmo princípio a esta primeira publicação.
 
 ## Onda 8 — Documentação
 
@@ -187,5 +217,9 @@ Status: ⏳ PENDENTE. Consolidar ADR/progress, registrar as 3 formas oficiais de
   template, `colorPrimary`/`colorPrimaryDark`/`colorAccent` não definidos).
 - `package.json`/`package-lock.json` — `@capacitor/assets` (devDependencies) (Onda 5).
 - `.github/workflows/android-apk.yml` (novo, Onda 6 — não altera `ci.yml`).
+- `vercel.json` — `rewrites` pro path `/encanto/download` (Onda 7).
+- `src/hooks/useDownloadPage.js` (novo, Onda 7).
+- `src/components/DownloadScreen.jsx` (novo, Onda 7).
+- `src/App.jsx` — curto-circuito pra `DownloadScreen` (Onda 7).
 - `docs/adr/REF-CAP-01-app-nativo-android.md` (novo, Onda 1; D2–D4 Onda 2)
 - `docs/ref/REF-CAP-01-progress.md` (novo, este arquivo)
