@@ -99,8 +99,12 @@ documentado ANTES do código a pedido do dono); botão físico "voltar" via resu
 `StoreApp`/`StoreMenu` — sem novo router (D6); permissão de geolocalização só no manifest (zero mudança
 JS); impressão nativa via plugin Capacitor local (`NativePrintPlugin.java` +
 `WebView.createPrintDocumentAdapter`/`PrintManager`, D7) — Java não compilável nesta máquina (sem JDK),
-risco comunicado, validação real reservada pra Onda 6. `test:domain` 309/309. Ondas 5–8 (assets/APK/
-distribuição/documentação) pendentes — ver [progress](../ref/REF-CAP-01-progress.md).
+risco comunicado, validação real reservada pra Onda 6. `test:domain` 309/309. Onda 5 (assets, D8):
+`@capacitor/assets` gerou ícone adaptativo + splash a partir do `icon-encanto.png` já existente (validado
+visualmente, não só gerado às cegas); achado real corrigido — `colors.xml` não existia no template
+padrão do Capacitor (`colorPrimary`/`colorPrimaryDark`/`colorAccent` indefinidos quebrariam o Gradle),
+agora usa o mesmo `#6B1F5D` do manifest web. Ondas 6–8 (APK/distribuição/documentação) pendentes — ver
+[progress](../ref/REF-CAP-01-progress.md).
 
 ## Sequência da evolução arquitetural
 

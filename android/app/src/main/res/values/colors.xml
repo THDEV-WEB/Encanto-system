@@ -1,0 +1,12 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <!-- REF-CAP-01 · Onda 5 (tema): faltava por completo no template padrao do Capacitor -
+         styles.xml ja referenciava @color/colorPrimary/colorPrimaryDark/colorAccent sem nenhum
+         colors.xml definindo-os (build quebraria: "resource color/colorPrimary not found").
+         colorPrimary/colorAccent = mesmo theme_color do manifest.json/index.html (#6B1F5D) - MESMA
+         identidade entre PWA e app nativo. colorPrimaryDark = variante ~22% mais escura (uso padrao
+         Android: tom da status bar), nao existia brand color equivalente pra reaproveitar. -->
+    <color name="colorPrimary">#6B1F5D</color>
+    <color name="colorPrimaryDark">#531849</color>
+    <color name="colorAccent">#6B1F5D</color>
+</resources>

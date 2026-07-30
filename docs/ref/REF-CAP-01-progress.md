@@ -12,8 +12,8 @@ ver Onda 4. Ver auditoria completa e D1 em
 
 ## Estado atual
 
-🚧 Ondas 1–4 CONCLUÍDAS (código; Onda 3 sem trabalho adicional — ver D3 do ADR; validação real da Onda 4
-em dispositivo físico fica pra Onda 6). Ondas 5–8 pendentes.
+🚧 Ondas 1–5 CONCLUÍDAS (código; Onda 3 sem trabalho adicional — ver D3 do ADR; validação real das Ondas
+4/5 em dispositivo físico fica pra Onda 6). Ondas 6–8 pendentes.
 
 ## Onda 1 — Dual Build
 
@@ -102,9 +102,28 @@ Status: ✅ CONCLUÍDA (código). Validação real (dispositivo físico) reserva
 
 ## Onda 5 — Assets
 
-Status: ⏳ PENDENTE. Ícone adaptativo + splash gerados de `public/icon-encanto.png` (680×680, via
-`@capacitor/assets`), nome "Encanto", tema `#6B1F5D`. Resolver também o achado dos favicons/manifest com
-prefixo `/encanto/` hardcoded (ver D1 do ADR) se ainda fizer sentido nesse ponto.
+Status: ✅ CONCLUÍDA (ver D8 do ADR).
+
+- `@capacitor/assets` (devDependency nova) gerou ícone adaptativo + variantes (`ic_launcher`/`_round`/
+  `_foreground`/`_background`, todas as densidades) + splash (light/dark/portrait/landscape) a partir de
+  `assets/logo.png` (novo, cópia commitada de `public/icon-encanto.png`, 680×680, opaco/sem transparência
+  real — confirmado via `sharp`). Fundo branco (`#ffffff`, mesmo `background_color` do manifest web),
+  escala do logo no splash `0.35` (ajustada depois de comparar visualmente com o padrão `0.2`, pequeno
+  demais). Cada asset gerado foi **lido como imagem** antes de aceitar, não só confirmado por existir.
+- **Achado real corrigido:** `colors.xml` não existia no template padrão do Capacitor — `styles.xml` já
+  referenciava `@color/colorPrimary`/`colorPrimaryDark`/`colorAccent` sem nenhuma definição, o que quebraria
+  o build Gradle assim que alguém tentasse compilar (só apareceria na Onda 6). Criado com `colorPrimary`/
+  `colorAccent` = `#6B1F5D` (mesmo `theme_color` do manifest web/`index.html`) e `colorPrimaryDark` =
+  `#531849` (variante mais escura calculada). Toda referência `@color`/`@style`/`@drawable`/`@mipmap` do
+  projeto Android foi cruzada manualmente contra as definições — nenhuma outra lacuna.
+- Nome "Encanto": já estava correto desde a Onda 2 (`capacitor.config.json`→`strings.xml`), sem trabalho
+  adicional.
+- Achado dos favicons/manifest com prefixo `/encanto/` hardcoded (D1 do ADR) permanece **deliberadamente
+  não resolvido** — continua inofensivo (WebView nativa não exibe favicon; ícone real do app já vem dos
+  recursos nativos desta onda).
+- `npm audit --omit=dev` continua **0** (10 vulnerabilidades novas, todas em devDependencies de
+  `@capacitor/assets` — `tar`/`uuid`, ferramentas de build, mesmo padrão já aceito no projeto).
+- Validado: `npm run test:domain` 309/309 (nenhum arquivo de `src/` alterado nesta onda).
 
 ## Onda 6 — Gerar APK
 
@@ -142,5 +161,11 @@ Status: ⏳ PENDENTE. Consolidar ADR/progress, registrar as 3 formas oficiais de
   `NativePrintPlugin` (Onda 4, D7).
 - `capacitor.config.json` (novo, Onda 2)
 - `android/` (novo, Onda 2 — projeto nativo gerado pelo Capacitor, commitado por convenção)
+- `assets/logo.png` (novo, Onda 5 — fonte-de-verdade pro `@capacitor/assets`, cópia de
+  `public/icon-encanto.png`).
+- `android/app/src/main/res/{mipmap-*,drawable*}/*` — ícone adaptativo + splash gerados (Onda 5, D8).
+- `android/app/src/main/res/values/colors.xml` (novo, Onda 5, D8 — corrige lacuna pré-existente do
+  template, `colorPrimary`/`colorPrimaryDark`/`colorAccent` não definidos).
+- `package.json`/`package-lock.json` — `@capacitor/assets` (devDependencies) (Onda 5).
 - `docs/adr/REF-CAP-01-app-nativo-android.md` (novo, Onda 1; D2–D4 Onda 2)
 - `docs/ref/REF-CAP-01-progress.md` (novo, este arquivo)

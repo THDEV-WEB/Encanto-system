@@ -285,6 +285,47 @@ máquina** (sem JDK/Android SDK, ver D4) — a mesma limitação de ambiente já
 Validação real (o diálogo de impressão do Android realmente aparece, com o conteúdo certo) fica pendente
 de um build real em dispositivo físico.
 
-## Pendências (Ondas 5–8)
+### D8 — Assets nativos: `@capacitor/assets` (Easy Mode) a partir do ícone já existente
+
+**Fonte:** `assets/logo.png` (novo, commitado como fonte-de-verdade pra regenerar no futuro) = cópia de
+`public/icon-encanto.png` (680×680, mesmo símbolo isolado panela+açaí da REF-MOBILE-01 Onda 2/ajuste de
+recorte). Conferido via `sharp` que o canal alfa é **constante 255** (sem transparência real, canto
+superior-esquerdo `#A51B81`) — o ícone é uma arte 100% opaca, não uma logo com fundo transparente.
+
+**Comando:** `npx capacitor-assets generate --android --iconBackgroundColor '#ffffff' --splashBackgroundColor
+'#ffffff' --logoSplashScale 0.35` (light e dark mode com o mesmo branco — o app não tem uma identidade de
+tema escuro definida em lugar nenhum, então não inventei uma aqui). `--android` explícito: gera só pra esse
+platform (não existe `ios/` ainda, e não deve tocar o manifest PWA — o `--pwa` implícito é evitado assim).
+`--logoSplashScale` (padrão da ferramenta é `0.2`) subido pra `0.35` depois de comparar visualmente as duas
+opções — o padrão deixava o símbolo pequeno demais num canvas branco imenso; `0.35` dá presença de marca
+sem dominar a tela.
+
+**Validação visual, não só geração cega:** antes de finalizar, o ícone gerado (launcher, round, foreground,
+splash) foi **lido e inspecionado como imagem** (não só checado que o arquivo existe) — o corte adaptativo
+circular preserva o símbolo inteiro (mesmo recorte já validado na REF-MOBILE-01 pra sobreviver a máscaras),
+e a composição do splash ficou limpa/profissional nas duas escalas testadas.
+
+**Achado real, corrigido (bug pré-existente do template, não introduzido por esta onda):**
+`android/app/src/main/res/values/colors.xml` **não existia** — `styles.xml` (gerado pelo próprio `cap add
+android` na Onda 2) já referenciava `@color/colorPrimary`/`@color/colorPrimaryDark`/`@color/colorAccent`
+sem NENHUM arquivo definindo essas 3 cores. Isso teria **quebrado o build Gradle** (`resource
+color/colorPrimary not found`) assim que alguém tentasse compilar de verdade — só apareceria na Onda 6,
+tarde demais pra debugar sem contexto. Corrigido criando `colors.xml`: `colorPrimary`/`colorAccent` =
+`#6B1F5D` (mesmo `theme_color` do `manifest.json`/`index.html` — identidade única entre PWA e nativo);
+`colorPrimaryDark` = `#531849` (variante ~22% mais escura, calculada — não existia um tom de roxo mais
+escuro já estabelecido na marca pra reaproveitar; convenção Android usa esse tom na status bar).
+Verificação adicional feita por precaução: toda referência `@color`/`@style`/`@drawable`/`@mipmap` em
+`AndroidManifest.xml` + `res/` foi cruzada manualmente contra as definições existentes — nenhuma outra
+lacuna encontrada.
+
+**Nome do app:** já era `"Encanto"` desde a Onda 2 (`capacitor.config.json` → `appName` → `strings.xml`
+`app_name`/`title_activity_main`) — nenhum trabalho adicional necessário aqui, só confirmado.
+
+`npm audit`: `@capacitor/assets` soma 10 vulnerabilidades novas em devDependencies (`tar` via `sharp`,
+`uuid` via `xcode` — nenhum dos dois entra no bundle web nem no APK, são só ferramentas de build/geração
+de imagem). `npm audit --omit=dev` permanece **0** — mesmo padrão já aceito pra `vite-plugin-pwa`/
+`@capacitor/cli`.
+
+## Pendências (Ondas 6–8)
 
 Ver [`docs/ref/REF-CAP-01-progress.md`](../ref/REF-CAP-01-progress.md) para o estado onda a onda.
