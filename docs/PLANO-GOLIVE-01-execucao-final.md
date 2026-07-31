@@ -111,6 +111,8 @@ Executada como primeira atividade da Fase A (`PLANO-GOLIVE-01B`, item A1) — fe
 | P2.4 | **Auditoria de acessibilidade completa (WCAG)** | A base crítica já foi feita; uma auditoria completa é trabalho de melhoria contínua, não um requisito de lançamento | Backlog pós-go-live |
 | P2.5 | **Navegação por URL real (rotas)** | O próprio dono já definiu: "sem necessidade de alterar isso sem justificativa técnica". Não há justificativa técnica pendente — registrado aqui só para fechar o assunto explicitamente, não como pendência | Não se aplica — fora de escopo por decisão já tomada |
 
+**Decisão ratificada (2026-07-31, Onda A6 — `PLANO-GOLIVE-01B`):** o dono aprovou este plano por completo, incluindo explicitamente a classificação P2 acima. P2.1–P2.5 passam de "recomendação" para **decisão tomada**: nenhum deles entra em execução neste ciclo de go-live. Nenhum código relacionado a code splitting, divisão do `StoreApp.jsx`, auditoria WCAG completa ou navegação por URL foi tocado na Fase A — a única mudança de código autônoma deste ciclo foi a revisão de acessibilidade focada (P1.3, escopo já aprovado, ver commit próprio). Revisitar qualquer item desta lista exige um novo pedido explícito do dono, não decisão unilateral de uma sessão futura.
+
 ---
 
 ## 2. Onde a auditoria mudou a leitura original das pendências
