@@ -38,7 +38,16 @@ jobs:
       - name: Instalar dependências
         run: npm ci
 
+      # REF-CAP-01: achado do dono na homologacao fisica - o APK abria com o catalogo MOCK (categorias/
+      # produtos de fallback, ver src/data/mockCatalog.js), nao o catalogo real. Causa raiz confirmada por
+      # execucao real do bundle: VITE_SUPABASE_URL/VITE_SUPABASE_KEY nunca eram passadas a este step, entao
+      # createClient() falhava ("supabaseUrl is required") e lib/supabase.js/dbCliente.js degradavam pra
+      # null (comportamento CORRETO e intencional do codigo pra ambiente sem credencial - o bug era so' a
+      # ausencia delas aqui). Mesmo padrao ja usado pelo job e2e do ci.yml (secrets -> env do Vite).
       - name: Build web (modo Capacitor - base:'/', sem Service Worker, ver vite.config.js)
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_KEY: ${{ secrets.VITE_SUPABASE_KEY }}
         run: npm run build:capacitor
 
       - name: Sincronizar Capacitor -> projeto Android
