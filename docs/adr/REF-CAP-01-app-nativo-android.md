@@ -359,6 +359,81 @@ desnecessário quando o pedido original já era explícito sobre não automatiza
 100% pronta; falta só colocar o arquivo validado em `public/downloads/Encanto.apk` (passo manual,
 deliberadamente fora desta execução).
 
+### D10 — Homologação física da Onda 6: 3 causas raiz distintas, encontradas por execução real (não leitura de código)
+
+A validação em dispositivo físico (Android 16) revelou 3 problemas **sequenciais e independentes**, cada
+um mascarando o próximo — só apareceram um de cada vez, à medida que o anterior era corrigido. Nenhum
+deles foi resolvido por inferência: todos foram isolados executando o artefato real (o `.apk`/`.zip`
+gerado pela CI) fora do ambiente de origem, com `aapt`/`apksigner`/`unzip`/Playwright — nunca só lendo
+código-fonte e supondo o comportamento.
+
+**Causa raiz #1 — instalação falhava ("Ocorreu um problema ao analisar o pacote").**
+Auditoria completa do pipeline (tarefa Gradle, ordem `build`→`cap sync`, cache, universal/ABI, assinatura)
+não achou nada errado — `aapt dump badging`+`apksigner verify` (novo gate automático no
+`android-apk.yml`, roda antes do upload) sempre passaram. A causa real só apareceu comparando hashes:
+**o backend de GitHub Actions Artifacts (v4) reconstrói o `.zip` de download dinamicamente a cada
+requisição**, e a reconstrução feita pelo caminho da **interface web** entregava um `app-debug.apk` com
+**572 bytes a menos** que o original — determinístico e reproduzível (mesmo resultado age após age,
+mesmo depois de eliminar cache/pasta antiga/extração incorreta), mas incorreto. O caminho da **API REST**
+(`archive_download_url`) sempre reconstruiu o zip correto, confirmado batendo com o `sha256sum` calculado
+**dentro do próprio job da CI, antes de qualquer zip existir** — a fonte da verdade. Ver issue pública
+relacionada: [actions/upload-artifact#190](https://github.com/actions/upload-artifact/issues/190).
+**Mitigação adotada:** baixar artefatos desta REF exclusivamente via API (`curl`/`Invoke-WebRequest` com
+token `workflow`), nunca clicando "Download" na UI do GitHub, até esse bug ser corrigido do lado deles —
+não é algo que este repositório possa corrigir.
+
+**Causa raiz #2 — app instalava e abria, mas mostrava catálogo genérico/desatualizado.**
+Extraí o `.apk` (é um `.zip`) e rodei o `index.html`/JS reais (os que vieram da CI) num Chromium de
+verdade via Playwright — não bastava ler o código, precisava ver o boot acontecer. Console mostrou:
+```
+[Encanto] Supabase init erro: supabaseUrl is required.
+[Encanto] ⚠️ Supabase offline — categorias/products usando fallback local
+```
+`android-apk.yml` nunca passava `VITE_SUPABASE_URL`/`VITE_SUPABASE_KEY` ao step de build —
+`createClient()` (em `lib/supabase.js`/`lib/dbCliente.js`) lançava a exceção documentada do próprio
+`@supabase-js` pra URL ausente, o `catch` degradava `db`/`dbCliente` pra `null` (comportamento **correto e
+intencional** do código pra esse cenário) e `services/DataService.js:33` caía no catálogo mock
+(`src/data/mockCatalog.js`) — o "layout antigo" reportado era esse fallback, não uma versão velha do
+bundle (confirmado: o JS continha strings de código recém-adicionado, como "Baixar aplicativo Android" da
+Onda 7). **Decisão explícita, discutida com o dono:** os secrets de produção (`VITE_SUPABASE_URL`/
+`VITE_SUPABASE_KEY`, mesmos valores da Vercel) tiveram que ser criados **novos**, não reaproveitando
+`E2E_SUPABASE_URL`/`E2E_SUPABASE_ANON_KEY` já existentes — esses apontam pra um projeto Supabase dedicado
+e isolado da REF-E2E-01, usado só por testes automatizados; reutilizá-los faria o app distribuído a
+clientes reais rodar contra um banco de teste (pedidos reais se perderiam, invisíveis ao Admin real).
+**Correção:** `env:` novo no step "Build web" do `android-apk.yml`, lendo `secrets.VITE_SUPABASE_URL`/
+`secrets.VITE_SUPABASE_KEY` — mesmo padrão já usado pelo job `e2e` do `ci.yml`. Diff mínimo, zero código
+de aplicação alterado.
+
+**Causa raiz #3 (regressão intermediária) — mesmo após cadastrar os secrets, catálogo real não carregava.**
+`createClient()` parou de lançar exceção (prova de que os secrets tinham valor), mas a rede falhava com
+`ERR_NAME_NOT_RESOLVED`. Comparando as URLs de fato gravadas no bundle: o valor colado no secret
+`VITE_SUPABASE_URL` tinha duas letras trocadas de posição (`...jwv` **s** `n` `lo` em vez de `...jwv` `n`
+**s** `lo`) — um domínio que nunca existiu. Confirmado testando as duas URLs de verdade (`curl`): a
+correta respondia HTTP 401 (existe, só faltava a API key na chamada de teste); a com o typo nem
+resolvia DNS. Corrigido recolando o valor certo no secret.
+
+**Validação final, com evidência de execução real em cada etapa (não suposição em nenhuma):**
+- Boot do bundle real (extraído do `.apk`, rodado em Chromium via Playwright) mostrando `"✅ 8 categorias
+  carregadas do Supabase"` / `"✅ 24 products carregados do Supabase"`, com produtos e preços
+  genuinamente distintos do catálogo mock, e todas as chamadas REST/RPC ao Supabase retornando 200.
+- Integridade do artefato reconfirmada 3 vezes de forma independente (hash do zip via API, hash do `.apk`
+  extraído, teste de CRC de todas as entradas via `unzip -t`) — sempre o mesmo resultado.
+- **Homologação física no aparelho real (Android 16) concluída pelo dono: instalação normal, app abre e
+  funciona corretamente.** Esta é a confirmação que fecha a Onda 6 de fato — todas as validações
+  anteriores (CI verde, `aapt`/`apksigner`, boot num Chromium local) eram necessárias mas não
+  substituíam o teste no hardware/SO real.
+
+**Nota de escopo, honesta:** esta homologação confirma o app abrindo e o catálogo real carregando —
+não constitui, por si só, um teste funcional dedicado dos fluxos específicos de D5 (login Google nativo via
+deep link), D6 (botão físico voltar) ou D7 (impressão nativa da comanda), que dependem de ações do usuário
+mais específicas (fazer login, navegar por modais, imprimir uma comanda no Admin). Recomenda-se exercitar
+esses 3 fluxos no uso real subsequente do aparelho de teste.
+
+**Nota de processo:** dois tokens do GitHub (escopo `workflow`) foram usados durante esta investigação,
+ambos exclusivamente para chamadas de leitura/dispatch pontuais, nunca persistidos em arquivo nem em
+memória — o dono foi orientado a revogá-los após o uso, por serem credenciais coladas em texto puro na
+conversa.
+
 ## Pendências (Onda 8)
 
 Ver [`docs/ref/REF-CAP-01-progress.md`](../ref/REF-CAP-01-progress.md) para o estado onda a onda.

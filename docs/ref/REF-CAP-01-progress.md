@@ -12,11 +12,12 @@ ver Onda 4. Ver auditoria completa e D1 em
 
 ## Estado atual
 
-🚧 Ondas 1–5 CONCLUÍDAS. Onda 6: build automatizada do APK **CONCLUÍDA COM SUCESSO** (push feito, `ci.yml`
-+ `android-apk.yml` verdes, primeira compilação real do `NativePrintPlugin.java` sem erros) — falta só a
-validação manual em dispositivo físico (dono) + a entrada no allow-list do Supabase (dono). Onda 7
-CONCLUÍDA (infraestrutura de distribuição pronta; arquivo do APK propositalmente ainda não publicado — ver
-seção da onda). Onda 8 pendente.
+✅ Ondas 1–6 CONCLUÍDAS — **Onda 6 com homologação física confirmada pelo dono** (3 causas raiz
+sequenciais investigadas e corrigidas: bug de reconstrução de zip da UI do GitHub, secrets do Supabase
+ausentes, typo num secret; ver D10 do ADR). Onda 7 CONCLUÍDA (infraestrutura de distribuição pronta;
+arquivo do APK propositalmente ainda não publicado — ver seção da onda). Onda 8 (documentação de
+encerramento) em andamento neste commit. Pendente, registrado desde o D5: entrada no allow-list do
+Supabase Auth pro deep link do login Google.
 
 ## Onda 1 — Dual Build
 
@@ -130,27 +131,49 @@ Status: ✅ CONCLUÍDA (ver D8 do ADR).
 
 ## Onda 6 — Gerar APK
 
-Status: 🟡 EM ANDAMENTO (build automatizada CONCLUÍDA COM SUCESSO; validação em dispositivo físico segue
-pendente — depende do dono).
+Status: ✅ **CONCLUÍDA — homologação física confirmada pelo dono.** Ver D10 do ADR para a cadeia completa
+de investigação (3 causas raiz sequenciais, cada uma só visível depois da anterior corrigida).
 
 - Push feito (`2b9e0f0..8164f6c` em `origin/main`, 6 commits desta REF). `ci.yml` existente rodou sobre
   esse código automaticamente ([run 30581874670](https://github.com/THDEV-WEB/Encanto-system/actions/runs/30581874670))
   — **success** (build/domain-tests/e2e).
-- `.github/workflows/android-apk.yml` disparado manualmente via API (`workflow_dispatch`, token fornecido
-  pelo dono só para essa chamada) — [run 30582093288](https://github.com/THDEV-WEB/Encanto-system/actions/runs/30582093288),
-  **success**, 126s. Todos os 14 steps verdes, incluindo **a primeira compilação real do
-  `NativePrintPlugin.java` desta REF** (D7 do ADR) — o risco assumido por não conseguir compilar
-  localmente (sem JDK/SDK nesta máquina) se confirmou infundado: Gradle 8.14.3 + AGP 8.13.0 + JDK 21
-  compilaram o plugin sem nenhum erro na primeira tentativa. Artefato `encanto-debug-apk` (APK debug,
-  assinado com a keystore de debug padrão do Android), **5.59 MB**, expira em 30 dias
-  (2026-08-29) — baixável em Actions → esse run → Artifacts, na interface do GitHub.
-- **Pendente (dono, física):** baixar o APK, instalar num Android real, validar instalação, login (Google
-  nativo — Onda 4/D5 — e e-mail OTP), pedidos, painel admin, upload de imagem, geolocalização, impressão
-  (D7 — a única peça cujo comportamento *visual/funcional* real, não só a compilação, segue não verificado
-  neste ambiente), e confirmar ausência do alerta do Play Protect que motivou a REF inteira. Falta também
-  o passo já registrado no D5: nova entrada no allow-list de Redirect URLs do Supabase Auth para
-  `br.com.valionsistemas.encanto://login-callback` — sem isso, o login Google nativo não vai completar
-  mesmo com o app instalado corretamente.
+- `.github/workflows/android-apk.yml` — primeiro build ([run 30582093288](https://github.com/THDEV-WEB/Encanto-system/actions/runs/30582093288)),
+  **success**, todos os 14 steps verdes, incluindo a primeira compilação real do `NativePrintPlugin.java`
+  desta REF (D7 do ADR) — sem erro na primeira tentativa, apesar de não poder ser compilado localmente.
+
+**Causa raiz #1 — instalação falhava ("Ocorreu um problema ao analisar o pacote"):** bug de
+reconstrução dinâmica do `.zip` pela **interface web** do GitHub Actions Artifacts v4 (entregava um
+`.apk` 572 bytes menor que o original, de forma determinística) — o caminho da **API REST** sempre
+reconstruiu corretamente, confirmado batendo com o `sha256sum` calculado dentro do próprio job da CI.
+Mitigação: baixar artefatos desta REF exclusivamente via API/token, nunca pela UI. Ver
+[actions/upload-artifact#190](https://github.com/actions/upload-artifact/issues/190) (issue pública
+relacionada) e D10 do ADR.
+
+**Causa raiz #2 — instalava, mas mostrava catálogo genérico:** `android-apk.yml` nunca passava
+`VITE_SUPABASE_URL`/`VITE_SUPABASE_KEY` ao build — confirmado rodando o bundle real (extraído do `.apk`)
+num Chromium via Playwright e capturando o boot: `createClient()` lançava `"supabaseUrl is required"`,
+`db`/`dbCliente` degradavam pra `null` (comportamento correto do código) e o catálogo caía no fallback
+mock (`src/data/mockCatalog.js`). Correção: `env:` novo no step de build, lendo 2 secrets novos
+(`VITE_SUPABASE_URL`/`VITE_SUPABASE_KEY`, valores de produção iguais aos da Vercel — **não** os secrets
+de E2E, que apontam pra um projeto Supabase isolado de testes; reaproveitá-los faria pedidos reais se
+perderem num banco que o Admin real não enxerga).
+
+**Causa raiz #3 (regressão intermediária) — secrets cadastrados mas catálogo ainda não carregava:**
+typo no valor colado em `VITE_SUPABASE_URL` (duas letras trocadas de posição, domínio inexistente,
+confirmado testando via `curl` as duas variantes). Corrigido recolando o valor certo.
+
+**Validação final:** boot real do bundle mostrando `"✅ 8 categorias carregadas do Supabase"`/`"✅ 24
+products carregados do Supabase"` com todas as chamadas REST/RPC retornando 200; integridade do artefato
+reconfirmada 3× de forma independente; **e a homologação física no Android 16 do dono, concluída com
+sucesso — instalação normal, app abre e funciona.**
+
+**Nota honesta de escopo:** a homologação confirma instalação + catálogo real. Os fluxos específicos de
+D5 (login Google nativo), D6 (botão voltar) e D7 (impressão nativa) não tiveram teste funcional dedicado
+nesta rodada — recomendado exercitá-los no uso real subsequente.
+
+**Ainda pendente, registrado desde o D5:** nova entrada no allow-list de Redirect URLs do Supabase Auth
+para `br.com.valionsistemas.encanto://login-callback` — sem isso, o login Google nativo especificamente
+não completa, mesmo com o resto do app funcionando.
 
 ## Onda 7 — Distribuição
 
@@ -216,7 +239,11 @@ Status: ⏳ PENDENTE. Consolidar ADR/progress, registrar as 3 formas oficiais de
 - `android/app/src/main/res/values/colors.xml` (novo, Onda 5, D8 — corrige lacuna pré-existente do
   template, `colorPrimary`/`colorPrimaryDark`/`colorAccent` não definidos).
 - `package.json`/`package-lock.json` — `@capacitor/assets` (devDependencies) (Onda 5).
-- `.github/workflows/android-apk.yml` (novo, Onda 6 — não altera `ci.yml`).
+- `.github/workflows/android-apk.yml` (novo, Onda 6 — não altera `ci.yml`); gate `aapt dump badging`+
+  `apksigner verify` adicionado depois (D10); `env:` com `VITE_SUPABASE_URL`/`VITE_SUPABASE_KEY` adicionado
+  por último (D10, causa raiz #2).
+- 2 secrets novos no repositório GitHub: `VITE_SUPABASE_URL`/`VITE_SUPABASE_KEY` (valores de produção,
+  Onda 6/D10 — não são arquivo, mas fazem parte do estado necessário pro workflow funcionar).
 - `vercel.json` — `rewrites` pro path `/encanto/download` (Onda 7).
 - `src/hooks/useDownloadPage.js` (novo, Onda 7).
 - `src/components/DownloadScreen.jsx` (novo, Onda 7).

@@ -81,8 +81,9 @@ incluindo o spec de disparo do login Google) — zero regressão. Registra tamb�
 "Capacitor-Ready" (D9): nenhuma linha de Capacitor nesta REF, só as decisões que evitam retrabalho quando
 ele for adotado (OAuth via deep link, `base` de build dual, `window.print()` do Admin, Sentry nativo).
 
-📦 [REF-CAP-01 — Aplicativo Android Nativo (Capacitor)](REF-CAP-01-app-nativo-android.md) — 🚧 **Em
-execução.** Fase 1 (auditoria completa: OAuth Google bloqueado em WebView, conflito `base:'/encanto/'`
+📦 [REF-CAP-01 — Aplicativo Android Nativo (Capacitor)](REF-CAP-01-app-nativo-android.md) — 🚧 **Ondas
+1–7 concluídas, Onda 6 com homologação física confirmada.** Fase 1 (auditoria completa: OAuth Google
+bloqueado em WebView, conflito `base:'/encanto/'`
 × `webDir` do Capacitor, ausência de toolchain Android nesta máquina, Play Protect, permissões/impressão/
 geolocalização) apresentada e **aprovada pelo dono (2026-07-30)**. Onda 1 (Dual Build) concluída: `vite.
 config.js` único (`defineConfig(({mode})=>…)`, gate `mode==='capacitor'`) gera `dist/capacitor` com
@@ -103,16 +104,21 @@ risco comunicado, validação real reservada pra Onda 6. `test:domain` 309/309. 
 `@capacitor/assets` gerou ícone adaptativo + splash a partir do `icon-encanto.png` já existente (validado
 visualmente, não só gerado às cegas); achado real corrigido — `colors.xml` não existia no template
 padrão do Capacitor (`colorPrimary`/`colorPrimaryDark`/`colorAccent` indefinidos quebrariam o Gradle),
-agora usa o mesmo `#6B1F5D` do manifest web. Onda 6: push feito, workflow novo
-`.github/workflows/android-apk.yml` (`workflow_dispatch`, não altera `ci.yml`) disparado via API —
-**build automatizada CONCLUÍDA COM SUCESSO** (`ci.yml` + `android-apk.yml` ambos verdes; a primeira
-compilação real do `NativePrintPlugin.java` da D7 passou sem erros). Falta a validação manual em
-dispositivo físico (dono) + entrada no allow-list do Supabase (dono). Onda 7 (D9): rota real
+agora usa o mesmo `#6B1F5D` do manifest web. **Onda 6 (D10): homologação física concluída com sucesso** —
+mas só depois de 3 causas raiz sequenciais, cada uma só visível após a anterior ser corrigida, todas
+isoladas por execução real do artefato (nunca por leitura de código): (1) bug de reconstrução dinâmica do
+`.zip` pela **interface web** do GitHub Actions Artifacts v4 (a API REST sempre esteve correta — ver
+[actions/upload-artifact#190](https://github.com/actions/upload-artifact/issues/190)); (2)
+`android-apk.yml` nunca passava `VITE_SUPABASE_URL`/`VITE_SUPABASE_KEY` ao build, causando fallback pro
+catálogo mock (`createClient()` falhava, comportamento correto do código pra esse caso) — corrigido com
+`env:` novo lendo 2 secrets de produção **novos** (nunca os de E2E, que apontam a um projeto isolado de
+testes); (3) typo no valor colado no secret (`VITE_SUPABASE_URL`). Confirmado por boot real do bundle
+(Playwright) mostrando o catálogo de produção carregando via REST/RPC (200 em tudo) e, por fim, pela
+**instalação e funcionamento normal no aparelho Android 16 real do dono**. Onda 7 (D9): rota real
 `/encanto/download` via `rewrite` novo no `vercel.json` (projeto não tinha fallback de SPA nenhum
 configurado) + `DownloadScreen.jsx`/`useDownloadPage.js` novos; botão já funcional, mas o arquivo
-`Encanto.apk` **deliberadamente ainda não publicado** — só após validação física, pra não expor um
-binário não testado no site em produção (push já dispara deploy automático). Onda 8 (documentação final)
-pendente — ver [progress](../ref/REF-CAP-01-progress.md).
+`Encanto.apk` **deliberadamente ainda não publicado** — decisão a revisitar agora que a Onda 6 está
+homologada. Onda 8 (documentação final) em andamento — ver [progress](../ref/REF-CAP-01-progress.md).
 
 ## Sequência da evolução arquitetural
 
