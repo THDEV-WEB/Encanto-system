@@ -114,15 +114,15 @@ export function AdminLogin({ onLogin }) {
         <h2>{companyInfo.nomeCurto} Admin</h2>
         <p>Painel administrativo da loja</p>
         <div className="form-group">
-          <label className="form-label">E-mail</label>
-          <input data-testid="admin-login-email" className="form-input" value={email} onChange={e=>setEmail(e.target.value)}/>
+          <label className="form-label" htmlFor="admin-login-email-input">E-mail</label>
+          <input id="admin-login-email-input" data-testid="admin-login-email" className="form-input" value={email} onChange={e=>setEmail(e.target.value)}/>
         </div>
         <div className="form-group">
-          <label className="form-label">Senha</label>
-          <input data-testid="admin-login-senha" className="form-input" type="password" placeholder="Sua senha"
+          <label className="form-label" htmlFor="admin-login-senha-input">Senha</label>
+          <input id="admin-login-senha-input" data-testid="admin-login-senha" className="form-input" type="password" placeholder="Sua senha"
             value={pass} onChange={e=>setPass(e.target.value)} onKeyDown={e=>e.key==='Enter'&&login()}/>
         </div>
-        {err&&<p data-testid="admin-login-erro" style={{color:'var(--red)',fontSize:13,marginBottom:8}}>{err}</p>}
+        {err&&<p data-testid="admin-login-erro" role="alert" style={{color:'var(--red)',fontSize:13,marginBottom:8}}>{err}</p>}
         <button className="login-btn" onClick={login} disabled={loading}>
           {loading?'Entrando...':'Entrar'}
         </button>

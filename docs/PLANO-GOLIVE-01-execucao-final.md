@@ -80,6 +80,31 @@ Executada como primeira atividade da Fase A (`PLANO-GOLIVE-01B`, item A1) — fe
 
 **Ação necessária (Fase B / item B1 de `PLANO-GOLIVE-01B`):** rodar `migrations/REF-ADMIN-03-categoria-delete-guard.sql` no SQL editor do Supabase — arquivo já existe, pronto, idempotente (`CREATE OR REPLACE`), com rollback em arquivo separado. Não depende de nenhuma outra mudança.
 
+**Nota de corroboração:** o E2E `admin-categorias.spec.js:115` ("DB: trigger `trg_categoria_delete` bloqueia o DELETE mesmo direto pelo backend") passa 100% contra o projeto Supabase dedicado de E2E — confirma que a trigger funciona corretamente quando aplicada; reforça que o gap é só a aplicação em produção, não um problema de design ou implementação.
+
+---
+
+## 0.3 — Onda A5: revisão de acessibilidade focada (login, checkout, checkout admin) — execução autônoma, 2026-07-31
+
+Única atividade da Fase A que altera código de produto (as demais Ondas foram auditoria/config/documentação). Escopo: fluxos que geram receita ou são pré-requisito de conta — exatamente o que `PLANO-GOLIVE-01B` (item A5) definiu, nada além disso.
+
+**Achados e correções (todas aditivas — nenhuma classe/CSS/comportamento existente removido ou alterado):**
+
+| Arquivo | Achado | Correção |
+|---|---|---|
+| `components/checkout/CheckoutPage.jsx` | Labels (Nome, WhatsApp, Troco, Observações) não associados aos inputs (sem `htmlFor`/`id`) — leitor de tela não anuncia o rótulo ao focar o campo | `id`/`htmlFor` pareados nos 4 campos |
+| `components/checkout/CheckoutPage.jsx` | Seletor de forma de pagamento (`.payment-opt`, `<div onClick>`) **sem nenhum suporte a teclado** — impossível de operar sem mouse/touch | `role="radiogroup"`/`role="radio"`/`aria-checked`/`tabIndex={0}` + handler de teclado (Enter/Espaço); ícone decorativo marcado `aria-hidden`; anel de foco novo em `index.css` (`.payment-opt:focus-visible`, mesmo padrão já usado em `.catnav-trigger`/`.delivery-mode-dropdown`) |
+| `components/checkout/CheckoutPage.jsx` | Erro de validação (`checkout-erro`) não é anunciado ao aparecer (fora de live region) | `role="alert"` |
+| `components/menu/LoginScreen.jsx` | Input de e-mail sem rótulo algum (só placeholder, que não é substituto de label) | `aria-label="E-mail"` (zero mudança visual) |
+| `components/menu/LoginScreen.jsx` | 3 mensagens de erro (opções/e-mail/código) fora de live region | `role="alert"` nas 3 |
+| `components/menu/ScreenModal.jsx` (compartilhado por 8 telas: Login, Minha Conta, Meus Pedidos, Fidelidade, Contato, Sobre, Termos, Completar Cadastro) | Sem semântica de diálogo (`role="dialog"`/`aria-modal`/`aria-labelledby`); sem fechar via Esc | Adicionados os 3 atributos + handler de `Escape` → `onClose`. `aria-labelledby` usa `useId()` (não um `id` estático) porque `CompletarCadastro` pode renderizar simultaneamente com outro `ScreenModal` (ex.: login logo após 1º acesso via Google) — `id` fixo causaria duplicação inválida no DOM |
+| `components/menu/CompletarCadastro.jsx` | Inputs de nome/telefone sem rótulo; erro fora de live region | `aria-label` nos 2 inputs + `role="alert"` no erro (mesmo padrão dos demais) |
+| `components/admin/AdminLogin.jsx` | Labels (E-mail, Senha) não associados aos inputs; erro fora de live region | `id`/`htmlFor` pareados + `role="alert"` |
+
+**Validação:** `render.smoke` não cobre nenhum destes componentes (confirmado antes de editar — zero risco de golden quebrado). Suíte de domínio 32/32 verde após as mudanças. Suíte E2E 113/113 verde (chromium, gate oficial do CI) — inclui specs reais de checkout guest/logado e login que exercitam os elementos alterados. Nenhuma mudança de `data-testid`, texto visível, classe CSS existente ou comportamento de clique.
+
+**Fora do escopo desta Onda (registrado, não esquecido):** foco automático/trap completo dentro do modal (mudança mais invasiva, maior superfície de risco — deixada para uma revisão dedicada futura, não faz parte do pedido de "mínima e cirúrgica"); auditoria WCAG completa do resto do app (P2.4, backlog).
+
 ---
 
 ## 1. Classificação por prioridade
@@ -163,17 +188,18 @@ A sequência abaixo prioriza **verificação e configuração antes de qualquer 
 - [x] `REF-ORDER-01c-notif-grants-harden.sql` aplicada em produção — **✅ confirmado ao vivo em 2026-07-31 (§0)**
 - [x] Auditoria completa das 34 migrations sensíveis — **✅ concluída em 2026-07-31 (§0.1): 33/34 confirmadas**
 - [ ] **`REF-ADMIN-03-categoria-delete-guard.sql` — 🔴 GAP encontrado, precisa ser aplicada por você antes do go-live (§0.2, item B1)**
-- [ ] `pg_cron` `enc-dispatch-whatsapp` ativo — **✅ já confirmado ao vivo (§0)**
+- [x] `pg_cron` `enc-dispatch-whatsapp` ativo — **✅ já confirmado ao vivo (§0)**
 
 ### Integrações externas
 - [ ] Secrets do Vault (`whatsapp_token`, `whatsapp_phone_number_id`) inseridos e validados com 1 envio real **OU** decisão explícita registrada de lançar sem notificação automática
 - [ ] `VITE_MAPBOX_TOKEN` configurado na Vercel **OU** decisão explícita registrada de manter o fallback Nominatim/Photon
 
 ### Qualidade / CI
-- [ ] Suíte de domínio 100% verde no dia do go-live (`npm run test:domain`)
-- [ ] Suíte E2E 100% verde contra o projeto dedicado (`npm run test:e2e:all-browsers`)
-- [ ] `npm run build` limpo (Web) e `npm run build:capacitor` limpo (Android)
-- [ ] `.github/workflows/ci.yml` verde no commit final da `main`
+- [x] Suíte de domínio 100% verde — **✅ confirmado em 2026-07-31: 32/32 scripts** (`npm run test:domain`), revalidado depois dos fixes de acessibilidade (Onda A5)
+- [x] Guards de banco (read-only) — **✅ confirmado em 2026-07-31: `verify:norm05`, `guard:slug`, `test:rls` 17/17, `test:orders-rls` 16/16, `test:auth-rls` 10/10, `test:address-schema` 8/8, `test:address-gazetteer` 5/5, `test:address-onda6-orders` 8/8, `test:comanda-endereco` 8/8, `test:datetime-schema` 9/9 — todos verdes.** `test:f1b` teve 3 falhas conhecidas e pré-existentes (RA1-RA3, limitação do harness local de troca de role sem JWT — a cobertura real de RLS autenticado é o `test:rls`, 17/17 verde; ver nota no memory do projeto)
+- [x] Suíte E2E (gate oficial do CI, `npm run test:e2e`, chromium) — **✅ confirmado em 2026-07-31: 113/113 specs verdes**, rodado 2x (1ª rodada teve 65 falhas por conflito de porta entre 2 execuções simultâneas da própria sessão — diagnosticado e descartado; 2ª rodada limpa 100% verde)
+- [x] `npm run build` (Web) e `npm run build:capacitor` (Android) — **✅ ambos limpos em 2026-07-31**, aviso de chunk >500kB persiste (decisão registrada, não bloqueia — ver P2.2)
+- [ ] `.github/workflows/ci.yml` verde no commit final da `main` — depende de push (fora do escopo desta sessão; local está tudo verde)
 
 ### Mobile
 - [ ] Checklist REF-MOBILE-01 executado por completo em pelo menos 1 Android físico **neste ciclo** (não reaproveitar só a validação de instalação já feita em REF-CAP-01 D10)

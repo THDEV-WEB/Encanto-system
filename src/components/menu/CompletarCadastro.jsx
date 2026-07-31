@@ -48,9 +48,9 @@ export function CompletarCadastro() {
         Só mais um passo — usamos seu telefone para pedidos, entrega, WhatsApp e benefícios.
       </p>
       {user?.email && <p style={{ fontSize: 12, color: 'var(--gray-400)', marginBottom: 12 }}>Conectado como {user.email}</p>}
-      <input className="form-input" placeholder="Seu nome" value={nome} onChange={e => setNome(e.target.value)} style={{ marginBottom: 10 }} />
-      <input className="form-input" type="tel" placeholder="(38) 99999-9999" value={tel} onChange={e => setTel(e.target.value)} />
-      {erro && <p style={{ color: 'var(--red)', fontSize: 13, marginTop: 8 }}>{erro}</p>}
+      <input className="form-input" placeholder="Seu nome" aria-label="Seu nome" value={nome} onChange={e => setNome(e.target.value)} style={{ marginBottom: 10 }} />
+      <input className="form-input" type="tel" placeholder="(38) 99999-9999" aria-label="Telefone com DDD" value={tel} onChange={e => setTel(e.target.value)} />
+      {erro && <p role="alert" style={{ color: 'var(--red)', fontSize: 13, marginTop: 8 }}>{erro}</p>}
       <button className="btn-primary" style={{ width: '100%', marginTop: 12 }} disabled={busy} onClick={salvar}>
         {busy ? 'Salvando...' : 'Continuar'}
       </button>

@@ -142,12 +142,12 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode }) {
         <div className="summary-total"><span>Total</span><span>{view.total}</span></div>
       </div>
       <div className="form-group">
-        <label className="form-label">Nome completo *</label>
-        <input className="form-input" data-testid="checkout-nome" placeholder="Seu nome" value={form.nome} onChange={e=>upd('nome',e.target.value)}/>
+        <label className="form-label" htmlFor="checkout-nome-input">Nome completo *</label>
+        <input id="checkout-nome-input" className="form-input" data-testid="checkout-nome" placeholder="Seu nome" value={form.nome} onChange={e=>upd('nome',e.target.value)}/>
       </div>
       <div className="form-group">
-        <label className="form-label">WhatsApp *</label>
-        <input className="form-input" data-testid="checkout-telefone" placeholder="(38) 99999-9999" value={form.telefone} onChange={e=>upd('telefone',e.target.value)}
+        <label className="form-label" htmlFor="checkout-telefone-input">WhatsApp *</label>
+        <input id="checkout-telefone-input" className="form-input" data-testid="checkout-telefone" placeholder="(38) 99999-9999" value={form.telefone} onChange={e=>upd('telefone',e.target.value)}
           disabled={identidadeTravada} style={identidadeTravada?{opacity:0.75,cursor:'not-allowed'}:undefined}/>
         {identidadeTravada && (
           <span style={{fontSize:12,color:'var(--gray-500)',marginTop:4,display:'block'}}>
@@ -167,11 +167,13 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode }) {
         />
       </div>
       <div className="form-group">
-        <label className="form-label">Forma de pagamento</label>
-        <div className="payment-opts">
+        <label className="form-label" id="checkout-pagamento-label">Forma de pagamento</label>
+        <div className="payment-opts" role="radiogroup" aria-labelledby="checkout-pagamento-label">
           {pays.map(o=>(
-            <div key={o.id} className={`payment-opt ${form.pagamento===o.id?'selected':''}`} onClick={()=>upd('pagamento',o.id)}>
-              <div className="icon">{o.icon}</div>
+            <div key={o.id} className={`payment-opt ${form.pagamento===o.id?'selected':''}`} onClick={()=>upd('pagamento',o.id)}
+              role="radio" aria-checked={form.pagamento===o.id} tabIndex={0}
+              onKeyDown={e=>{ if (e.key==='Enter'||e.key===' ') { e.preventDefault(); upd('pagamento',o.id); } }}>
+              <div className="icon" aria-hidden="true">{o.icon}</div>
               <div className="label">{o.label}</div>
             </div>
           ))}
@@ -179,13 +181,13 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode }) {
       </div>
       {form.pagamento==='dinheiro'&&(
         <div className="form-group">
-          <label className="form-label">Troco para quanto?</label>
-          <input className="form-input" placeholder="R$ 50,00" value={form.troco} onChange={e=>upd('troco',e.target.value)}/>
+          <label className="form-label" htmlFor="checkout-troco-input">Troco para quanto?</label>
+          <input id="checkout-troco-input" className="form-input" placeholder="R$ 50,00" value={form.troco} onChange={e=>upd('troco',e.target.value)}/>
         </div>
       )}
       <div className="form-group">
-        <label className="form-label">Observações gerais</label>
-        <textarea className="form-input obs-textarea" data-testid="checkout-obs" placeholder="Alguma observação..."
+        <label className="form-label" htmlFor="checkout-obs-input">Observações gerais</label>
+        <textarea id="checkout-obs-input" className="form-input obs-textarea" data-testid="checkout-obs" placeholder="Alguma observação..."
           value={form.obs} onChange={e=>upd('obs',e.target.value)}/>
       </div>
       {lojaFechada && (
@@ -207,7 +209,7 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode }) {
           </div>
         </div>
       )}
-      {err&&<p data-testid="checkout-erro" style={{color:'var(--red)',fontSize:13,marginBottom:8}}>{err}</p>}
+      {err&&<p data-testid="checkout-erro" role="alert" style={{color:'var(--red)',fontSize:13,marginBottom:8}}>{err}</p>}
       <button className="confirm-btn" data-testid="checkout-submit" onClick={submit} disabled={loading || lojaFechada}
         style={lojaFechada?{opacity:0.6,cursor:'not-allowed'}:undefined}>
         {lojaFechada ? '🔒 Loja fechada no momento' : (loading ? 'Enviando...' : `Confirmar via WhatsApp • ${view.total}`)}

@@ -1126,6 +1126,7 @@ img{display:block;max-width:100%}
   cursor:pointer;text-align:center;transition:all .2s;
 }
 .payment-opt.selected{border-color:var(--magenta);background:var(--magenta-pale)}
+.payment-opt:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(166,39,134,.22)}
 .payment-opt .icon{font-size:22px;margin-bottom:4px}
 .payment-opt .label{font-size:13px;font-weight:600;letter-spacing:0}
 .order-summary{

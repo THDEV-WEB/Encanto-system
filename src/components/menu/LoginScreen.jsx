@@ -119,7 +119,7 @@ export function LoginScreen({ onClose }) {
           <button data-testid="login-email-btn" style={{ ...btn, background: 'var(--grape)', border: 'none', color: '#fff' }} disabled={busy} onClick={() => { setErro(''); setModo('email'); }}>
             ✉️ Continuar com e-mail
           </button>
-          {erro && <p style={erroStyle}>{erro}</p>}
+          {erro && <p role="alert" style={erroStyle}>{erro}</p>}
           <button style={semConta} onClick={onClose}>Continuar sem uma conta</button>
         </>
       )}
@@ -127,9 +127,9 @@ export function LoginScreen({ onClose }) {
       {modo === 'email' && (
         <>
           <p style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 10 }}>Digite seu e-mail — enviaremos um código de 6 dígitos.</p>
-          <input className="form-input" type="email" inputMode="email" autoFocus placeholder="seu@email.com"
+          <input className="form-input" type="email" inputMode="email" autoFocus placeholder="seu@email.com" aria-label="E-mail"
             value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === 'Enter' && enviar()} />
-          {erro && <p style={erroStyle}>{erro}</p>}
+          {erro && <p role="alert" style={erroStyle}>{erro}</p>}
           <button data-testid="login-send-code-btn" style={{ ...btn, background: 'var(--grape)', color: '#fff', border: 'none', marginTop: 10 }} disabled={busy} onClick={enviar}>{busy ? 'Enviando...' : 'Enviar código'}</button>
           <button style={semConta} onClick={onClose}>Continuar sem uma conta</button>
         </>
@@ -140,7 +140,7 @@ export function LoginScreen({ onClose }) {
           <p style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 2 }}>Código enviado para:</p>
           <p style={{ fontSize: 14, fontWeight: 700, marginBottom: 8, ...oneLine }}>{email}</p>
           <CodigoInput valor={codigo} onChange={setCodigo} onEnter={confirmar} />
-          {erro && <p style={erroStyle}>{erro}</p>}
+          {erro && <p role="alert" style={erroStyle}>{erro}</p>}
           <button data-testid="login-confirm-code-btn" style={{ ...btn, background: 'var(--grape)', color: '#fff', border: 'none', marginTop: 10 }} disabled={busy} onClick={confirmar}>{busy ? 'Verificando...' : 'Confirmar'}</button>
           <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
             <button style={{ ...linkBtn, opacity: cooldown > 0 || busy ? 0.5 : 1, cursor: cooldown > 0 || busy ? 'default' : 'pointer' }} disabled={cooldown > 0 || busy} onClick={reenviar}>
