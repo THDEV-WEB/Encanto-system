@@ -359,6 +359,11 @@ desnecessário quando o pedido original já era explícito sobre não automatiza
 100% pronta; falta só colocar o arquivo validado em `public/downloads/Encanto.apk` (passo manual,
 deliberadamente fora desta execução).
 
+**Atualização pós-D10:** barreira removida — `public/downloads/Encanto.apk` publicado, cópia byte a byte
+do artefato que passou pela homologação física (mesmo `sha256`, `da390a02...`). `vercel.json` ganhou um
+`Content-Type` explícito (`application/vnd.android.package-archive`) só pra esse arquivo, já que nem
+Vite nem o host estático inferem esse MIME type sozinhos pra `.apk`.
+
 ### D10 — Homologação física da Onda 6: 3 causas raiz distintas, encontradas por execução real (não leitura de código)
 
 A validação em dispositivo físico (Android 16) revelou 3 problemas **sequenciais e independentes**, cada

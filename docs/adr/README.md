@@ -117,8 +117,9 @@ testes); (3) typo no valor colado no secret (`VITE_SUPABASE_URL`). Confirmado po
 **instalação e funcionamento normal no aparelho Android 16 real do dono**. Onda 7 (D9): rota real
 `/encanto/download` via `rewrite` novo no `vercel.json` (projeto não tinha fallback de SPA nenhum
 configurado) + `DownloadScreen.jsx`/`useDownloadPage.js` novos; botão já funcional, mas o arquivo
-`Encanto.apk` **deliberadamente ainda não publicado** — decisão a revisitar agora que a Onda 6 está
-homologada. Onda 8 (documentação final) em andamento — ver [progress](../ref/REF-CAP-01-progress.md).
+`Encanto.apk` **agora publicado** (`public/downloads/Encanto.apk`, cópia byte a byte do artefato
+homologado fisicamente) — botão de download real e funcional em produção. Onda 8 (documentação final) em
+andamento — ver [progress](../ref/REF-CAP-01-progress.md).
 
 ## Sequência da evolução arquitetural
 

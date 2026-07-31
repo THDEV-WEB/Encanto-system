@@ -6,5 +6,13 @@
   ],
   "rewrites": [
     { "source": "/encanto/download", "destination": "/encanto/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "/encanto/downloads/Encanto.apk",
+      "headers": [
+        { "key": "Content-Type", "value": "application/vnd.android.package-archive" }
+      ]
+    }
   ]
 }

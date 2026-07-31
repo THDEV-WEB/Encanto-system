@@ -12,12 +12,12 @@ ver Onda 4. Ver auditoria completa e D1 em
 
 ## Estado atual
 
-✅ Ondas 1–6 CONCLUÍDAS — **Onda 6 com homologação física confirmada pelo dono** (3 causas raiz
+✅ Ondas 1–7 CONCLUÍDAS — **Onda 6 com homologação física confirmada pelo dono** (3 causas raiz
 sequenciais investigadas e corrigidas: bug de reconstrução de zip da UI do GitHub, secrets do Supabase
-ausentes, typo num secret; ver D10 do ADR). Onda 7 CONCLUÍDA (infraestrutura de distribuição pronta;
-arquivo do APK propositalmente ainda não publicado — ver seção da onda). Onda 8 (documentação de
-encerramento) em andamento neste commit. Pendente, registrado desde o D5: entrada no allow-list do
-Supabase Auth pro deep link do login Google.
+ausentes, typo num secret; ver D10 do ADR); **Onda 7 com o APK homologado já publicado** em
+`public/downloads/Encanto.apk`, botão de download real em produção. Onda 8 (documentação de encerramento)
+em andamento. Pendente, registrado desde o D5: entrada no allow-list do Supabase Auth pro deep link do
+login Google (Onda 4/D5) — orientação entregue ao dono, validação do login nativo aguardando teste físico.
 
 ## Onda 1 — Dual Build
 
@@ -177,8 +177,8 @@ não completa, mesmo com o resto do app funcionando.
 
 ## Onda 7 — Distribuição
 
-Status: ✅ CONCLUÍDA (infraestrutura). Arquivo do APK em si ainda não colocado — decisão deliberada, ver
-abaixo.
+Status: ✅ **CONCLUÍDA — infraestrutura + arquivo publicado.** Botão de download real e funcional em
+produção.
 
 - `vercel.json`: novo `rewrites` (`/encanto/download` → `/encanto/index.html`). Achado: este projeto não
   tinha NENHUM fallback de SPA configurado (só `redirects` da raiz institucional pra `/encanto`) — sem
@@ -199,15 +199,19 @@ abaixo.
   suposição): `/encanto/download` renderiza o título/botão certos, `href` do botão resolve pro path
   esperado, zero erro de console; `/encanto/` (loja normal) segue carregando sem regressão.
 
-**Decisão deliberada — arquivo do APK ainda não publicado:** o botão aponta pra
-`/encanto/downloads/Encanto.apk`, um caminho **que ainda não existe** no repositório. O APK gerado na
-Onda 6 é um build DEBUG que passou na compilação mas **ainda não foi validado num aparelho físico** pelo
-dono (pendência já registrada na Onda 6). Como qualquer push nesta REF já dispara deploy automático de
-produção (Vercel, `push main = deploy`), publicar agora um botão de download real e funcionando
-significaria colocar um binário não testado ao alcance de qualquer visitante — por isso a infraestrutura
-foi construída 100% funcional (é só colocar o arquivo no lugar certo), mas o arquivo em si fica como
-próximo passo manual, depois da validação em dispositivo real. "Sem atualização automática de APK" já era
-uma restrição explícita do pedido original — isso só estende o mesmo princípio a esta primeira publicação.
+**Publicação do arquivo (pós-homologação física, D10):** com a Onda 6 homologada de ponta a ponta —
+instalação real confirmada no Android 16 do dono, catálogo de produção carregando corretamente — a
+barreira que mantinha o arquivo fora do ar deixou de existir. `public/downloads/Encanto.apk` (novo,
+binário) = cópia byte a byte do artefato validado (mesmo `sha256`:
+`da390a02d9a1536ef859e3dd05095cd600138fb7db96435245c7612ff170b71d`, `6.368.798 bytes`, run
+`30654752201` — mesmo arquivo que passou pela homologação física, não um rebuild novo). Verificado após o
+build: `dist/encanto/downloads/Encanto.apk` preserva o hash exato; servido via `vite preview` real com
+`Content-Length`/hash corretos. `vercel.json` ganhou uma entrada em `headers` fixando `Content-Type:
+application/vnd.android.package-archive` só pra esse arquivo (Vite/Vercel não inferem esse MIME type
+sozinhos pra `.apk`) — sem isso o download ainda funcionaria (o atributo `download` do link já força
+salvar, e o nome do arquivo na URL já termina em `.apk`), mas o cabeçalho correto é mais robusto.
+"Sem atualização automática de APK" continua valendo — publicar uma nova versão no futuro é sempre um
+passo manual (build validado → cópia pro `public/downloads/` → commit), nunca automático.
 
 ## Onda 8 — Documentação
 
@@ -244,9 +248,12 @@ Status: ⏳ PENDENTE. Consolidar ADR/progress, registrar as 3 formas oficiais de
   por último (D10, causa raiz #2).
 - 2 secrets novos no repositório GitHub: `VITE_SUPABASE_URL`/`VITE_SUPABASE_KEY` (valores de produção,
   Onda 6/D10 — não são arquivo, mas fazem parte do estado necessário pro workflow funcionar).
-- `vercel.json` — `rewrites` pro path `/encanto/download` (Onda 7).
+- `vercel.json` — `rewrites` pro path `/encanto/download` (Onda 7); `headers` fixando `Content-Type` do
+  `.apk` (Onda 7, pós-homologação).
 - `src/hooks/useDownloadPage.js` (novo, Onda 7).
 - `src/components/DownloadScreen.jsx` (novo, Onda 7).
 - `src/App.jsx` — curto-circuito pra `DownloadScreen` (Onda 7).
+- `public/downloads/Encanto.apk` (novo, binário — Onda 7 pós-homologação; cópia exata do artefato
+  validado fisicamente no Android 16, run `30654752201`).
 - `docs/adr/REF-CAP-01-app-nativo-android.md` (novo, Onda 1; D2–D4 Onda 2)
 - `docs/ref/REF-CAP-01-progress.md` (novo, este arquivo)
