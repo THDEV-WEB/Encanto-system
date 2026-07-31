@@ -81,8 +81,9 @@ incluindo o spec de disparo do login Google) — zero regressão. Registra tamb�
 "Capacitor-Ready" (D9): nenhuma linha de Capacitor nesta REF, só as decisões que evitam retrabalho quando
 ele for adotado (OAuth via deep link, `base` de build dual, `window.print()` do Admin, Sentry nativo).
 
-📦 [REF-CAP-01 — Aplicativo Android Nativo (Capacitor)](REF-CAP-01-app-nativo-android.md) — 🚧 **Ondas
-1–7 concluídas, Onda 6 com homologação física confirmada.** Fase 1 (auditoria completa: OAuth Google
+📦 [REF-CAP-01 — Aplicativo Android Nativo (Capacitor)](REF-CAP-01-app-nativo-android.md) — ✅
+**ENCERRADA. Ondas 1–8 concluídas**, com homologação física real confirmando Onda 6 e o login Google
+nativo (D5). Fase 1 (auditoria completa: OAuth Google
 bloqueado em WebView, conflito `base:'/encanto/'`
 × `webDir` do Capacitor, ausência de toolchain Android nesta máquina, Play Protect, permissões/impressão/
 geolocalização) apresentada e **aprovada pelo dono (2026-07-30)**. Onda 1 (Dual Build) concluída: `vite.
@@ -117,9 +118,11 @@ testes); (3) typo no valor colado no secret (`VITE_SUPABASE_URL`). Confirmado po
 **instalação e funcionamento normal no aparelho Android 16 real do dono**. Onda 7 (D9): rota real
 `/encanto/download` via `rewrite` novo no `vercel.json` (projeto não tinha fallback de SPA nenhum
 configurado) + `DownloadScreen.jsx`/`useDownloadPage.js` novos; botão já funcional, mas o arquivo
-`Encanto.apk` **agora publicado** (`public/downloads/Encanto.apk`, cópia byte a byte do artefato
-homologado fisicamente) — botão de download real e funcional em produção. Onda 8 (documentação final) em
-andamento — ver [progress](../ref/REF-CAP-01-progress.md).
+`Encanto.apk` **publicado** (`public/downloads/Encanto.apk`, cópia byte a byte do artefato homologado
+fisicamente) — botão de download real e funcional em produção. **D5 fechado:** Redirect URL cadastrada no
+Supabase Auth, login Google nativo validado fisicamente sem regressão no Web/PWA/APK. Onda 8: seção
+"Encerramento" registra oficialmente as 3 formas de uso (Navegador/PWA/APK) — ver
+[progress](../ref/REF-CAP-01-progress.md).
 
 ## Sequência da evolução arquitetural
 

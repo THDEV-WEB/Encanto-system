@@ -12,12 +12,13 @@ ver Onda 4. Ver auditoria completa e D1 em
 
 ## Estado atual
 
-✅ Ondas 1–7 CONCLUÍDAS — **Onda 6 com homologação física confirmada pelo dono** (3 causas raiz
-sequenciais investigadas e corrigidas: bug de reconstrução de zip da UI do GitHub, secrets do Supabase
-ausentes, typo num secret; ver D10 do ADR); **Onda 7 com o APK homologado já publicado** em
-`public/downloads/Encanto.apk`, botão de download real em produção. Onda 8 (documentação de encerramento)
-em andamento. Pendente, registrado desde o D5: entrada no allow-list do Supabase Auth pro deep link do
-login Google (Onda 4/D5) — orientação entregue ao dono, validação do login nativo aguardando teste físico.
+✅ **REF-CAP-01 ENCERRADA — Ondas 1-8 CONCLUÍDAS.** Onda 6 com homologação física confirmada pelo dono (3
+causas raiz sequenciais investigadas e corrigidas: bug de reconstrução de zip da UI do GitHub, secrets do
+Supabase ausentes, typo num secret; ver D10 do ADR). Onda 7 com o APK homologado publicado em
+`public/downloads/Encanto.apk`, botão de download real em produção. D5 (login Google nativo) fechado —
+Redirect URL cadastrada no Supabase, fluxo validado fisicamente sem regressão. Onda 8 registra as 3 formas
+oficiais de uso (Navegador/PWA/APK) na seção "Encerramento" do ADR. Nenhuma pendência técnica bloqueante
+restante — ver nota de coordenação com `docs/PLANO-GOLIVE-01*` na seção da Onda 8.
 
 ## Onda 1 — Dual Build
 
@@ -215,7 +216,25 @@ passo manual (build validado → cópia pro `public/downloads/` → commit), nun
 
 ## Onda 8 — Documentação
 
-Status: ⏳ PENDENTE. Consolidar ADR/progress, registrar as 3 formas oficiais de uso (Navegador/PWA/APK).
+Status: ✅ **CONCLUÍDA.** Seção "Encerramento" registrada no ADR
+(`docs/adr/REF-CAP-01-app-nativo-android.md`), consolidando as 3 formas oficiais de uso do Encanto —
+🌐 Navegador, 📲 PWA (continua sendo a instalação primária/recomendada), 📦 APK Android nativo — e o
+estado final de cada onda (1-7, todas concluídas com evidência real, não suposição).
+
+**Pendência do D5 (login Google nativo) fechada:** dono cadastrou a Redirect URL
+`br.com.valionsistemas.encanto://login-callback` no Supabase Auth e validou fisicamente o fluxo completo
+(Browser do sistema → deep link → sessão criada) no aparelho já homologado — sem regressão identificada
+no Web, PWA ou APK.
+
+**Nota de coordenação entre frentes de trabalho:** existe uma iniciativa paralela de go-live
+(`docs/PLANO-GOLIVE-01-execucao-final.md`/`PLANO-GOLIVE-01B-fases-execucao.md`, não versionada por esta
+REF) cujo item A2 lista exatamente este fechamento da Onda 8 como tarefa própria. Antes de escrever esta
+seção, sincronizei com `origin/main` (`git fetch` — sem commits novos) para confirmar que a Onda 8 ainda
+não tinha sido fechada por aquela frente; registrando aqui para que não seja refeita lá. As duas frentes
+permanecem compatíveis — nenhuma decisão de arquitetura desta REF foi alterada ou contestada pelo plano
+de go-live (que trata migrations/WhatsApp/Mapbox/QA ampliada, fora do escopo do REF-CAP-01).
+
+**REF-CAP-01 encerrada — nenhuma pendência técnica bloqueante restante.**
 
 ## Arquivos modificados até aqui
 

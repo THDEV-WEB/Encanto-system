@@ -439,6 +439,44 @@ ambos exclusivamente para chamadas de leitura/dispatch pontuais, nunca persistid
 memória — o dono foi orientado a revogá-los após o uso, por serem credenciais coladas em texto puro na
 conversa.
 
-## Pendências (Onda 8)
+## Encerramento
 
-Ver [`docs/ref/REF-CAP-01-progress.md`](../ref/REF-CAP-01-progress.md) para o estado onda a onda.
+**O Encanto passa a ter três formas oficiais de utilização**, todas servidas pelo mesmo código-fonte,
+mesma arquitetura, mesmo backend Supabase — nenhuma é um "produto separado":
+
+1. 🌐 **Navegador** — `https://valionsistemas.com.br/encanto`, o app web original.
+2. 📲 **PWA** — mesmo endereço, instalável via "Adicionar à tela inicial" (REF-MOBILE-01). Continua sendo
+   a forma de instalação **primária/recomendada** — esta REF não a substitui nem a deprecia.
+3. 📦 **APK Android nativo** — `https://valionsistemas.com.br/encanto/download`, instalação direta (fora
+   da Play Store, sem o aviso de compatibilidade que às vezes aparece na instalação do PWA via WebAPK,
+   motivação original desta REF). Gerado via Capacitor (D1-D9), com uma segunda forma de login (D5),
+   comportamento de navegação nativo (D6) e impressão nativa (D7) específicos dela.
+
+**Todas as 8 ondas concluídas, com homologação física real (não só CI) confirmando a Onda 6 e o D5:**
+
+- Ondas 1-3: Dual Build + integração Capacitor + projeto Android (versões modernas de fábrica).
+- Onda 4: OAuth Google nativo, botão voltar, geolocalização, impressão nativa — código completo.
+- Onda 5: ícones/splash/tema a partir da identidade visual já existente.
+- **Onda 6: homologação física no Android 16 do dono, concluída com sucesso**, depois de uma investigação
+  real com 3 causas raiz sequenciais (D10) — bug de infraestrutura do GitHub Actions Artifacts, secrets
+  do Supabase ausentes, typo num secret. Nenhuma delas era um defeito de arquitetura desta REF.
+- **Onda 7: `public/downloads/Encanto.apk` publicado em produção**, cópia exata do artefato homologado —
+  confirmado ao vivo (`https://valionsistemas.com.br/encanto/downloads/Encanto.apk`, hash conferido,
+  `Content-Type` correto).
+- **D5 (login Google nativo): validado fisicamente pelo dono** — Redirect URL cadastrada no Supabase Auth,
+  fluxo completo (Browser do sistema → deep link → sessão) confirmado ponta a ponta, sem regressão no
+  Web/PWA/APK.
+- Onda 8 (esta seção): documentação de encerramento.
+
+**Limitações conhecidas, aceitas conscientemente (não são bugs):**
+- Login/botão voltar/impressão nativa (D5-D7) tiveram validação funcional real (D10 + fechamento do D5);
+  fluxos menos centrais (ex.: modais internos do Admin reagindo ao botão voltar) permanecem fora do
+  escopo original, registrados em D6.
+- `public/downloads/Encanto.apk` é atualizado **manualmente** (build validado → cópia → commit) — sem
+  pipeline de atualização automática, por decisão explícita do pedido original.
+- Publicação em loja oficial (Play Store) **não faz parte desta REF**, por decisão explícita do pedido
+  original — arquitetura já compatível com isso no futuro (mesmo `appId`, mesmo projeto Android).
+
+**REF-CAP-01 encerrada.** Nenhuma pendência técnica bloqueante restante. Trabalho relacionado ao go-live
+geral do sistema (migrations, WhatsApp, Mapbox, QA ampliada, etc.) pertence a uma iniciativa própria
+(`docs/PLANO-GOLIVE-01*`), fora do escopo desta REF.
