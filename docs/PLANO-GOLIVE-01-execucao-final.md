@@ -82,6 +82,51 @@ Executada como primeira atividade da Fase A (`PLANO-GOLIVE-01B`, item A1) — fe
 
 **Nota de corroboração:** o E2E `admin-categorias.spec.js:115` ("DB: trigger `trg_categoria_delete` bloqueia o DELETE mesmo direto pelo backend") passa 100% contra o projeto Supabase dedicado de E2E — confirma que a trigger funciona corretamente quando aplicada; reforça que o gap é só a aplicação em produção, não um problema de design ou implementação.
 
+### 0.2.1 — Dossiê de aplicação (reauditoria em 2026-07-31, antes da execução pelo dono)
+
+**Reconfirmação ao vivo (read-only, momentos antes deste dossiê):** trigger, função e índice continuam ausentes em produção — gap ainda aberto, nada mudou desde a auditoria original.
+
+**1. Idempotência:** total. As 3 operações usam formas idempotentes nativas do Postgres — `CREATE INDEX IF NOT EXISTS`, `CREATE OR REPLACE FUNCTION`, `CREATE OR REPLACE TRIGGER`. Rodar a migration 2x seguidas produz o mesmo estado final sem erro. Todo o corpo está dentro de `BEGIN;`/`COMMIT;` — aplica tudo ou nada (se qualquer instrução falhar, nenhuma fica meio-aplicada).
+
+**2. Conflito com migrations posteriores:** nenhum. Busquei em **todo** `migrations/*.sql` por qualquer arquivo que toque a tabela `categories` — só 4 aparecem (`REF-ADMIN-CATALOG-01`, `AUTH-01-step2-harden-rls`, `NORM-06.1-step1`, `NORM-06-F1B-step1`), todos **anteriores** a esta migration e nenhum cria trigger `BEFORE DELETE` nem usa os nomes `trg_categoria_delete`/`trg_categoria_delete_guard`/`products_categoria_ids_gin_idx` — únicos a esses 2 arquivos (o principal e o rollback). Confirmado também ao vivo: os únicos triggers hoje em `categories`/`products` são os STI (`trg_sti_categoria_tipo` BEFORE UPDATE, `trg_sti_product_categoria` BEFORE INSERT/UPDATE) — nenhum é BEFORE DELETE, zero sobreposição. Os únicos índices hoje em `products` são `products_pkey` e `unique_nome_categoria` — sem colisão de nome com o índice novo.
+
+**3. Impacto esperado em produção:**
+- **Estrutural:** cria 1 índice GIN (`products_categoria_ids_gin_idx`) + 1 função + 1 trigger `BEFORE DELETE ON categories`. Não altera nenhuma coluna, tabela, policy ou dado existente.
+- **Comportamental:** de agora em diante, um `DELETE` em `categories` cuja linha ainda seja referenciada por `products.categoria_ids` de **qualquer** produto passa a ser **recusado pelo banco** (exceção `check_violation`), em vez de silenciosamente suceder e deixar `categoria_ids` órfão. Só afeta `DELETE` de categoria — zero efeito em `SELECT`/`INSERT`/`UPDATE`, checkout, catálogo, pedidos ou qualquer leitura.
+- **No dia a dia do Admin:** nenhuma mudança perceptível. O guard de aplicação (`DS.delCat`) já barra esse mesmo caso ANTES de chegar ao banco, com uma mensagem amigável — a trigger só age se esse caminho normal for contornado (SQL direto, bug futuro, API futura). Volume atual (medido ao vivo): 9 categorias, 38 produtos, tabela `products` com 72 kB — a criação do índice é praticamente instantânea (só 1 conexão ativa no banco no momento da checagem, sem contenção esperada).
+- **Lock:** `CREATE INDEX` (sem `CONCURRENTLY`) toma um lock que bloqueia escritas em `products` durante a construção do índice — irrelevante na prática dado o tamanho da tabela (frações de segundo), mas registrado por honestidade. Não há downtime de leitura em nenhum momento.
+
+**4. Procedimento de aplicação (Supabase SQL Editor):**
+1. Abrir o **Supabase Dashboard do projeto de PRODUÇÃO** (conferir o nome/ref do projeto antes de colar — nunca o projeto `encanto-e2e`) → SQL Editor.
+2. Colar o conteúdo integral de `migrations/REF-ADMIN-03-categoria-delete-guard.sql` (já vem com `BEGIN`/`COMMIT` — não envolver em outra transação).
+3. Executar. Sucesso esperado: `Success. No rows returned` (mesma assinatura das demais migrations já aplicadas neste projeto).
+
+**5. Validação pós-aplicação (read-only, copiar/colar no SQL Editor):**
+```sql
+-- (a) indice criado
+SELECT indexname FROM pg_indexes WHERE tablename='products' AND indexname='products_categoria_ids_gin_idx';
+-- (b) trigger criada
+SELECT tgname FROM pg_trigger WHERE tgrelid='public.categories'::regclass AND NOT tgisinternal;
+-- deve listar trg_categoria_delete
+```
+Teste funcional **seguro e não-destrutivo** (já vem pronto nos comentários finais do próprio arquivo da migration — cria categoria+produto de teste, tenta deletar, espera falha, e desfaz tudo com `ROLLBACK`, nunca persiste nada):
+```sql
+BEGIN;
+  INSERT INTO categories(id,nome,ordem,ativo,slug,tipo) VALUES ('zz_test','zz_test',999,true,'zz-test-verif','business');
+  INSERT INTO products(id,nome,descricao,preco,categoria_id,categoria_ids,disponivel,adicionais_gratis)
+    VALUES (gen_random_uuid(),'zz_test_prod','x',1,'zz_test',ARRAY['zz_test'],true,0);
+  DELETE FROM categories WHERE id='zz_test'; -- deve falhar com check_violation
+ROLLBACK;
+```
+Se a linha `DELETE` devolver o erro `categoria zz_test(zz_test) nao pode ser excluida: 1 produto(s) a referenciam via categoria_ids`, a proteção está ativa e confirmada.
+
+**6. Testes mínimos após aplicar:**
+- O teste funcional seguro do item 5 (suficiente como evidência formal — já é o mesmo desenho usado pelo E2E dedicado, só que direto em produção e auto-reversível).
+- 1 checagem manual rápida no Admin real: tentar excluir uma categoria que hoje tem produtos (ex.: qualquer uma das 8 categorias com produtos) e confirmar que a mensagem de erro amigável de sempre continua aparecendo, sem mudança de comportamento visível — prova que o guard de aplicação e o novo guard de banco não conflitam.
+- **Não é necessário** rodar a suíte de domínio, `test:db-guards` ou E2E de novo por causa desta migration especificamente — é uma mudança isolada de banco, sem nenhuma linha de código de app envolvida, e a cobertura funcional (`admin-categorias.spec.js:115`) já está validada no projeto E2E dedicado (nota acima). Se quiser reconfirmar por excesso de cautela, o comando é `npx playwright test e2e/tests/admin/admin-categorias.spec.js --config=e2e/playwright.config.js --project=chromium` — mas roda contra o projeto E2E dedicado, não produção, então não serve como prova da aplicação em si (só da lógica, que já está provada).
+
+**7. Rollback, se necessário:** `migrations/REF-ADMIN-03-categoria-delete-guard-rollback.sql` — remove exatamente trigger + função + índice, atômico, não toca em mais nada.
+
 ---
 
 ## 0.3 — Onda A5: revisão de acessibilidade focada (login, checkout, checkout admin) — execução autônoma, 2026-07-31
