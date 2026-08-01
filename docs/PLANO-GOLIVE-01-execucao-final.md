@@ -146,6 +146,21 @@ Aplicada pela sessão, com autorização explícita do dono e token da Managemen
 
 **Nota de segurança:** o token da Management API foi usado só nesta etapa, nunca escrito em arquivo persistente do repositório nem em nenhum commit. Por ter sido colado em texto puro na conversa, **recomenda-se revogá-lo/regenerá-lo no painel do Supabase após esta sessão** (mesmo cuidado já registrado antes neste projeto para outras credenciais coladas em chat, ver `REF-CAP-01-app-nativo-android.md`).
 
+### 0.2.3 — Push, deploy e smoke test pós-migration (2026-08-01)
+
+Com o gap fechado, prossegui (autorização explícita do dono) para sincronizar, publicar e validar em produção os 4 commits locais acumulados na Fase A + fechamento do gap.
+
+| Etapa | Resultado |
+|---|---|
+| Sincronização | `git fetch` + `git rev-list --left-right --count HEAD...origin/main` → `4 0` (4 à frente, 0 atrás — sem divergência, fast-forward seguro) |
+| Push | `9d8aabe..9e3e5ce main -> main` — 4 commits: ratifica backlog P2, revisão de acessibilidade (Onda A5, único com mudança de código), dossiê de aplicação da migration, relatório de aplicação/fechamento do gap |
+| CI (GitHub Actions, commit `9e3e5ce`) | **3/3 checks verdes:** `Build` ✅, `Testes de domínio` ✅, `E2E (Playwright · Chromium)` ✅ (concluído após ~3min de execução) |
+| Deploy Vercel | Bundle de produção já refletia o novo commit na primeira checagem (`index-Ci7sa6kO.js`) — SHA de release embutido no bundle (`9e3e5ce2b07bb3e54a092531376b1a09a0d44269`) confere **exatamente** com o HEAD publicado |
+| Confirmação de conteúdo | Baixei o bundle publicado e confirmei a presença da string `radiogroup` (marcador da correção de acessibilidade do seletor de forma de pagamento, Onda A5) — prova que o deploy não é um cache velho, é o build real deste commit |
+| Smoke test pós-deploy | `/encanto/` (200), `/encanto/manifest.json` (200), `/encanto/sw.js` (200), `/encanto/downloads/Encanto.apk` (200) — nenhuma regressão de rota/asset |
+
+**Resultado: produção 100% sincronizada com `main`, CI verde, deploy confirmado por conteúdo (não só por hash), zero regressão identificada em nenhuma camada (banco, build, testes, deploy).**
+
 ---
 
 ## 0.3 — Onda A5: revisão de acessibilidade focada (login, checkout, checkout admin) — execução autônoma, 2026-07-31
