@@ -72,7 +72,9 @@ Executada como primeira atividade da Fase A (`PLANO-GOLIVE-01B`, item A1) — fe
 
 **Resultado: 33/34 confirmadas aplicadas em produção. 1 gap real encontrado.**
 
-### 0.2 — Gap encontrado: `REF-ADMIN-03-categoria-delete-guard.sql`
+### 0.2 — Gap encontrado e FECHADO: `REF-ADMIN-03-categoria-delete-guard.sql`
+
+**Status: ✅ APLICADA EM PRODUÇÃO em 2026-08-01**, via Supabase Management API (token fornecido pelo dono para esta etapa específica), com autorização explícita. Ver §0.2.2 para o relatório completo de aplicação e validação.
 
 **O que a migration faz:** cria uma trigger `BEFORE DELETE ON categories` que bloqueia a exclusão de uma categoria ainda referenciada por `products.categoria_ids` (array, sem suporte a FK nativa do Postgres) — é um backstop de integridade no banco, no mesmo estilo das triggers STI já existentes (`NORM-06-F1B`).
 
@@ -126,6 +128,23 @@ Se a linha `DELETE` devolver o erro `categoria zz_test(zz_test) nao pode ser exc
 - **Não é necessário** rodar a suíte de domínio, `test:db-guards` ou E2E de novo por causa desta migration especificamente — é uma mudança isolada de banco, sem nenhuma linha de código de app envolvida, e a cobertura funcional (`admin-categorias.spec.js:115`) já está validada no projeto E2E dedicado (nota acima). Se quiser reconfirmar por excesso de cautela, o comando é `npx playwright test e2e/tests/admin/admin-categorias.spec.js --config=e2e/playwright.config.js --project=chromium` — mas roda contra o projeto E2E dedicado, não produção, então não serve como prova da aplicação em si (só da lógica, que já está provada).
 
 **7. Rollback, se necessário:** `migrations/REF-ADMIN-03-categoria-delete-guard-rollback.sql` — remove exatamente trigger + função + índice, atômico, não toca em mais nada.
+
+### 0.2.2 — Relatório de aplicação (2026-08-01)
+
+Aplicada pela sessão, com autorização explícita do dono e token da Management API do Supabase fornecido para esta etapa específica (não a conexão Postgres direta local, que segue sem privilégio de escrita). Projeto de produção confirmado antes de qualquer escrita via `GET /v1/projects` (nome "Açai", ref `hvbcdxsagkjtfjwvnslo` — o mesmo ref que já aparecia nas checagens read-only desta sessão desde a auditoria original; `encanto-e2e` listado à parte, nunca tocado).
+
+| Etapa | Resultado |
+|---|---|
+| Preflight (Management API, read-only) | Cruzado com a conexão direta: gap ainda aberto, 9 categorias/38 produtos — bate exato |
+| Aplicação (`POST /database/query` com o SQL integral da migration) | HTTP 201, corpo vazio (mesma assinatura de sucesso de uma migration sem `SELECT`) |
+| Validação de objetos (índice/função/trigger) | Confirmada 2x, por 2 caminhos independentes (Management API e conexão pg direta): `products_categoria_ids_gin_idx`, `trg_categoria_delete_guard`, `trg_categoria_delete` — todos presentes |
+| Teste funcional seguro (`BEGIN`/2 `INSERT`/`DELETE`/`ROLLBACK`) | `DELETE` recusado com `ERROR 23514: categoria zz_test(zz_test) nao pode ser excluida: 1 produto(s) a referenciam via categoria_ids` — exatamente a mensagem prevista no dossiê |
+| Confirmação de zero dado persistido | Busca direta por `id='zz_test'`/`slug='zz-test-verif'`/`nome='zz_test_prod'` — **0 linhas** nas duas tabelas; contagem total inalterada (9 categorias, 38 produtos, antes e depois) |
+| Regressão (`npm run test:f1b`, mesma suíte que exercita `categories`/`products`) | **Idêntico ao baseline pré-migration:** 19 PASS · 3 FAIL (as mesmas 3 falhas conhecidas e pré-existentes, RA1-RA3, limitação do harness local — não relacionadas a esta migration) · 1 SKIP. O teste de concorrência `C1·concorrencia` (TOCTOU em `categories`) segue PASS, sem interferência entre a trigger nova e as triggers STI existentes |
+
+**Gap oficialmente encerrado.** As 34 migrations sensíveis auditadas em §0.1 estão agora 34/34 confirmadas aplicadas em produção.
+
+**Nota de segurança:** o token da Management API foi usado só nesta etapa, nunca escrito em arquivo persistente do repositório nem em nenhum commit. Por ter sido colado em texto puro na conversa, **recomenda-se revogá-lo/regenerá-lo no painel do Supabase após esta sessão** (mesmo cuidado já registrado antes neste projeto para outras credenciais coladas em chat, ver `REF-CAP-01-app-nativo-android.md`).
 
 ---
 
@@ -232,7 +251,7 @@ A sequência abaixo prioriza **verificação e configuração antes de qualquer 
 ### Backend / Dados
 - [x] `REF-ORDER-01c-notif-grants-harden.sql` aplicada em produção — **✅ confirmado ao vivo em 2026-07-31 (§0)**
 - [x] Auditoria completa das 34 migrations sensíveis — **✅ concluída em 2026-07-31 (§0.1): 33/34 confirmadas**
-- [ ] **`REF-ADMIN-03-categoria-delete-guard.sql` — 🔴 GAP encontrado, precisa ser aplicada por você antes do go-live (§0.2, item B1)**
+- [x] **`REF-ADMIN-03-categoria-delete-guard.sql` — ✅ APLICADA E VALIDADA em produção (2026-08-01, §0.2.2). 34/34 migrations sensíveis confirmadas.**
 - [x] `pg_cron` `enc-dispatch-whatsapp` ativo — **✅ já confirmado ao vivo (§0)**
 
 ### Integrações externas
