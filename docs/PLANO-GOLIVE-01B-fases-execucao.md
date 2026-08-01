@@ -25,7 +25,7 @@
 
 | # | Item | Por que depende de você | O que você precisa fazer exatamente | Quando é necessário | Quanto tempo o resto fica bloqueado | Alternativa temporária |
 |---|---|---|---|---|---|---|
-| **B1** | **Confirmado em 2026-07-31 (A1 encontrou o gap):** aplicar `REF-ADMIN-03-categoria-delete-guard.sql` | Convenção já estabelecida no projeto: migrations em produção são sempre aplicadas manualmente por você (SQL editor/Management API); meu classificador bloqueia DDL/escrita mesmo com autonomia delegada. Trigger de integridade (bloqueia DELETE de categoria ainda em uso) nunca foi aplicada — hoje só existe o guard de aplicação (`DS.delCat`), não o backstop de banco | Rodar `migrations/REF-ADMIN-03-categoria-delete-guard.sql` (já pronto, idempotente, rollback em arquivo separado) no SQL editor do Supabase | Assim que possível — não é urgente (sem incidente ativo, o guard de aplicação já cobre o caminho normal do Admin), mas deveria fechar antes do go-live formal | Não bloqueia nada do Bloco 1; bloqueia só o fechamento 100% de P0.1 no checklist de Go-Live | Nenhuma — é proteção de integridade de dados, não tem substituto equivalente fora do banco |
+| **B1** | ✅ **CONCLUÍDA em 2026-08-01.** Aplicada via Management API (token fornecido pelo dono para esta etapa), validada 2x por caminhos independentes, zero regressão (`test:f1b` idêntico ao baseline). Detalhes completos em `PLANO-GOLIVE-01-execucao-final.md` §0.2.2/§0.2.3. Token já revogado pelo dono após o uso. | ~~Convenção já estabelecida no projeto...~~ (superada — dono decidiu fornecer credencial pontual em vez de aplicar manualmente) | ~~Rodar a migration no SQL editor~~ — feito pela sessão | — | — | — |
 | **B2** | Credenciais Meta (WhatsApp Cloud API) + inserir 2 secrets no Vault | Cadastro em plataforma externa (Meta for Developers/WhatsApp Business), exige verificação de negócio — não é algo que eu consiga fazer; e escrita de secrets no Supabase é bloqueada para mim mesmo com autonomia delegada | Obter token permanente + `phone_number_id` na Meta; inserir os 2 valores no Vault (SQL editor ou Management API) | Pode ser feito **a qualquer momento**, em paralelo à Fase A inteira | **Zero** para o resto da implementação — o sistema já roda sem isso (fila fica `pending` com segurança); só bloqueia a *funcionalidade* de notificação automática | Ir ao ar sem notificação automática — já documentado como aceitável no plano original |
 | **B3** | Decisão + token Mapbox | Contratação de serviço pago (billing), decisão de negócio | Decidir se quer contratar; se sim, gerar o token e configurar `VITE_MAPBOX_TOKEN` na Vercel | A qualquer momento | Zero — fallback Nominatim→Photon já funciona e já foi validado como melhoria real | Manter o fallback atual indefinidamente — é a decisão default deste plano |
 | **B4** | QA física completa em Android real (checklist `REF-MOBILE-01`) | Exige aparelho físico, observação humana de comportamento visual/sensorial (splash, instalação, notificação push chegando de verdade) | Seguir o checklist completo (instalação, standalone, ícone/splash, login e-mail+Google, catálogo, checkout entrega/retirada, notificação, atualização, offline) em pelo menos 1 aparelho | Depois que o Bloco 1 (Fase A) estiver concluído, para testar a build mais atual | Bloqueia só a Onda 5 (go-live formal); o resto avança em paralelo | Nenhuma real — reaproveitar a homologação antiga do `REF-CAP-01` D10 cobre só instalação/catálogo, não o checklist inteiro (risco assumido, não recomendado) |
@@ -38,7 +38,7 @@
 
 | Onda | Depende do usuário? | Se sim: ação | Tempo da ação | Quando fazer |
 |---|---|---|---|---|
-| **Onda 1** — Auditoria de fechamento | **Não**, exceto contingência | B1 só se A1 encontrar gap | Minutos (SQL pronto) | Só se sinalizado |
+| **Onda 1** — Auditoria de fechamento | ✅ Concluída (2026-08-01) | B1 foi necessária (A1 achou o gap) — dono forneceu credencial pontual, sessão aplicou e validou | Feito | Feito |
 | **Onda 2** — Integrações externas | **Sim** | B2 (Meta+Vault) e B3 (Mapbox) | B2: minutos de trabalho seu, mas **verificação de negócio da Meta pode levar horas a dias** — fora do seu controle direto; B3: minutos | Pode começar **já**, em paralelo, não bloqueia nada |
 | **Onda 3** — QA final | **Sim** | B4 (QA física) + B5 (smoke manual) | B4: 1-3h conforme nº de aparelhos/cenários; B5: ~15-30 min | Depois do Bloco 1 (Fase A) fechado |
 | **Onda 4** — Registro de backlog | **Não** | — | — | — |
@@ -74,3 +74,50 @@ BLOCO 3 — INTERVENÇÃO HUMANA CONCENTRADA (só depois do Bloco 1 fechado)
 3. **Logo depois** — aprovação final (B6), minutos.
 
 Tudo o resto (Bloco 1 inteiro: 6 itens, incluindo a única mudança real de código deste ciclo) roda numa sessão contínua sem precisar da sua presença.
+
+---
+
+## Runbooks prontos — Fase B (preparados em 2026-08-01, reconfirmados read-only antes de escrever)
+
+Estado reconfirmado agora: secrets `whatsapp_token`/`whatsapp_phone_number_id`/`whatsapp_api_version` **ainda ausentes** do Vault; secret Mapbox **ainda ausente**. Nada mudou desde a última auditoria — os 2 runbooks abaixo continuam válidos.
+
+### Runbook B2 — WhatsApp Cloud API (Meta)
+
+1. Na Meta for Developers (app WhatsApp Business já existente ou novo): gerar um **token permanente** (não o temporário de 24h) + copiar o **Phone Number ID**.
+2. No SQL Editor do Supabase (projeto de produção, `hvbcdxsagkjtfjwvnslo` — nunca `encanto-e2e`), rodar (sintaxe já confirmada contra o schema `vault` real deste projeto):
+   ```sql
+   select vault.create_secret('SEU_TOKEN_AQUI', 'whatsapp_token', 'Token permanente WhatsApp Cloud API');
+   select vault.create_secret('SEU_PHONE_NUMBER_ID_AQUI', 'whatsapp_phone_number_id', 'Phone Number ID WhatsApp Cloud API');
+   ```
+   (Opcional, só se precisar fixar uma versão específica da Cloud API — sem isso o dispatcher usa o default já codificado: `select vault.create_secret('v20.0', 'whatsapp_api_version', 'Versao da Cloud API');`)
+3. **Nenhum deploy necessário** — o `pg_cron enc-dispatch-whatsapp` já está ativo (roda a cada 30s) e passa a operar assim que os secrets existirem.
+4. Validação: a fila `notification_outbox` já tem ~36 mensagens acumuladas em `pending` (pedidos reais desde que o sistema foi ao ar) — dentro de minutos após inserir os secrets, o Admin (aba "💬 Mensagens") deve mostrar essas linhas migrando para `sent`. Teste ponta a ponta real: mudar o status de 1 pedido no Admin e confirmar que a mensagem chega no WhatsApp do número de teste.
+
+### Runbook B3 — Mapbox
+
+1. Decidir se quer contratar (o fallback atual Nominatim→Photon já é funcional e validado — essa é a decisão default deste plano, sem prazo).
+2. Se sim: gerar o token em mapbox.com → Access Tokens.
+3. Vercel → Project Settings → Environment Variables → adicionar `VITE_MAPBOX_TOKEN`, ambiente Production.
+4. **Importante:** variáveis `VITE_*` são embutidas no build (não lidas em runtime) — depois de salvar, é preciso disparar um novo deploy (push qualquer, ou "Redeploy" manual no dashboard da Vercel) para o token entrar de fato no bundle publicado.
+5. Validação: buscar um endereço no checkout e conferir na aba Network do navegador se a chamada passa a ir para `api.mapbox.com`.
+
+### Checklist B4 — QA física (consolidado, evita retestar o que já foi validado)
+
+**Já confirmado fisicamente (não precisa repetir):** instalação do APK em Android real, catálogo carregando dentro do APK, ícone do APK, login Google nativo via deep link (D5/D10 do `REF-CAP-01`).
+
+**Ainda pendente de validação real (nunca foi feito, registrado como pendência honesta nos próprios ADRs):**
+- [ ] Checkout completo dentro do APK (entrega e retirada) — instalação/catálogo já testados, mas o fluxo de compra ponta a ponta no app nativo ainda não tem confirmação registrada.
+- [ ] Splash screen do APK.
+- [ ] Comportamento offline (sem internet: o app deve mostrar um estado de erro sensato, não travar — o Service Worker é desativado no APK por design, então "offline" aqui significa "sem rede alguma", não cache).
+- [ ] Notificações — só depois de B2 estar concluído (sem os secrets, a fila fica `pending`, comportamento esperado, não é bug).
+- [ ] **Checklist original da PWA (`REF-MOBILE-01`, nunca executado, registrado como pendência desde o encerramento daquela REF):** instalar via Android Chrome, via Samsung Internet, via Safari iOS (conferir ícone + modo standalone + safe-area no notch), via Chrome/Edge Desktop; confirmar que o aviso "Nova versão disponível" aparece e funciona após um deploy novo.
+
+### Roteiro B5 — Smoke test manual em produção
+
+1. **Cliente (guest):** buscar um produto → adicionar ao carrinho → checkout sem login → confirmar que o pedido é criado e a mensagem de WhatsApp (ou o link `wa.me`) é gerada corretamente.
+2. **Cliente (logado):** login (e-mail OTP ou Google) → telefone travado no checkout → pedido concluído → confirmar em "Meus Pedidos" que aparece vinculado à conta.
+3. **Fidelidade:** confirmar que o selo é concedido após o pedido (ver no chip de fidelidade ou em "Minha Conta").
+4. **Admin:** login → ver o pedido novo no Dashboard/Pedidos → avançar status → conferir que `order_events`/timeline reflete corretamente → imprimir/copiar a comanda.
+5. Se B2 já estiver concluído nesse momento: confirmar que a notificação de WhatsApp chegou de verdade no número real do cliente de teste em cada mudança de status.
+
+---
