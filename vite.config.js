@@ -57,17 +57,21 @@ const sentryUploadPronto = !!(process.env.SENTRY_AUTH_TOKEN && process.env.SENTR
    import virtual:pwa-register"). Com `disable:true`, o modulo virtual continua resolvendo (como stub
    no-op), o hook roda normalmente e nunca ativa nada — zero comportamento de SW dentro do APK, com ZERO
    mudanca de codigo em runtime. */
-const buildPwaPlugin = (desativado) => VitePWA({
+/* REF-ADMIN-04 · Onda 1: parametros novos (filename/navigateFallback) só existem pra permitir uma 2a
+   instância deste MESMO plugin pro bundle do admin (Onda 2 liga de vez, com manifest/nome próprios) —
+   assinatura por posição preservada pros dois chamadores que já existiam (web e capacitor continuam
+   passando só o 1o argumento, pegando os defaults de sempre). */
+const buildPwaPlugin = (desativado, filename = 'sw.js', navigateFallback = 'index.html') => VitePWA({
   disable: desativado,
   registerType: 'prompt',
   injectRegister: false,
   manifest: false,
   strategies: 'generateSW',
-  filename: 'sw.js',
+  filename,
   devOptions: { enabled: false },
   workbox: {
     globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,jpeg,webmanifest,json}'],
-    navigateFallback: 'index.html',
+    navigateFallback,
     cleanupOutdatedCaches: true,
     clientsClaim: true,
   },
@@ -84,15 +88,26 @@ const buildPwaPlugin = (desativado) => VitePWA({
    - Service Worker desativado (`buildPwaPlugin(true)`, ver acima) -> um Service Worker Workbox pressupõe
      "nova versão = novo fetch de rede"; dentro de um APK empacotado localmente essa premissa não existe
      (nova versão = novo APK instalado) — zero comportamento de PWA dentro do Capacitor. */
+/* REF-ADMIN-04 · Onda 1: 3o valor de `mode` (`vite build --mode admin`), mesmo mecanismo de gate único
+   já usado pelo `capacitor` (REF-CAP-01) — nunca um vite.config.admin.js paralelo, mesma razão de sempre
+   (elimina o risco de as saídas divergirem em silêncio com o tempo). `base:'/'` porque o admin é servido
+   na RAIZ do seu próprio domínio (subdomínio dedicado, ver ADR), nunca sob `/encanto/` — ao contrário do
+   Capacitor (raiz local do WebView), aqui é raiz de um domínio Vercel de verdade.
+   `rollupOptions.input` só é sobrescrito neste modo: web/capacitor continuam usando o default do Vite
+   (o `index.html` da raiz), agora que `admin.html` também existe no repo — sem isso, o build da loja
+   passaria a incluir os dois HTMLs juntos. */
 export default defineConfig(({ mode }) => {
   const isCapacitor = mode === 'capacitor';
-  const outDir = isCapacitor ? 'dist/capacitor' : 'dist/encanto';
+  const isAdmin = mode === 'admin';
+  const outDir = isCapacitor ? 'dist/capacitor' : isAdmin ? 'dist/admin' : 'dist/encanto';
 
   return {
-    base: isCapacitor ? '/' : '/encanto/',
+    base: (isCapacitor || isAdmin) ? '/' : '/encanto/',
     plugins: [
       react(),
-      buildPwaPlugin(isCapacitor),
+      isAdmin
+        ? buildPwaPlugin(true, 'sw-admin.js', 'admin.html') // REF-ADMIN-04 Onda 1: scaffolding só — Onda 2 liga (disable:false) com manifest próprio
+        : buildPwaPlugin(isCapacitor),
       ...(sentryUploadPronto ? [sentryVitePlugin({
         org: process.env.SENTRY_ORG,
         project: process.env.SENTRY_PROJECT,
@@ -106,6 +121,7 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       outDir,
+      rollupOptions: isAdmin ? { input: 'admin.html' } : undefined,
       // Só gera .map quando há credencial pra subir pro Sentry E apagar do dist depois (plugin acima) —
       // sem isso, gerar .map deixaria o mapa do código-fonte publicamente acessível no Vercel (adivinhando
       // a URL), sem nenhum benefício (ninguém pra consumi-lo). 'hidden' = sem sourceMappingURL no JS final
