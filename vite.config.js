@@ -61,7 +61,7 @@ const sentryUploadPronto = !!(process.env.SENTRY_AUTH_TOKEN && process.env.SENTR
    instância deste MESMO plugin pro bundle do admin (Onda 2 liga de vez, com manifest/nome próprios) —
    assinatura por posição preservada pros dois chamadores que já existiam (web e capacitor continuam
    passando só o 1o argumento, pegando os defaults de sempre). */
-const buildPwaPlugin = (desativado, filename = 'sw.js', navigateFallback = 'index.html') => VitePWA({
+const buildPwaPlugin = (desativado, filename = 'sw.js', navigateFallback = 'index.html', globIgnores = []) => VitePWA({
   disable: desativado,
   registerType: 'prompt',
   injectRegister: false,
@@ -71,6 +71,7 @@ const buildPwaPlugin = (desativado, filename = 'sw.js', navigateFallback = 'inde
   devOptions: { enabled: false },
   workbox: {
     globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,jpeg,webmanifest,json}'],
+    globIgnores, // REF-ADMIN-04 Onda 3: admin usa isto pra nunca precachear dist/encanto|capacitor (outDir agora e' a raiz compartilhada 'dist/')
     navigateFallback,
     cleanupOutdatedCaches: true,
     clientsClaim: true,
@@ -95,18 +96,30 @@ const buildPwaPlugin = (desativado, filename = 'sw.js', navigateFallback = 'inde
    Capacitor (raiz local do WebView), aqui é raiz de um domínio Vercel de verdade.
    `rollupOptions.input` só é sobrescrito neste modo: web/capacitor continuam usando o default do Vite
    (o `index.html` da raiz), agora que `admin.html` também existe no repo — sem isso, o build da loja
-   passaria a incluir os dois HTMLs juntos. */
+   passaria a incluir os dois HTMLs juntos.
+   REF-ADMIN-04 · Onda 3 (achado ao vivo): `outDir` do admin é `'dist'` (RAIZ), não `'dist/admin'` como
+   na Onda 1/2 original. Causa: `vercel.json` (compartilhado pelos 2 projetos Vercel, mesmo repositório)
+   tem `"outputDirectory": "dist"` no nível raiz — esse campo do `vercel.json`, quando presente, prevalece
+   sobre o Output Directory configurado no próprio projeto `encanto-admin` (confirmado ao vivo: arquivos
+   apareciam em `/admin/admin.html`, não em `/admin.html`, porque a Vercel servia o CONTEÚDO de `dist/`
+   como raiz, e `dist/admin/` ficava aninhado um nível a mais dentro dela). Ajustar `vercel.json` exigiria
+   também fixar `outputDirectory` explícito no projeto `encanto-system` (a loja) para compensar — ação
+   bloqueada pelo classificador de segurança por mexer em config de projeto de PRODUÇÃO ao vivo. Solução
+   sem tocar em `encanto-system` nem em `vercel.json`: o build do admin já gera a saída onde a Vercel
+   realmente serve (`dist/` raiz). `emptyOutDir:false` só no admin evita que rodar `build:admin` local
+   apague `dist/encanto`/`dist/capacitor` se alguém buildar os 3 em sequência na mesma pasta (só afeta
+   teste local — cada deploy da Vercel roda em checkout limpo, isolado). */
 export default defineConfig(({ mode }) => {
   const isCapacitor = mode === 'capacitor';
   const isAdmin = mode === 'admin';
-  const outDir = isCapacitor ? 'dist/capacitor' : isAdmin ? 'dist/admin' : 'dist/encanto';
+  const outDir = isCapacitor ? 'dist/capacitor' : isAdmin ? 'dist' : 'dist/encanto';
 
   return {
     base: (isCapacitor || isAdmin) ? '/' : '/encanto/',
     plugins: [
       react(),
       isAdmin
-        ? buildPwaPlugin(false, 'sw-admin.js', 'admin.html') // REF-ADMIN-04 Onda 2: ligado — manifest próprio (public/manifest-admin.json) + link em admin.html
+        ? buildPwaPlugin(false, 'sw-admin.js', 'admin.html', ['encanto/**', 'capacitor/**']) // REF-ADMIN-04 Onda 2/3: manifest próprio + nunca precacheia saída da loja/Capacitor que possa coexistir em dist/
         : buildPwaPlugin(isCapacitor),
       ...(sentryUploadPronto ? [sentryVitePlugin({
         org: process.env.SENTRY_ORG,
@@ -121,6 +134,7 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       outDir,
+      emptyOutDir: !isAdmin, // REF-ADMIN-04 Onda 3: admin escreve em dist/ (raiz) sem limpar — protege dist/encanto e dist/capacitor de builds locais em sequência
       rollupOptions: isAdmin ? { input: 'admin.html' } : undefined,
       // Só gera .map quando há credencial pra subir pro Sentry E apagar do dist depois (plugin acima) —
       // sem isso, gerar .map deixaria o mapa do código-fonte publicamente acessível no Vercel (adivinhando
