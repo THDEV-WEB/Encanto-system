@@ -7,6 +7,15 @@
 <!-- REF-ADMIN-04: superficie administrativa nunca deve ser indexada/rastreada — reforca a invisibilidade
      que e' o proprio objetivo desta REF (nao depende so' de ninguem linkar pra ca). -->
 <meta name="robots" content="noindex, nofollow"/>
+<!-- REF-ADMIN-04 Onda 2: manifest PROPRIO do admin (scope/start_url/id="/" — raiz do SEU dominio,
+     nunca "/encanto/") - instalavel como PWA independente da loja, nome/icone proprios na tela
+     inicial. Icones reaproveitados dos mesmos arquivos da loja por ora (nenhum ativo visual distinto
+     foi fornecido ainda) - pendencia de design registrada no ADR, nao bloqueia a arquitetura. -->
+<link rel="manifest" href="/manifest-admin.json"/>
+<link rel="icon" href="/favicon-valion-v2.ico" sizes="any"/>
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-valion-32-v2.png"/>
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-valion-16-v2.png"/>
+<link rel="apple-touch-icon" href="/apple-touch-icon-valion-v2.png"/>
 <meta name="theme-color" content="#6B1F5D"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>

@@ -1,0 +1,18 @@
+{
+  "id": "/",
+  "name": "Encanto Admin",
+  "short_name": "Encanto Admin",
+  "description": "Painel administrativo do Encanto: pedidos, catálogo, status da loja e fidelidade.",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#6B1F5D",
+  "categories": ["business", "productivity"],
+  "icons": [
+    { "src": "/icon-valion-192-v2.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-valion-512-v2.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

@@ -106,7 +106,7 @@ export default defineConfig(({ mode }) => {
     plugins: [
       react(),
       isAdmin
-        ? buildPwaPlugin(true, 'sw-admin.js', 'admin.html') // REF-ADMIN-04 Onda 1: scaffolding só — Onda 2 liga (disable:false) com manifest próprio
+        ? buildPwaPlugin(false, 'sw-admin.js', 'admin.html') // REF-ADMIN-04 Onda 2: ligado — manifest próprio (public/manifest-admin.json) + link em admin.html
         : buildPwaPlugin(isCapacitor),
       ...(sentryUploadPronto ? [sentryVitePlugin({
         org: process.env.SENTRY_ORG,

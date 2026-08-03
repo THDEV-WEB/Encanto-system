@@ -75,18 +75,33 @@ monorepo/workspace.
 
 ## Onda 2 — Manifest e Service Worker dedicados do Admin
 
-- Novo `manifest.json` do admin: `name`/`short_name`="Encanto Admin", ícone próprio (a definir com o
-  dono — reaproveitar variação do ícone oficial já existente, mesma técnica de recorte/cache-busting
-  físico documentada em `REF-MOBILE-01`), `scope`/`start_url`/`id` apontando para o domínio do admin
-  (não para `/encanto/`).
-- Segunda instância do Service Worker (mesma config Workbox/`vite-plugin-pwa` já validada — sem
-  `runtimeCaching`, `registerType:'prompt'`), registrada no `admin.html`.
-- Meta tags PWA (`apple-mobile-web-app-*`, `theme-color`, favicons) no `admin.html`, espelhando o
-  padrão já usado no `index.html` da loja.
-- **Verificação:** manifest/ícones/SW do admin respondem 200 em preview local; instalação manual (`Add
-  to Home Screen`/ícone de instalação do Chrome) testada em pelo menos um navegador desktop, gerando um
-  ícone "Encanto Admin" distinto do "Encanto" da loja.
-- **1 commit.**
+**✅ CONCLUÍDA (2026-08-03).**
+
+- `public/manifest-admin.json` (novo): `name`/`short_name`="Encanto Admin", `id`/`start_url`/`scope`="/"
+  (raiz do domínio do admin — nunca `/encanto/`, sem risco de colisão de scope com a loja mesmo que um
+  dia acabem no mesmo navegador/perfil). Ícones **reaproveitados dos arquivos já existentes**
+  (`icon-valion-192/512-v2.png`) — nenhum ativo visual distinto foi fornecido ainda; fica registrado
+  como pendência de design (não bloqueia a arquitetura, só a diferenciação visual do ícone na tela
+  inicial — nome/identidade de app já são distintos independentemente disso).
+- `admin.html`: `<link rel="manifest" href="/manifest-admin.json">` + favicons/apple-touch-icon
+  (mesmos arquivos da loja) + meta tags PWA (`apple-mobile-web-app-*`, `theme-color`), espelhando
+  `index.html`.
+- `vite.config.js`: 2ª instância do plugin `vite-plugin-pwa` ligada para o modo `admin`
+  (`disable:false`, `filename:'sw-admin.js'`, `navigateFallback:'admin.html'`) — mesma config Workbox
+  da loja (sem `runtimeCaching`, `registerType:'prompt'`, zero mudança de estratégia).
+- **Verificação real:** `npm run build:admin` gera `dist/admin/manifest-admin.json`,
+  `dist/admin/sw-admin.js` + `workbox-*.js`, 17 entradas de precache (1131 KiB); ícones/favicons
+  presentes (copiados automaticamente de `public/`, mesmo mecanismo que já serve a loja).
+  `npm run build` (loja): saída **byte a byte idêntica** à da Onda 1 (mesmo hash `index-DXx8L6EF.js`,
+  615.12 kB). `npm run test:domain`: verde, sem regressão.
+- **Observação não-bloqueante:** por `public/` ser copiado inteiro em qualquer modo de build, o output
+  do admin também carrega arquivos exclusivos da loja (`manifest.json`, `header-bg.jpg`,
+  `downloads/Encanto.apk`, etc.) — nenhum deles é referenciado pelo `admin.html`, e nenhum é
+  informação nova (já são públicos hoje no domínio da loja); só ocupam alguns KB extras no output do
+  admin sem função nenhuma. Não justificou reestruturar `public/` em subpastas por bundle nesta REF.
+- Instalação lado a lado (ícone "Encanto" vs. "Encanto Admin" na tela inicial/gaveta de apps) depende
+  de dispositivo real — fica para a QA manual da Onda 6.
+- **1 commit** (`admin-04`).
 
 ## Onda 3 — Terceiro projeto Vercel + domínio + Supabase Auth
 
