@@ -248,12 +248,45 @@ HTTP 200, conteúdo "Encanto Admin" confirmado.
 
 ## Onda 5 — Adaptação da suíte E2E
 
-- Specs que hoje navegam via `data-testid="header-admin-btn"` passam a usar um `baseURL` próprio
-  apontando para o domínio/build do admin (segunda config Playwright, ou segundo `project` dentro do
-  `playwright.config.js` existente — a decidir na implementação, sem introduzir ferramenta nova).
-- **Verificação:** `test:e2e` completo verde (loja + admin), mesma cobertura numérica de antes (nenhum
-  spec perdido, só redirecionado para o novo caminho).
-- **1 commit.**
+**✅ CONCLUÍDA (2026-08-03).**
+
+- **Achado que simplificou tudo:** não foi preciso 2º `webServer`/porta no `playwright.config.js`. Em
+  modo dev, o Vite serve qualquer `.html` do projeto independente da restrição de
+  `rollupOptions.input` (que só vale pra `vite build`) — `admin.html` já é servido pelo MESMO dev
+  server da loja (`vite --mode e2e`), em `/encanto/admin.html`. Zero mudança de infraestrutura de teste.
+- `AdminLoginPage.goto()` (Page Object): `/encanto/#admin-encanto` → `/encanto/admin.html`. Essa única
+  mudança já resolveu ~20 dos 24 arquivos de spec do admin (usam só a fixture, sem tocar em
+  gear/hash diretamente).
+- `StorePage.gotoAdmin()` removido (nunca era chamado por nenhum spec — código morto).
+- **Achado real de arquitetura, corrigido antes de rodar os testes:** "← Ver loja" (`AdminApp.jsx`)
+  virou navegação real (`window.location.href`) pra URL de produção hardcoded — em E2E isso navegaria
+  pra PRODUÇÃO de verdade, violando o princípio do projeto de nunca testar contra produção via
+  automação. Corrigido com `VITE_STORE_URL` configurável (`.env.e2e`/`.env.e2e.example`/CI usam
+  `/encanto/`, caminho relativo — resolve contra qualquer host/porta do dev server).
+- **4 specs reescritos** (premissa mudou: loja e admin não compartilham mais o mesmo bundle/DOM):
+  `admin-sessao.spec.js` (o mais afetado — 2 dos 7 testes originais testavam especificamente
+  engrenagem/hash e foram REMOVIDOS, já que esse mecanismo não existe mais em lugar nenhum do
+  código-fonte; os demais passaram a navegar direto pro bundle do admin), `admin-logout.spec.js`,
+  `admin-minha-conta.spec.js`, `admin-permissao.spec.js` ("reload sempre volta pra Loja" virou "reload
+  do admin sempre reabre no login do próprio bundle" — não há loja aqui dentro pra "cair").
+- `e2e/README.md`: nova seção "REF-ADMIN-04" documentando o fluxo atual (substitui a seção "Fluxo
+  resultante" da REF-STABILITY-02, mantida como histórico).
+
+**Verificação real:**
+- `npm run test:e2e` (suíte completa, fresh): **109/111 passou** na 1ª rodada limpa. As 2 falhas
+  (`admin-dashboard.spec.js`, `admin-pedidos-busca.spec.js`) são sobre CONTAGEM de pedidos/breakdown de
+  status — **confirmado NÃO ser regressão desta REF**: reexecutados em isolamento, sem interferência de
+  outras rodadas, **passam 100%**. Causa raiz identificada: esta sessão rodou a suíte admin repetidas
+  vezes (depuração das Ondas 4/5) contra o MESMO projeto Supabase de E2E compartilhado, acumulando
+  pedidos de teste — um dos testes usa `getByText('Recebido', {exact:true})`, que passa a bater em
+  múltiplos badges de pedido conforme mais pedidos acumulam, não só no breakdown pretendido. Efeito
+  colateral do RITMO de testes desta sessão, não um bug de código (nenhuma mudança desta onda toca
+  criação/contagem de pedidos).
+- `admin-permissao.spec.js` tinha o MESMO erro de premissa ("reload cai na loja") encontrado durante a
+  varredura — corrigido junto, fora do escopo original dos "4 specs" listados acima mas descoberto ao
+  rodar a suíte completa.
+
+**1 commit** (`admin-04`).
 
 ## Onda 6 — QA manual do dono e encerramento
 

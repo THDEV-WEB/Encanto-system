@@ -1,39 +1,37 @@
 /* e2e/tests/admin/admin-sessao.spec.js — REF-E2E-03 · Onda 1 (@writes) · reescrito na REF-ADMIN-01 ·
-   Onda 2, depois na REF-STABILITY-01, e agora na REF-STABILITY-02 (mudança de comportamento — decisão
-   do dono, substitui as duas anteriores nesta parte específica).
+   Onda 2, depois na REF-STABILITY-01, na REF-STABILITY-02 e agora na REF-ADMIN-04 · Onda 5 (Admin
+   virou bundle/app/domínio próprios — sem mais loja/engrenagem/hash neste código nenhum).
 
-   NOVO COMPORTAMENTO (REF-STABILITY-02): a sessão do Admin no Supabase continua persistindo
-   normalmente, mas NUNCA MAIS decide sozinha qual tela aparece — nem no boot, nem num F5, nem ao entrar
-   no fluxo admin (engrenagem/hash). Todo bootstrap SEMPRE abre a Loja; engrenagem/hash SEMPRE abrem a
-   tela de LOGIN (com o formulário, nunca mais uma tela "verificando sessão" escondendo-o); só o clique
+   COMPORTAMENTO ATUAL (REF-STABILITY-02, preservado pela REF-ADMIN-04): a sessão do Admin no Supabase
+   continua persistindo normalmente, mas NUNCA decide sozinha qual tela aparece — nem no boot, nem num
+   F5. O bundle do admin (admin.html/AdminApp.jsx) SEMPRE abre no formulário de login; só o clique
    explícito em "Entrar" consulta/reaproveita uma sessão válida (sem pedir credencial de novo) — sem
    sessão válida, cai no login normal por e-mail/senha.
 
-   Isso INVERTE várias asserções das duas gerações anteriores desta suíte:
-   - Antes (REF-AUTH-02/ADMIN-01): engrenagem/hash com sessão válida iam DIRETO pro painel.
-     Agora: mostram o formulário; só "Entrar" promove.
-   - Antes (REF-ADMIN-02): F5 dentro do painel ('checking') mantinha o Admin sem novo clique.
-     Agora: F5 sempre volta pra Loja — "Entrar" depois reaproveita a sessão sem pedir senha.
-   - Antes (REF-STABILITY-01): formulário "nunca entra no DOM, nem por 1 frame" com sessão válida
-     (escondido atrás de 'verificando sessão'). Agora: o formulário É PRA aparecer sempre — o que se
-     prova agora é o INVERSO: ele nunca é pulado sem o clique.
-   - O teste "reload nunca busca o catálogo da Loja" (REF-ADMIN-02) foi RETIRADO: seu objetivo era
-     provar que a Loja não chegava a montar num F5 com sessão salva — hoje isso é o comportamento
-     ESPERADO (a Loja sempre monta num F5), então a premissa do teste deixou de existir.
+   MUDANÇA DA REF-ADMIN-04 · Onda 5 (arquitetural, não só de comportamento): antes, "loja" e "admin"
+   eram o MESMO bundle (App.jsx com mode-switch) — dava pra testar "a loja abre direto mesmo com sessão
+   salva" e "reload sempre volta pra loja" no MESMO contexto de página. Agora são dois bundles/apps
+   totalmente separados (sem StoreApp nenhum dentro do admin) — os testes que dependiam de navegar
+   PARA a loja a partir do admin (ou vice-versa, via engrenagem/hash) perderam a premissa:
+   - Testes que testavam a engrenagem/hash especificamente (acesso oculto pela loja) foram REMOVIDOS —
+     esse mecanismo não existe mais em lugar nenhum do código-fonte (REF-ADMIN-04 Onda 4).
+   - Testes que provavam "sessão nunca promove sozinha" continuam plenamente válidos — só passaram a
+     navegar direto pro bundle do admin (`adminLoginPage.goto()`) em vez de via loja+engrenagem.
+   - "Reload sempre volta pra Loja" virou "reload do bundle do admin sempre reabre no login" (não há
+     mais loja nenhuma pra "voltar" dentro deste bundle).
 
    REF-ADMIN-03 · Onda 2: `db` tem storageKey EXPLÍCITO (constants/authStorage.js) — este spec importa
    a MESMA constante em vez de reconstruir a chave default do supabase-js a partir da URL.
 
    REF-UX-SESSION-01 (UX, sem tocar autenticação): o clique em "Entrar" continua sendo o ÚNICO gatilho
-   que consulta a sessão salva (nada muda aqui) — mas quando ela é reaproveitável, uma tela de
-   confirmação aparece antes de entrar ("Sessão administrativa encontrada" / Continuar como Administrador
-   / Usar outra conta), para deixar explícito que nenhuma senha foi validada nesse caminho. Os testes que
-   já provavam reaproveitamento de sessão agora usam `adminLoginPage.entrarReaproveitandoSessao()`
-   (clica "Entrar" + confirma) em vez de um único clique. Novo teste dedicado cobre "Usar outra conta". */
+   que consulta a sessão salva — mas quando ela é reaproveitável, uma tela de confirmação aparece antes
+   de entrar ("Sessão administrativa encontrada" / Continuar como Administrador / Usar outra conta),
+   para deixar explícito que nenhuma senha foi validada nesse caminho. Os testes que já provavam
+   reaproveitamento de sessão usam `adminLoginPage.entrarReaproveitandoSessao()` (clica "Entrar" +
+   confirma) em vez de um único clique. */
 import { test, expect } from '../../fixtures/index.js';
 import { AdminLoginPage } from '../../pages/AdminLoginPage.js';
 import { AdminPanelPage } from '../../pages/AdminPanel.page.js';
-import { StorePage } from '../../pages/StorePage.js';
 import { ADMIN_FIXTURE } from '../../support/fixture-accounts.js';
 import { E2E_ENV, E2E_ENV_PRONTO, supabaseAnon } from '../../support/supabaseAdmin.js';
 import { ADMIN_AUTH_STORAGE_KEY } from '../../../src/constants/authStorage.js';
@@ -80,35 +78,32 @@ async function contextComSessaoAdmin(browser, baseURL) {
 }
 
 test.describe('sessão do Admin', { tag: '@writes' }, () => {
-  test('domínio principal SEMPRE abre a Loja; engrenagem SEMPRE mostra o login; "Entrar" reaproveita sessão válida', async ({ browser, baseURL }) => {
+  test('acesso direto ao bundle do admin com sessão válida: SEMPRE mostra o login primeiro; "Entrar" reaproveita sem pedir senha (regressão-alvo desta ref)', async ({ browser, baseURL }) => {
     test.skip(!E2E_ENV_PRONTO, 'ambiente de E2E não configurado (.env.e2e)');
 
     const context = await contextComSessaoAdmin(browser, baseURL);
     const page = await context.newPage();
-    const storePage = new StorePage(page);
-    await storePage.goto(); // domínio principal, sem hash, aba nova
-
-    // A Loja abre direto — a sessão salva não decide a tela inicial sozinha.
-    await expect(page.locator('[data-prod]').first()).toBeVisible();
-    await expect(page.locator('[data-testid="admin-tab-dashboard"]')).toHaveCount(0);
-
-    // Engrenagem: SEMPRE mostra o formulário de login primeiro — nunca pula pro painel sozinha,
-    // mesmo com sessão válida salva (regressão-alvo desta ref: promoção sem clique explícito).
-    await page.locator('[data-testid="header-admin-btn"]').click();
     const adminPanel = new AdminPanelPage(page);
-    await expect(page.locator('[data-testid="admin-login-senha"]')).toBeVisible();
+    const adminLoginPage = new AdminLoginPage(page);
+
+    await adminLoginPage.goto();
+
+    // Espera um tempo real (não só a asserção seguinte) para dar chance a qualquer promoção em
+    // background acontecer, caso a regressão volte — sessão válida presente NUNCA deve, sozinha,
+    // levar ao painel.
+    await page.waitForTimeout(500);
     await expect(adminPanel.tab('dashboard')).toHaveCount(0);
+    await expect(page.locator('[data-testid="admin-login-senha"]')).toBeVisible(); // form de credencial (padrão), antes de clicar "Entrar"
 
     // Só o clique em "Entrar" consulta a sessão — reaproveita sem pedir credencial de novo, mas exige
     // confirmação explícita (REF-UX-SESSION-01) antes de entrar de fato.
-    const adminLoginPage = new AdminLoginPage(page);
     await adminLoginPage.entrarReaproveitandoSessao();
     await expect(adminPanel.tab('dashboard')).toBeVisible();
 
     await context.close();
   });
 
-  test('reload no meio do painel SEMPRE volta para a Loja; "Entrar" reaproveita a sessão sem pedir senha de novo', async ({ adminLoginPage, adminPanel, page }) => {
+  test('reload do bundle do admin SEMPRE reabre no login; "Entrar" reaproveita a sessão sem pedir senha de novo', async ({ adminLoginPage, adminPanel, page }) => {
     test.skip(!E2E_ENV_PRONTO, 'ambiente de E2E não configurado (.env.e2e)');
 
     await adminLoginPage.goto();
@@ -117,62 +112,11 @@ test.describe('sessão do Admin', { tag: '@writes' }, () => {
 
     await page.reload();
 
-    // REF-STABILITY-02: nenhuma exceção mais para "F5 dentro do painel" — todo bootstrap abre a Loja.
-    await expect(page.locator('[data-prod]').first()).toBeVisible();
+    // O bundle do admin não tem estado nenhum de "loja" pra cair — reload sempre reabre no formulário
+    // de login, mesmo com sessão válida salva (só "Entrar" a reaproveita).
     await expect(adminPanel.tab('dashboard')).toHaveCount(0);
-
-    // A sessão continua válida (persistência normal): engrenagem + Entrar + confirmar restaura sem
-    // digitar senha (REF-UX-SESSION-01: confirmação explícita antes de entrar).
-    await page.locator('[data-testid="header-admin-btn"]').click();
-    await expect(page.locator('[data-testid="admin-login-senha"]')).toBeVisible();
     await adminLoginPage.entrarReaproveitandoSessao();
     await expect(adminPanel.tab('dashboard')).toBeVisible();
-  });
-
-  test('acessar #admin-encanto já autenticado MOSTRA o login (não pula mais pro painel); "Entrar" reaproveita a sessão', async ({ adminLoginPage, adminPanel, page }) => {
-    test.skip(!E2E_ENV_PRONTO, 'ambiente de E2E não configurado (.env.e2e)');
-
-    await adminLoginPage.goto();
-    await adminLoginPage.login(ADMIN_FIXTURE.email, ADMIN_FIXTURE.senha);
-    await expect(adminPanel.tab('dashboard')).toBeVisible();
-
-    // Simula reabrir pelo link com hash (ex.: favorito) enquanto a sessão do 1º login ainda é válida.
-    // Navega para about:blank primeiro: uma 2ª ida direto para a MESMA origem só mudando o hash é
-    // navegação same-document no navegador (não recarrega, só dispara hashchange) — o app nunca
-    // remontaria, e o teste passaria "de graça" sem provar nada sobre o mount novo.
-    await page.goto('about:blank');
-    await adminLoginPage.goto();
-
-    // REF-STABILITY-02: o hash é só um atalho para a TELA de login — nunca pula a etapa de "Entrar",
-    // mesmo com sessão válida. Formulário aparece; painel só depois do clique.
-    await expect(page.locator('[data-testid="admin-login-senha"]')).toBeVisible();
-    await expect(adminPanel.tab('dashboard')).toHaveCount(0);
-
-    await adminLoginPage.entrarReaproveitandoSessao();
-    await expect(adminPanel.tab('dashboard')).toBeVisible();
-  });
-
-  test('gear/hash com sessão válida: nunca promove sem o clique em "Entrar" (regressão-alvo desta ref)', async ({ browser, baseURL }) => {
-    test.skip(!E2E_ENV_PRONTO, 'ambiente de E2E não configurado (.env.e2e)');
-
-    const context = await contextComSessaoAdmin(browser, baseURL);
-    const page = await context.newPage();
-    const adminPanel = new AdminPanelPage(page);
-    const adminLoginPage = new AdminLoginPage(page);
-
-    await adminLoginPage.goto(); // navega direto para a URL com #admin-encanto
-
-    // Espera um tempo real (não só a asserção seguinte) para dar chance a qualquer promoção em
-    // background acontecer, caso a regressão volte — é exatamente o comportamento antigo que este
-    // teste barra: sessão válida presente NUNCA deve, sozinha, levar ao painel.
-    await page.waitForTimeout(500);
-    await expect(adminPanel.tab('dashboard')).toHaveCount(0);
-    await expect(page.locator('[data-testid="admin-login-senha"]')).toBeVisible();
-
-    await adminLoginPage.entrarReaproveitandoSessao();
-    await expect(adminPanel.tab('dashboard')).toBeVisible();
-
-    await context.close();
   });
 
   test('sessão forjada: "Entrar" sem digitar senha falha graciosamente (pede senha), sem travar nem gerar erro JS', async ({ browser, baseURL }) => {
@@ -224,16 +168,12 @@ test.describe('sessão do Admin', { tag: '@writes' }, () => {
       },
     });
     const page = await context.newPage();
-    const storePage = new StorePage(page);
     const adminPanel = new AdminPanelPage(page);
     const adminLoginPage = new AdminLoginPage(page);
-    await storePage.goto();
 
-    // Domínio principal abre a Loja mesmo com sessão válida salva — a migração da chave legada
-    // acontece em background (lib/supabase.js) no load do módulo, independente da tela mostrada.
-    await expect(page.locator('[data-prod]').first()).toBeVisible();
-
-    await page.locator('[data-testid="header-admin-btn"]').click();
+    // REF-ADMIN-04: acesso direto ao bundle do admin (não existe mais loja+engrenagem) — a migração da
+    // chave legada acontece em background (lib/supabase.js) no load do módulo, independente da tela.
+    await adminLoginPage.goto();
     await expect(page.locator('[data-testid="admin-login-senha"]')).toBeVisible(); // login, não o painel direto
     await adminLoginPage.entrarReaproveitandoSessao();
     await expect(adminPanel.tab('dashboard')).toBeVisible(); // migrou e restaurou — sem digitar senha

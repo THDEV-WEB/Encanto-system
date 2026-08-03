@@ -14,11 +14,6 @@ export class StorePage {
     await this.page.goto('/encanto/');
   }
 
-  /** Acesso ao Admin — mesma rota que a app real usa (App.jsx le location.hash), sem seletor algum. */
-  async gotoAdmin() {
-    await this.page.goto('/encanto/#admin-encanto');
-  }
-
   productCard(prodId) {
     return this.page.locator(`[data-prod="${prodId}"]`);
   }

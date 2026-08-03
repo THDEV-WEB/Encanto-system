@@ -395,6 +395,39 @@ timing — a sessão persiste normalmente, mas só é consultada/reaproveitada n
   "nunca busca o catálogo num reload" viraram o oposto — ver cabeçalho do arquivo); `admin-logout.spec.js`
   e `admin-minha-conta.spec.js` ajustados (reload agora sempre mostra a Loja; reentrar no Admin exige
   engrenagem + "Entrar").
-- **Fluxo resultante:** abrir o app → sempre Loja. Engrenagem/hash `#admin-encanto` → sempre a tela de
-  login (formulário visível, nunca escondido atrás de uma verificação em background). "Entrar" → reusa
-  sessão válida sem pedir credencial, ou autentica normalmente se não houver.
+- **Fluxo resultante (histórico — ver REF-ADMIN-04 abaixo para o estado atual):** abrir o app → sempre
+  Loja. Engrenagem/hash `#admin-encanto` → sempre a tela de login (formulário visível, nunca escondido
+  atrás de uma verificação em background). "Entrar" → reusa sessão válida sem pedir credencial, ou
+  autentica normalmente se não houver.
+
+### REF-ADMIN-04 — Admin virou bundle/app/domínio próprios (supera o "fluxo resultante" acima)
+
+Motivação: redesenho completo do acesso administrativo — o Admin deixou de ser uma tela dentro do MESMO
+bundle da loja (mode-switch em `App.jsx`, acessível por engrenagem/easter-egg/hash) e passou a ser uma
+aplicação própria (`admin.html`/`AdminApp.jsx`), publicada em subdomínio dedicado
+(`admin.encanto.valionsistemas.com.br`) — ver `docs/adr/REF-ADMIN-04-redesenho-acesso-painel.md`.
+
+- **Engrenagem, easter-egg de 5 cliques na logo e hash `#admin-encanto` REMOVIDOS** de
+  `StoreApp.jsx`/`useAdminSession.js` — não existe mais nenhum caminho de acesso ao admin a partir da
+  loja. `App.jsx` (bundle da loja) não importa mais `AdminLogin`/`AdminPanel`/`useAdminSession`.
+- **`useAdminSession.js` simplificado:** só `'login'`/`'admin'` (sem o estado `'store'`/checagem de
+  hash, que não fazem mais sentido — o bundle do admin nunca tem uma loja pra mostrar). Único consumidor
+  agora é `AdminApp.jsx`.
+- **"← Ver loja" (`AdminPanel`) virou navegação real** (`window.location.href`) pro domínio da loja —
+  antes era só troca de `mode` no mesmo bundle. URL configurável via `VITE_STORE_URL` (`.env.e2e` usa um
+  caminho relativo, `/encanto/`, pra nunca sair batendo em produção de verdade a partir de um teste).
+- **No E2E, o bundle do admin é servido pelo MESMO dev server da loja** (`vite --mode e2e`), em
+  `/encanto/admin.html` — dev mode do Vite serve qualquer `.html` do projeto independente da restrição
+  de `rollupOptions.input` (que só vale pra `vite build`), então não foi preciso um 2º `webServer`/porta
+  no `playwright.config.js`.
+- **`AdminLoginPage.goto()`** (Page Object) agora navega direto pra `/encanto/admin.html`, não mais
+  `/encanto/#admin-encanto`. `StorePage.gotoAdmin()` (nunca chamado por nenhum spec) foi removido.
+- **Specs ajustados:** `admin-sessao.spec.js` (reescrito — os testes que validavam especificamente
+  engrenagem/hash foram removidos, já que esse mecanismo não existe mais; os que validavam "sessão
+  nunca promove sozinha" passaram a navegar direto pro bundle do admin), `admin-logout.spec.js` e
+  `admin-minha-conta.spec.js` ("Ver loja" agora navega de verdade pra loja; "Sair"/reload do admin
+  reabrem no formulário de login do PRÓPRIO bundle, não "caem na loja" — não há loja aqui dentro).
+- **Fluxo resultante (atual):** loja e admin são dois bundles/domínios completamente separados. Abrir a
+  loja → nunca há qualquer pista de admin (nem UI, nem no bundle JS). Abrir o admin (subdomínio
+  próprio) → sempre a tela de login; "Entrar" reusa sessão válida sem pedir credencial, ou autentica
+  normalmente. "Ver loja" dentro do admin → navegação real pro domínio da loja.

@@ -9,8 +9,11 @@ import { Toast } from './components/ui/Toast.jsx';
 
 /* REF-ADMIN-04: "Ver loja" deixa de ser troca de `mode` no MESMO bundle (nao existe StoreApp aqui) e
    passa a ser navegacao real pro dominio da loja. Unica adaptacao de comportamento desta REF — o resto
-   do fluxo (login, is_admin(), sessao, logout) e' o MESMO codigo de sempre. */
-const STORE_URL = 'https://encanto.valionsistemas.com.br/encanto/';
+   do fluxo (login, is_admin(), sessao, logout) e' o MESMO codigo de sempre.
+   REF-ADMIN-04 · Onda 5: URL configuravel via VITE_STORE_URL (default = producao) — sem isso, o E2E
+   (que serve loja+admin do MESMO dev server, sob /encanto/) navegaria pra producao de verdade ao clicar
+   "Ver loja", violando o principio do projeto de nunca testar contra producao via automacao. */
+const STORE_URL = import.meta.env.VITE_STORE_URL || 'https://encanto.valionsistemas.com.br/encanto/';
 
 /* Raiz do bundle administrativo (admin.html/admin-main.jsx) — sem StoreApp, sem AuthProvider do
    cliente, sem mode-switch nenhum. REF-ADMIN-04 · Onda 4: useAdminSession() simplificado (só

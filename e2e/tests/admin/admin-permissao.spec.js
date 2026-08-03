@@ -36,12 +36,12 @@ test.describe('permissão — autenticado sem is_admin() (parte 1: gate de autor
     await expect(adminPanel.tab('dashboard')).toHaveCount(0);
     expect(logoutChamado).toBe(true); // a sessão autenticada (mas sem privilégio) é encerrada de verdade
 
-    // Nem um F5 reabre o painel — sem sessão nenhuma sobrevivendo sob a chave do Admin. O hash secreto
-    // já foi consumido (history.replaceState no 1º mount), então o reload cai na LOJA normal — mesmo
-    // padrão de "Sair" (admin-logout.spec.js), não uma tela de login presa.
+    // Nem um F5 reabre o painel — sem sessão nenhuma sobrevivendo sob a chave do Admin. REF-ADMIN-04:
+    // o bundle do admin não tem loja nenhuma pra "cair" — reload só reabre o próprio formulário de
+    // login, mesmo padrão de "Sair" (admin-logout.spec.js).
     await page.reload();
     await expect(adminPanel.tab('dashboard')).toHaveCount(0);
-    await expect(page.locator('.header')).toBeVisible();
+    await expect(adminLoginPage.emailInput).toBeVisible();
   });
 });
 

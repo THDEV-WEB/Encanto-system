@@ -33,13 +33,11 @@ test.describe('Minha Conta (Admin)', { tag: '@writes' }, () => {
     await expect(msg).toHaveText('Dados atualizados.');
 
     // Recarrega — confirma que persistiu de verdade na sessão (user_metadata), não só no state local.
-    // REF-STABILITY-02: o reload volta pra Loja (sem exceção); reentra no Admin via engrenagem + Entrar
-    // (a sessão continua válida, reaproveitada sem pedir senha de novo — REF-UX-SESSION-01 exige
-    // confirmar explicitamente antes de entrar).
+    // REF-ADMIN-04 · Onda 5: reload do bundle do admin sempre reabre no formulário de login (não há
+    // mais "cair na loja" — este bundle não tem loja nenhuma); a sessão continua válida, reaproveitada
+    // sem pedir senha de novo (REF-UX-SESSION-01 exige confirmar explicitamente antes de entrar).
     await page.reload();
-    await expect(page.locator('[data-prod]').first()).toBeVisible();
-    await page.locator('[data-testid="header-admin-btn"]').click();
-    await expect(page.locator('[data-testid="admin-login-senha"]')).toBeVisible();
+    await expect(adminPanel.tab('dashboard')).toHaveCount(0);
     await adminLoginPage.entrarReaproveitandoSessao();
     await expect(adminPanel.tab('dashboard')).toBeVisible();
     await adminPanel.abrirAba('minhaconta');
