@@ -87,17 +87,23 @@ test.describe('Dashboard do Admin', { tag: '@writes' }, () => {
     const admin = supabaseAdmin();
     await admin.from('orders').update({ customer_id: null }).eq('id', pedido.orderId);
 
-    await adminLoginPage.goto();
-    await adminLoginPage.login(ADMIN_FIXTURE.email, ADMIN_FIXTURE.senha);
-    await expect(adminPanel.tab('dashboard')).toBeVisible();
+    // REF-ADMIN-04 (achado colateral): customer_id nulo tira este pedido do alcance de
+    // limparDadosDeTeste() (que apaga orders via customer_id IN customersDoPrefixo) — remove à mão
+    // pra não vazar entre execuções. try/finally garante a limpeza mesmo se uma asserção acima falhar
+    // (achado real: um pedido órfão assim, se o teste for interrompido antes do fim, fica pra sempre
+    // no projeto de E2E compartilhado — inflava contagens de outros specs, ex. admin-dashboard/
+    // admin-pedidos-busca, que dependem de "quantos pedidos existem agora").
+    try {
+      await adminLoginPage.goto();
+      await adminLoginPage.login(ADMIN_FIXTURE.email, ADMIN_FIXTURE.senha);
+      await expect(adminPanel.tab('dashboard')).toBeVisible();
 
-    const linha = page.locator('.data-table tbody tr').first();
-    await expect(linha).toBeVisible();
-    await expect(linha).toContainText('—'); // sem customer_id -> order.customers é null, fallback sem quebrar
-
-    // customer_id nulo tira este pedido do alcance de limparDadosDeTeste() (que apaga orders via
-    // customer_id IN customersDoPrefixo) — remove à mão para não vazar entre execuções.
-    await admin.from('order_items').delete().eq('order_id', pedido.orderId);
-    await admin.from('orders').delete().eq('id', pedido.orderId);
+      const linha = page.locator('.data-table tbody tr').first();
+      await expect(linha).toBeVisible();
+      await expect(linha).toContainText('—'); // sem customer_id -> order.customers é null, fallback sem quebrar
+    } finally {
+      await admin.from('order_items').delete().eq('order_id', pedido.orderId);
+      await admin.from('orders').delete().eq('id', pedido.orderId);
+    }
   });
 });
