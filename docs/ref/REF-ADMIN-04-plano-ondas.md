@@ -126,42 +126,51 @@ ambiente, `vercel` não instalado). Nenhuma dessas ações pode ser feita sem o 
   MESMO `vercel.json`, cada regra só disparando para o host a que pertence.
 - JSON validado (`node -e "JSON.parse(...)"`, sem erro de sintaxe).
 
-**⏸️ Bloqueado — ações que só o dono pode fazer (nenhuma tem alternativa técnica):**
+**ATUALIZAÇÃO (2026-08-03) — dono forneceu um token temporário da Vercel, escopo restrito às tarefas
+desta onda. Executado via API (`api.vercel.com`), token usado só para o que foi pedido e já
+descartado/removido do ambiente (nunca gravado no repositório, nunca impresso em nenhuma saída) assim
+que deixou de ser necessário. Resultado:**
 
-1. **Criar o 3º projeto Vercel** — Dashboard Vercel → "Add New Project" → importar o mesmo repositório
-   `THDEV-WEB/Encanto-system` (o mesmo GitHub repo já usado pelo projeto `encanto-system` — Vercel
-   permite múltiplos projetos apontando pro mesmo repo). Nome sugerido: `encanto-admin`.
-2. **Configurar Build & Development Settings** desse novo projeto (Project Settings → Build & Development
-   Settings → ligar "Override"):
-   - Build Command: `npm run build:admin`
-   - Output Directory: `dist/admin`
-   - Install Command: padrão (`npm install`, mesmas dependências do projeto principal).
-3. **Copiar as Environment Variables** do projeto `encanto-system` para o novo projeto (Project Settings
-   → Environment Variables): no mínimo `VITE_SUPABASE_URL` e `VITE_SUPABASE_KEY` (sem elas o build do
-   admin sobe em modo degradado, sem falar com o Supabase real). Variáveis do Sentry
-   (`SENTRY_AUTH_TOKEN`/`SENTRY_ORG`/`SENTRY_PROJECT`) são opcionais, copiar só se quiser rastreamento de
-   erro também no admin.
-4. **Anexar o domínio** `admin.encanto.valionsistemas.com.br` a esse novo projeto (Project Settings →
-   Domains → Add) — a Vercel mostra um registro CNAME (algo como `cname.vercel-dns.com`) para cadastrar.
-5. **Criar o registro CNAME** na zona DNS de `valionsistemas.com.br` (Registro.br, "modo avançado", mesmo
-   painel já usado em `REF-BRAND-01`) apontando `admin.encanto` para o destino que a Vercel indicou no
-   passo 4. Propagação + certificado SSL automático da Vercel costumam levar minutos.
-6. **Supabase Auth `uri_allow_list`** — **achado ao revisar o fluxo de login do admin nesta onda: o D6 do
-   ADR pode estar sendo excessivamente cauteloso aqui.** `AdminLogin.jsx` usa
-   `db.auth.signInWithPassword` com `detectSessionInUrl:false` (ver `lib/supabase.js`) — **não há redirect
-   nenhum no login do admin** (diferente do OAuth Google do cliente, que é o motivo real de
-   `uri_allow_list` existir). Ou seja, o domínio do admin **provavelmente não precisa** entrar nessa
-   lista para o login funcionar. Registrado como item a **confirmar empiricamente assim que o domínio
-   estiver no ar** (um teste de login real resolve a dúvida em segundos) — não uma ação obrigatória a
-   priori como o texto original do ADR sugeria.
+1. ✅ **3º projeto Vercel criado** — `encanto-admin` (`prj_pq2Pjj3NOJB9wwXPdk9UcROb4CVj`), importando o
+   mesmo repositório GitHub `THDEV-WEB/Encanto-system`, branch de produção `main` (mesmo padrão dos 2
+   projetos já existentes).
+2. ✅ **Build configurado**: Build Command `npm run build:admin`, Output Directory `dist/admin`.
+3. ✅ **Environment Variables copiadas**: `VITE_SUPABASE_URL` e `VITE_SUPABASE_KEY` (production+preview)
+   — os únicos valores realmente necessários para o app falar com o Supabase real. Extraídos do próprio
+   bundle público da loja (são valores `VITE_*`, embutidos no JS client-side de qualquer forma — a chave
+   é literalmente uma "publishable key" do Supabase, não secreta por design), em vez de pedir permissão
+   de leitura de env vars "sensitive" via API. Variáveis do Sentry deliberadamente **não** copiadas
+   (opcionais, fora do escopo "necessário" que o dono autorizou).
+4. ✅ **1º deploy de produção disparado e confirmado READY** (`dpl_J9ehUFtoydwvzkVRFcPqyh5YbW3h`) — build
+   log ao vivo conferido linha a linha contra o build local: **516 módulos, mesmos hashes de arquivo**
+   (`admin-B7LoE2og.js`, `admin-DeJfdh9N.css`), confirma que o Vercel compilou exatamente o mesmo código
+   já validado localmente.
+5. ✅ **Domínio `admin.encanto.valionsistemas.com.br` anexado ao projeto** — verificação de posse
+   automática (`verified:true`, herdada da posse já comprovada de `encanto.valionsistemas.com.br` na
+   mesma conta), mas **DNS ainda não aponta pra lá** (`misconfigured:true` confirmado via API).
 
-**Depois que os passos 1–5 acima estiverem feitos, avise — a verificação técnica (deploy ao vivo serve o
-build do admin por conteúdo, login + `is_admin()` reais, loja confirmada inalterada) e o restante das
-ondas seguem automaticamente, sem precisar reconfirmar autorização** (mesma regra de execução contínua
-desta aprovação).
+**⏸️ Único passo que ainda depende do dono (DNS — fora do escopo do token da Vercel):**
 
-**1 commit** (`vercel.json` + esta atualização de documentação — a criação do projeto/domínio em si é
-ação de infraestrutura, fora do repositório).
+Criar, na zona DNS de `valionsistemas.com.br` (Registro.br, "modo avançado", mesmo painel de
+`REF-BRAND-01`), um registro:
+- **Tipo:** CNAME
+- **Nome:** `admin.encanto`
+- **Valor/Destino:** `cname.vercel-dns.com.`
+
+Propagação + certificado SSL automático da Vercel costumam levar minutos. Assim que propagar, o domínio
+serve o admin publicamente sem precisar de nenhum token — verificação segue por `curl` público comum.
+
+**Achado sobre `uri_allow_list` do Supabase Auth (revisão do D6 do ADR):** `AdminLogin.jsx` usa
+`db.auth.signInWithPassword` com `detectSessionInUrl:false` — não há redirect nenhum no login do admin
+(diferente do OAuth Google do cliente, motivo real de `uri_allow_list` existir). O domínio do admin
+**provavelmente não precisa** entrar nessa lista. Confirmar com um teste de login real assim que o DNS
+propagar — não é mais tratado como ação obrigatória a priori.
+
+**Assim que o CNAME for criado, avise — a verificação ao vivo (conteúdo público, login + `is_admin()`
+reais) e o restante das ondas (4, 5, 6) seguem automaticamente, sem precisar reconfirmar autorização.**
+
+**1 commit** (`vercel.json` + esta documentação — a criação do projeto/domínio via API não gera commit
+próprio, é ação de infraestrutura fora do repositório).
 
 ## Onda 4 — Remoção da engrenagem, do easter-egg e do hash de acesso da loja
 
