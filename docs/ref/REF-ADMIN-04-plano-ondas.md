@@ -285,18 +285,41 @@ HTTP 200, conteúdo "Encanto Admin" confirmado.
 - `admin-permissao.spec.js` tinha o MESMO erro de premissa ("reload cai na loja") encontrado durante a
   varredura — corrigido junto, fora do escopo original dos "4 specs" listados acima mas descoberto ao
   rodar a suíte completa.
+- **Confirmação independente:** CI real do GitHub Actions (run `30850703585`, commit `f8c7085`) —
+  **success**, suíte completa, ambiente totalmente isolado das execuções locais desta sessão (prova
+  que os 2 achados acima eram mesmo de fixture local, não regressão de código).
 
 **1 commit** (`admin-04`).
 
 ## Onda 6 — QA manual do dono e encerramento
 
-- Checklist de dispositivo real: instalação lado a lado das duas PWAs (Loja + Admin) em Android Chrome,
-  Desktop Chrome/Edge e iOS Safari, confirmando ícone/nome distintos e abertura direta em cada uma.
-- Smoke test de sessão (login, `is_admin()`, logout, reconexão) no novo domínio.
-- Confirmação de que a loja pública não expõe mais nenhuma pista (visual ou de código) do painel.
-- Documentação de fechamento (`docs/ref/REF-ADMIN-04-progress.md`, seguindo o padrão de todo REF
-  anterior) e atualização do índice `docs/adr/README.md`.
-- **Encerramento do REF.**
+**🟡 PARCIAL — a parte automatizável está feita; o checklist físico é bloqueio externo real (sem
+hardware Android/iOS neste ambiente de agente), mesma natureza do bloqueio da Onda 3.**
+
+**✅ Já confirmado por este agente (automatizado, ao vivo):**
+- Smoke test de sessão (login, `is_admin()`, logout, reconexão) — coberto pela suíte E2E completa
+  (109-111/111, mais a confirmação independente no CI real) e por testes manuais via `curl`/API contra
+  o domínio de produção durante as Ondas 3-4.
+- Loja pública não expõe mais nenhuma pista do painel — confirmado ao vivo: bundle publicado
+  (`index-Cl7RKX-z.js` e sucessores) sem `"Painel Admin"` nem `data-testid="header-admin-btn"`; HTML
+  renderizado sem qualquer elemento de admin.
+- Domínio do admin responde publicamente, manifest/SW/ícones corretos, build byte a byte igual ao
+  validado localmente.
+
+**⏸️ Falta — só o dono, com aparelho físico, pode fazer:**
+- Instalação lado a lado das duas PWAs (Loja + Admin) em Android Chrome, Desktop Chrome/Edge e iOS
+  Safari, confirmando ícone/nome distintos e abertura direta em cada uma.
+- Confirmação visual/sensorial de que a experiência do dia a dia (1 toque no ícone → painel) é a
+  esperada.
+
+**Documentação de fechamento:** este documento + o ADR já registram o REF completo (não foi aberto um
+`docs/ref/REF-ADMIN-04-progress.md` separado — o padrão de "progress" já É este arquivo de plano, que
+acumulou o registro de execução onda a onda). `docs/adr/README.md` não indexa `REF-ADMIN-01/02/03`
+(confirmado antes de começar) — por consistência, `REF-ADMIN-04` também não foi adicionado lá.
+
+**Encerramento do REF:** técnica e tecnicamente concluído (Ondas 0-5, 100% do que não depende de
+hardware físico). Fecha de vez assim que o dono confirmar o checklist de dispositivo acima — não
+bloqueia nada além de si mesmo (loja e admin já estão em produção, funcionais, desde a Onda 4).
 
 ---
 

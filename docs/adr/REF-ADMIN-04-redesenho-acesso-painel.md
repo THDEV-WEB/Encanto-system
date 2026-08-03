@@ -1,9 +1,10 @@
 # ADR REF-ADMIN-04 — Redesenho do acesso ao Painel Administrativo
 
-- **Status:** 🟢 Aprovado — em execução (2026-08-03, aprovação formal do dono). Ondas 0-4 concluídas
-  (subdomínio `admin.encanto.valionsistemas.com.br` no ar em produção, bundle da loja já não contém
-  código do admin — ver `docs/ref/REF-ADMIN-04-plano-ondas.md` para detalhe onda a onda). Ondas 5-6 em
-  andamento.
+- **Status:** 🟢 Aprovado — Ondas 0-5 concluídas (2026-08-03): subdomínio
+  `admin.encanto.valionsistemas.com.br` no ar em produção, bundle da loja sem código do admin
+  (615→522 kB), suíte E2E completa adaptada e verde (109-111/111 local + CI real). Onda 6 parcial —
+  só falta o checklist de dispositivo físico do dono (bloqueio externo, sem hardware neste ambiente).
+  Ver `docs/ref/REF-ADMIN-04-plano-ondas.md` para detalhe onda a onda.
 - **Depende de:** `REF-ADMIN-01` (robustez do painel), `REF-ADMIN-02` (refinamentos), `REF-ADMIN-03`
   (escala) — este REF não altera nada do *conteúdo* dessas três, só o *caminho de acesso*.
 - **Relacionado:** `REF-MOBILE-01-fundacao-mobile.md` (infraestrutura PWA/Workbox reaproveitada),
