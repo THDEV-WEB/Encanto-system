@@ -26,11 +26,11 @@
 | # | Item | Por que depende de você | O que você precisa fazer exatamente | Quando é necessário | Quanto tempo o resto fica bloqueado | Alternativa temporária |
 |---|---|---|---|---|---|---|
 | **B1** | ✅ **CONCLUÍDA em 2026-08-01.** Aplicada via Management API (token fornecido pelo dono para esta etapa), validada 2x por caminhos independentes, zero regressão (`test:f1b` idêntico ao baseline). Detalhes completos em `PLANO-GOLIVE-01-execucao-final.md` §0.2.2/§0.2.3. Token já revogado pelo dono após o uso. | ~~Convenção já estabelecida no projeto...~~ (superada — dono decidiu fornecer credencial pontual em vez de aplicar manualmente) | ~~Rodar a migration no SQL editor~~ — feito pela sessão | — | — | — |
-| **B2** | Credenciais Meta (WhatsApp Cloud API) + inserir 2 secrets no Vault | Cadastro em plataforma externa (Meta for Developers/WhatsApp Business), exige verificação de negócio — não é algo que eu consiga fazer; e escrita de secrets no Supabase é bloqueada para mim mesmo com autonomia delegada | Obter token permanente + `phone_number_id` na Meta; inserir os 2 valores no Vault (SQL editor ou Management API) | Pode ser feito **a qualquer momento**, em paralelo à Fase A inteira | **Zero** para o resto da implementação — o sistema já roda sem isso (fila fica `pending` com segurança); só bloqueia a *funcionalidade* de notificação automática | Ir ao ar sem notificação automática — já documentado como aceitável no plano original |
-| **B3** | Decisão + token Mapbox | Contratação de serviço pago (billing), decisão de negócio | Decidir se quer contratar; se sim, gerar o token e configurar `VITE_MAPBOX_TOKEN` na Vercel | A qualquer momento | Zero — fallback Nominatim→Photon já funciona e já foi validado como melhoria real | Manter o fallback atual indefinidamente — é a decisão default deste plano |
-| **B4** | QA física completa em Android real (checklist `REF-MOBILE-01`) | Exige aparelho físico, observação humana de comportamento visual/sensorial (splash, instalação, notificação push chegando de verdade) | Seguir o checklist completo (instalação, standalone, ícone/splash, login e-mail+Google, catálogo, checkout entrega/retirada, notificação, atualização, offline) em pelo menos 1 aparelho | Depois que o Bloco 1 (Fase A) estiver concluído, para testar a build mais atual | Bloqueia só a Onda 5 (go-live formal); o resto avança em paralelo | Nenhuma real — reaproveitar a homologação antiga do `REF-CAP-01` D10 cobre só instalação/catálogo, não o checklist inteiro (risco assumido, não recomendado) |
-| **B5** | Smoke test manual (humano) do fluxo de negócio em produção | A parte técnica (bundle/hash/páginas carregando) eu cubro sozinho em A4; mas confirmar que o fluxo real "sente" certo — preço, WhatsApp chegando no seu número real — exige alguém validando com dados reais. Também é princípio já estabelecido do projeto nunca testar contra o banco de PRODUÇÃO via automação (só o projeto E2E dedicado) | Fazer 1 pedido de teste real ponta a ponta (cliente + admin) direto no site em produção | Perto do fim, depois do Bloco 1 concluído | Bloqueia só a Onda 5 | Nenhuma recomendada — é o último gate antes de "operação definitiva" |
-| **B6** | Aprovação final / assinatura da checklist de Go-Live | É uma decisão de negócio (declarar o sistema em operação definitiva), não uma questão técnica | Revisar a checklist do `PLANO-GOLIVE-01` §4 e dar o aceite | Por último, depois de tudo | N/A — é o fim | N/A |
+| **B2** | ⏸️ **REESCOPADA E ADIADA (2026-08-04) — ver ADR [`REF-WHATSAPP-01`](adr/REF-WHATSAPP-01-coexistence-arquitetura.md).** Deixou de ser "trocar 2 secrets no Vault" — vira integração completa em modo **Coexistence** (App + bot + Cloud API no mesmo número), que depende de aprovação externa da Meta como **Tech Provider** (verificação de identidade da empresa, 2–5 dias úteis, fora do controle do projeto). Decisão do dono: **não aguardar essa aprovação** — funcionalidades centrais e pendências da aplicação (B3–B6) têm prioridade. Vira iniciativa futura, desacoplada do go-live | Cadastro em plataforma externa (Meta), exige verificação de negócio — não é algo que eu consiga fazer | Quando o dono decidir retomar: iniciar o cadastro de Tech Provider na Meta; o resto (onboarding Coexistence + bot) é trabalho de implementação normal depois disso | **Sem prazo definido** — só quando o sistema estiver estabilizado E a aprovação Meta sair | **Zero** para o resto da implementação — o sistema já roda sem isso (fila fica `pending` com segurança); só bloqueia a *funcionalidade* de notificação automática/bot, que nunca foi requisito do go-live | Ir ao ar sem notificação automática — já documentado como aceitável no plano original; segue válido indefinidamente agora |
+| **B3** | ⏸️ **ADIADA (2026-08-03), decisão do dono.** Contratação de serviço pago (billing) fica pra depois — mesmo tratamento do B2. | Contratação de serviço pago (billing), decisão de negócio | Quando decidir: gerar o token e configurar `VITE_MAPBOX_TOKEN` na Vercel | Sem prazo — a qualquer momento no futuro | **Zero** — fallback Nominatim→Photon já funciona e já foi validado como melhoria real | Manter o fallback atual indefinidamente — é a decisão default deste plano, agora confirmada pelo dono |
+| **B4** | ✅ **CONCLUÍDA (2026-08-03), confirmada pelo dono.** QA física completa em Android real (checklist `REF-MOBILE-01`) validada. | ~~Exige aparelho físico...~~ — feito pelo dono | ~~Seguir o checklist completo~~ — feito | Feito | — | — |
+| **B5** | ✅ **CONCLUÍDA (2026-08-03), confirmada pelo dono.** Smoke test manual do fluxo de negócio em produção realizado. | ~~Exige alguém validando com dados reais~~ — feito pelo dono | ~~Fazer 1 pedido de teste real ponta a ponta~~ — feito | Feito | — | — |
+| **B6** | ⏳ **Único item pendente.** Aprovação final / assinatura da checklist de Go-Live | É uma decisão de negócio (declarar o sistema em operação definitiva), não uma questão técnica | Revisar a checklist do `PLANO-GOLIVE-01` §4 e dar o aceite | Por último, depois de tudo | N/A — é o fim | N/A |
 
 ---
 
@@ -39,10 +39,10 @@
 | Onda | Depende do usuário? | Se sim: ação | Tempo da ação | Quando fazer |
 |---|---|---|---|---|
 | **Onda 1** — Auditoria de fechamento | ✅ Concluída (2026-08-01) | B1 foi necessária (A1 achou o gap) — dono forneceu credencial pontual, sessão aplicou e validou | Feito | Feito |
-| **Onda 2** — Integrações externas | **Sim** | B2 (Meta+Vault) e B3 (Mapbox) | B2: minutos de trabalho seu, mas **verificação de negócio da Meta pode levar horas a dias** — fora do seu controle direto; B3: minutos | Pode começar **já**, em paralelo, não bloqueia nada |
-| **Onda 3** — QA final | **Sim** | B4 (QA física) + B5 (smoke manual) | B4: 1-3h conforme nº de aparelhos/cenários; B5: ~15-30 min | Depois do Bloco 1 (Fase A) fechado |
+| **Onda 2** — Integrações externas | **Adiado, fora do go-live** (B2 e B3) | B2 (Meta Coexistence) e B3 (Mapbox) viraram iniciativas futuras — ver ADR `REF-WHATSAPP-01`; B3 sem prazo definido | — | Ambos ficam em espera até o dono retomar, sem bloquear nada |
+| **Onda 3** — QA final | ✅ Concluída (2026-08-03) | B4 (QA física) + B5 (smoke manual), ambas confirmadas pelo dono | Feito | Feito |
 | **Onda 4** — Registro de backlog | **Não** | — | — | — |
-| **Onda 5** — Go-live formal | **Sim** | B6 (aprovação) | Minutos | Por último |
+| **Onda 5** — Go-live formal | **Sim** | B6 (aprovação) — ÚNICO item restante em todo o plano | Minutos | Por último |
 | *(sem onda fixa)* — Acessibilidade P1.3 | **Não** | — | — | — |
 
 ---
@@ -58,22 +58,27 @@ BLOCO 1 — AUTÔNOMO, CONTÍNUO (posso rodar numa sessão longa sem parar)
    │  único ponto de pausa possível: A1 encontra gap real, ou A3 revela falha
    │  ambígua — sinalizo e sigo com o resto do bloco em paralelo, não travo tudo
    ▼
-BLOCO 2 — CADASTROS EXTERNOS (roda em PARALELO ao Bloco 1, não espera nada)
-   B2 (Meta — RECOMENDO INICIAR JÁ, é o único item com prazo externo incerto)
-   B3 (Mapbox — opcional, a qualquer momento)
+BLOCO 2 — ADIADO (2026-08-03, decisão do dono) — B3 (Mapbox) junto com B2, fora do caminho crítico
    │
    ▼
-BLOCO 3 — INTERVENÇÃO HUMANA CONCENTRADA (só depois do Bloco 1 fechado)
-   B4 (QA física) → B5 (smoke manual) → B6 (aprovação) → GO-LIVE
+BLOCO 3 — INTERVENÇÃO HUMANA CONCENTRADA — B4 e B5 ✅ CONCLUÍDAS (2026-08-03)
+   B4 (QA física) ✅ → B5 (smoke manual) ✅ → B6 (aprovação) ⏳ ÚNICO PASSO RESTANTE → GO-LIVE
+
+BLOCO 4 — FUTURO, FORA DO CAMINHO CRÍTICO (retomar só quando o dono decidir)
+   B2 / REF-WHATSAPP-01 (Tech Provider Meta → onboarding Coexistence → bot)
+   B3 / Mapbox (token pago, decisão de billing)
 ```
 
-**Resposta direta à pergunta que motivou este documento:** na hipótese mais provável (nenhum gap em A1, nenhuma falha ambígua em A3), você só precisa intervir em **três momentos concretos**, não a cada etapa:
+**ATUALIZAÇÃO (2026-08-03):** B3 e B2 adiados por decisão do dono (fora do caminho crítico); B4 e B5
+**concluídos** (QA física + smoke test manual confirmados pelo dono). **Só falta B6** (aprovação final)
+para declarar o sistema em operação definitiva.
 
-1. **Quando quiser, o quanto antes** — cadastro Meta (B2) e decisão sobre Mapbox (B3). Não bloqueiam nada, mas Meta tem prazo externo incerto, por isso vale começar cedo.
-2. **No fim do Bloco 1** — QA física + smoke test manual (B4/B5), uma janela concentrada de algumas horas.
-3. **Logo depois** — aprovação final (B6), minutos.
+~~**Resposta direta à pergunta que motivou este documento** (histórico): na hipótese mais provável
+(nenhum gap em A1, nenhuma falha ambígua em A3), você só precisa intervir em três momentos concretos:
+1. Quando quiser — decisão sobre Mapbox (B3). 2. No fim do Bloco 1 — QA física + smoke test manual
+(B4/B5). 3. Logo depois — aprovação final (B6).~~ — os 3 momentos já passaram; só falta o 3º (B6).
 
-Tudo o resto (Bloco 1 inteiro: 6 itens, incluindo a única mudança real de código deste ciclo) roda numa sessão contínua sem precisar da sua presença.
+**B2 (WhatsApp Coexistence) saiu dessa contagem (2026-08-04):** decisão do dono foi não aguardar a aprovação externa da Meta como Tech Provider (prazo incerto) para fechar o go-live. Vira Bloco 4, retomado só depois do sistema estabilizado — ver ADR `REF-WHATSAPP-01` e runbook abaixo.
 
 ---
 
@@ -82,6 +87,11 @@ Tudo o resto (Bloco 1 inteiro: 6 itens, incluindo a única mudança real de cód
 Estado reconfirmado agora: secrets `whatsapp_token`/`whatsapp_phone_number_id`/`whatsapp_api_version` **ainda ausentes** do Vault; secret Mapbox **ainda ausente**. Nada mudou desde a última auditoria — os 2 runbooks abaixo continuam válidos.
 
 ### Runbook B2 — WhatsApp Cloud API (Meta)
+
+**STATUS (2026-08-04): ADIADO — iniciativa futura, fora do caminho crítico do go-live.** Ao avançar na Etapa 2 original (registrar o número oficial), identificou-se que essa migração desativaria o WhatsApp Business App no número oficial — quebra de requisito de negócio (atendimento humano precisa continuar no app). A arquitetura correta é **Coexistence** (App + bot + Cloud API no mesmo número), documentada em `docs/adr/REF-WHATSAPP-01-coexistence-arquitetura.md`, mas ela exige a Encanto virar **Tech Provider** da Meta primeiro (verificação de identidade da empresa, 2–5 dias úteis — prazo externo, fora do controle do projeto). Decisão do dono: não aguardar essa aprovação agora; fechar primeiro as pendências centrais da aplicação (B3–B6) e só retomar B2 depois, com a arquitetura já validada. O runbook abaixo (Fase 1, validado com número de teste) permanece como registro histórico — a Fase 2 nele descrita ("trocar pelo número oficial via OTP simples") está **superada** pelo ADR; quando B2 for retomado, o passo seguinte é abrir o cadastro de Tech Provider, não repetir este runbook.
+
+<details>
+<summary>Runbook original (histórico, pré-pivô para Coexistence)</summary>
 
 1. Na Meta for Developers (app WhatsApp Business já existente ou novo): gerar um **token permanente** (não o temporário de 24h) + copiar o **Phone Number ID**.
 2. No SQL Editor do Supabase (projeto de produção, `hvbcdxsagkjtfjwvnslo` — nunca `encanto-e2e`), rodar (sintaxe já confirmada contra o schema `vault` real deste projeto):
@@ -115,7 +125,9 @@ Decisão do dono: inserir as credenciais do **número de teste** da Meta (Etapa 
 
 **Nota técnica registrada (não é bug, é comportamento padrão da plataforma):** mensagens de texto livre (como os templates de status de pedido do Encanto) só podem ser enviadas dentro de uma janela de 24h de conversa já aberta pelo cliente — não é possível "esfriar" uma conversa nova com texto livre, só com template pré-aprovado (como o `hello_world` usado no teste). O checkout do Encanto já lida com isso corretamente: o fluxo gera a mensagem inicial via `wa.me` que o próprio cliente envia ao confirmar o pedido, o que abre essa janela antes de qualquer notificação automática de status tentar usá-la.
 
-**Pendente para fechar B2 definitivamente (Fase 2):** dono completar a Etapa 2 da Meta (registrar o número oficial da Encanto na Cloud API) e fornecer o `phone_number_id` real — nesse momento, troco `whatsapp_token`/`whatsapp_phone_number_id` no Vault pelos de produção (`vault.update_secret`, mesma sintaxe já confirmada) e o sistema fica definitivo.
+**Pendente para fechar B2 (superado — ver STATUS acima):** ~~dono completar a Etapa 2 da Meta (registrar o número oficial da Encanto na Cloud API) e fornecer o `phone_number_id` real~~. Substituído pelo fluxo Coexistence do ADR `REF-WHATSAPP-01`: quando retomado, o próximo passo real é o cadastro de Tech Provider, não uma troca simples de secret.
+
+</details>
 
 ### Runbook B3 — Mapbox
 
