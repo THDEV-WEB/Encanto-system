@@ -218,15 +218,33 @@ HTTP 200, conteúdo "Encanto Admin" confirmado.
 
 ## Onda 4 — Remoção da engrenagem, do easter-egg e do hash de acesso da loja
 
-- Remover `onAdmin`/botão ⚙️ (`StoreApp.jsx:234-236`), listener de 5 cliques na logo
-  (`StoreApp.jsx:171-186`), listener de `#admin-encanto` (`useAdminSession.js:44-50`).
-- Corrigir o e-mail hardcoded em `AdminLogin.jsx:8` (achado de higiene do §2 do ADR) — troca do
-  `useState('as992203620@gmail.com')` por estado vazio, sem qualquer outra mudança no formulário.
-- **Só executa depois que a Onda 3 estiver validada em produção** (pré-condição transversal do topo
-  deste documento).
-- **Verificação:** `test:domain` completo verde; inspeção manual confirmando zero referência a admin no
-  bundle público da loja (nem no HTML renderizado, nem nos assets JS/CSS gerados).
-- **1 commit.**
+**✅ CONCLUÍDA (2026-08-03).**
+
+- Removidos: botão ⚙️ + `data-testid="header-admin-btn"` (`StoreApp.jsx`), listener de 5 cliques na
+  logo (`StoreApp.jsx`), estado `'store'`/hash `#admin-encanto` (`useAdminSession.js` — simplificado
+  para só `'login'`/`'admin'`, único consumidor agora é `AdminApp.jsx`).
+- `App.jsx` (bundle da loja) não importa mais `AdminLogin`/`AdminPanel`/`useAdminSession` — o mode-switch
+  antigo foi removido por completo, a loja é a única coisa que este bundle sabe renderizar.
+- `useCapacitorBackButton.js` simplificado (removido o ramo `mode==='admin'/'login' → verLoja()`, que
+  não existe mais neste bundle).
+- Corrigido o e-mail hardcoded em `AdminLogin.jsx` (achado de higiene do §2 do ADR) — `useState('')`.
+- Limpeza colateral: `STORAGE_KEYS.LOGO_CLICKS` (constants/storage.js) e o import correspondente em
+  `StoreApp.jsx` removidos por ficarem mortos.
+- Executada só depois da Onda 3 validada em produção (pré-condição transversal atendida).
+
+**Verificação real — resultado mais importante desta onda:**
+- **Bundle da loja: 615.12 kB → 521.71 kB (174.58 kB → 150.08 kB gzip)** — redução real e mensurável,
+  prova concreta de que `AdminLogin`/`AdminPanel`/os 11 subcomponentes admin **não fazem mais parte do
+  bundle público da loja**. Não é mais "esconder por CSS/estado" — o código genuinamente não está lá.
+- `npm run build` (loja) e `npm run build:admin`: ambos sucesso.
+- `npm run test:domain`: verde, sem regressão.
+- Varredura (`grep -rn "onAdmin|abrirLogin|admin-encanto|LOGO_CLICKS" src/`): zero ocorrências —
+  nenhuma referência residual ao acesso antigo em lugar nenhum do código-fonte.
+- **Pendência conhecida e esperada:** a suíte E2E ainda tem specs que usam `header-admin-btn`/
+  `#admin-encanto` para chegar ao admin — vão falhar até a Onda 5 (próxima) redirecioná-los para o novo
+  domínio/bundle. Não é regressão, é exatamente o que a Onda 5 existe para resolver.
+
+**1 commit** (`admin-04`).
 
 ## Onda 5 — Adaptação da suíte E2E
 

@@ -4,7 +4,6 @@ import { fmt } from '../utils/format.js';
 import { resolverAdicionais, selecionarFonteAdicionais } from '../utils/addons.js';
 import { prodInCat } from '../utils/catalog.js';
 import { catSection } from '../utils/catSection.js';   // REF-UI-CATEGORY-01 Fase 1: fonte unica do id de ancora sec-*
-import { STORAGE_KEYS } from '../constants/storage.js';
 import { STORE_INFO } from '../constants/storeInfo.js';   // REF-CHECKOUT-ADDRESS-01: endereco de retirada (fonte unica)
 import { useCategories } from '../hooks/useCategories.js';
 import { useProducts } from '../hooks/useProducts.js';
@@ -39,18 +38,18 @@ import { ValionCredit } from '../components/ValionCredit.jsx';        // REF-BRA
 // REF-CAP-01 · Onda 4: forwardRef repassado até StoreAppContent — único consumidor é o botão físico
 // "voltar" do Android (hooks/useCapacitorBackButton.js via App.jsx), que precisa fechar o que estiver
 // aberto na loja (modal/carrinho/fidelidade/menu) sem StoreApp virar dono de nenhum router novo.
-export const StoreApp = forwardRef(function StoreApp({ onAdmin }, ref) {
+export const StoreApp = forwardRef(function StoreApp(_props, ref) {
   /* REF-CHECKOUT-ADDRESS-01: a loja inteira (Header + Checkout) vive sob o AddressProvider — FONTE UNICA
      do endereco de entrega. O AddressModal e renderizado uma unica vez pelo provider (overlay sobre o
      Header ou o Checkout). App.jsx nao ganha responsabilidade: o provider e escopo da loja. */
   return (
     <AddressProvider>
-      <StoreAppContent onAdmin={onAdmin} ref={ref} />
+      <StoreAppContent ref={ref} />
     </AddressProvider>
   );
 });
 
-const StoreAppContent = forwardRef(function StoreAppContent({ onAdmin }, ref) {
+const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
   const [page,          setPage]         = useState('home');
   const [search,        setSearch]        = useState('');
   const [modal,         setModal]         = useState(null);
@@ -168,22 +167,9 @@ const StoreAppContent = forwardRef(function StoreAppContent({ onAdmin }, ref) {
 
         {/* Coluna esquerda: logo */}
         <div className="header-brand-col">
-          {LOGO && <img loading="lazy"
-            src={LOGO} alt={companyInfo.nomeCurto} className="header-brand-logo"
-            onClick={()=>{
-              /* Acesso oculto: 5 cliques rápidos na logo */
-              const now = Date.now();
-              const key = STORAGE_KEYS.LOGO_CLICKS;
-              const raw = JSON.parse(sessionStorage.getItem(key)||'[]');
-              const recent = [...raw.filter(t=>now-t<3000), now];
-              sessionStorage.setItem(key, JSON.stringify(recent));
-              if (recent.length >= 5) {
-                sessionStorage.removeItem(key);
-                onAdmin();
-              }
-            }}
-            style={{cursor:'default'}}
-          />}
+          {/* REF-ADMIN-04 · Onda 4: acesso oculto de 5 cliques removido — o Admin agora vive em
+              app/dominio proprios (admin.encanto.valionsistemas.com.br), sem entrada nenhuma na loja. */}
+          {LOGO && <img loading="lazy" src={LOGO} alt={companyInfo.nomeCurto} className="header-brand-logo" style={{cursor:'default'}} />}
         </div>
 
         {/* Centro: nome da marca + status */}
@@ -225,14 +211,11 @@ const StoreAppContent = forwardRef(function StoreAppContent({ onAdmin }, ref) {
           </div>
         </div>
 
-        {/* Direita: carrinho + engrenagem + menu ☰ (LOGIN-ARCH-02) */}
+        {/* Direita: carrinho + menu ☰ (LOGIN-ARCH-02) — REF-ADMIN-04 Onda 4: engrenagem removida */}
         <div className="header-actions">
           <button className="header-cart-btn" data-testid="header-cart-btn" onClick={()=>setCartOpen(true)}>
             🛒{cart.count>0&&<span> {fmt(cart.total)}</span>}
             {cart.count>0&&<span className="cart-badge">{cart.count}</span>}
-          </button>
-          <button className="header-admin-btn" data-testid="header-admin-btn" onClick={onAdmin} title="Painel Admin">
-            ⚙️
           </button>
           <StoreMenu ref={storeMenuRef} onRecomprar={recomprar} />
         </div>

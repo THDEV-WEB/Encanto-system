@@ -18,7 +18,6 @@ export const STORAGE_KEYS = {
   DELIVERY:                 'encanto_delivery',
   DELIVERY_ADDRESS:         'encanto_delivery_address', // legado (migrado -> DELIVERY)
   DELIVERY_META:            'encanto_delivery_meta',     // legado (migrado -> DELIVERY)
-  LOGO_CLICKS:              'encanto_logo_clicks',
   /* REF-CUSTOMER-01: cache LOCAL e TEMPORARIO de nome/telefone do visitante (guest) — nunca fonte de
      verdade. So evita redigitar entre pedidos enquanto NAO ha conta vinculada; some assim que o
      Supabase (customers) vira a fonte oficial (ver utils/guestIdentity.js). */

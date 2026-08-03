@@ -4,11 +4,8 @@ import './index.css';
 import { precoVitrine } from './utils/pricing.js'; /* eslint-disable-line no-unused-vars */ // TOKEN Regra F (deps.audit.mjs §F): App.jsx deve consumir pricing; consumidor real movido p/ components/admin/AdminProducts.jsx (Onda 6.4). NAO remover sem ajustar a Regra F.
 import { resolverAdicionais } from './utils/addons.js'; /* eslint-disable-line no-unused-vars */ // TOKEN Regra F (deps.audit.mjs §F): App.jsx deve consumir addons; consumidores reais movidos p/ pages/StoreApp.jsx (Onda 9.1) e components/admin/AdminAdicionais.jsx (Onda 7.1). NAO remover sem ajustar a Regra F.
 import { DS } from './services/DataService.js'; /* eslint-disable-line no-unused-vars */ // TOKEN guard test:ds-micro R2 (dataservice.micro.mjs §A): App.jsx mantem o residuo de consumo do DS (corpo movido p/ services/DataService.js na Onda 2). NAO remover sem ajustar o guard R2.
-import { AdminLogin } from './components/admin/AdminLogin.jsx';
-import { AdminPanel } from './components/admin/AdminPanel.jsx';
 import { StoreApp } from './pages/StoreApp.jsx';
 import { AuthProvider } from './providers/AuthProvider.jsx'; // AUTH-01: sessao do CLIENTE (envolve so a loja)
-import { useAdminSession } from './hooks/useAdminSession.js'; // REF-ADMIN-01 · Onda 2: sessao do ADMIN (restauracao + logout real)
 import { usePwaUpdate } from './hooks/usePwaUpdate.js'; // REF-MOBILE-01 Onda 6: Service Worker (aviso de nova versao, nunca troca sozinho)
 import { useCapacitorBackButton } from './hooks/useCapacitorBackButton.js'; // REF-CAP-01 Onda 4: botao fisico "voltar" do Android
 import { useDownloadPage } from './hooks/useDownloadPage.js'; // REF-CAP-01 Onda 7: /encanto/download (distribuicao do APK)
@@ -104,25 +101,21 @@ import { Toast } from './components/ui/Toast.jsx';
 /* StoreApp -> src/pages/StoreApp.jsx (REF-APP-01 Onda 9.1) */
 
 /* ── Root ────────────────────────────────────────────────────── */
+/* REF-ADMIN-04 · Onda 4: o Admin deixou de viver neste bundle — ganhou app/build/dominio proprios
+   (src/AdminApp.jsx, admin.html). Este App.jsx nao importa mais AdminLogin/AdminPanel/useAdminSession
+   nem tem mode-switch nenhum: a loja e' a UNICA coisa que este bundle sabe renderizar. */
 function App() {
-  const { mode, admin, entrar, abrirLogin, verLoja, sair } = useAdminSession();
   const { novaVersaoDisponivel, atualizar, dispensar } = usePwaUpdate(); // REF-MOBILE-01 Onda 6
   const storeAppRef = useRef(null); // REF-CAP-01 Onda 4: resumo imperativo do que esta aberto na loja (ver StoreApp.jsx)
-  useCapacitorBackButton({ mode, verLoja, storeRef: storeAppRef });
+  useCapacitorBackButton({ storeRef: storeAppRef });
   const isDownloadPage = useDownloadPage(); // REF-CAP-01 Onda 7
 
-  // /encanto/download e' uma pagina standalone (fora de Loja/Admin) — mesmo padrao do acesso ao Admin por
-  // hash (useAdminSession), so' que por path real (precisa do rewrite em vercel.json). Curto-circuita
-  // ANTES do mode-branch normal, mas DEPOIS de todos os hooks (regra dos hooks preservada).
+  // /encanto/download e' uma pagina standalone (fora da loja) — precisa do rewrite em vercel.json.
+  // Curto-circuita ANTES do render normal, mas DEPOIS de todos os hooks (regra dos hooks preservada).
   if (isDownloadPage) return <AppShell><DownloadScreen/></AppShell>;
 
-  let content;
-  if (mode==='login')      content = <AdminLogin onLogin={entrar}/>;
-  else if (mode==='admin') content = <AdminPanel admin={admin} onExit={verLoja} onLogout={sair}/>;
-  /* AUTH-01: a loja (e SO ela) vive dentro do AuthProvider — sessao de cliente isolada do Admin.
-     REF-STABILITY-02: todo bootstrap comeca aqui, sem excecao — a sessao do Admin persiste normalmente,
-     mas nunca decide a tela inicial sozinha (so o clique em "Entrar" a reaproveita). */
-  else                      content = <AuthProvider><StoreApp ref={storeAppRef} onAdmin={abrirLogin}/></AuthProvider>;
+  // AUTH-01: a loja vive dentro do AuthProvider — sessao de cliente, unica sessao que este bundle conhece.
+  const content = <AuthProvider><StoreApp ref={storeAppRef} /></AuthProvider>;
 
   /* AppShell envolve TUDO: BackgroundLayer (fundo único, loja + admin) + camada de conteúdo. */
   return (

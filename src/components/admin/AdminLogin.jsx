@@ -5,7 +5,7 @@ import { useCompanyInfo } from '../../hooks/useCompanyInfo.js'; // REF-COMPANY-0
 
 export function AdminLogin({ onLogin }) {
   const companyInfo = useCompanyInfo();
-  const [email,   setEmail]   = useState('as992203620@gmail.com');
+  const [email,   setEmail]   = useState('');
   const [pass,    setPass]    = useState('');
   const [err,     setErr]     = useState('');
   const [loading, setLoading] = useState(false);

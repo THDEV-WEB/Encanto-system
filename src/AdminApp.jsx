@@ -13,10 +13,9 @@ import { Toast } from './components/ui/Toast.jsx';
 const STORE_URL = 'https://encanto.valionsistemas.com.br/encanto/';
 
 /* Raiz do bundle administrativo (admin.html/admin-main.jsx) — sem StoreApp, sem AuthProvider do
-   cliente, sem o mode-switch antigo de App.jsx. useAdminSession() ainda tem seu estado inicial
-   'store' (default sem hash) preservado sem alteracao — aqui ele so' e' tratado como equivalente a
-   'login' (este bundle nunca tem uma loja pra mostrar). A limpeza desse estado morto no hook fica pra
-   Onda 4, quando o acesso pela loja for removido de vez e este passar a ser o UNICO consumidor. */
+   cliente, sem mode-switch nenhum. REF-ADMIN-04 · Onda 4: useAdminSession() simplificado (só
+   'login'/'admin', sem estado 'store'/hash) — este bundle é o único consumidor do hook desde que o
+   acesso pela loja foi removido. */
 function AdminApp() {
   const { mode, admin, entrar, sair } = useAdminSession();
   const { novaVersaoDisponivel, atualizar, dispensar } = usePwaUpdate();

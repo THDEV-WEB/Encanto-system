@@ -1,8 +1,9 @@
 # ADR REF-ADMIN-04 — Redesenho do acesso ao Painel Administrativo
 
-- **Status:** 🟡 Proposto — aguardando aprovação do dono. **Nenhuma linha de código alterada por este
-  REF.** Nada aqui autoriza implementação; ver `docs/ref/REF-ADMIN-04-plano-ondas.md` para o plano que
-  só começa a executar após aprovação explícita.
+- **Status:** 🟢 Aprovado — em execução (2026-08-03, aprovação formal do dono). Ondas 0-4 concluídas
+  (subdomínio `admin.encanto.valionsistemas.com.br` no ar em produção, bundle da loja já não contém
+  código do admin — ver `docs/ref/REF-ADMIN-04-plano-ondas.md` para detalhe onda a onda). Ondas 5-6 em
+  andamento.
 - **Depende de:** `REF-ADMIN-01` (robustez do painel), `REF-ADMIN-02` (refinamentos), `REF-ADMIN-03`
   (escala) — este REF não altera nada do *conteúdo* dessas três, só o *caminho de acesso*.
 - **Relacionado:** `REF-MOBILE-01-fundacao-mobile.md` (infraestrutura PWA/Workbox reaproveitada),
