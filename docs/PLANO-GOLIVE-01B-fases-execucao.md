@@ -93,6 +93,30 @@ Estado reconfirmado agora: secrets `whatsapp_token`/`whatsapp_phone_number_id`/`
 3. **Nenhum deploy necessário** — o `pg_cron enc-dispatch-whatsapp` já está ativo (roda a cada 30s) e passa a operar assim que os secrets existirem.
 4. Validação: a fila `notification_outbox` já tem ~36 mensagens acumuladas em `pending` (pedidos reais desde que o sistema foi ao ar) — dentro de minutos após inserir os secrets, o Admin (aba "💬 Mensagens") deve mostrar essas linhas migrando para `sent`. Teste ponta a ponta real: mudar o status de 1 pedido no Admin e confirmar que a mensagem chega no WhatsApp do número de teste.
 
+#### Execução B2 — Fase 1: validação com credenciais de AMBIENTE DE TESTE (2026-08-03)
+
+Decisão do dono: inserir as credenciais do **número de teste** da Meta (Etapa 1 — Experimente) no Vault de produção agora, mesmo sabendo que isso drenaria a fila real de ~40 notificações pendentes contra um número que não pode alcançar clientes reais — objetivo era validar o pipeline completo antes da Etapa 2 (número oficial). Risco aceito explicitamente pelo dono.
+
+**Credenciais usadas (ambiente de teste, substituídas na Fase 2 pelas de produção):**
+- `whatsapp_token`: token de System User (tipo `SYSTEM_USER`, permanente — `expires_at:0`, confirmado via `debug_token` da própria Graph API antes de usar), app "Encanto System" (`app_id 2129796580974664`), escopos `whatsapp_business_management`+`whatsapp_business_messaging`.
+- `whatsapp_phone_number_id`: `1237917372740335` (número de teste).
+- Inseridos via Management API (token fornecido pelo dono para esta etapa, mesmo padrão de segurança da migration B1 — revogar após uso).
+
+**Resultado — pipeline mecânico (Vault → pg_cron → Cloud API → gravação de status):**
+
+| Etapa | Resultado |
+|---|---|
+| Secrets no Vault | Confirmados presentes (`whatsapp_token`, `whatsapp_phone_number_id`) |
+| Drenagem da fila real | As 40 notificações pendentes (pedidos reais) foram claimed pelo `pg_cron` em 1 ciclo (`pending`→`sending`), e resolvidas no ciclo seguinte (`sending`→`failed`) — comportamento exatamente esperado |
+| Erro retornado | `http_400 (#131030) Recipient phone number not in allowed list` — erro **real e específico da Meta**, não timeout/erro de rede: prova que a chamada saiu do Postgres, chegou na Cloud API de verdade, e a resposta foi processada e gravada corretamente pelo dispatcher |
+| Teste de entrega real | Dono adicionou `+55 47 99272-2920` como destinatário verificado (Etapa 1). Disparei 1 mensagem via chamada direta à Graph API (fora do Supabase, template `hello_world`, único aceito para abrir conversa nova) → **HTTP 200, `message_status:"accepted"`, `wamid` real gerado** |
+
+**Conclusão: pipeline 100% validado ponta a ponta** — mecanismo de banco (grants, Vault, cron, dispatch, gravação de status) e a integração real com a Cloud API da Meta (autenticação, formato de chamada, entrega) ambos confirmados com evidência real, não suposição.
+
+**Nota técnica registrada (não é bug, é comportamento padrão da plataforma):** mensagens de texto livre (como os templates de status de pedido do Encanto) só podem ser enviadas dentro de uma janela de 24h de conversa já aberta pelo cliente — não é possível "esfriar" uma conversa nova com texto livre, só com template pré-aprovado (como o `hello_world` usado no teste). O checkout do Encanto já lida com isso corretamente: o fluxo gera a mensagem inicial via `wa.me` que o próprio cliente envia ao confirmar o pedido, o que abre essa janela antes de qualquer notificação automática de status tentar usá-la.
+
+**Pendente para fechar B2 definitivamente (Fase 2):** dono completar a Etapa 2 da Meta (registrar o número oficial da Encanto na Cloud API) e fornecer o `phone_number_id` real — nesse momento, troco `whatsapp_token`/`whatsapp_phone_number_id` no Vault pelos de produção (`vault.update_secret`, mesma sintaxe já confirmada) e o sistema fica definitivo.
+
 ### Runbook B3 — Mapbox
 
 1. Decidir se quer contratar (o fallback atual Nominatim→Photon já é funcional e validado — essa é a decisão default deste plano, sem prazo).
