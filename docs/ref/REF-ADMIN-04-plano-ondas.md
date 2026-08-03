@@ -172,6 +172,50 @@ reais) e o restante das ondas (4, 5, 6) seguem automaticamente, sem precisar rec
 **1 commit** (`vercel.json` + esta documentação — a criação do projeto/domínio via API não gera commit
 próprio, é ação de infraestrutura fora do repositório).
 
+---
+
+### 🔴✅ Incidente real durante a propagação — 2 causas raiz distintas, ambas fechadas
+
+O DNS demorou mais que o normal e, mesmo depois de propagar, o domínio continuou fora do ar por mais
+tempo que o esperado. Auditoria completa (a pedido do dono: *"algo tem que estar errado"*) encontrou
+**duas causas reais e independentes**, nenhuma delas hipotética:
+
+**Causa 1 — erro humano no cadastro do DNS (corrigido pelo dono).** A 1ª tentativa usou `Nome: admin.
+encanto` (relativo). Esse painel específico do Registro.br (mesmo confirmado em `REF-BRAND-01`) exige
+FQDN completo no campo "Nome" — o registro não chegou nem aos servidores autoritativos
+(`a.sec.dns.br`/`b.sec.dns.br`) com o formato errado. Corrigido para `admin.encanto.valionsistemas.com.br`
+completo; confirmado nos autoritativos logo em seguida.
+
+**Causa 2 — emissão de certificado SSL nunca disparou (achado + corrigido via API Vercel).** Mesmo com
+DNS correto, a Vercel nunca emitiu certificado para o domínio (`GET /v4/certs?domain=...` não listava
+nenhum — só os 3 certificados dos domínios antigos). Provável efeito colateral do período em que o DNS
+esteve errado (tentativas de emissão automática podem ter falhado e não houve novo gatilho automático).
+Corrigido solicitando emissão explícita (`POST /v4/certs`) — certificado novo emitido na hora
+(`cert_4MnEhFXokBHkpFjKDomVmsV3`, válido até 2026-11-01).
+
+**Causa 3 — encontrada IMEDIATAMENTE após a Causa 2 (o certificado resolveu o handshake TLS, mas `/`
+passou a devolver 404 puro, inclusive em `/admin.html` e `/manifest-admin.json` diretos).** Comparação
+lado a lado com o domínio irmão (`encanto.valionsistemas.com.br`, que redireciona `80→443` normalmente)
+mostrou que o admin não redirecionava nem servia nada na raiz — sinal de que o domínio não estava
+resolvendo pra conteúdo nenhum, não só "sem certificado". Auditoria dos arquivos via probing HTTP direto
+(`/admin/admin.html` → 200, `/admin.html` → 404) revelou a causa: **`vercel.json` (compartilhado pelos
+2 projetos Vercel, mesmo repositório) tem `"outputDirectory":"dist"` no nível raiz, que prevalece sobre
+o Output Directory configurado no próprio projeto `encanto-admin` (`dist/admin`)** — a Vercel estava
+servindo o CONTEÚDO de `dist/` como raiz do site, com `dist/admin/` aninhado um nível a mais dentro
+dela. Corrigir o `vercel.json` diretamente exigiria também fixar `outputDirectory` explícito no projeto
+`encanto-system` (a loja) para compensar — **essa ação foi bloqueada pelo classificador de segurança do
+Claude Code por alterar configuração de um projeto de PRODUÇÃO ao vivo, corretamente**. Resolvido sem
+tocar na loja nem no `vercel.json`: `vite.config.js` (commit `7677620`) muda o `outDir` do modo `admin`
+para `'dist'` (raiz) — alinhando a saída do build com o que a Vercel já forçava de qualquer forma —
+com `emptyOutDir:false` só nesse modo (protege `dist/encanto`/`dist/capacitor` de builds locais em
+sequência) e `globIgnores` novo no plugin PWA do admin (evita precachear a saída da loja que passa a
+coexistir em `dist/` nesse cenário local). Validado local (precache do admin voltou aos 17 arquivos
+corretos, `test:domain` verde) e ao vivo (novo deploy, HTTPS 200, `manifest-admin.json`/`sw-admin.js`
+respondendo, loja confirmada inalterada).
+
+**Domínio confirmado 100% funcional em produção:** `https://admin.encanto.valionsistemas.com.br/` →
+HTTP 200, conteúdo "Encanto Admin" confirmado.
+
 ## Onda 4 — Remoção da engrenagem, do easter-egg e do hash de acesso da loja
 
 - Remover `onAdmin`/botão ⚙️ (`StoreApp.jsx:234-236`), listener de 5 cliques na logo
