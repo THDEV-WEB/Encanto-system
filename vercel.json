@@ -2,14 +2,25 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "outputDirectory": "dist",
   "redirects": [
-    { "source": "/", "destination": "/encanto", "permanent": false }
+    { "source": "/", "destination": "/encanto", "permanent": false, "has": [{ "type": "host", "value": "encanto.valionsistemas.com.br" }] },
+    { "source": "/", "destination": "/encanto", "permanent": false, "has": [{ "type": "host", "value": "encanto-system.vercel.app" }] }
   ],
   "rewrites": [
-    { "source": "/encanto/download", "destination": "/encanto/index.html" }
+    { "source": "/encanto/download", "destination": "/encanto/index.html", "has": [{ "type": "host", "value": "encanto.valionsistemas.com.br" }] },
+    { "source": "/encanto/download", "destination": "/encanto/index.html", "has": [{ "type": "host", "value": "encanto-system.vercel.app" }] },
+    { "source": "/", "destination": "/admin.html", "has": [{ "type": "host", "value": "admin.encanto.valionsistemas.com.br" }] }
   ],
   "headers": [
     {
       "source": "/encanto/downloads/Encanto.apk",
+      "has": [{ "type": "host", "value": "encanto.valionsistemas.com.br" }],
+      "headers": [
+        { "key": "Content-Type", "value": "application/vnd.android.package-archive" }
+      ]
+    },
+    {
+      "source": "/encanto/downloads/Encanto.apk",
+      "has": [{ "type": "host", "value": "encanto-system.vercel.app" }],
       "headers": [
         { "key": "Content-Type", "value": "application/vnd.android.package-archive" }
       ]

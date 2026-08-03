@@ -84,13 +84,18 @@ Edge Middleware fazendo *host-based rewrite* dentro de um único projeto: tecnic
 introduziria uma ferramenta (Vercel Edge Middleware) nunca usada neste projeto, para resolver um problema
 que o padrão de "projeto por domínio" já resolve com zero ferramenta nova.
 
-### D6 — Supabase Auth: novo domínio no `uri_allow_list`; isolamento de sessão como benefício, não como mudança de comportamento
-O novo subdomínio precisa ser adicionado ao `uri_allow_list` do Supabase Auth (mesmo procedimento já
-seguido em `REF-BRAND-01` para os domínios da loja). Como subdomínio é origem distinta para
-`localStorage`, a sessão do admin passa a ficar fisicamente isolada da sessão do cliente no navegador —
-reforço de segurança que vem de graça da arquitetura escolhida, sem exigir nenhuma mudança de código na
-lógica de sessão (`useAdminSession.js`, incluindo o fluxo de confirmação de `REF-UX-SESSION-01`,
-permanece intacto).
+### D6 — Supabase Auth: isolamento de sessão como benefício automático; `uri_allow_list` provavelmente dispensável
+Como subdomínio é origem distinta para `localStorage`, a sessão do admin passa a ficar fisicamente
+isolada da sessão do cliente no navegador — reforço de segurança que vem de graça da arquitetura
+escolhida, sem exigir nenhuma mudança de código na lógica de sessão (`useAdminSession.js`, incluindo o
+fluxo de confirmação de `REF-UX-SESSION-01`, permanece intacto).
+
+**Correção registrada durante a Onda 3:** ao contrário do que este documento presumia inicialmente, o
+`uri_allow_list` do Supabase Auth **provavelmente não precisa** incluir o novo domínio — esse mecanismo
+existe para validar destinos de *redirect* (OAuth do cliente, magic link), e o login do admin
+(`AdminLogin.jsx` → `db.auth.signInWithPassword`) roda com `detectSessionInUrl:false`, sem redirect
+nenhum. Item passa de "ação obrigatória" para "confirmar empiricamente assim que o domínio estiver no
+ar" — ver `docs/ref/REF-ADMIN-04-plano-ondas.md`, Onda 3.
 
 ### D7 — Nome do subdomínio: decisão de produto, não técnica
 Proposto `admin.encanto.valionsistemas.com.br` (aninhado sob o subdomínio já existente do produto,
