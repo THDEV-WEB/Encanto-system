@@ -64,12 +64,14 @@ check('(4) AdminLogin.jsx: titulo consome useCompanyInfo (sem "Encanto Admin" ha
   assert.ok(/useCompanyInfo/.test(code), 'AdminLogin deveria consumir useCompanyInfo (get_company_info e publico, funciona pre-auth)');
 });
 
-/* (5) orderPayload.js: mensagem do checkout recebe nomeCurto por parametro (permanece PURO, G-CK3) */
-check('(5) utils/orderPayload.js: mensagem usa nomeCurto por parametro (sem "Novo Pedido - Encanto" fixo)', () => {
+/* (5) orderPayload.js (REF-CHECKOUT-02): buildOrderConfirmationMessage NAO monta mais o cabecalho
+   da mensagem por conta propria — delega para buildComanda/comandaTexto (mesma fonte da comanda do
+   Admin, checada pelo item (6) abaixo), repassando opts.companyInfo adiante. Sem hardcode aqui. */
+check('(5) utils/orderPayload.js: buildOrderConfirmationMessage delega o nome da loja a buildComanda (sem "Encanto" hardcoded, sem montar cabecalho proprio)', () => {
   const code = strip(read('utils/orderPayload.js'));
-  assert.ok(!/Novo Pedido - Encanto/.test(code), '"Novo Pedido - Encanto" hardcoded permanente reapareceu (deveria ser o default do parametro)');
-  assert.ok(/Novo Pedido - \$\{nomeCurto/.test(code), 'mensagem deveria interpolar ${nomeCurto}');
-  assert.ok(/nomeCurto\s*=\s*'Encanto'/.test(code), 'nomeCurto deveria ter default \'Encanto\' (funcao pura, sem import de hooks)');
+  assert.ok(!/Encanto/.test(code), '"Encanto" hardcoded reapareceu em orderPayload.js');
+  assert.ok(/import\s*\{\s*buildComanda\s*\}/.test(code), 'deveria importar buildComanda (fonte unica da comanda/mensagem)');
+  assert.ok(/companyInfo:\s*opts\.companyInfo/.test(code), 'deveria repassar opts.companyInfo a buildComanda, nunca fixar o nome');
 });
 
 /* (6) comandaModel.js: loja.nome/loja.nomeFooter derivam de nomeCurto, nunca literais fixos */

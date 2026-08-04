@@ -1,7 +1,7 @@
-/* components/checkout/CheckoutPage.jsx — REF-APP-01 · Onda 5.3 (move puro do App.jsx L81-206).
+/* components/checkout/CheckoutPage.jsx — REF-APP-01 · Onda 5.3 (move puro do App.jsx L81-206) + REF-CHECKOUT-02.
    Pagina de checkout: formulario + orquestracao do submit. Logica de negocio ja isolada no order-domain
-   (Onda 5.2): consome buildOrderArgs/buildWhatsAppMessage/buildCheckoutView de utils/orderPayload.js e
-   DS.savePedido de services/DataService.js. NAO importa pricing/addons/format direto (G-CK2). newRequestId
+   (Onda 5.2): consome buildOrderArgs/buildOrderConfirmationMessage/buildCheckoutView de utils/orderPayload.js
+   e DS.savePedido de services/DataService.js. NAO importa pricing/addons/format direto (G-CK2). newRequestId
    (utils/ids) e STORAGE_KEYS (constants) sao dependencias PRE-EXISTENTES do submit (idempotency key/localStorage). */
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../../hooks/useAuth.js';
@@ -9,7 +9,7 @@ import { useCompanyInfo } from '../../hooks/useCompanyInfo.js';   // REF-COMPANY
 import { useBusinessHours } from '../../hooks/useBusinessHours.js';   // REF-BUSINESS-HOURS-01: bloqueio fora do horario
 import { STORAGE_KEYS } from '../../constants/storage.js';
 import { newRequestId } from '../../utils/ids.js';
-import { buildOrderArgs, buildWhatsAppMessage, buildCheckoutView } from '../../utils/orderPayload.js';
+import { buildOrderArgs, buildOrderConfirmationMessage, buildCheckoutView } from '../../utils/orderPayload.js';
 import { DS } from '../../services/DataService.js';
 import { LOYALTY_EVENT } from '../../services/loyalty/index.js';   // REF-LOYALTY-01: avisa a loja p/ re-buscar o estado oficial
 import { STORE_INFO } from '../../constants/storeInfo.js';
@@ -116,7 +116,7 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode }) {
        selo — apenas avisa a loja para re-buscar o estado oficial (get_my_loyalty) e refletir o novo
        selo do proprio cliente logado. Guest acumula na conta do telefone e ve ao logar depois. */
     try { window.dispatchEvent(new Event(LOYALTY_EVENT)); } catch (e) {}
-    const msg = buildWhatsAppMessage(cart, form, enderecoEntrega, companyInfo.nomeCurto);
+    const msg = buildOrderConfirmationMessage(customer, order, items, orderId, { companyInfo, troco: form.troco });
     setLoading(false);
     submittingRef.current = false;
     requestIdRef.current = null;   // próximo pedido recebe nova idempotency key

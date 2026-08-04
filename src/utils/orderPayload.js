@@ -1,16 +1,25 @@
-/* utils/orderPayload.js — REF-APP-01 · Onda 5.2 (Trilha B · order-domain).
+/* utils/orderPayload.js — REF-APP-01 · Onda 5.2 (Trilha B · order-domain). + REF-CHECKOUT-02.
    FONTE ÚNICA de derivação/formatação do pedido (INV-CK). Lógica PURA movida de dentro do
    CheckoutPage.submit (App.jsx) SEM alteração de comportamento — apenas realocada:
-     - buildOrderArgs      → monta os args de DS.savePedido (customer/order/items) — antes inline no submit;
-     - buildWhatsAppMessage→ monta a string do WhatsApp — antes inline no submit;
-     - buildCheckoutView   → view-model do resumo (linhas + total já formatados) — antes calculado no render.
+     - buildOrderArgs              → monta os args de DS.savePedido (customer/order/items) — antes inline no submit;
+     - buildOrderConfirmationMessage→ monta a mensagem do WhatsApp reaproveitando buildComanda/comandaTexto
+                                      (REF-CHECKOUT-02 — substituiu a antiga buildWhatsAppMessage, que tinha
+                                      payload próprio e divergia da comanda do Admin);
+     - buildCheckoutView           → view-model do resumo (linhas + total já formatados) — antes calculado no render.
    Compõe pricing/format/ids (permitido a folha de domínio em utils/; G-CK3 exige só PUREZA — sem
    React/IO/DataService/hooks). É consumidor de domínio (pricing) → entra na allowlist D1 do test:deps.
-   buildOrderArgs/buildWhatsAppMessage são byte-equivalentes ao espelho congelado em tests/checkout.golden.mjs
-   (por isso o golden troca o espelho pelo import real mantendo GOLDEN_PAYLOAD/GOLDEN_MSG idênticos). */
+   buildOrderArgs é byte-equivalente ao espelho congelado em tests/checkout.golden.mjs (por isso o golden
+   troca o espelho pelo import real mantendo GOLDEN_PAYLOAD idêntico); buildOrderConfirmationMessage é
+   coberta por tests/checkout.golden.mjs (§C) + tests/comanda.golden.mjs (view-model/texto). */
 import { precoUnitario, precoLinha } from './pricing.js';
 import { fmt } from './format.js';
 import { isUuid } from './ids.js';
+/* REF-CHECKOUT-02: reaproveita a MESMA camada de domínio da comanda (Admin) para montar a mensagem
+   de confirmação do cliente — única fonte de verdade, ver buildOrderConfirmationMessage abaixo.
+   comandaModel/comandaTexto são módulos PUROS (sem React/IO — só compõem utils/format), moram em
+   components/admin/comanda/ por onde foram usados primeiro; nada impede reuso fora do Admin. */
+import { buildComanda } from '../components/admin/comanda/comandaModel.js';
+import { comandaTexto } from '../components/admin/comanda/comandaTexto.js';
 
 export function buildOrderArgs(cart, form, endereco, requestId, enderecoId) {
   const customer = { name: form.nome, phone: form.telefone };
@@ -35,18 +44,28 @@ export function buildOrderArgs(cart, form, endereco, requestId, enderecoId) {
   return { customer, order, items, requestId };
 }
 
-export function buildWhatsAppMessage(cart, form, endereco, nomeCurto = 'Encanto') {
-  let msg = `*🛍️ Novo Pedido - ${nomeCurto}*\n\n`;
-  msg += `*Cliente:* ${form.nome}\n*Telefone:* ${form.telefone}\n*Endereço:* ${endereco}\n\n*📋 Itens:*\n`;
-  cart.items.forEach(i => {
-    msg += `• ${i.nome} x${i.qty} — ${fmt(precoLinha(i))}\n`;
-    if (i.adicionais?.length) msg += `  ↳ ${i.adicionais.map(a => a.nome).join(', ')}\n`;
-    if (i.obs) msg += `  ↳ Obs: ${i.obs}\n`;
-  });
-  msg += `\n*💰 Total: ${fmt(cart.total)}*\n*Pagamento:* ${form.pagamento}`;
-  if (form.troco) msg += ` (troco p/ ${form.troco})`;
-  if (form.obs) msg += `\n*Obs:* ${form.obs}`;
-  return msg;
+/* REF-CHECKOUT-02: mensagem de confirmação automática do WhatsApp — substitui a antiga
+   buildWhatsAppMessage (payload próprio, campos limitados). Monta um snapshot do pedido no MESMO
+   formato que buildComanda já consome (order + order_items + customers, igual ao que o Admin lê do
+   banco) a partir dos dados JÁ calculados por buildOrderArgs + o orderId confirmado pela persistência
+   — sem query adicional, sem duplicar regra de negócio. buildComanda/comandaTexto(contexto:'cliente')
+   são a MESMA função pura usada na comanda do Admin (ver comandaModel.js/comandaTexto.js).
+   troco: só o checkout tem esse dado (nunca persistido, ver ADR REF-ORDER-01 §5 — gap honesto).
+   opts.createdAt (opcional): injeta o instante da montagem — default new Date() (o momento real da
+   confirmação); parametrizável só para o golden test determinístico (tests/checkout.golden.mjs). */
+export function buildOrderConfirmationMessage(customer, order, items, orderId, opts = {}) {
+  const orderSnapshot = {
+    id: orderId,
+    created_at: (opts.createdAt || new Date()).toISOString(),
+    total: order.total,
+    address: order.address,
+    payment_method: order.payment_method,
+    observacoes: order.observacoes,
+    order_items: items,
+    customers: { name: customer.name, phone: customer.phone },
+  };
+  const vm = buildComanda(orderSnapshot, { companyInfo: opts.companyInfo, troco: opts.troco });
+  return comandaTexto(vm, { contexto: 'cliente' });
 }
 
 /* Resumo do checkout: reproduz EXATAMENTE o que o render calculava inline

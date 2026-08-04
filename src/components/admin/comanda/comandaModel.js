@@ -122,10 +122,13 @@ export const refCurtaDoPedido = (id) => {
 
 /* ── API principal ────────────────────────────────────────────────────────────────────────
    order  : linha de orders com order_items(...) e customers(name,phone) embutidos (DS.getPedidos).
-   opts   : { numero?, totalPedidosCliente?, companyInfo?, enderecoEstruturado? }  (o painel passa o
-            mesmo numero que exibe na tabela; companyInfo vem de useCompanyInfo() em ComandaModal.jsx
-            — este modulo continua PURO, nunca importa services/company/*, REF-COMPANY-02;
-            enderecoEstruturado vem de DS.getPedidoEndereco — REF-COMANDA-ENDERECO-01). */
+   opts   : { numero?, totalPedidosCliente?, companyInfo?, enderecoEstruturado?, troco? }  (o painel
+            passa o mesmo numero que exibe na tabela; companyInfo vem de useCompanyInfo() em
+            ComandaModal.jsx — este modulo continua PURO, nunca importa services/company/*,
+            REF-COMPANY-02; enderecoEstruturado vem de DS.getPedidoEndereco — REF-COMANDA-ENDERECO-01;
+            troco (REF-CHECKOUT-02) — so o CheckoutPage tem esse dado no instante da montagem (nao e
+            persistido no banco, ver ADR REF-ORDER-01 §5 — gap honesto). Ausente/null preserva o
+            comportamento de sempre (Admin nunca passa troco). */
 export function buildComanda(order, opts = {}) {
   const o = order || {};
   /* nome curto da empresa (fallback 'Encanto' cobre chamadas sem companyInfo, ex.: testes). "DELIVERY"/
@@ -178,7 +181,9 @@ export function buildComanda(order, opts = {}) {
     endereco: tipo === 'retirada' ? null : { linhas: enderecoEstruturadoEmLinhas(opts.enderecoEstruturado) || enderecoEmLinhas(o?.address) || [] },
     pagamento: {
       forma: PAGAMENTO_LABEL[o?.payment_method] || (o?.payment_method ? String(o.payment_method) : '—'),
-      troco: null,   // GAP: troco nao e persistido pelo checkout (ADR). Nunca fabricar.
+      /* REF-CHECKOUT-02: troco so existe quando o chamador passa opts.troco (CheckoutPage, no instante
+         da montagem — nunca persistido, ver ADR REF-ORDER-01 §5). Admin nao passa -> continua null. */
+      troco: (opts.troco && String(opts.troco).trim()) || null,
     },
     observacoes: (o?.observacoes && String(o.observacoes).trim()) || null,
     totais: {

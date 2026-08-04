@@ -1,13 +1,21 @@
-/* components/admin/comanda/comandaTexto.js — REF-REGRESSION-01 · P5.
+/* components/admin/comanda/comandaTexto.js — REF-REGRESSION-01 · P5 (+ REF-CHECKOUT-02).
    Gerador PURO do texto simples da comanda: view-model (buildComanda) -> string de texto plano,
    pronto para "Copiar" (área de transferência) e "Compartilhar via WhatsApp" (wa.me?text=).
    MESMO padrão de comandaHtml.js (renderer irmão do MESMO view-model, sem duplicar regra de
    negócio) — nunca lê `order` diretamente, só o objeto já construído por buildComanda(). Usa
-   *asterisco* (negrito do WhatsApp) nos pontos de maior hierarquia, sem HTML/emoji de estilo. */
+   *asterisco* (negrito do WhatsApp) nos pontos de maior hierarquia, sem HTML/emoji de estilo.
 
-export function comandaTexto(vm) {
+   REF-CHECKOUT-02: opts.contexto ('interna' default | 'cliente') — MESMA função pura, única fonte
+   de verdade, reaproveitada pela mensagem automática do WhatsApp do cliente (CheckoutPage/SuccessPage).
+   'cliente' difere em só 2 pontos, ambos sem alterar nenhum caso 'interna' existente (Admin):
+     - omite "COBRAR DO CLIENTE" (instrução operacional p/ cozinha, sem sentido na msg que o próprio
+       cliente envia à loja);
+     - rotula o ajuste como "Taxa de entrega"/"Desconto" (sem o sufixo "/ ajuste", que é jargão interno). */
+
+export function comandaTexto(vm, opts = {}) {
   const v = vm || {};
   const t = v.totais || {};
+  const paraCliente = opts.contexto === 'cliente';
   const linhas = [];
 
   linhas.push(`*${v.loja?.nome || ''}*`);
@@ -48,11 +56,15 @@ export function comandaTexto(vm) {
   linhas.push('');
   linhas.push('*PAGAMENTO*');
   linhas.push(v.pagamento?.forma || '—');
-  linhas.push('COBRAR DO CLIENTE');
+  if (v.pagamento?.troco) linhas.push(`Troco para: ${v.pagamento.troco}`);
+  if (!paraCliente) linhas.push('COBRAR DO CLIENTE');
 
   linhas.push('');
   linhas.push(`Subtotal: ${t.subtotalFmt || ''}`);
-  if (t.mostrarAjuste) linhas.push(`${t.deltaLabel}: ${t.delta < 0 ? '-' : ''}${t.deltaFmt}`);
+  if (t.mostrarAjuste) {
+    const rotulo = paraCliente ? (t.delta > 0 ? 'Taxa de entrega' : 'Desconto') : t.deltaLabel;
+    linhas.push(`${rotulo}: ${t.delta < 0 ? '-' : ''}${t.deltaFmt}`);
+  }
   linhas.push(`*TOTAL: ${t.totalFmt || ''}*`);
 
   linhas.push('');

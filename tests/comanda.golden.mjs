@@ -210,5 +210,55 @@ check('vm com companyInfo custom: cabecalho e rodape derivam do mesmo nomeCurto'
   assert.ok(comandaTexto(vmC).includes('Sabor Real Delivery'));
 });
 
+/* ── REF-CHECKOUT-02: opts.troco (buildComanda) + opts.contexto='cliente' (comandaTexto) ──
+   Admin nunca passa esses opts -> os testes acima (contexto 'interna' implicito) provam que o
+   comportamento antigo continua 100% intacto. Aqui cobrimos SO o caminho novo. */
+check('buildComanda: sem opts.troco -> pagamento.troco null (compat. Admin, igual a sempre)', () => {
+  assert.equal(buildComanda(pedidoEntrega, { numero: 42 }).pagamento.troco, null);
+});
+check('buildComanda: opts.troco presente -> pagamento.troco populado', () => {
+  const vm = buildComanda(pedidoEntrega, { numero: 42, troco: 'R$ 50,00' });
+  assert.equal(vm.pagamento.troco, 'R$ 50,00');
+});
+check('buildComanda: opts.troco string vazia/espacos -> null (nunca fabrica)', () => {
+  assert.equal(buildComanda(pedidoEntrega, { troco: '' }).pagamento.troco, null);
+  assert.equal(buildComanda(pedidoEntrega, { troco: '   ' }).pagamento.troco, null);
+});
+
+check('comandaTexto: sem opts (contexto interna implicito) -> comportamento 100% igual ao anterior', () => {
+  assert.equal(comandaTexto(vmE), textoE);
+  assert.ok(comandaTexto(vmE).includes('COBRAR DO CLIENTE'));
+});
+check("comandaTexto contexto 'cliente': omite COBRAR DO CLIENTE", () => {
+  const txt = comandaTexto(vmE, { contexto: 'cliente' });
+  assert.ok(!txt.includes('COBRAR DO CLIENTE'));
+});
+check("comandaTexto contexto 'cliente': mostra Troco quando presente no vm", () => {
+  const vmComTroco = buildComanda(pedidoEntrega, { numero: 42, troco: 'R$ 50,00' });
+  const txt = comandaTexto(vmComTroco, { contexto: 'cliente' });
+  assert.ok(txt.includes('Troco para: R$ 50,00'));
+});
+check("comandaTexto contexto 'interna': tambem mostra Troco quando o vm tem (dado real do pedido, util p/ cozinha)", () => {
+  const vmComTroco = buildComanda(pedidoEntrega, { numero: 42, troco: 'R$ 50,00' });
+  const txt = comandaTexto(vmComTroco);
+  assert.ok(txt.includes('Troco para: R$ 50,00'));
+});
+check("comandaTexto contexto 'cliente': ajuste positivo rotula 'Taxa de entrega' (sem '/ ajuste')", () => {
+  const vm = buildComanda({ ...pedidoEntrega, total: 50 }, { numero: 1 });
+  const txt = comandaTexto(vm, { contexto: 'cliente' });
+  assert.ok(txt.includes(`Taxa de entrega: ${vm.totais.deltaFmt}`));
+  assert.ok(!txt.includes('Taxa de entrega / ajuste'));
+});
+check("comandaTexto contexto 'cliente': ajuste negativo rotula 'Desconto'", () => {
+  const vm = buildComanda({ ...pedidoEntrega, total: 45 }, { numero: 1 });
+  const txt = comandaTexto(vm, { contexto: 'cliente' });
+  assert.ok(/Desconto: /.test(txt));
+});
+check("comandaTexto contexto 'interna': mantem rotulo 'Taxa de entrega / ajuste' (Admin intocado)", () => {
+  const vm = buildComanda({ ...pedidoEntrega, total: 50 }, { numero: 1 });
+  const txt = comandaTexto(vm);
+  assert.ok(txt.includes('Taxa de entrega / ajuste'));
+});
+
 console.log(fail === 0 ? '\nOK comanda.golden — view-model + HTML termico + texto simples estaveis' : `\nFALHA comanda.golden — ${fail} caso(s)`);
 process.exit(fail ? 1 : 0);

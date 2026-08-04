@@ -26,7 +26,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { totalCarrinho } from '../src/utils/pricing.js';
 import { fmt } from '../src/utils/format.js';
-import { buildOrderArgs, buildWhatsAppMessage, buildCheckoutView } from '../src/utils/orderPayload.js';
+import { buildOrderArgs, buildOrderConfirmationMessage, buildCheckoutView } from '../src/utils/orderPayload.js';
+import { buildComanda } from '../src/components/admin/comanda/comandaModel.js';
+import { comandaTexto } from '../src/components/admin/comanda/comandaTexto.js';
 
 let fail = 0;
 const check = (m, fn) => { try { fn(); } catch (e) { fail++; console.error('✗', m, '—', e?.message ?? e); } };
@@ -66,23 +68,67 @@ const GOLDEN_PAYLOAD = {
   ],
   p_request_id: REQ,
 };
-const GOLDEN_MSG = [
-  '*🛍️ Novo Pedido - Encanto*', '',
-  '*Cliente:* Maria Teste', '*Telefone:* 38999990000', '*Endereço:* Rua A, 100, Centro', '', '*📋 Itens:*',
-  `• Açaí 500ml x2 — ${fmt(44)}`, '  ↳ Leite Ninho, Granola', '  ↳ Obs: sem cebola',
-  `• Batidinha Morango x1 — ${fmt(12)}`, '',
-  `*💰 Total: ${fmt(56)}*`, '*Pagamento:* pix', '*Obs:* sem cebola',
-].join('\n');
-
-console.error('— (A) GOLDEN DE DOMÍNIO (payload + mensagem + invariantes)');
+console.error('— (A) GOLDEN DE DOMÍNIO (payload + invariantes)');
 const cart = mkCart();
 check('1. snapshot do payload (byte-a-byte)', () => assert.deepStrictEqual(buildRpcPayload(cart, FORM, ENDERECO, REQ), GOLDEN_PAYLOAD));
-check('2. snapshot da mensagem WhatsApp',     () => assert.strictEqual(buildWhatsAppMessage(cart, FORM, ENDERECO), GOLDEN_MSG));
-/* REF-COMPANY-02: nomeCurto e o 4o parametro (default 'Encanto', usado acima sem quebrar o snapshot).
-   Prova que a fiacao ate CheckoutPage/companyInfo.nomeCurto nao e codigo morto. */
-check('2b. nomeCurto customizado troca o nome no cabecalho da mensagem', () => {
-  const msg = buildWhatsAppMessage(cart, FORM, ENDERECO, 'Empório Teste');
-  assert.ok(msg.startsWith('*🛍️ Novo Pedido - Empório Teste*'));
+
+/* ── (C) REF-CHECKOUT-02 — mensagem de confirmação automática do WhatsApp ──
+   buildOrderConfirmationMessage substituiu a antiga buildWhatsAppMessage: em vez de um payload próprio,
+   monta um snapshot no MESMO formato que buildComanda/comandaTexto já consomem (Admin) e delega a
+   MESMA função pura — única fonte de verdade entre comanda e mensagem do cliente. */
+console.error('— (C) GOLDEN DA MENSAGEM DE CONFIRMAÇÃO (REF-CHECKOUT-02 — reaproveita buildComanda/comandaTexto)');
+const ORDER_ID = '22222222-2222-4222-8222-222222222222';
+check('C1. mensagem = EXATAMENTE buildComanda+comandaTexto(contexto:cliente) sobre o mesmo snapshot (sem lógica própria duplicada)', () => {
+  const { customer, order, items } = buildOrderArgs(cart, FORM, ENDERECO, REQ);
+  const createdAt = new Date('2026-08-04T14:30:00.000Z');
+  const msg = buildOrderConfirmationMessage(customer, order, items, ORDER_ID, { createdAt });
+  const snapshot = {
+    id: ORDER_ID, created_at: createdAt.toISOString(), total: order.total, address: order.address,
+    payment_method: order.payment_method, observacoes: order.observacoes, order_items: items,
+    customers: { name: customer.name, phone: customer.phone },
+  };
+  const esperado = comandaTexto(buildComanda(snapshot, {}), { contexto: 'cliente' });
+  assert.strictEqual(msg, esperado);
+});
+check('C2. mensagem contém os campos exigidos (cliente/telefone/tipo/endereço/pagamento/itens+adicionais+obs/subtotal/total), sem jargão interno', () => {
+  const { customer, order, items } = buildOrderArgs(cart, FORM, ENDERECO, REQ);
+  const msg = buildOrderConfirmationMessage(customer, order, items, ORDER_ID, {});
+  assert.ok(msg.includes('Maria Teste'));
+  assert.ok(msg.includes('38999990000'));
+  assert.ok(msg.includes('ENTREGA'));
+  assert.ok(msg.includes('Rua A'));
+  assert.ok(msg.includes('PIX'));
+  assert.ok(msg.includes('Açaí 500ml'));
+  assert.ok(msg.includes('Leite Ninho'));
+  assert.ok(msg.includes('Granola'));
+  assert.ok(msg.includes('Batidinha Morango'));
+  assert.ok(msg.includes('sem cebola'));
+  assert.ok(msg.includes('Subtotal'));
+  assert.ok(msg.includes('TOTAL'));
+  assert.ok(!msg.includes('COBRAR DO CLIENTE'), 'instrução interna da cozinha não deve ir na mensagem do cliente');
+});
+check('C3. troco (só existe no checkout, nunca persistido) aparece na mensagem quando informado', () => {
+  const { customer, order, items } = buildOrderArgs(cart, FORM, ENDERECO, REQ);
+  const msg = buildOrderConfirmationMessage(customer, order, items, ORDER_ID, { troco: 'R$ 60,00' });
+  assert.ok(msg.includes('Troco para: R$ 60,00'));
+});
+check('C4. ausência de troco não fabrica linha', () => {
+  const { customer, order, items } = buildOrderArgs(cart, FORM, ENDERECO, REQ);
+  const msg = buildOrderConfirmationMessage(customer, order, items, ORDER_ID, {});
+  assert.ok(!msg.includes('Troco para:'));
+});
+/* REF-COMPANY-02: nomeCurto continua chegando via opts.companyInfo — mesma fiação de sempre. */
+check('C5. nomeCurto customizado troca o cabeçalho da mensagem', () => {
+  const { customer, order, items } = buildOrderArgs(cart, FORM, ENDERECO, REQ);
+  const msg = buildOrderConfirmationMessage(customer, order, items, ORDER_ID, { companyInfo: { nomeCurto: 'Empório Teste' } });
+  assert.ok(msg.startsWith('*EMPÓRIO TESTE DELIVERY*'));
+});
+check('C6. pedido de retirada: mensagem usa RETIRADA (mesmo discriminador da comanda) e omite bloco ENDEREÇO', () => {
+  const cartRetirada = mkCart();
+  const { customer, order, items } = buildOrderArgs(cartRetirada, FORM, 'Retirada na loja — Rua João Schley, 77', REQ);
+  const msg = buildOrderConfirmationMessage(customer, order, items, ORDER_ID, {});
+  assert.ok(msg.includes('RETIRADA'));
+  assert.ok(!msg.includes('*ENDEREÇO*'));
 });
 check('3. reconciliação Σ(price×qty)=total',  () => {
   const p = buildRpcPayload(cart, FORM, ENDERECO, REQ);

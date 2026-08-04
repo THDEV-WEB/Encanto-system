@@ -1,16 +1,37 @@
-/* components/checkout/SuccessPage.jsx — REF-APP-01 · Onda 5.1 (move puro do App.jsx L230-292).
-   Tela de confirmacao do pedido (apresentacional): abre o WhatsApp com a msg pronta e mostra
-   tempo estimado + barra de status cosmetica. Sem DS, sem carrinho (prop 'cart' preservada mas nao usada). */
-import { useState } from 'react';
+/* components/checkout/SuccessPage.jsx — REF-APP-01 · Onda 5.1 (move puro do App.jsx L230-292) + REF-CHECKOUT-02.
+   Tela de confirmacao do pedido (apresentacional): abre o WhatsApp AUTOMATICAMENTE (sem escolha do
+   cliente) assim que a tela monta, com a mensagem ja pronta (msg vem do CheckoutPage, montada por
+   buildOrderConfirmationMessage). Sem DS, sem carrinho (prop 'cart' preservada mas nao usada).
+
+   REF-CHECKOUT-02: navegadores bloqueiam window.open() quando ele NAO e resultado direto/sincrono de
+   um gesto do usuario — e exatamente o caso aqui (a abertura roda dentro de um efeito, apos os awaits
+   de rede do submit). Por isso: tenta abrir, detecta bloqueio (window.open devolve null/janela ja
+   fechada) e cai na tela de contingencia com um botao manual — um clique direto NUNCA e bloqueado por
+   popup-blocker, entao sempre da uma saida ao cliente. */
+import { useState, useEffect, useRef } from 'react';
 
 export function SuccessPage({ msg, cart, onBack, deliveryEta, deliveryMode, whatsapp }) {
   /* REF-COMPANY-01: numero SEMPRE vindo do cadastro da empresa (prop, unico ponto de consumo em
      StoreApp -> Single Source of Truth), nunca mais hardcoded/env var. */
-  const open = () => window.open(`https://wa.me/${whatsapp}?text=${encodeURIComponent(msg)}`,'_blank');
+  const abrirWhatsApp = () => {
+    const win = window.open(`https://wa.me/${whatsapp}?text=${encodeURIComponent(msg)}`, '_blank');
+    return !!(win && !win.closed);
+  };
+
+  const [contingencia, setContingencia] = useState(false);
+  const tentouRef = useRef(false);
+  useEffect(() => {
+    if (tentouRef.current) return;   // nunca dispara 2 popups (StrictMode/remount em dev)
+    tentouRef.current = true;
+    if (!abrirWhatsApp()) setContingencia(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const reabrir = () => { if (abrirWhatsApp()) setContingencia(false); };
+
   /* REF-DELIVERY-01: tempo estimado vem da CONFIG unica (deliveryEta), nao mais de um valor aleatorio.
      Consciente do modo (igual a DeliveryBar): entrega usa a config; retirada usa o tempo fixo de retirada. */
   const retirada = deliveryMode === 'retirada';
-  const [statusIdx, setStatusIdx] = useState(0);
+  const [statusIdx] = useState(0);
   const steps = [
     {label:'Recebido',   icon:'📥'},
     {label:'Em preparo', icon:'👨‍🍳'},
@@ -18,12 +39,30 @@ export function SuccessPage({ msg, cart, onBack, deliveryEta, deliveryMode, what
     {label:'Em entrega', icon:'🛵'},
     {label:'Entregue',   icon:'🏠'},
   ];
+
+  /* Contingência (REF-CHECKOUT-02): pedido já está salvo — só a abertura automática falhou. Não
+     deixa o cliente sem saída: um único botão que reabre o WhatsApp com a mesma mensagem pronta. */
+  if (contingencia) {
+    return (
+      <div className="success-page" style={{maxWidth:520,padding:'28px 16px 40px'}} role="alert">
+        <div style={{fontSize:56}}>⚠️</div>
+        <h2 style={{marginBottom:6}}>Não foi possível abrir automaticamente o WhatsApp.</h2>
+        <p style={{marginBottom:24}}>
+          Seu pedido já foi registrado — falta só enviar a confirmação pelo WhatsApp.
+        </p>
+        <button className="whatsapp-btn" onClick={reabrir} style={{width:'100%',justifyContent:'center'}}>
+          <span style={{fontSize:22}}>💬</span> Abrir WhatsApp novamente
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="success-page" style={{maxWidth:520,padding:'28px 16px 40px'}}>
       <div className="success-icon" style={{fontSize:56}}>🎉</div>
       <h2 style={{marginBottom:6}}>Pedido realizado com sucesso!</h2>
       <p style={{marginBottom:20}}>
-        Nossa equipe confirmará em instantes. Envie pelo WhatsApp para agilizar! 💜
+        Abrimos o WhatsApp com o seu pedido — é só tocar em Enviar! 💜
       </p>
 
       {/* Tempo estimado */}
@@ -62,8 +101,8 @@ export function SuccessPage({ msg, cart, onBack, deliveryEta, deliveryMode, what
         </p>
       </div>
 
-      <button className="whatsapp-btn" onClick={open} style={{width:'100%',justifyContent:'center',marginBottom:10}}>
-        <span style={{fontSize:22}}>💬</span> Enviar pedido pelo WhatsApp
+      <button className="whatsapp-btn" onClick={reabrir} style={{width:'100%',justifyContent:'center',marginBottom:10}}>
+        <span style={{fontSize:22}}>💬</span> Abrir WhatsApp novamente
       </button>
       <button className="back-home-btn" onClick={onBack}>← Voltar ao cardápio</button>
     </div>
