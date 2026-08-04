@@ -10,7 +10,7 @@
 import assert from 'node:assert/strict';
 /* Importa o ENGINE PURO direto (nao o barrel index.js): o barrel re-exporta override.js, que importa
    lib/supabase (import.meta.env), quebrando em Node. O golden so exercita a logica pura. */
-import { avaliar, getStoreStatus, partesLocais, periodosDoDia, horarioSemanal, resolverOverride, MODOS } from '../src/services/businessHours/businessHours.js';
+import { avaliar, getStoreStatus, partesLocais, periodosDoDia, horarioSemanal, resolverOverride, semanaFromSchedule, MODOS } from '../src/services/businessHours/businessHours.js';
 import { SEMANA } from '../src/services/businessHours/schedule.js';
 
 let fail = 0;
@@ -222,7 +222,88 @@ check('estado FORCADO nao carrega campos de cronograma contraditorios (coerencia
   assert.equal(c.haOutroPeriodoHoje, false);
 });
 
+console.log('— (D) CRONOGRAMA CUSTOM: semanaFromSchedule + engine parametrizado (REF-BUSINESS-HOURS-04)');
+
+/* Cronograma FICTICIO, deliberadamente diferente do fallback local (SEMANA), p/ provar que o engine
+   respeita 100% o cronograma recebido — nao existe mais nenhum horario hardcoded no caminho de decisao. */
+const cronogramaCustom = {
+  version: 1,
+  timezone: 'America/Sao_Paulo',
+  schedule: {
+    domingo: { fechado: true, periodos: [] },
+    segunda: { fechado: false, periodos: [{ ini: '08:00', fim: '12:00' }, { ini: '13:00', fim: '18:00' }] }, // 2 periodos
+    terca:   { fechado: true, periodos: [] },                                                                // fechada mesmo com periodos zerados
+    quarta:  { fechado: false, periodos: [{ ini: '09:00', fim: '20:00' }] },                                 // 1 periodo, dia inteiro
+    quinta:  { fechado: false, periodos: [{ ini: '10:00', fim: '14:00' }, { ini: '15:00', fim: '19:00' }, { ini: '20:00', fim: '23:00' }] }, // 3 periodos
+    sexta:   { fechado: false, periodos: [{ ini: '10:00', fim: '15:00' }] },
+    sabado:  { fechado: false, periodos: [{ ini: '10:00', fim: '15:00' }] },
+  },
+  exceptions: {},
+};
+const semanaCustom = semanaFromSchedule(cronogramaCustom);
+
+check('semanaFromSchedule: 7 dias, domingo/terca fechados viram lista vazia', () => {
+  assert.equal(semanaCustom.length, 7);
+  assert.deepEqual(semanaCustom[DOM], []);
+  assert.deepEqual(semanaCustom[TER], []);
+});
+check('semanaFromSchedule: segunda com 2 periodos convertida p/ minutos', () => {
+  assert.deepEqual(semanaCustom[SEG], [{ ini: m(8), fim: m(12) }, { ini: m(13), fim: m(18) }]);
+});
+check('semanaFromSchedule: quinta com 3 periodos preserva todos', () => {
+  assert.equal(semanaCustom[4].length, 3); // quinta = indice 4
+});
+check('semanaFromSchedule: cronograma invalido/ausente -> null (chamador decide o fallback)', () => {
+  assert.equal(semanaFromSchedule(null), null);
+  assert.equal(semanaFromSchedule({}), null);          // sem a chave "schedule" -> documento invalido
+});
+check('semanaFromSchedule: "schedule" presente mas vazio -> semana toda fechada (nunca null)', () => {
+  const vazio = semanaFromSchedule({ schedule: {} });
+  assert.equal(vazio.length, 7);
+  assert.ok(vazio.every((periodos) => periodos.length === 0));
+});
+check('semanaFromSchedule: dia ausente no objeto "schedule" vira fechado (defensivo)', () => {
+  const parcial = semanaFromSchedule({ schedule: { segunda: { fechado: false, periodos: [{ ini: '10:00', fim: '12:00' }] } } });
+  assert.deepEqual(parcial[SEG], [{ ini: m(10), fim: m(12) }]);
+  assert.deepEqual(parcial[TER], []); // dia nao presente no JSON -> fechado, nao "SEMANA[dia]"
+});
+
+console.log('— (D.1) getStoreStatus/horarioSemanal COM cronograma custom — nao caem no fallback local');
+
+check('getStoreStatus SEG 09:00 (custom) -> aberto (fallback local diria fechado ate 10:00)', () => {
+  const s = getStoreStatus(utc(6, 9, 0), semanaCustom); // 6/jul/2026 = segunda
+  assert.equal(s.aberto, true);
+  assert.equal(s.fechaAs, '12:00');
+});
+check('getStoreStatus TER (custom fechada) -> fechada, mesmo sendo dia com periodo no fallback local', () => {
+  const s = getStoreStatus(utc(7, 11, 0), semanaCustom); // 7/jul/2026 = terca
+  assert.equal(s.aberto, false);
+  assert.equal(s.domingo, false);
+});
+check('getStoreStatus TER (custom) -> proxima abertura pula terca fechada e cita QUARTA custom (09:00, nao 10:00)', () => {
+  const s = getStoreStatus(utc(7, 11, 0), semanaCustom);
+  assert.equal(s.proximaAbertura.dia, 3);         // quarta
+  assert.equal(s.proximaAbertura.hora, '09:00');  // horario CUSTOM da quarta, prova que a varredura usa a semana recebida
+});
+check('getStoreStatus QUI 19:30 (custom, intervalo entre periodo 2 e 3) -> fechado, retorna hoje 20:00', () => {
+  const s = getStoreStatus(utc(9, 19, 30), semanaCustom); // 9/jul/2026 = quinta
+  assert.equal(s.aberto, false);
+  assert.equal(s.proximaAbertura.rotuloDia, 'hoje');
+  assert.equal(s.proximaAbertura.hora, '20:00');
+});
+check('horarioSemanal(semanaCustom) reflete o cronograma custom, nao o fallback local', () => {
+  const g = horarioSemanal(semanaCustom);
+  assert.equal(g[TER].fechado, true);
+  assert.equal(g[SEG].periodos.length, 2);
+  assert.deepEqual(g[SEG].periodos[0], { inicio: '08:00', fim: '12:00' });
+});
+check('getStoreStatus sem cronograma continua no fallback local (compatibilidade)', () => {
+  const s = getStoreStatus(utc(6, 11)); // segunda 11:00 — fallback local: aberta ate 15:00
+  assert.equal(s.aberto, true);
+  assert.equal(s.fechaAs, '15:00');
+});
+
 console.log(fail === 0
-  ? '\nOK business-hours.golden — engine + override congelados (cronograma + AUTO/OPEN/CLOSED, fonte unica)'
+  ? '\nOK business-hours.golden — engine + override + cronograma administravel congelados (fonte unica)'
   : `\nFALHA business-hours.golden — ${fail} caso(s)`);
 process.exit(fail ? 1 : 0);
