@@ -1,8 +1,11 @@
 /* components/menu/SideDrawer.jsx — drawer lateral da loja (LOGIN-ARCH-02.1). Guest-first.
-   Topo: entrar/conta · Fidelidade · Contato · Sobre · Termos · redes. Entrada com slide suave; safe-area. */
+   Topo: entrar/conta · Fidelidade · Contato · Sobre · Termos · redes. Entrada com slide suave; safe-area.
+   REF-COMPANY-03: os links de redes sociais/site/cardápio/mapa vêm de company_info (Supabase,
+   administráveis em Dados da Empresa) — não mais de STORE_INFO.social (removido). Cada ícone só aparece
+   se o respectivo campo estiver preenchido; nunca um link vazio/quebrado. */
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../hooks/useAuth.js';
-import { STORE_INFO } from '../../constants/storeInfo.js';
+import { useCompanyInfo } from '../../hooks/useCompanyInfo.js';
 import { nomeExibicao, inicialExibicao, avatarUrlDe } from './userDisplay.js';
 
 const overlay = (shown) => ({ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 3100, display: 'flex', justifyContent: 'flex-end', opacity: shown ? 1 : 0, transition: 'opacity .2s ease' });
@@ -10,9 +13,20 @@ const drawer = (shown) => ({ width: '86%', maxWidth: 340, height: '100%', backgr
 const item = { display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px', border: 'none', background: 'none', width: '100%', textAlign: 'left', cursor: 'pointer', fontSize: 15, color: 'var(--gray-800)', borderBottom: '1px solid var(--gray-100)' };
 const socialBtn = { width: 44, height: 44, borderRadius: '50%', background: 'var(--grape-pale)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, textDecoration: 'none' };
 
+/* Ordem de exibição + emoji por campo — só entram os que tiverem valor (ver `links` no componente). */
+const LINKS_SOCIAIS = [
+  { campo: 'instagram', label: 'Instagram', emoji: '📷' },
+  { campo: 'facebook', label: 'Facebook', emoji: '📘' },
+  { campo: 'tiktok', label: 'TikTok', emoji: '🎵' },
+  { campo: 'site', label: 'Site', emoji: '🌐' },
+  { campo: 'cardapio', label: 'Cardápio', emoji: '📋' },
+  { campo: 'googleMaps', label: 'Google Maps', emoji: '📍' },
+];
+
 export function SideDrawer({ onClose, onNavigate }) {
   const { isLogged, user, customer, sair } = useAuth();
-  const { social } = STORE_INFO;
+  const companyInfo = useCompanyInfo();
+  const links = LINKS_SOCIAIS.filter((l) => companyInfo[l.campo]);
   const [shown, setShown] = useState(false);
   useEffect(() => { const id = requestAnimationFrame(() => setShown(true)); return () => cancelAnimationFrame(id); }, []);
 
@@ -52,9 +66,10 @@ export function SideDrawer({ onClose, onNavigate }) {
         <button style={item} onClick={() => onNavigate('sobre')}><span style={{ fontSize: 18 }}>🏪</span> Sobre nós</button>
         <button style={item} onClick={() => onNavigate('termos')}><span style={{ fontSize: 18 }}>📄</span> Termos e Políticas</button>
 
-        <div style={{ display: 'flex', gap: 14, padding: '20px', marginTop: 'auto' }}>
-          <a href={social.instagram} target="_blank" rel="noreferrer" aria-label="Instagram" style={socialBtn}>📷</a>
-          <a href={social.facebook} target="_blank" rel="noreferrer" aria-label="Facebook" style={socialBtn}>📘</a>
+        <div style={{ display: 'flex', gap: 14, padding: links.length ? '20px' : 0, marginTop: 'auto', flexWrap: 'wrap' }}>
+          {links.map((l) => (
+            <a key={l.campo} href={companyInfo[l.campo]} target="_blank" rel="noreferrer" aria-label={l.label} style={socialBtn}>{l.emoji}</a>
+          ))}
         </div>
 
         {isLogged && (

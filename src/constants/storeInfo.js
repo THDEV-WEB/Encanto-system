@@ -1,25 +1,18 @@
 /* constants/storeInfo.js — informacoes institucionais da loja AINDA ESTATICAS (LOGIN-ARCH-02).
-   Fonte UNICA p/ Termos/Redes/Endereco — nada de hardcode espalhado. Editar aqui no futuro.
+   Fonte UNICA p/ Termos/Fidelidade — nada de hardcode espalhado. Editar aqui no futuro.
    REF-COMPANY-01: nome/telefone/whatsapp/e-mail MIGRARAM para settings.company_info (Supabase,
-   administravel pelo Admin) — ver hooks/useCompanyInfo.js. REF-COMPANY-03: SOBRE_TEXTO tambem migrou
-   (agora company_info.sobre — ver components/menu/SobreScreen.jsx). Os campos abaixo (endereco/social/
-   Termos/Fidelidade) sao os PROXIMOS candidatos naturais a essa mesma migracao (arquitetura ja preparada:
-   e so estender o objeto company_info e o form do Admin, sem mudanca de RPC/tabela).
+   administravel pelo Admin) — ver hooks/useCompanyInfo.js. REF-COMPANY-03 (Central de Configuração da
+   Empresa): SOBRE_TEXTO, endereco (institucional) e social TAMBEM migraram para company_info — ver
+   services/company/companyInfoRules.js. `retirada` abaixo e uma coisa DIFERENTE (endereco de RETIRADA
+   operacional do checkout) e continua aqui, intocado — nunca cruzar com o endereco institucional.
+   Termos/Fidelidade seguem os PROXIMOS candidatos naturais a essa mesma migracao (arquitetura ja
+   preparada: e so estender o objeto company_info e o form do Admin, sem mudanca de RPC/tabela).
    Camada de constantes: sem imports (regra D2 do test:deps trivialmente satisfeita). */
 export const STORE_INFO = {
   cidade: 'Timbó',
-  endereco: {                            // estrutura preparada (preencher no futuro)
-    linha1: 'Rua João Schley, 77',
-    linha2: 'Casa 02',
-    cidade: 'Timbó',
-    preparado: true,
-  },
-  /* REF-CHECKOUT-ADDRESS-01: endereco de RETIRADA na loja (fonte unica — usado no header e no checkout). */
+  /* REF-CHECKOUT-ADDRESS-01: endereco de RETIRADA na loja (fonte unica — usado no header e no checkout).
+     Entidade INDEPENDENTE do endereco institucional (company_info.rua/numero/... — REF-COMPANY-03). */
   retirada: 'Rua João Schley, 77 Casa 02',
-  social: {
-    instagram: 'https://instagram.com/',  // placeholder — ajustar URL
-    facebook:  'https://facebook.com/',   // placeholder — ajustar URL
-  },
 };
 
 /* Termos e Políticas — placeholder organizado; substituir pelo conteúdo definitivo. */

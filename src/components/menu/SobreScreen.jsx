@@ -1,7 +1,8 @@
 /* components/menu/SobreScreen.jsx — tela Sobre nós (LOGIN-ARCH-02).
-   REF-COMPANY-03: texto institucional vem de company_info.sobre (Supabase, administravel em Dados da
-   Empresa) — nao mais de constants/storeInfo.js (SOBRE_TEXTO, removido). String unica com paragrafos
-   separados por linha em branco ("\n\n"); o split so acontece aqui, na hora de renderizar.
+   REF-COMPANY-03: texto institucional vem de company_info.sobre (Supabase, administravel na Central de
+   Configuração da Empresa) — nao mais de constants/storeInfo.js (SOBRE_TEXTO, removido). Renderizado com
+   `white-space: pre-wrap` — preserva EXATAMENTE o que o admin digitou (quebras de linha simples e
+   parágrafos/linhas em branco), sem nenhum split/normalização no cliente.
    REF-BUSINESS-HOURS-01/04: exibe também a grade de horário de funcionamento — fonte única, derivada do
    cronograma OFICIAL do Supabase (useBusinessHoursSchedule -> horarioSemanal), nada de horário hardcoded
    aqui. Reativo: se o Admin salvar um novo cronograma/texto, a tela aqui converge sozinha (mesmo mecanismo
@@ -17,12 +18,11 @@ export function SobreScreen({ onClose }) {
   const companyInfo = useCompanyInfo();
   const cronograma = useBusinessHoursSchedule();
   const grade = horarioSemanal(semanaFromSchedule(cronograma) ?? undefined);
-  const paragrafos = (companyInfo.sobre || '').split('\n\n').map((p) => p.trim()).filter(Boolean);
   return (
     <ScreenModal title="Sobre nós" onClose={onClose}>
-      {paragrafos.map((p, i) => (
-        <p key={i} style={{ fontSize: 14, color: 'var(--gray-700)', lineHeight: 1.7, marginBottom: 12 }}>{p}</p>
-      ))}
+      <p style={{ fontSize: 14, color: 'var(--gray-700)', lineHeight: 1.7, marginBottom: 20, whiteSpace: 'pre-wrap' }}>
+        {companyInfo.sobre}
+      </p>
 
       <div style={{ borderTop: '1px solid var(--gray-100)', paddingTop: 16, marginTop: 8 }}>
         <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--gray-800)', marginBottom: 10 }}>🕒 Horário de funcionamento</div>
