@@ -19,7 +19,9 @@ test.describe('Tempo de Entrega (Admin)', { tag: '@writes' }, () => {
     await adminPanel.abrirAba('status');
 
     const campo = page.getByLabel('Tempo estimado de entrega em minutos');
-    const salvarButton = page.getByRole('button', { name: /Salvar/ });
+    // exact: true — a aba "status" também tem o "💾 Salvar Alterações" do cronograma semanal
+    // (REF-BUSINESS-HOURS-04), que bate no /Salvar/ genérico e ambiguava o locator.
+    const salvarButton = page.getByRole('button', { name: 'Salvar', exact: true });
 
     // useDeliveryEta pinta primeiro pelo CACHE em memória e só depois puxa o valor oficial do
     // servidor (achado real: clicar um preset antes desse 2º carregamento terminar é sobrescrito
