@@ -1,14 +1,18 @@
 /* components/menu/SobreScreen.jsx — tela Sobre nós (LOGIN-ARCH-02). Texto vem de constants/storeInfo.
-   REF-BUSINESS-HOURS-01: exibe também a grade de horário de funcionamento — fonte única, derivada do
-   módulo services/businessHours (nada de horário hardcoded aqui). */
+   REF-BUSINESS-HOURS-01/04: exibe também a grade de horário de funcionamento — fonte única, derivada do
+   cronograma OFICIAL do Supabase (useBusinessHoursSchedule -> horarioSemanal), nada de horário hardcoded
+   aqui. Reativo: se o Admin salvar um novo cronograma, a grade aqui converge sozinha (mesmo mecanismo do
+   status da loja). */
 import { ScreenModal } from './ScreenModal.jsx';
 import { SOBRE_TEXTO } from '../../constants/storeInfo.js';
-import { horarioSemanal } from '../../services/businessHours/index.js';
+import { horarioSemanal, semanaFromSchedule } from '../../services/businessHours/index.js';
+import { useBusinessHoursSchedule } from '../../hooks/useBusinessHoursSchedule.js';
 
 const linha = { display: 'flex', justifyContent: 'space-between', gap: 12, padding: '7px 0', fontSize: 13.5, borderBottom: '1px solid var(--gray-100)' };
 
 export function SobreScreen({ onClose }) {
-  const grade = horarioSemanal();
+  const cronograma = useBusinessHoursSchedule();
+  const grade = horarioSemanal(semanaFromSchedule(cronograma) ?? undefined);
   return (
     <ScreenModal title="Sobre nós" onClose={onClose}>
       {SOBRE_TEXTO.map((p, i) => (

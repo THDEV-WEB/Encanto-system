@@ -6,6 +6,7 @@ import { AdminProducts } from './AdminProducts.jsx';
 import { AdminCategorias } from './AdminCategorias.jsx';
 import { AdminAdicionais } from './AdminAdicionais.jsx';
 import { AdminStatus } from './AdminStatus.jsx';
+import { AdminBusinessHours } from './AdminBusinessHours.jsx'; // REF-BUSINESS-HOURS-04: cronograma semanal administravel
 import { AdminDeliveryEta } from './AdminDeliveryEta.jsx';   // REF-DELIVERY-01: config do tempo de entrega
 import { AdminEmpresa } from './AdminEmpresa.jsx';           // REF-COMPANY-01: dados institucionais da empresa
 import { AdminFidelidade } from './AdminFidelidade.jsx';
@@ -57,7 +58,7 @@ export function AdminPanel({ admin, onExit, onLogout }) {
           {tab==='products'   && <AdminProducts/>}
           {tab==='categorias' && <AdminCategorias/>}
           {tab==='adicionais' && <AdminAdicionais/>}
-          {tab==='status'     && <><AdminStatus/><AdminDeliveryEta/></>}
+          {tab==='status'     && <><AdminStatus/><AdminBusinessHours/><AdminDeliveryEta/></>}
           {tab==='empresa'    && <AdminEmpresa/>}
           {tab==='fidelidade' && <AdminFidelidade/>}
           {tab==='saude'      && <AdminHealth/>}

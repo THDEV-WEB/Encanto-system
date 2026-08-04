@@ -8,7 +8,7 @@
      avaliar(dia,min,ps) -> NUCLEO puro e deterministico: dado (dia-da-semana, minutos, periodos-de-hoje),
                             devolve o status completo. E o que os golden tests exercitam sem depender de fuso.
      getStoreStatus(date)-> conveniencia: avaliar(...partesLocais(date)) aplicando excecoes do dia. */
-import { SEMANA, EXCECOES, DIAS_CURTOS, DIAS_LONGOS } from './schedule.js';
+import { SEMANA, EXCECOES, DIAS_CURTOS, DIAS_LONGOS, DIA_NOMES } from './schedule.js';
 
 /* HH:MM local (self-contained: nao importa utils/format p/ respeitar o isolamento de camada services). */
 const pad2 = (n) => String(n).padStart(2, '0');
@@ -59,14 +59,16 @@ export function partesLocais(date) {
   return partesFallback(date);
 }
 
-/* Periodos vigentes de um dia: excecao da data (se houver) sobrescreve o padrao semanal. */
-export function periodosDoDia(dia, ymd) {
-  const ex = ymd ? EXCECOES[ymd] : null;
+/* Periodos vigentes de um dia: excecao da data (se houver) sobrescreve o padrao semanal.
+   REF-BUSINESS-HOURS-04: `semana` e `excecoes` viram parametros OPCIONAIS (default = fallback local) —
+   quem tem um cronograma carregado do Supabase passa o seu; ninguem mais e obrigado a usar SEMANA fixo. */
+export function periodosDoDia(dia, ymd, semana = SEMANA, excecoes = EXCECOES) {
+  const ex = ymd ? excecoes[ymd] : null;
   if (ex) {
     if (ex.fechado) return [];
     if (Array.isArray(ex.periodos)) return ex.periodos;
   }
-  return SEMANA[dia] || [];
+  return semana[dia] || [];
 }
 
 const rotuloDia = (offset, wd) => (offset === 0 ? 'hoje' : offset === 1 ? 'amanhã' : DIAS_CURTOS[wd]);
@@ -75,20 +77,24 @@ const rotuloDia = (offset, wd) => (offset === 0 ? 'hoje' : offset === 1 ? 'amanh
    apos o atual (hoje a noite, ou o proximo dia com atendimento). A varredura de dias FUTUROS usa o padrao
    semanal (SEMANA); excecoes de HOJE ja entram via periodosDoDia (getStoreStatus). Ponto de extensao: quando
    feriados/datas especiais forem ativados, esta varredura passa a consultar periodosDoDia por data futura. */
-function proximaAbertura(dia, minutos, hoje) {
+function proximaAbertura(dia, minutos, hoje, semana = SEMANA) {
   const futuroHoje = hoje.find((p) => p.ini > minutos);
   if (futuroHoje) return montar(0, dia, futuroHoje.ini);
   for (let d = 1; d <= 7; d++) {
     const wd = (dia + d) % 7;
-    const ps = SEMANA[wd];
+    const ps = semana[wd];
     if (ps && ps.length) return montar(d, wd, ps[0].ini);
   }
   return null; // inalcancavel enquanto a semana tiver ao menos 1 periodo
 }
 const montar = (offset, wd, min) => ({ offsetDias: offset, dia: wd, minutos: min, hora: hhmm(min), rotuloDia: rotuloDia(offset, wd) });
 
-/* NUCLEO puro. `periodosHoje` default = padrao semanal do dia (permite testar sem fuso e sem excecoes). */
-export function avaliar(dia, minutos, periodosHoje = SEMANA[dia] || []) {
+/* NUCLEO puro. `periodosHoje` default = padrao semanal do dia (permite testar sem fuso e sem excecoes).
+   `semanaCompleta` (REF-BUSINESS-HOURS-04): usada SO para a varredura de "proxima abertura" em dias
+   FUTUROS (proximaAbertura) — precisa ser o MESMO cronograma de `periodosHoje`, senao a "proxima abertura"
+   calculada pode citar o horario ERRADO de outro dia (ex.: admin muda quarta, mas a busca por "quando abre
+   de novo" a partir de terca continuaria consultando a quarta antiga). Default = mesmo fallback local. */
+export function avaliar(dia, minutos, periodosHoje = SEMANA[dia] || [], semanaCompleta = SEMANA) {
   const hoje = [...periodosHoje].sort((a, b) => a.ini - b.ini);
   const atual = hoje.find((p) => minutos >= p.ini && minutos < p.fim) || null;
   const aberto = !!atual;
@@ -96,7 +102,7 @@ export function avaliar(dia, minutos, periodosHoje = SEMANA[dia] || []) {
 
   const haOutroPeriodoHoje = hoje.some((p) => p.ini > minutos);           // ainda ha periodo mais tarde HOJE
   const expedienteEncerrado = !aberto && !haOutroPeriodoHoje;             // fechado e sem retorno hoje
-  const prox = proximaAbertura(dia, minutos, hoje);                       // quando abre de novo
+  const prox = proximaAbertura(dia, minutos, hoje, semanaCompleta);       // quando abre de novo
   const fechaAs = atual ? hhmm(atual.fim) : null;                         // fim do periodo atual
 
   const rotuloCurto = aberto ? 'Aberto agora' : 'Fechado';
@@ -122,20 +128,48 @@ export function avaliar(dia, minutos, periodosHoje = SEMANA[dia] || []) {
   };
 }
 
-/* API de conveniencia p/ o app: status "agora" (ou numa data dada), ja com excecoes do dia aplicadas. */
-export function getStoreStatus(date = new Date()) {
+/* API de conveniencia p/ o app: status "agora" (ou numa data dada), ja com excecoes do dia aplicadas.
+   `semana` (REF-BUSINESS-HOURS-04): cronograma no formato INTERNO (array de 7, indice 0-6, minutos) — quem
+   consome o Supabase passa o resultado de semanaFromSchedule(cronograma); default = fallback local. */
+export function getStoreStatus(date = new Date(), semana = SEMANA) {
   const { dia, minutos, ymd } = partesLocais(date);
-  return avaliar(dia, minutos, periodosDoDia(dia, ymd));
+  return avaliar(dia, minutos, periodosDoDia(dia, ymd, semana), semana);
 }
 
-/* Grade semanal p/ exibir em "Informacoes da loja" (Sobre nos) — fonte unica: deriva de SEMANA. */
-export function horarioSemanal() {
-  return SEMANA.map((periodos, dia) => ({
+/* Grade semanal p/ exibir em "Informacoes da loja" (Sobre nos) e no formulario do Admin — deriva de
+   `semana` (default = fallback local, mesma logica de getStoreStatus). */
+export function horarioSemanal(semana = SEMANA) {
+  return semana.map((periodos, dia) => ({
     dia,
     nome: DIAS_LONGOS[dia],
     fechado: periodos.length === 0,
     periodos: periodos.map((p) => ({ inicio: hhmm(p.ini), fim: hhmm(p.fim) })),
   }));
+}
+
+/* ── ADAPTADOR DE CRONOGRAMA (REF-BUSINESS-HOURS-04) ────────────────────────────────────────────────
+   Unica ponte entre o FORMATO PERSISTIDO (objeto JSON do Supabase: dias por NOME em portugues sem acento,
+   horarios em string "HH:MM" — legivel no banco e no formulario do Admin) e o FORMATO INTERNO do engine
+   (array indexado 0-6 alinhado a Date.getDay(), horarios em MINUTOS — o mesmo shape que SEMANA sempre teve,
+   ja coberto pelos golden tests). Pura (sem IO); quem chama (services/businessHours/cronograma.js, fora
+   deste arquivo) e responsavel por BUSCAR o JSON no Supabase — o engine so o RECEBE e converte.
+   Defensivo por design: dia ausente/malformado no JSON vira "fechado" (nunca inventa horario a partir de
+   dado corrompido); se o documento inteiro for invalido, devolve null (quem chama decide o fallback). */
+const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+const paraMinutos = (hhmmStr) => {
+  const [h, m] = hhmmStr.split(':').map(Number);
+  return h * 60 + m;
+};
+export function semanaFromSchedule(cronograma) {
+  const schedule = cronograma && typeof cronograma === 'object' ? cronograma.schedule : null;
+  if (!schedule || typeof schedule !== 'object') return null;
+  return DIA_NOMES.map((nome) => {
+    const dia = schedule[nome];
+    if (!dia || dia.fechado || !Array.isArray(dia.periodos)) return [];
+    return dia.periodos
+      .filter((p) => p && HHMM_RE.test(p.ini) && HHMM_RE.test(p.fim) && paraMinutos(p.fim) > paraMinutos(p.ini))
+      .map((p) => ({ ini: paraMinutos(p.ini), fim: paraMinutos(p.fim) }));
+  });
 }
 
 /* ── OVERRIDE ADMINISTRATIVO (REF-BUSINESS-HOURS-02) ────────────────────────────────────────────
