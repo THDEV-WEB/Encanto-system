@@ -61,6 +61,7 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
      o modal (abrirEndereco); a edicao/persistencia e do provider. Sem estado paralelo de endereco. */
   const { endereco: enderecoObj, temEndereco, abrirModal: abrirEndereco, limpar: limparEndereco } = useAddress();
   const [showLoyalty,    setShowLoyalty]     = useState(false);
+  const [loyaltyTeaser,  setLoyaltyTeaser]   = useState(false);   // teaser "em breve" do chip de fidelidade (troca o alert() nativo, que sempre mostraria o dominio em vez do nome da loja)
   /* ── Programa de Fidelidade (REF-LOYALTY-01) ── fonte unica: Supabase (get_my_loyalty), por CLIENTE.
      O visitante nao-logado ve zeros (fidelidade nao pertence ao navegador). O cliente logado ve o
      PROPRIO saldo, sincronizado entre dispositivos. localStorage e so cache (dentro do hook). */
@@ -139,15 +140,16 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
   // que já existe acima (page/modal/cartOpen/showLoyalty) + o que o StoreMenu já expõe (menu/telas).
   const storeMenuRef = useRef(null);
   useImperativeHandle(ref, () => ({
-    temAlgoAberto: () => page === 'checkout' || page === 'success' || !!modal || cartOpen || showLoyalty || !!storeMenuRef.current?.temAlgoAberto(),
+    temAlgoAberto: () => page === 'checkout' || page === 'success' || !!modal || cartOpen || showLoyalty || loyaltyTeaser || !!storeMenuRef.current?.temAlgoAberto(),
     fecharTopo: () => {
       if (page === 'checkout' || page === 'success') { setPage('home'); return; }
       if (modal) { setModal(null); return; }
+      if (loyaltyTeaser) { setLoyaltyTeaser(false); return; }
       if (cartOpen) { setCartOpen(false); return; }
       if (showLoyalty) { setShowLoyalty(false); return; }
       storeMenuRef.current?.fecharTudo();
     },
-  }), [page, modal, cartOpen, showLoyalty]);
+  }), [page, modal, cartOpen, showLoyalty, loyaltyTeaser]);
 
   if (page==='checkout') return <CheckoutPage cart={cart} deliveryMode={deliveryMode} onBack={()=>setPage('home')} onSuccess={msg=>{setWaMsg(msg);setPage('success');}}/>;
   if (page==='success')  return <SuccessPage  msg={waMsg} cart={cart} onBack={()=>setPage('home')} deliveryEta={deliveryEta} deliveryMode={deliveryMode} whatsapp={companyInfo.whatsapp}/>;
@@ -322,7 +324,7 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
               de fidelidade (inclusive o estado de recompensa). Sem banner/foto/titulo. */}
           <StoreHighlights
             loyaltyReward={loyaltyReward}
-            onLoyalty={()=>alert('Em breve teremos novidades para nossos clientes mais fiéis! ❤️')}
+            onLoyalty={()=>setLoyaltyTeaser(true)}
           />
 
           {/* Categorias — navegacao por scroll + scroll-spy (REF-UI-CATEGORY-01 Fase 2) substitui a grade de chips.
@@ -390,6 +392,22 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
 
       {/* ── Modal de Seleção de Endereço ── REF-CHECKOUT-ADDRESS-01: renderizado uma unica vez pelo
           AddressProvider (fonte unica); o header so o ABRE via abrirEndereco. */}
+
+      {/* ── Teaser "em breve" do chip de fidelidade ── dialog proprio (nao alert() nativo): o alert()
+          do browser sempre prefixa com o DOMINIO da pagina ("valionsistemas.com.br diz"), nunca com o
+          nome da loja — texto que o navegador controla, o app nao tem como sobrescrever. Aqui o titulo
+          usa companyInfo.nomeCurto (REF-COMPANY-02: fonte unica do nome institucional). */}
+      {loyaltyTeaser&&(
+        <div className="modal-overlay" style={{alignItems:'center',justifyContent:'center'}} onClick={e=>e.target===e.currentTarget&&setLoyaltyTeaser(false)}>
+          <div style={{background:'var(--white)',borderRadius:16,width:'min(92vw,340px)',padding:'20px 20px 8px',boxShadow:'0 20px 60px rgba(0,0,0,.3)'}}>
+            <strong style={{fontSize:16,display:'block',marginBottom:8}}>{companyInfo.nomeCurto} diz</strong>
+            <p style={{fontSize:14,color:'var(--gray-800)',lineHeight:1.5,margin:0}}>Em breve teremos novidades para nossos clientes mais fiéis! ❤️</p>
+            <div style={{display:'flex',justifyContent:'flex-end',margin:'12px -8px 0 0'}}>
+              <button onClick={()=>setLoyaltyTeaser(false)} style={{border:'none',background:'none',color:'var(--grape)',fontWeight:700,fontSize:15,cursor:'pointer',padding:'10px 12px'}}>OK</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Modal Programa de Fidelidade ── */}
       {showLoyalty&&(
