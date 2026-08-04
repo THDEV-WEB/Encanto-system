@@ -25,6 +25,7 @@ export function AdminEmpresa() {
   const [telefone, setTelefone] = useState(formatarTelefoneBR(info.telefone));
   const [whatsapp, setWhatsapp] = useState(formatarTelefoneBR(info.whatsapp));
   const [email, setEmail] = useState(info.email);
+  const [sobre, setSobre] = useState(info.sobre);   // REF-COMPANY-03: texto da tela "Sobre nós"
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState(null);        // { tipo:'ok'|'erro', texto }
 
@@ -33,18 +34,20 @@ export function AdminEmpresa() {
     setNomeCurto(info.nomeCurto); setNomeCompleto(info.nomeCompleto);
     setTelefone(formatarTelefoneBR(info.telefone));
     setWhatsapp(formatarTelefoneBR(info.whatsapp)); setEmail(info.email);
-  }, [info.nomeCurto, info.nomeCompleto, info.telefone, info.whatsapp, info.email]);
+    setSobre(info.sobre);
+  }, [info.nomeCurto, info.nomeCompleto, info.telefone, info.whatsapp, info.email, info.sobre]);
 
   const mudou = nomeCurto.trim() !== info.nomeCurto
     || nomeCompleto.trim() !== info.nomeCompleto
     || normalizePhoneBR(telefone) !== info.telefone
     || normalizePhoneBR(whatsapp) !== info.whatsapp
-    || email.trim().toLowerCase() !== info.email;
+    || email.trim().toLowerCase() !== info.email
+    || sobre.trim() !== info.sobre;
 
   const salvar = async () => {
     if (!mudou || salvando) return;
     setSalvando(true); setMsg(null);
-    const r = await salvarCompanyInfo({ nomeCurto, nomeCompleto, telefone, whatsapp, email });
+    const r = await salvarCompanyInfo({ nomeCurto, nomeCompleto, telefone, whatsapp, email, sobre });
     setSalvando(false);
     if (r.ok) {
       setMsg({ tipo: 'ok', texto: 'Dados da empresa salvos com sucesso.' });
@@ -52,6 +55,7 @@ export function AdminEmpresa() {
       setNomeCurto(r.info.nomeCurto); setNomeCompleto(r.info.nomeCompleto);
       setTelefone(formatarTelefoneBR(r.info.telefone));
       setWhatsapp(formatarTelefoneBR(r.info.whatsapp)); setEmail(r.info.email);
+      setSobre(r.info.sobre);
     } else {
       setMsg({ tipo: 'erro', texto: r.error || 'Não foi possível salvar.' });
     }
@@ -141,6 +145,16 @@ export function AdminEmpresa() {
               <input data-testid="empresa-form-email" className="form-input" type="email" value={email}
                 onChange={(e) => { setEmail(e.target.value); setMsg(null); }} />
             </div>
+          </div>
+
+          <div className="form-group" style={{ marginBottom: 20 }}>
+            <label className="form-label">Texto "Sobre nós"</label>
+            <textarea data-testid="empresa-form-sobre" className="form-input" rows={6} value={sobre}
+              onChange={(e) => { setSobre(e.target.value); setMsg(null); }}
+              style={{ resize: 'vertical', lineHeight: 1.6, fontFamily: 'var(--font-body)' }} />
+            <p style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 4 }}>
+              Aparece na tela "Sobre nós" da loja. Separe parágrafos deixando uma linha em branco entre eles.
+            </p>
           </div>
 
           <button className="btn-primary" onClick={salvar} disabled={!mudou || salvando} style={{ minWidth: 160 }}>

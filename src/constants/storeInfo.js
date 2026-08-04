@@ -1,9 +1,10 @@
 /* constants/storeInfo.js — informacoes institucionais da loja AINDA ESTATICAS (LOGIN-ARCH-02).
-   Fonte UNICA p/ Sobre/Termos/Redes/Endereco — nada de hardcode espalhado. Editar aqui no futuro.
+   Fonte UNICA p/ Termos/Redes/Endereco — nada de hardcode espalhado. Editar aqui no futuro.
    REF-COMPANY-01: nome/telefone/whatsapp/e-mail MIGRARAM para settings.company_info (Supabase,
-   administravel pelo Admin) — ver hooks/useCompanyInfo.js. Os campos abaixo (endereco/social) sao os
-   PROXIMOS candidatos naturais a essa mesma migracao (arquitetura ja preparada: e so estender o objeto
-   company_info e o form do Admin, sem mudanca de RPC/tabela).
+   administravel pelo Admin) — ver hooks/useCompanyInfo.js. REF-COMPANY-03: SOBRE_TEXTO tambem migrou
+   (agora company_info.sobre — ver components/menu/SobreScreen.jsx). Os campos abaixo (endereco/social/
+   Termos/Fidelidade) sao os PROXIMOS candidatos naturais a essa mesma migracao (arquitetura ja preparada:
+   e so estender o objeto company_info e o form do Admin, sem mudanca de RPC/tabela).
    Camada de constantes: sem imports (regra D2 do test:deps trivialmente satisfeita). */
 export const STORE_INFO = {
   cidade: 'Timbó',
@@ -20,13 +21,6 @@ export const STORE_INFO = {
     facebook:  'https://facebook.com/',   // placeholder — ajustar URL
   },
 };
-
-/* Texto institucional — estrutura preparada para edicao futura (nao hardcode espalhado). */
-export const SOBRE_TEXTO = [
-  'O Encanto nasceu para levar açaí cremoso, marmitas caseiras e sabores de verdade até a sua casa, em Timbó e região.',
-  'Trabalhamos com ingredientes selecionados, montagem na hora e entrega rápida — do jeitinho que você gosta.',
-  'Nosso compromisso é simples: um Encanto de sabores em cada pedido.',
-];
 
 /* Termos e Políticas — placeholder organizado; substituir pelo conteúdo definitivo. */
 export const TERMOS_SECOES = [

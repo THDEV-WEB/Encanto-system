@@ -1,9 +1,15 @@
-/* services/company/companyInfoRules.js — REF-COMPANY-01.
+/* services/company/companyInfoRules.js — REF-COMPANY-01 (+03: campo "sobre").
    Regras PURAS dos dados institucionais da empresa: defaults, formatacao de telefone e validacao de
    patch. ZERO IO (sem Supabase, sem window/localStorage) — import seguro em Node puro
    (tests/company-info.golden.mjs). Espelha a separacao pura/IO ja usada em
    services/businessHours/businessHours.js (puro) vs services/businessHours/override.js (IO): o modulo
-   com efeito (companyInfo.js) importa daqui; nunca o contrario. */
+   com efeito (companyInfo.js) importa daqui; nunca o contrario.
+
+   REF-COMPANY-03: "sobre" (texto institucional da tela "Sobre nós") migrou de constants/storeInfo.js
+   (SOBRE_TEXTO, array hardcoded) para cá — exatamente o crescimento "sem refatoração" que a REF-COMPANY-01
+   já previa (set_company_info aceita qualquer chave nova no patch, sem exigir migration). Representado
+   como STRING única (parágrafos separados por linha em branco, "\n\n") — forma natural de editar num
+   <textarea> do Admin; SobreScreen.jsx faz o split na hora de renderizar. */
 import { normalizePhoneBR } from '../notifications/WhatsAppService.js';
 
 export const DEFAULT_COMPANY_INFO = {
@@ -13,6 +19,7 @@ export const DEFAULT_COMPANY_INFO = {
   whatsapp: '5547992722920',
   email: 'contato@encantoacai.com.br',
   whatsappFloatEnabled: true,
+  sobre: 'O Encanto nasceu para levar açaí cremoso, marmitas caseiras e sabores de verdade até a sua casa, em Timbó e região.\n\nTrabalhamos com ingredientes selecionados, montagem na hora e entrega rápida — do jeitinho que você gosta.\n\nNosso compromisso é simples: um Encanto de sabores em cada pedido.',
 };
 
 const emailValido = (e) => /.+@.+\..+/.test((e || '').trim());
@@ -58,5 +65,10 @@ export function validarPatchCompanyInfo(patch) {
     p.email = e;
   }
   if ('whatsappFloatEnabled' in p) p.whatsappFloatEnabled = !!p.whatsappFloatEnabled;
+  if ('sobre' in p) {
+    const s = String(p.sobre || '').trim();
+    if (s.length < 10) return { erro: 'Texto "Sobre nós" muito curto (mínimo 10 caracteres).' };
+    p.sobre = s;
+  }
   return { patch: p };
 }
