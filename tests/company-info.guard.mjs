@@ -13,7 +13,11 @@
      (6) companyInfo.js (camada IO) realmente chama get_company_info/set_company_info (nao get_setting
          generico — armadilha de RLS ja documentada em REF-DELIVERY-01a).
      (7) REF-COMPANY-03: SOBRE_TEXTO (array hardcoded) nunca reaparece em constants/storeInfo.js;
-         SobreScreen consome useCompanyInfo (fonte unica do texto institucional). */
+         SobreScreen consome useCompanyInfo (fonte unica do texto institucional).
+     (8) REF-COMPANY-03 (Central de Configuração): STORE_INFO nao guarda mais `endereco`/`social`
+         (migrados p/ company_info); `retirada` (endereco de RETIRADA do checkout) permanece intocado —
+         entidade INDEPENDENTE do endereco institucional. SideDrawer consome useCompanyInfo p/ os links
+         sociais (nao mais STORE_INFO.social). */
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
@@ -96,7 +100,20 @@ check('(7) SOBRE_TEXTO nao existe mais (migrado p/ company_info.sobre); SobreScr
   assert.ok(/companyInfo\.sobre/.test(code), 'SobreScreen deveria ler companyInfo.sobre (nao SOBRE_TEXTO)');
 });
 
+/* (8) REF-COMPANY-03 (Central de Configuração): STORE_INFO sem social/endereco; `retirada` intocado;
+   SideDrawer usa useCompanyInfo (nunca STORE_INFO.social) */
+check('(8) STORE_INFO sem social/endereco (migrados); retirada intocado; SideDrawer usa useCompanyInfo', () => {
+  const storeInfoCode = strip(read('constants/storeInfo.js'));
+  assert.ok(!/\bsocial\s*:/.test(storeInfoCode), 'STORE_INFO ainda declara "social" (deveria vir de company_info)');
+  assert.ok(!/\bendereco\s*:/.test(storeInfoCode), 'STORE_INFO ainda declara "endereco" (deveria vir de company_info)');
+  assert.ok(/retirada\s*:/.test(storeInfoCode), 'STORE_INFO deveria manter "retirada" — endereço de retirada do checkout, entidade independente');
+
+  const drawerCode = strip(read('components/menu/SideDrawer.jsx'));
+  assert.ok(/useCompanyInfo/.test(drawerCode), 'SideDrawer deveria consumir useCompanyInfo (links sociais)');
+  assert.ok(!/STORE_INFO\.social/.test(drawerCode), 'SideDrawer NAO deveria mais ler STORE_INFO.social');
+});
+
 console.log(fail === 0
-  ? '\nOK company-info.guard — fonte unica preservada (sem WHATSAPP/STORE_INFO/SOBRE_TEXTO hardcoded, hook unico, botao condicional)'
+  ? '\nOK company-info.guard — fonte unica preservada (sem WHATSAPP/STORE_INFO/SOBRE_TEXTO/social hardcoded, hook unico, botao condicional)'
   : `\nFALHA company-info.guard — ${fail} invariante(s)`);
 process.exit(fail ? 1 : 0);
