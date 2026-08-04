@@ -11,7 +11,9 @@
      (5) O botao flutuante do WhatsApp em StoreApp.jsx e condicional a whatsappFloatEnabled (nunca aparece
          incondicionalmente) — layout nao quebra quando desativado (o `&&` remove o elemento inteiro).
      (6) companyInfo.js (camada IO) realmente chama get_company_info/set_company_info (nao get_setting
-         generico — armadilha de RLS ja documentada em REF-DELIVERY-01a). */
+         generico — armadilha de RLS ja documentada em REF-DELIVERY-01a).
+     (7) REF-COMPANY-03: SOBRE_TEXTO (array hardcoded) nunca reaparece em constants/storeInfo.js;
+         SobreScreen consome useCompanyInfo (fonte unica do texto institucional). */
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
@@ -85,7 +87,16 @@ check('(6) companyInfo.js le/escreve via get_company_info/set_company_info (nao 
   assert.ok(!/'get_setting'/.test(code), 'NAO deveria usar get_setting generico (RLS bloqueia leitura anonima — bug REF-DELIVERY-01a)');
 });
 
+/* (7) REF-COMPANY-03: SOBRE_TEXTO nunca reaparece; SobreScreen usa useCompanyInfo (sobre) */
+check('(7) SOBRE_TEXTO nao existe mais (migrado p/ company_info.sobre); SobreScreen usa useCompanyInfo', () => {
+  const viol = files.filter((f) => /export\s+const\s+SOBRE_TEXTO\b/.test(strip(read(f))));
+  assert.deepStrictEqual(viol, [], `SOBRE_TEXTO reintroduzido em: ${JSON.stringify(viol)}`);
+  const code = strip(read('components/menu/SobreScreen.jsx'));
+  assert.ok(/useCompanyInfo/.test(code), 'SobreScreen deveria consumir useCompanyInfo (texto institucional)');
+  assert.ok(/companyInfo\.sobre/.test(code), 'SobreScreen deveria ler companyInfo.sobre (nao SOBRE_TEXTO)');
+});
+
 console.log(fail === 0
-  ? '\nOK company-info.guard — fonte unica preservada (sem WHATSAPP/STORE_INFO hardcoded, hook unico, botao condicional)'
+  ? '\nOK company-info.guard — fonte unica preservada (sem WHATSAPP/STORE_INFO/SOBRE_TEXTO hardcoded, hook unico, botao condicional)'
   : `\nFALHA company-info.guard — ${fail} invariante(s)`);
 process.exit(fail ? 1 : 0);

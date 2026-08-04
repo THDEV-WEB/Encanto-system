@@ -11,11 +11,12 @@ const check = (m, fn) => { try { fn(); console.error('  ok ' + m); } catch (e) {
 
 console.error('— DEFAULT_COMPANY_INFO (fallback do modo degradado)');
 
-check('DEFAULT_COMPANY_INFO tem os 6 campos (REF-COMPANY-02: nome dividido) e nenhum vazio', () => {
-  for (const k of ['nomeCurto', 'nomeCompleto', 'telefone', 'whatsapp', 'email', 'whatsappFloatEnabled']) {
+check('DEFAULT_COMPANY_INFO tem os 7 campos (REF-COMPANY-02: nome dividido; REF-COMPANY-03: sobre) e nenhum vazio', () => {
+  for (const k of ['nomeCurto', 'nomeCompleto', 'telefone', 'whatsapp', 'email', 'whatsappFloatEnabled', 'sobre']) {
     assert.ok(k in DEFAULT_COMPANY_INFO, `campo ausente: ${k}`);
   }
   assert.equal(typeof DEFAULT_COMPANY_INFO.whatsappFloatEnabled, 'boolean');
+  assert.ok(DEFAULT_COMPANY_INFO.sobre.length > 10);
 });
 
 console.error('— formatarTelefoneBR (E.164 -> exibicao humana)');
@@ -83,6 +84,18 @@ check('whatsappFloatEnabled -> sempre vira booleano estrito', () => {
 check('patch so com um campo -> so esse campo aparece no resultado (semantica de PATCH parcial)', () => {
   const r = validarPatchCompanyInfo({ whatsappFloatEnabled: false });
   assert.deepEqual(Object.keys(r.patch), ['whatsappFloatEnabled']);
+});
+check('sobre valido (>=10 chars, trim) -> normalizado (REF-COMPANY-03)', () => {
+  const r = validarPatchCompanyInfo({ sobre: '  Texto de teste com parágrafos.\n\nSegundo parágrafo.  ' });
+  assert.equal(r.patch.sobre, 'Texto de teste com parágrafos.\n\nSegundo parágrafo.');
+});
+check('sobre curto demais (<10 chars) -> erro', () => {
+  const r = validarPatchCompanyInfo({ sobre: 'curto' });
+  assert.ok(r.erro);
+});
+check('sobre vazio -> erro (nunca esvazia a tela "Sobre nós")', () => {
+  const r = validarPatchCompanyInfo({ sobre: '   ' });
+  assert.ok(r.erro);
 });
 
 console.log(fail === 0 ? '\nOK company-info.golden — defaults + formatacao + validacao de patch congelados' : `\nFALHA company-info.golden — ${fail} caso(s)`);
