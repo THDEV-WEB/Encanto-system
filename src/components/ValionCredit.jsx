@@ -5,16 +5,15 @@
    valion-mark.png) substitui o "V" de VALION, recortado com fundo transparente real (preenchimento
    a partir das bordas — preserva a fita prateada 100% opaca, sem lavar contra o creme). Cores/
    tagline extraídas do arquivo de marca oficial fornecido pelo dono. Apresentacional puro (sem
-   hooks/DS/browser) -> entra no render.smoke. */
+   hooks/DS/browser) -> entra no render.smoke.
+   REF-BRAND (ajuste fino 2): link para o site institucional DESATIVADO de propósito enquanto ele
+   está em desenvolvimento (era <a href="https://valionsistemas.com.br" target="_blank">) —
+   trocado por <div> não-interativo, sem href/target/rel/aria-label de navegação, mantendo a
+   classe/CSS intactos (inclusive :hover/:focus-visible) só para a reativação ser um diff mínimo
+   quando o site estiver pronto: voltar a ser <a> com os mesmos atributos de antes. */
 export function ValionCredit() {
   return (
-    <a
-      className="valion-credit-link"
-      href="https://valionsistemas.com.br"
-      target="_blank"
-      rel="noopener noreferrer"
-      aria-label="Valion Sistemas — visitar site institucional (abre em nova guia)"
-    >
+    <div className="valion-credit-link">
       <span className="valion-eyebrow">Plataforma desenvolvida por</span>
       <span className="valion-word">
         <img
@@ -28,6 +27,6 @@ export function ValionCredit() {
       </span>
       <span className="valion-underline" aria-hidden="true" />
       <span className="valion-tagline">Soluções digitais que impulsionam negócios.</span>
-    </a>
+    </div>
   );
 }

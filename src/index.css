@@ -1375,8 +1375,15 @@ img{display:block;max-width:100%}
      transparente sobrando) -- a borda de baixo da img already e' a ponta do "V", entao o
      align-items:baseline do pai (padrao de elemento substituido = borda inferior) encosta o
      "V" na linha de base de "ALION" sem transform manual nenhum. */
+  /* REF-BRAND (ajuste fino 2): o PNG tem a ponta de contato do "V" bem antes da borda direita
+     do arquivo (a fita azul sobe em diagonal ate o canto superior), entao o bounding box
+     renderizado carrega ~metade de espaco transparente "de bolso" perto da base -- um
+     margin-right pequeno nao era suficiente pra fechar essa folga. -10px calibrado ao vivo com
+     o dono via HMR (nao clique/toque, so encosta perto do "A" sem sobrepor o traco da letra).
+     O translateY(-2px) que existia aqui antes foi removido -- levantava o icone 2px acima da
+     linha de base do texto (o proprio comentario acima ja dizia que nao era necessario). */
   height:1.55em;width:auto;align-self:baseline;
-  margin-right:-5px;transform:translateY(-2px);
+  margin-right:-10px;
   transition:transform .18s ease;
 }
 .valion-credit-link:hover .valion-v-icon,
