@@ -154,7 +154,9 @@ const CASES = [
     /* REF-BRAND-02: assinatura institucional do rodapé (substitui "Plataforma desenvolvida por TH System") */
     nome: 'ValionCredit',
     el: () => h(ValionCredit),
-    snap: '<a class="valion-credit-link" href="https://valionsistemas.com.br" target="_blank" rel="noopener noreferrer" aria-label="Valion Sistemas — visitar site institucional (abre em nova guia)"><span class="valion-eyebrow">Plataforma desenvolvida por</span><span class="valion-word"><img class="valion-v-icon" src="undefinedvalion-mark.png" alt="" loading="lazy"/><b>ALION</b><i>SISTEMAS</i></span><span class="valion-underline" aria-hidden="true"></span><span class="valion-tagline">Soluções digitais que impulsionam negócios.</span></a>',
+    /* REF-BRAND (ajuste fino 2): link institucional desativado de proposito (virou <div>) enquanto o
+       site esta em desenvolvimento — snapshot atualizado pra refletir o markup atual (ver ValionCredit.jsx). */
+    snap: '<div class="valion-credit-link"><span class="valion-eyebrow">Plataforma desenvolvida por</span><span class="valion-word"><img class="valion-v-icon" src="undefinedvalion-mark.png" alt="" loading="lazy"/><b>ALION</b><i>SISTEMAS</i></span><span class="valion-underline" aria-hidden="true"></span><span class="valion-tagline">Soluções digitais que impulsionam negócios.</span></div>',
   },
 ];
 
