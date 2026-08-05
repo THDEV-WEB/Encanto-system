@@ -21,4 +21,28 @@ export const geocoding = {
   reverso: (lat, lng) => waterfallGeocoder.reverso(lat, lng),
   /* Consulta de CEP -> resposta bruta do ViaCEP ({logradouro,bairro,localidade,uf,cep} | {erro:true} | null). */
   porCep: (cep) => consultarCep(cep),
+  /* REF-DELIVERY-FEE-01: coordenadas de um endereço estruturado que já tem label mas NÃO veio com lat/lng
+     (ex.: aba CEP — o ViaCEP não devolve coordenada, ver address/utils/addressModel.js). Geocodifica o
+     endereço COMPOSTO (rua+número, bairro, cidade-UF) usando a MESMA cadeia de provedores gratuitos
+     (Mapbox/Nominatim/Photon) — nenhum serviço novo, nenhum custo novo. Usado SOMENTE para calcular a
+     distância da taxa de entrega; nunca sobrescreve o endereço já selecionado pelo cliente (AddressContext
+     continua a única fonte do endereço em si). null quando faltar dado suficiente ou nenhum provedor achar
+     nada — o chamador (deliveryFeeRules) trata como "sem coordenadas", nunca lança. */
+  coordenadasDe: async (endereco) => {
+    if (!endereco) return null;
+    if (Number.isFinite(endereco.lat) && Number.isFinite(endereco.lng)) return { lat: endereco.lat, lng: endereco.lng };
+    const partes = [
+      [endereco.rua, endereco.numero].filter(Boolean).join(', '),
+      endereco.bairro,
+      [endereco.cidade, endereco.estado].filter(Boolean).join(' - '),
+    ].filter(Boolean);
+    const query = partes.join(', ');
+    if (!query) return null;
+    let resultados;
+    try { resultados = await waterfallGeocoder.sugestoes(query); } catch { return null; }
+    const primeiro = Array.isArray(resultados) ? resultados[0] : null;
+    if (!primeiro) return null;
+    const lat = parseFloat(primeiro.lat), lng = parseFloat(primeiro.lon);
+    return (Number.isFinite(lat) && Number.isFinite(lng)) ? { lat, lng } : null;
+  },
 };

@@ -3,17 +3,19 @@
    (Onda 5.2): consome buildOrderArgs/buildOrderConfirmationMessage/buildCheckoutView de utils/orderPayload.js
    e DS.savePedido de services/DataService.js. NAO importa pricing/addons/format direto (G-CK2). newRequestId
    (utils/ids) e STORAGE_KEYS (constants) sao dependencias PRE-EXISTENTES do submit (idempotency key/localStorage). */
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useAuth } from '../../hooks/useAuth.js';
 import { useCompanyInfo } from '../../hooks/useCompanyInfo.js';   // REF-COMPANY-02: nome curto na mensagem do WhatsApp
 import { useBusinessHours } from '../../hooks/useBusinessHours.js';   // REF-BUSINESS-HOURS-01: bloqueio fora do horario
+import { useDeliveryFeeConfig } from '../../hooks/useDeliveryFeeConfig.js';   // REF-DELIVERY-FEE-01: config da taxa por distancia
 import { STORAGE_KEYS } from '../../constants/storage.js';
 import { newRequestId } from '../../utils/ids.js';
 import { buildOrderArgs, buildOrderConfirmationMessage, buildCheckoutView } from '../../utils/orderPayload.js';
 import { DS } from '../../services/DataService.js';
 import { LOYALTY_EVENT } from '../../services/loyalty/index.js';   // REF-LOYALTY-01: avisa a loja p/ re-buscar o estado oficial
 import { STORE_INFO } from '../../constants/storeInfo.js';
-import { useAddress, AddressSummary, addressRepository } from '../../address/index.js';   // REF-CHECKOUT-ADDRESS-01: FONTE UNICA do endereco
+import { useAddress, AddressSummary, addressRepository, geocoding, distanciaKm } from '../../address/index.js';   // REF-CHECKOUT-ADDRESS-01: FONTE UNICA do endereco
+import { montarResumoFinanceiro } from '../../services/delivery/deliveryFeeRules.js';   // REF-DELIVERY-FEE-01: fonte unica da regra de negocio
 import { lerGuestIdentity, salvarGuestIdentity } from '../../utils/guestIdentity.js'; // REF-CUSTOMER-01: cache local so p/ visitante
 import { registrarBreadcrumb, marcarPedido } from '../../lib/sentry.js'; // REF-OBS-01/REF-SENTRY-01: no-op sem VITE_SENTRY_DSN
 
@@ -25,6 +27,7 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
      Guest (nao logado) segue 100% editavel: guest checkout intocado. */
   const { isLogged, customer, status } = useAuth();
   const companyInfo = useCompanyInfo();
+  const feeConfig = useDeliveryFeeConfig();   // REF-DELIVERY-FEE-01: config administravel (faixas/maquininha)
   /* REF-CHECKOUT-ADDRESS-01: o endereco de entrega vem da FONTE UNICA (dominio Address, mesmo objeto do
      header). O checkout NAO tem mais um endereco proprio; edita o mesmo objeto pelo mesmo AddressModal
      (abrirModal). Retirada nao usa endereco de entrega — usa o endereco da loja. */
@@ -52,6 +55,31 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
     if (!cache) return;
     setForm(f => ({ ...f, nome: f.nome || cache.nome, telefone: f.telefone || cache.telefone }));
   }, [status]);
+  /* REF-DELIVERY-FEE-01: coordenadas do CLIENTE para calcular a distância. O endereço já pode trazer
+     lat/lng (busca por texto/GPS/mapa); a aba CEP (ViaCEP) nunca devolve coordenada — tenta geocodificar o
+     endereço COMPOSTO em segundo plano, reaproveitando o MESMO motor de busca do modal de endereço
+     (geocoding.coordenadasDe). NUNCA bloqueia o checkout: enquanto não resolve (ou se falhar), o cálculo
+     cai no fallback "sem_coordenadas" (taxa R$0 + aviso, ver deliveryFeeRules.montarResumoFinanceiro). */
+  const [coordCliente, setCoordCliente] = useState(null);
+  useEffect(() => {
+    let vivo = true;
+    if (retirada || !endereco) { setCoordCliente(null); return; }
+    if (Number.isFinite(endereco.lat) && Number.isFinite(endereco.lng)) {
+      setCoordCliente({ lat: endereco.lat, lng: endereco.lng });
+      return;
+    }
+    setCoordCliente(null);
+    geocoding.coordenadasDe(endereco).then(c => { if (vivo) setCoordCliente(c); });
+    return () => { vivo = false; };
+  }, [retirada, endereco]);
+  /* Coordenada da LOJA (Admin > Taxa de Entrega, arraste do pino) + distância + resumo financeiro —
+     recalculam sozinhos a cada mudança relevante, sem precisar finalizar o pedido (tempo real). */
+  const coordLoja = (Number.isFinite(companyInfo.lojaLat) && Number.isFinite(companyInfo.lojaLng))
+    ? { lat: companyInfo.lojaLat, lng: companyInfo.lojaLng } : null;
+  const distancia = (coordLoja && coordCliente) ? distanciaKm(coordLoja, coordCliente) : null;
+  const resumo = useMemo(() => montarResumoFinanceiro({
+    subtotal: cart.total, retirada, distanciaKm: distancia, config: feeConfig, paymentMethod: form.pagamento,
+  }), [cart.total, retirada, distancia, feeConfig, form.pagamento]);
   const [loading, setLoading] = useState(false);
   const [err,     setErr]     = useState('');   // feedback inline (mesmo padrão do AdminLogin)
   const submittingRef = useRef(false);   // trava reentrância (duplo clique / envio simultâneo)
@@ -92,7 +120,7 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
     /* Montagem do pedido no order-domain (Onda 5.2 · Trilha B): buildOrderArgs concentra a
        lógica pura que antes vivia inline aqui (precoUnitario por item, product_id uuid/null,
        contratos null). Σ(price*quantity) reconcilia com orders.total. */
-    const { customer, order, items } = buildOrderArgs(cart, form, enderecoEntrega, requestIdRef.current, enderecoId);
+    const { customer, order, items } = buildOrderArgs(cart, form, enderecoEntrega, requestIdRef.current, enderecoId, resumo);
     /* GATE (fonte única de verdade): a persistência bem-sucedida é o evento que autoriza TODAS as ações
        seguintes. savePedido devolve o order_id em sucesso, ou null em falha (validação/rollback/timeout). */
     const orderId = await DS.savePedido(customer, order, items, requestIdRef.current);
@@ -132,7 +160,11 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
     cart.clear();
     onSuccess(msg);
   };
-  const view = buildCheckoutView(cart);   // Onda 5.2: resumo consome o view-model do order-domain (não recalcula preço)
+  const view = buildCheckoutView(cart, resumo);   // Onda 5.2: resumo consome o view-model do order-domain (não recalcula preço)
+  /* REF-DELIVERY-FEE-01: só quebra em Subtotal/Entrega/Maquininha quando há alguma parcela a somar —
+     retirada e "sem taxa" continuam com o resumo simples (itens + Total), zero mudança visual pra eles. */
+  const mostrarDetalhamento = !!(view.entregaFmt || view.maquininhaFmt);
+  const entregaAConfirmar = !retirada && !view.entregaFmt && (resumo.status === 'sem_coordenadas' || resumo.status === 'fora_de_alcance');
   return (
     <div className="checkout-page">
       <button onClick={onBack} style={{background:'none',color:'var(--gray-500)',fontSize:14,marginBottom:16,display:'flex',alignItems:'center',gap:6,cursor:'pointer',border:'none'}}>
@@ -147,6 +179,18 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
             <span>{it.valor}</span>
           </div>
         ))}
+        {(mostrarDetalhamento || entregaAConfirmar) && (
+          <div className="summary-item"><span>Subtotal</span><span>{view.subtotal}</span></div>
+        )}
+        {view.entregaFmt && (
+          <div className="summary-item"><span>Entrega</span><span>{view.entregaFmt}</span></div>
+        )}
+        {entregaAConfirmar && (
+          <div className="summary-item"><span>Entrega</span><span>A confirmar</span></div>
+        )}
+        {view.maquininhaFmt && (
+          <div className="summary-item"><span>Retorno da maquininha</span><span>{view.maquininhaFmt}</span></div>
+        )}
         <div className="summary-total"><span>Total</span><span>{view.total}</span></div>
       </div>
       <div className="form-group">

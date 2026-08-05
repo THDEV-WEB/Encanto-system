@@ -60,7 +60,7 @@ const ENDERECO = 'Rua A, 100, Centro';
 
 const GOLDEN_PAYLOAD = {
   p_customer: { name: 'Maria Teste', phone: '38999990000' },
-  p_order: { total: 56, status: 'recebido', payment_method: 'pix', address: 'Rua A, 100, Centro', observacoes: 'sem cebola', endereco_id: null },
+  p_order: { total: 56, status: 'recebido', payment_method: 'pix', address: 'Rua A, 100, Centro', observacoes: 'sem cebola', endereco_id: null, delivery_fee: 0, maquininha_fee: 0 },
   p_items: [
     { product_id: '11111111-1111-4111-8111-111111111111', nome_produto: 'Açaí 500ml', quantity: 2, price: 22, preco_unitario: 22,
       adicionais: [{ nome: 'Leite Ninho', preco: 2 }, { nome: 'Granola', preco: 2 }], observacoes: 'sem cebola' },
@@ -88,6 +88,7 @@ check('C1. mensagem = EXATAMENTE buildComanda+comandaTexto(contexto:cliente) sob
     id: ORDER_ID, created_at: createdAt.toISOString(), total: order.total, address: order.address,
     payment_method: order.payment_method, observacoes: order.observacoes, order_items: items,
     customers: { name: customer.name, phone: customer.phone },
+    delivery_fee: order.delivery_fee, maquininha_fee: order.maquininha_fee,
   };
   const esperado = comandaTexto(buildComanda(snapshot, {}), { contexto: 'cliente' });
   assert.strictEqual(msg, esperado);
@@ -180,6 +181,24 @@ check('8. buildCheckoutView reproduz o resumo (nome/qty/valor + total)', () => {
     { nome: 'Açaí 500ml', qty: 2, valor: fmt(44) },
     { nome: 'Batidinha Morango', qty: 1, valor: fmt(12) },
   ]);
+  assert.strictEqual(v.subtotal, undefined);   // sem resumo: contrato antigo, sem quebra em subtotal/entrega
+});
+/* REF-DELIVERY-FEE-01: buildCheckoutView(cart, resumo) — resumo presente muda o total (subtotal+taxas) e
+   acrescenta as linhas de detalhamento (null quando a parcela é zero — o componente decide se omite). */
+check('8b. buildCheckoutView com resumo: total = subtotal+entrega+maquininha; linhas formatadas', () => {
+  const resumo = { subtotal: 56, deliveryFee: 12, maquininhaFee: 2, total: 70, status: 'ok' };
+  const v = buildCheckoutView(cart, resumo);
+  assert.strictEqual(v.subtotal, fmt(56));
+  assert.strictEqual(v.entregaFmt, fmt(12));
+  assert.strictEqual(v.maquininhaFmt, fmt(2));
+  assert.strictEqual(v.total, fmt(70));
+});
+check('8c. buildCheckoutView com resumo sem taxa/maquininha: linhas ficam null (nunca "R$ 0,00")', () => {
+  const resumo = { subtotal: 56, deliveryFee: 0, maquininhaFee: 0, total: 56, status: 'retirada' };
+  const v = buildCheckoutView(cart, resumo);
+  assert.strictEqual(v.entregaFmt, null);
+  assert.strictEqual(v.maquininhaFmt, null);
+  assert.strictEqual(v.total, fmt(56));
 });
 
 /* ── (B) PIN DE FONTE — trava a montagem REAL do pedido (order-domain) e do savePedido (services/DataService.js) ──
@@ -194,7 +213,8 @@ const pinOD  = (m, re) => check('pin: ' + m, () => assert.ok(re.test(OD),  'expr
 const pinSvc = (m, re) => check('pin: ' + m, () => assert.ok(re.test(SVC), 'expressão-chave ausente/alterada no savePedido (DataService) — atualize o golden: ' + m));
 const pinCk  = (m, re) => check('pin: ' + m, () => assert.ok(re.test(CK),  'expressão-chave ausente/alterada no submit (CheckoutPage) — atualize o golden: ' + m));
 pinOD("order.status 'recebido'",        /status:\s*'recebido'/);
-pinOD('order.total = cart.total',       /total:\s*cart\.total/);
+pinOD('order.total = resumo?.total : cart.total (REF-DELIVERY-FEE-01)', /total:\s*resumo\s*\?\s*resumo\.total\s*:\s*cart\.total/);
+pinOD('order.delivery_fee/maquininha_fee vem do resumo (REF-DELIVERY-FEE-01)', /delivery_fee:\s*resumo\s*\?\s*resumo\.deliveryFee\s*:\s*0,\s*maquininha_fee:\s*resumo\s*\?\s*resumo\.maquininhaFee\s*:\s*0/);
 pinOD('order.observacoes = obs||null',  /observacoes:\s*form\.obs\s*\|\|\s*null/);
 pinOD('order.address = endereco (FONTE UNICA — nao form.endereco)', /address:\s*endereco\b/);
 pinOD('order.endereco_id = enderecoId ?? null (REF-ADDRESS-02 Onda 6)', /endereco_id:\s*enderecoId\s*\?\?\s*null/);
@@ -208,7 +228,7 @@ pinOD('pu = precoUnitario(i)',          /const\s+pu\s*=\s*precoUnitario\(i\)/);
 pinSvc('savePedido → rpc create_order',  /d\.rpc\('create_order',\s*\{/);
 pinSvc('rpc args p_customer/p_order/p_items/p_request_id', /p_customer:\s*cliente,\s*p_order:\s*order,\s*p_items:\s*itens,\s*p_request_id:\s*requestId\s*\?\?\s*null/);
 pinCk('endereco estruturado so persiste em entrega, nunca bloqueia (Onda 6)', /const\s+enderecoId\s*=\s*\(!retirada\s*&&\s*endereco\)\s*\?\s*await\s+addressRepository\.salvar\(endereco\)\s*:\s*null;/);
-pinCk('buildOrderArgs recebe enderecoId (Onda 6)', /buildOrderArgs\(cart,\s*form,\s*enderecoEntrega,\s*requestIdRef\.current,\s*enderecoId\)/);
+pinCk('buildOrderArgs recebe enderecoId + resumo (Onda 6 + REF-DELIVERY-FEE-01)', /buildOrderArgs\(cart,\s*form,\s*enderecoEntrega,\s*requestIdRef\.current,\s*enderecoId,\s*resumo\)/);
 
 console.error(fail === 0
   ? '\n✅ checkout.golden OK — payload + mensagem + invariantes congelados; montagem real fixada (pin de fonte)'

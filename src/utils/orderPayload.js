@@ -21,14 +21,19 @@ import { isUuid } from './ids.js';
 import { buildComanda } from '../components/admin/comanda/comandaModel.js';
 import { comandaTexto } from '../components/admin/comanda/comandaTexto.js';
 
-export function buildOrderArgs(cart, form, endereco, requestId, enderecoId) {
+export function buildOrderArgs(cart, form, endereco, requestId, enderecoId, resumo) {
   const customer = { name: form.nome, phone: form.telefone };
   /* REF-CHECKOUT-ADDRESS-01: o endereco vem da FONTE UNICA (dominio Address), passado explicitamente —
      nunca mais de um form.endereco paralelo. O que e persistido no pedido e EXATAMENTE o exibido/confirmado.
      REF-ADDRESS-02 · Onda 6: enderecoId (uuid de addresses, ou null p/ retirada/offline/legado) viaja dentro
-     do MESMO p_order jsonb — create_order le p_order->>'endereco_id' e grava em orders.endereco_id. */
-  const order = { total: cart.total, status: 'recebido', payment_method: form.pagamento,
-                  address: endereco, observacoes: form.obs || null, endereco_id: enderecoId ?? null };
+     do MESMO p_order jsonb — create_order le p_order->>'endereco_id' e grava em orders.endereco_id.
+     REF-DELIVERY-FEE-01: resumo (services/delivery/deliveryFeeRules.montarResumoFinanceiro) e OPCIONAL —
+     ausente cai no total antigo (cart.total, sem taxa), compat com qualquer chamador que ainda nao calcule
+     a taxa (ex.: golden tests). Quando presente, e a FONTE UNICA de total/delivery_fee/maquininha_fee —
+     nunca recalculado aqui. */
+  const order = { total: resumo ? resumo.total : cart.total, status: 'recebido', payment_method: form.pagamento,
+                  address: endereco, observacoes: form.obs || null, endereco_id: enderecoId ?? null,
+                  delivery_fee: resumo ? resumo.deliveryFee : 0, maquininha_fee: resumo ? resumo.maquininhaFee : 0 };
   const items = cart.items.map(i => {
     const pu = precoUnitario(i);
     return {
@@ -72,6 +77,10 @@ export function buildOrderConfirmationMessage(customer, order, items, orderId, o
     observacoes: order.observacoes,
     order_items: items,
     customers: { name: customer.name, phone: customer.phone },
+    /* REF-DELIVERY-FEE-01: mesmos valores JA calculados por buildOrderArgs/montarResumoFinanceiro (order
+       vem do MESMO submit, sem query nova) — a mensagem bate com o que foi persistido no pedido. */
+    delivery_fee: order.delivery_fee,
+    maquininha_fee: order.maquininha_fee,
   };
   const vm = buildComanda(orderSnapshot, {
     companyInfo: opts.companyInfo,
@@ -84,10 +93,20 @@ export function buildOrderConfirmationMessage(customer, order, items, orderId, o
 
 /* Resumo do checkout: reproduz EXATAMENTE o que o render calculava inline
    (`{i.nome} x{i.qty}` + `fmt(precoLinha(i))`; total `fmt(cart.total)`).
-   O componente passa a só consumir este view-model (não recalcula preço). */
-export function buildCheckoutView(cart) {
+   O componente passa a só consumir este view-model (não recalcula preço).
+   REF-DELIVERY-FEE-01: `resumo` (montarResumoFinanceiro) é OPCIONAL — ausente preserva o contrato antigo
+   (só itens + total = subtotal). Presente, acrescenta subtotal/entrega/maquininha formatados (fmt), e o
+   `total` passa a refletir o TOTAL do resumo (subtotal + taxa + maquininha) — o valor real cobrado do
+   cliente. entregaFmt/maquininhaFmt ficam `null` quando a parcela é zero (o componente decide se omite a
+   linha) — nunca uma string "R$ 0,00" enganosa. */
+export function buildCheckoutView(cart, resumo) {
+  const itens = cart.items.map(i => ({ key: i._key, nome: i.nome, qty: i.qty, valor: fmt(precoLinha(i)) }));
+  if (!resumo) return { itens, total: fmt(cart.total) };
   return {
-    itens: cart.items.map(i => ({ key: i._key, nome: i.nome, qty: i.qty, valor: fmt(precoLinha(i)) })),
-    total: fmt(cart.total),
+    itens,
+    subtotal: fmt(resumo.subtotal),
+    entregaFmt: resumo.deliveryFee > 0 ? fmt(resumo.deliveryFee) : null,
+    maquininhaFmt: resumo.maquininhaFee > 0 ? fmt(resumo.maquininhaFee) : null,
+    total: fmt(resumo.total),
   };
 }
