@@ -197,8 +197,10 @@ function BlocoFaixas() {
   };
   const removerFaixa = (id) => { setFaixas((prev) => prev.filter((f) => f._id !== id)); setMsg(null); };
 
+  const semFaixas = faixasOrdenadas.length === 0;
+
   const salvar = async () => {
-    if (!mudou || temErro || !maqValorOk || salvando) return;
+    if (!mudou || temErro || !maqValorOk || semFaixas || salvando) return;
     setSalvando(true); setMsg(null);
     const r = await definirDeliveryFeeConfig(persistido);
     setSalvando(false);
@@ -206,7 +208,7 @@ function BlocoFaixas() {
     else setMsg({ tipo: 'erro', texto: r.error || 'Não foi possível salvar. Verifique seu acesso de administrador.' });
   };
 
-  const podeSalvar = mudou && !temErro && maqValorOk && !salvando;
+  const podeSalvar = mudou && !temErro && maqValorOk && !semFaixas && !salvando;
 
   return (
     <>

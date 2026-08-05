@@ -140,6 +140,27 @@ centraliza a frase; a migration corrige o SQL para ler `settings.delivery_eta_mi
 (mesmo padrão das funções de fidelidade) e troca `IMMUTABLE` por `STABLE`. Retirada permanece constante
 de negócio, fora do escopo. `test:domain` 34/34 verde.
 
+🚚 [REF-DELIVERY-FEE-01 — Taxa de entrega automática por distância](REF-DELIVERY-FEE-01-taxa-entrega-por-distancia.md)
+— **Implementada no código (7 ondas); 2 migrations pendentes de aplicação manual no Supabase.** Não
+existia taxa de entrega manual codificada até aqui (achado da auditoria) — feature nova, não migração de
+regra existente. Camada única de regra (`services/delivery/deliveryFeeRules.js`, pura): haversine
+(`address/utils/coordinates.js`) + `localizarFaixa` (faixas contíguas De/Até/Valor, sem buraco de
+cobertura) + `montarResumoFinanceiro` (fonte única consumida por Checkout/persistência/comanda/WhatsApp).
+Config administrável em `settings.delivery_fee_config` (RPCs `get_/set_`, mesmo molde de
+`business_hours_schedule`: substituição total, validação server-side de sobreposição/duplicata/negativo).
+`orders` ganha `delivery_fee`/`maquininha_fee` (colunas dedicadas, `create_order`+`admin_orders_search`
+atualizadas). Localização da loja em `company_info.lojaLat/lojaLng` (sem migration — precedente
+REF-COMPANY-03). Checkout calcula em tempo real, com fallback de geocodificação para o fluxo por CEP
+(ViaCEP não devolve coordenada) reaproveitando o waterfall Mapbox/Nominatim/Photon já existente — nunca
+bloqueia o pedido (sem coordenadas/fora de alcance → taxa R$0 + aviso, decisão do dono). Painel Admin novo
+("🚚 Taxa de Entrega": mapa de localização + tabela de faixas editável + maquininha). Acréscimo de
+maquininha (R$2,00 padrão) só em Débito/Crédito, independente do toggle de distância. **Limitação
+registrada:** `v_order_reconciliation`/painel "Saúde do Sistema" ainda não desconta as taxas novas do
+cálculo de divergência (ver ADR §3 — correção não bloqueante). Gates novos: `test:delivery-fee` (golden) +
+`test:delivery-fee-admin-guard` (estrutural) + `e2e/tests/admin/admin-taxa-entrega.spec.js` (rodado de
+verdade, confirmado visualmente); `test:domain` 37/37 + build verdes — ver
+[progress](../ref/REF-DELIVERY-FEE-01-progress.md).
+
 ## Sequência da evolução arquitetural
 
 ```
