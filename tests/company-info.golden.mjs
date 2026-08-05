@@ -13,18 +13,22 @@ console.error('— DEFAULT_COMPANY_INFO (fallback do modo degradado)');
 
 const CAMPOS_OBRIGATORIOS = ['nomeCurto', 'nomeCompleto', 'telefone', 'whatsapp', 'email', 'whatsappFloatEnabled', 'sobre', 'timezone', 'idioma', 'moeda'];
 const CAMPOS_OPCIONAIS = ['instagram', 'facebook', 'tiktok', 'site', 'cardapio', 'googleMaps', 'cep', 'rua', 'numero', 'bairro', 'cidade', 'estado', 'cnpj', 'razaoSocial', 'nomeFantasia'];
+const CAMPOS_COORDENADAS = ['lojaLat', 'lojaLng']; // REF-DELIVERY-FEE-01 — localização operacional da loja (null até o pino ser posicionado)
 
-check('DEFAULT_COMPANY_INFO tem os 25 campos da Central de Configuração (REF-COMPANY-03) e os obrigatórios nunca vazios', () => {
-  for (const k of [...CAMPOS_OBRIGATORIOS, ...CAMPOS_OPCIONAIS]) {
+check('DEFAULT_COMPANY_INFO tem os 27 campos da Central de Configuração (REF-COMPANY-03 + REF-DELIVERY-FEE-01) e os obrigatórios nunca vazios', () => {
+  for (const k of [...CAMPOS_OBRIGATORIOS, ...CAMPOS_OPCIONAIS, ...CAMPOS_COORDENADAS]) {
     assert.ok(k in DEFAULT_COMPANY_INFO, `campo ausente: ${k}`);
   }
-  assert.equal(Object.keys(DEFAULT_COMPANY_INFO).length, 25);
+  assert.equal(Object.keys(DEFAULT_COMPANY_INFO).length, 27);
   assert.equal(typeof DEFAULT_COMPANY_INFO.whatsappFloatEnabled, 'boolean');
   assert.ok(DEFAULT_COMPANY_INFO.sobre.length > 10);
   assert.equal(DEFAULT_COMPANY_INFO.timezone, 'America/Sao_Paulo');
 });
 check('DEFAULT_COMPANY_INFO: campos opcionais (redes sociais/endereço/institucional) começam vazios — nunca um placeholder fake', () => {
   for (const k of CAMPOS_OPCIONAIS) assert.equal(DEFAULT_COMPANY_INFO[k], '', `${k} deveria ser '' por padrão`);
+});
+check('DEFAULT_COMPANY_INFO: coordenadas da loja começam null — nunca um pino falso no mapa', () => {
+  for (const k of CAMPOS_COORDENADAS) assert.equal(DEFAULT_COMPANY_INFO[k], null, `${k} deveria ser null por padrão`);
 });
 
 console.error('— formatarTelefoneBR (E.164 -> exibicao humana)');
@@ -178,6 +182,29 @@ check('timezone/idioma/moeda -> texto livre, sem validação de formato (preparo
   const r = validarPatchCompanyInfo({ timezone: ' America/Sao_Paulo ', idioma: ' pt-BR ', moeda: ' BRL ' });
   assert.deepEqual({ timezone: r.patch.timezone, idioma: r.patch.idioma, moeda: r.patch.moeda },
     { timezone: 'America/Sao_Paulo', idioma: 'pt-BR', moeda: 'BRL' });
+});
+
+console.error('— Localização operacional da loja (REF-DELIVERY-FEE-01)');
+
+check('lojaLat/lojaLng válidos -> normalizados para Number', () => {
+  const r = validarPatchCompanyInfo({ lojaLat: '-26.795', lojaLng: '-49.270' });
+  assert.deepEqual({ lojaLat: r.patch.lojaLat, lojaLng: r.patch.lojaLng }, { lojaLat: -26.795, lojaLng: -49.270 });
+});
+check('lojaLat fora do intervalo global (-90..90) -> erro', () => {
+  const r = validarPatchCompanyInfo({ lojaLat: 200 });
+  assert.ok(r.erro);
+});
+check('lojaLng fora do intervalo global (-180..180) -> erro', () => {
+  const r = validarPatchCompanyInfo({ lojaLng: -200 });
+  assert.ok(r.erro);
+});
+check('lojaLat/lojaLng null -> aceito (limpar o pino é uma ação válida)', () => {
+  const r = validarPatchCompanyInfo({ lojaLat: null, lojaLng: null });
+  assert.deepEqual({ lojaLat: r.patch.lojaLat, lojaLng: r.patch.lojaLng }, { lojaLat: null, lojaLng: null });
+});
+check('lojaLat não numérico -> erro (nunca salva lixo)', () => {
+  const r = validarPatchCompanyInfo({ lojaLat: 'abc' });
+  assert.ok(r.erro);
 });
 
 console.log(fail === 0 ? '\nOK company-info.golden — defaults + formatacao + validacao de patch congelados' : `\nFALHA company-info.golden — ${fail} caso(s)`);

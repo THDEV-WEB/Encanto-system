@@ -23,7 +23,16 @@
      Institucional -> cnpj, razaoSocial, nomeFantasia
      Configurações -> timezone, idioma, moeda — PERSISTIDOS já, mas SEM nenhuma ligação funcional com o
                        motor de horário (services/businessHours, que já normaliza seu próprio timezone
-                       no servidor desde a HB-04) — preparação para evolução futura, não uma feature ativa. */
+                       no servidor desde a HB-04) — preparação para evolução futura, não uma feature ativa.
+
+   REF-DELIVERY-FEE-01: lojaLat/lojaLng — coordenada OPERACIONAL da loja (arrastar pino no mapa, Admin >
+   Taxa de Entrega), usada SOMENTE para calcular a distância até o cliente (services/delivery/
+   deliveryFeeRules.js). Entidade INDEPENDENTE do endereço institucional (cep/rua/... acima, usado em
+   documentos/rodapé) e do endereço de RETIRADA do checkout (STORE_INFO.retirada, texto) — nunca cruzar
+   com essas duas fontes. null = loja ainda não posicionou o pino. Segue o mesmo precedente da REF-COMPANY-03
+   (campo novo dentro do MESMO patch/merge raso do servidor, sem tabela/RPC nova); validação NUMÉRICA fica
+   só no cliente (o risco de coordenada inválida é baixo impacto — pior caso, o cálculo cai no fallback
+   "sem coordenadas", nunca cobra errado, ver deliveryFeeRules.montarResumoFinanceiro). */
 import { normalizePhoneBR } from '../notifications/WhatsAppService.js';
 
 export const DEFAULT_COMPANY_INFO = {
@@ -59,6 +68,9 @@ export const DEFAULT_COMPANY_INFO = {
   timezone: 'America/Sao_Paulo',
   idioma: 'pt-BR',
   moeda: 'BRL',
+  // Localização operacional da loja (REF-DELIVERY-FEE-01) — ver comentário de cabeçalho.
+  lojaLat: null,
+  lojaLng: null,
 };
 
 const emailValido = (e) => /.+@.+\..+/.test((e || '').trim());
@@ -160,6 +172,20 @@ export function validarPatchCompanyInfo(patch) {
 
   // Configurações (preparo) — texto livre, sem regra (nenhum comportamento funcional ligado ainda).
   for (const campo of ['timezone', 'idioma', 'moeda']) aplicarTextoOpcional(p, campo);
+
+  // Localização operacional da loja (REF-DELIVERY-FEE-01) — null é válido (limpar o pino); preenchido
+  // precisa ser um número finito dentro dos limites geográficos globais (mesmos limites de
+  // address/validators/addressValidators.coordenadasValidas).
+  if ('lojaLat' in p) {
+    const lat = p.lojaLat === null || p.lojaLat === '' ? null : Number(p.lojaLat);
+    if (lat !== null && (!Number.isFinite(lat) || lat < -90 || lat > 90)) return { erro: 'Latitude da loja inválida.' };
+    p.lojaLat = lat;
+  }
+  if ('lojaLng' in p) {
+    const lng = p.lojaLng === null || p.lojaLng === '' ? null : Number(p.lojaLng);
+    if (lng !== null && (!Number.isFinite(lng) || lng < -180 || lng > 180)) return { erro: 'Longitude da loja inválida.' };
+    p.lojaLng = lng;
+  }
 
   return { patch: p };
 }

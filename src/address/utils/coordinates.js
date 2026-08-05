@@ -14,3 +14,19 @@ export const formatarCoord = (n) => Number(n).toFixed(5);
    Além disso está atualmente DESLIGADA (nunca era chamada no fluxo). Fica isolada e pronta para a evolução
    futura de "área de entrega"/geofencing; qualquer correção é um marco próprio (mudaria comportamento). */
 export const dentroDaArea = (lat, lng) => lat >= -27.0 && lat <= -26.5 && lng >= -49.5 && lng >= -49.0;
+
+/* REF-DELIVERY-FEE-01 — distância em linha reta (haversine) entre 2 pontos {lat,lng}, em km. Pura, sem
+   arredondamento (mesma disciplina de pricing.js: quem exibe/arredonda é a camada de apresentação, nunca o
+   cálculo). null quando faltar alguma coordenada — o chamador decide o fallback (nunca lança). Raio médio
+   da Terra em km (6371) é a mesma constante usada por qualquer implementação de referência do haversine. */
+const RAIO_TERRA_KM = 6371;
+const paraRad = (graus) => (graus * Math.PI) / 180;
+
+export function distanciaKm(origem, destino) {
+  const lat1 = origem?.lat, lng1 = origem?.lng, lat2 = destino?.lat, lng2 = destino?.lng;
+  if (![lat1, lng1, lat2, lng2].every((n) => typeof n === 'number' && Number.isFinite(n))) return null;
+  const dLat = paraRad(lat2 - lat1);
+  const dLng = paraRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(paraRad(lat1)) * Math.cos(paraRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return RAIO_TERRA_KM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
