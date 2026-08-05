@@ -176,7 +176,13 @@ export function buildComanda(order, opts = {}) {
     return acc + unit * (Number(i?.quantity) || 1);
   }, 0);
   const total = Number(o?.total) || 0;
-  const delta = Math.round((total - subtotal) * 100) / 100;   // diferenca REAL entre itens e total cobrado
+  /* REF-DELIVERY-FEE-01: entrega/maquininha sao campos EXPLICITOS persistidos no pedido
+     (orders.delivery_fee/maquininha_fee) — nunca mais "adivinhados" da diferenca total-subtotal. Pedidos
+     de ANTES desta ref (ou qualquer chamada sem esses campos) tem ambos em 0 por default de coluna,
+     entao o comportamento antigo (delta = total-subtotal) fica preservado para o historico. */
+  const entrega = Number(o?.delivery_fee) || 0;
+  const maquininha = Number(o?.maquininha_fee) || 0;
+  const delta = Math.round((total - subtotal - entrega - maquininha) * 100) / 100;   // residuo AINDA nao explicado por item/entrega/maquininha
 
   const totalPedidosCliente = Number.isFinite(opts.totalPedidosCliente) ? opts.totalPedidosCliente : null;
 
@@ -217,6 +223,14 @@ export function buildComanda(order, opts = {}) {
     totais: {
       subtotal,
       subtotalFmt: fmt(subtotal),
+      /* REF-DELIVERY-FEE-01: entrega/maquininha SEMPRE presentes (0 quando o pedido nao tem, ex.:
+         retirada ou historico anterior a esta ref) — mostrarEntrega/mostrarMaquininha decidem a exibicao. */
+      entrega,
+      entregaFmt: fmt(entrega),
+      mostrarEntrega: entrega >= 0.01,
+      maquininha,
+      maquininhaFmt: fmt(maquininha),
+      mostrarMaquininha: maquininha >= 0.01,
       delta,
       deltaFmt: fmt(Math.abs(delta)),
       deltaLabel: delta > 0 ? 'Taxa de entrega / ajuste' : 'Desconto',

@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { buildComanda, agruparAdicionais, tipoDoPedido, refCurtaDoPedido } from '../src/components/admin/comanda/comandaModel.js';
 import { comandaHTML } from '../src/components/admin/comanda/comandaHtml.js';
 import { comandaTexto } from '../src/components/admin/comanda/comandaTexto.js';
+import { fmt } from '../src/utils/format.js';
 
 let fail = 0;
 const check = (m, fn) => { try { fn(); console.error('  ok ' + m); } catch (e) { fail++; console.error('  x  ' + m + ' — ' + (e?.message ?? e)); } };
@@ -352,6 +353,65 @@ check('cliente: rodape e so o nome comercial (sem "Obrigado pela preferencia")',
 check('cliente: nunca contem marcacao HTML (texto puro, igual a comandaTextoInterna)', () => {
   const txt = comandaTexto(vmE, { contexto: 'cliente' });
   assert.ok(!/<[a-z]/i.test(txt));
+});
+
+/* ── REF-DELIVERY-FEE-01: entrega/maquininha EXPLICITOS (orders.delivery_fee/maquininha_fee) — nunca
+   mais "adivinhados" pela diferença total-subtotal (esse mecanismo de delta/ajuste continua existindo,
+   mas só para residuo NAO explicado, ver comandaModel.js). ── */
+const pedidoComTaxa = {
+  ...pedidoEntrega, total: 47.5 + 12 + 2, delivery_fee: 12, maquininha_fee: 2, payment_method: 'cartao_credito',
+};
+check('buildComanda: totais.entrega/maquininha refletem os campos persistidos do pedido', () => {
+  const vm = buildComanda(pedidoComTaxa, { numero: 1 });
+  assert.equal(vm.totais.entrega, 12);
+  assert.equal(vm.totais.entregaFmt, fmt(12));
+  assert.equal(vm.totais.mostrarEntrega, true);
+  assert.equal(vm.totais.maquininha, 2);
+  assert.equal(vm.totais.maquininhaFmt, fmt(2));
+  assert.equal(vm.totais.mostrarMaquininha, true);
+  assert.equal(vm.totais.mostrarAjuste, false);   // total bate exatamente com subtotal+entrega+maquininha
+  assert.equal(vm.totais.total, 61.5);
+});
+check('buildComanda: pedido sem delivery_fee/maquininha_fee (retirada/legado) -> ambos 0, linhas ocultas', () => {
+  const vm = buildComanda(pedidoEntrega, { numero: 1 });
+  assert.equal(vm.totais.entrega, 0);
+  assert.equal(vm.totais.maquininha, 0);
+  assert.equal(vm.totais.mostrarEntrega, false);
+  assert.equal(vm.totais.mostrarMaquininha, false);
+});
+check('interna: linhas "Entrega"/"Retorno maquininha" aparecem quando > 0', () => {
+  const vm = buildComanda(pedidoComTaxa, { numero: 1 });
+  const txt = comandaTexto(vm);
+  assert.ok(txt.includes(`Entrega: ${fmt(12)}`));
+  assert.ok(txt.includes(`Retorno maquininha: ${fmt(2)}`));
+});
+check('interna: linhas de entrega/maquininha NAO aparecem quando 0 (nunca "R$ 0,00")', () => {
+  const txt = comandaTexto(buildComanda(pedidoEntrega, { numero: 1 }));
+  assert.ok(!txt.includes('Entrega:'));
+  assert.ok(!txt.includes('Retorno maquininha'));
+});
+check('cliente (WhatsApp): entrega/maquininha aparecem explicitamente — MESMOS valores da comanda interna', () => {
+  const vm = buildComanda(pedidoComTaxa, {});
+  const txt = comandaTexto(vm, { contexto: 'cliente' });
+  assert.ok(txt.includes(`Entrega: ${fmt(12)}`));
+  assert.ok(txt.includes(`Retorno da maquininha: ${fmt(2)}`));
+  assert.ok(txt.includes(`*TOTAL: ${fmt(61.5)}*`));
+});
+check('cliente (WhatsApp): sem taxa/maquininha -> linhas ausentes (retirada ou pedido sem cobranca automatica)', () => {
+  const txt = comandaTexto(buildComanda(pedidoRetirada, {}), { contexto: 'cliente' });
+  assert.ok(!txt.includes('Entrega:'));
+  assert.ok(!txt.includes('maquininha'));
+});
+check('HTML termico: linhas de entrega/maquininha aparecem no documento impresso', () => {
+  const html = comandaHTML(buildComanda(pedidoComTaxa, { numero: 1 }));
+  assert.ok(html.includes('>Entrega<'));
+  assert.ok(html.includes(fmt(12)));
+  assert.ok(html.includes('>Retorno maquininha<'));
+});
+check('HTML termico: sem entrega/maquininha -> linhas ausentes (documento igual a antes desta ref)', () => {
+  const html = comandaHTML(buildComanda(pedidoEntrega, { numero: 1 }));
+  assert.ok(!html.includes('>Entrega<'));
+  assert.ok(!html.includes('>Retorno maquininha<'));
 });
 
 console.log(fail === 0 ? '\nOK comanda.golden — view-model + HTML termico + texto simples estaveis' : `\nFALHA comanda.golden — ${fail} caso(s)`);

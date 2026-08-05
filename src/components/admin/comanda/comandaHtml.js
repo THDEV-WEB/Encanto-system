@@ -50,6 +50,10 @@ export function comandaHTML(vm, opts = {}) {
   const totalPedidos = Number.isFinite(v.cliente?.totalPedidos)
     ? `<div class="linha">Pedidos realizados: ${esc(v.cliente.totalPedidos)}</div>` : '';
 
+  const entregaLinha = t.mostrarEntrega
+    ? `<div class="tot-l"><span>Entrega</span><span>${esc(t.entregaFmt)}</span></div>` : '';
+  const maquininhaLinha = t.mostrarMaquininha
+    ? `<div class="tot-l"><span>Retorno maquininha</span><span>${esc(t.maquininhaFmt)}</span></div>` : '';
   const ajuste = t.mostrarAjuste
     ? `<div class="tot-l"><span>${esc(t.deltaLabel)}</span><span>${t.delta < 0 ? '-' : ''}${esc(t.deltaFmt)}</span></div>` : '';
 
@@ -128,6 +132,8 @@ export function comandaHTML(vm, opts = {}) {
     <div class="center"><span class="cobrar">COBRAR DO CLIENTE</span></div>
     <hr class="rule">
     <div class="tot-l"><span>Subtotal</span><span>${esc(t.subtotalFmt)}</span></div>
+    ${entregaLinha}
+    ${maquininhaLinha}
     ${ajuste}
     <div class="tot-total"><span>TOTAL</span><span>${esc(t.totalFmt)}</span></div>
     <hr class="rule">

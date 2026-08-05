@@ -59,6 +59,8 @@ function comandaTextoInterna(v, t) {
 
   linhas.push('');
   linhas.push(`Subtotal: ${t.subtotalFmt || ''}`);
+  if (t.mostrarEntrega) linhas.push(`Entrega: ${t.entregaFmt}`);
+  if (t.mostrarMaquininha) linhas.push(`Retorno maquininha: ${t.maquininhaFmt}`);
   if (t.mostrarAjuste) linhas.push(`${t.deltaLabel}: ${t.delta < 0 ? '-' : ''}${t.deltaFmt}`);
   linhas.push(`*TOTAL: ${t.totalFmt || ''}*`);
 
@@ -75,8 +77,10 @@ function comandaTextoInterna(v, t) {
    loja.nomeComercial em vez de loja.nome/linha2) e outra ordem/hierarquia de blocos.
    Diferenças deliberadas em relação à comanda interna:
      - sem "Ref. cliente" (código técnico sem utilidade para quem recebe a própria mensagem);
-     - sem taxa de entrega na seção de totais (ainda não calculada automaticamente — só desconto,
-       quando o total ficar abaixo da soma dos itens);
+     - REF-DELIVERY-FEE-01: entrega/maquininha (campos explícitos, ver comandaModel) aparecem igual à
+       comanda interna — só o "ajuste" genérico (delta residual não explicado) continua suprimido
+       quando positivo, mostrando só quando é desconto (mesmo motivo de sempre: nunca expor um número
+       "adivinhado" ao cliente);
      - troco SEMPRE aparece (explícito "Não precisa" quando ausente, em vez de omitir a linha);
      - "COBRAR DO CLIENTE" mantido (quem LÊ a mensagem é a loja — o cliente só toca em Enviar). */
 function comandaTextoCliente(v, t) {
@@ -126,7 +130,9 @@ function comandaTextoCliente(v, t) {
 
   linhas.push('');
   linhas.push(`Subtotal: ${t.subtotalFmt || ''}`);
-  /* Sem taxa de entrega (ainda não calculada automaticamente) — só desconto, quando aplicável. */
+  if (t.mostrarEntrega) linhas.push(`Entrega: ${t.entregaFmt}`);
+  if (t.mostrarMaquininha) linhas.push(`Retorno da maquininha: ${t.maquininhaFmt}`);
+  /* Ajuste residual (delta não explicado por item/entrega/maquininha) — só desconto, quando aplicável. */
   if (t.mostrarAjuste && t.delta < 0) linhas.push(`Desconto: ${t.deltaFmt}`);
   linhas.push(`*TOTAL: ${t.totalFmt || ''}*`);
   linhas.push(v.pagamento?.troco ? `Troco para: ${v.pagamento.troco}` : 'Troco: Não precisa');
