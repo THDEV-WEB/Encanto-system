@@ -1,4 +1,5 @@
-/* components/checkout/SuccessPage.jsx — REF-APP-01 · Onda 5.1 (move puro do App.jsx L230-292) + REF-CHECKOUT-02.
+/* components/checkout/SuccessPage.jsx — REF-APP-01 · Onda 5.1 (move puro do App.jsx L230-292) + REF-CHECKOUT-02
+   + REF-GOLIVE-01 (bloqueador 1 — horario deixou de ser hardcoded, ver prop `horario`).
    Tela de confirmacao do pedido (apresentacional): abre o WhatsApp AUTOMATICAMENTE (sem escolha do
    cliente) assim que a tela monta, com a mensagem ja pronta (msg vem do CheckoutPage, montada por
    buildOrderConfirmationMessage). Sem DS, sem carrinho (prop 'cart' preservada mas nao usada).
@@ -10,7 +11,7 @@
    popup-blocker, entao sempre da uma saida ao cliente. */
 import { useState, useEffect, useRef } from 'react';
 
-export function SuccessPage({ msg, cart, onBack, deliveryEta, deliveryMode, whatsapp }) {
+export function SuccessPage({ msg, cart, onBack, deliveryEta, deliveryMode, whatsapp, horario }) {
   /* REF-COMPANY-01: numero SEMPRE vindo do cadastro da empresa (prop, unico ponto de consumo em
      StoreApp -> Single Source of Truth), nunca mais hardcoded/env var. */
   const abrirWhatsApp = () => {
@@ -78,8 +79,12 @@ export function SuccessPage({ msg, cart, onBack, deliveryEta, deliveryMode, what
             {retirada ? 20 : deliveryEta} min
           </div>
         </div>
+        {/* REF-GOLIVE-01 (bloqueador 1): nada de horario fixo aqui — mesmo objeto `horario` do header
+            (useBusinessHours, StoreApp), que ja resolve cronograma administravel + STORE_MODE + excecoes.
+            Qualquer mudanca feita pelo Admin reflete aqui automaticamente, sem esta tela recalcular nada. */}
         <div style={{fontSize:11,color:'var(--gray-500)',textAlign:'right',lineHeight:1.4}}>
-          Seg–Dom<br/>11:00 às 22:30
+          <div style={{fontWeight:700,color:'var(--gray-700)'}}>{horario?.rotuloCurto}</div>
+          {horario?.detalhe && <div>{horario.detalhe}</div>}
         </div>
       </div>
 

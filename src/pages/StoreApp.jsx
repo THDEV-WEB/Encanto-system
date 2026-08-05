@@ -128,8 +128,10 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
   const scrollToProduct = useScrollToProduct();
   const onPickCategoria = useCallback((c) => irParaCategoria(c.cat), [irParaCategoria]);
   const onPickProduto   = useCallback((p) => scrollToProduct(p.prod.id, p.secId), [scrollToProduct]);
-  /* REF-DELIVERY-01: tempo estimado de entrega (config unica no Supabase). Lido UMA vez aqui e distribuido
-     por props aos consumidores (DeliveryBar + SuccessPage) -> Single Source of Truth, sem duplicacao. */
+  /* REF-DELIVERY-01 (+REF-GOLIVE-01): tempo estimado de entrega (config unica no Supabase). Lido UMA vez
+     aqui e distribuido por props aos consumidores (DeliveryBar + CheckoutPage + SuccessPage) -> Single
+     Source of Truth, sem duplicacao. REF-GOLIVE-01 estendeu o alcance a CheckoutPage (mensagem de
+     confirmacao do WhatsApp) — antes so DeliveryBar/SuccessPage recebiam o valor vivo. */
   const deliveryEta = useDeliveryEta();
   /* REF-COMPANY-01: dados institucionais da empresa (config unica no Supabase). O whatsapp oficial
      alimenta o checkout (SuccessPage) SEMPRE a partir do cadastro da empresa — nunca mais hardcoded. */
@@ -151,8 +153,8 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
     },
   }), [page, modal, cartOpen, showLoyalty, loyaltyTeaser]);
 
-  if (page==='checkout') return <CheckoutPage cart={cart} deliveryMode={deliveryMode} onBack={()=>setPage('home')} onSuccess={msg=>{setWaMsg(msg);setPage('success');}}/>;
-  if (page==='success')  return <SuccessPage  msg={waMsg} cart={cart} onBack={()=>setPage('home')} deliveryEta={deliveryEta} deliveryMode={deliveryMode} whatsapp={companyInfo.whatsapp}/>;
+  if (page==='checkout') return <CheckoutPage cart={cart} deliveryMode={deliveryMode} deliveryEta={deliveryEta} onBack={()=>setPage('home')} onSuccess={msg=>{setWaMsg(msg);setPage('success');}}/>;
+  if (page==='success')  return <SuccessPage  msg={waMsg} cart={cart} onBack={()=>setPage('home')} deliveryEta={deliveryEta} deliveryMode={deliveryMode} whatsapp={companyInfo.whatsapp} horario={horario}/>;
 
   return (
     <div className="app">

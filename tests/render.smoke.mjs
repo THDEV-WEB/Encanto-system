@@ -36,6 +36,7 @@ const DeliveryBar     = (await import('../src/components/DeliveryBar.jsx')).Deli
 const SearchSuggestions = (await import('../src/components/search/SearchSuggestions.jsx')).SearchSuggestions;   // REF-UI-SEARCH-01
 const StoreHighlights = (await import('../src/components/StoreHighlights.jsx')).StoreHighlights;   // REF-UI-TOPBAR-01
 const ValionCredit    = (await import('../src/components/ValionCredit.jsx')).ValionCredit;   // REF-BRAND-02
+const SuccessPage     = (await import('../src/components/checkout/SuccessPage.jsx')).SuccessPage;   // REF-GOLIVE-01
 
 /* Casos: props FIXAS + snapshot CONGELADO (Onda 4 acrescenta as folhas visuais AQUI) */
 const CASES = [
@@ -157,6 +158,18 @@ const CASES = [
     /* REF-BRAND (ajuste fino 2): link institucional desativado de proposito (virou <div>) enquanto o
        site esta em desenvolvimento — snapshot atualizado pra refletir o markup atual (ver ValionCredit.jsx). */
     snap: '<div class="valion-credit-link"><span class="valion-eyebrow">Plataforma desenvolvida por</span><span class="valion-word"><img class="valion-v-icon" src="undefinedvalion-mark.png" alt="" loading="lazy"/><b>ALION</b><i>SISTEMAS</i></span><span class="valion-underline" aria-hidden="true"></span><span class="valion-tagline">Soluções digitais que impulsionam negócios.</span></div>',
+  },
+  {
+    /* REF-GOLIVE-01 (bloqueador 1): horario deixou de ser hardcoded — vem inteiramente da prop `horario`
+       (mesmo objeto de useBusinessHours em StoreApp). Caso "aberto" trava rotuloCurto+detalhe no markup;
+       qualquer regressao para texto fixo ("Seg-Dom"/"11:00"/"22:30") reprova este teste. */
+    nome: 'SuccessPage(entrega, aberto)',
+    el: () => h(SuccessPage, {
+      msg: 'pedido de teste', cart: { items: [] }, onBack: () => {},
+      deliveryEta: 45, deliveryMode: 'entrega', whatsapp: '5599999999999',
+      horario: { aberto: true, rotuloCurto: 'Aberto agora', detalhe: 'Aberto até 22:00', mensagemFechado: null },
+    }),
+    snap: '<div class="success-page" style="max-width:520px;padding:28px 16px 40px"><div class="success-icon" style="font-size:56px">🎉</div><h2 style="margin-bottom:6px">Pedido realizado com sucesso!</h2><p style="margin-bottom:20px">Abrimos o WhatsApp com o seu pedido — é só tocar em Enviar! 💜</p><div style="background:var(--grape-pale);border-radius:12px;padding:12px 20px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between"><div><div style="font-size:12px;color:var(--amarelo);font-weight:600;margin-bottom:2px">🕐 Tempo estimado de entrega</div><div style="font-family:var(--font-head);font-size:24px;font-weight:800;color:var(--amarelo)">45 min</div></div><div style="font-size:11px;color:var(--gray-500);text-align:right;line-height:1.4"><div style="font-weight:700;color:var(--gray-700)">Aberto agora</div><div>Aberto até 22:00</div></div></div><div class="order-status-bar" style="margin-bottom:20px"><div style="font-size:12px;font-weight:700;color:var(--gray-700);margin-bottom:12px">Acompanhe seu pedido</div><div class="order-status-steps"><div class="order-status-step active"><div class="step-dot">📥</div><div class="step-label">Recebido</div></div><div class="order-status-step "><div class="step-dot">👨‍🍳</div><div class="step-label">Em preparo</div></div><div class="order-status-step "><div class="step-dot">✅</div><div class="step-label">Pronto</div></div><div class="order-status-step "><div class="step-dot">🛵</div><div class="step-label">Em entrega</div></div><div class="order-status-step "><div class="step-dot">🏠</div><div class="step-label">Entregue</div></div></div><p style="font-size:11px;color:var(--gray-400);margin-top:12px;text-align:center">Status atualizado após confirmação pela loja via WhatsApp.</p></div><button class="whatsapp-btn" style="width:100%;justify-content:center;margin-bottom:10px"><span style="font-size:22px">💬</span> Abrir WhatsApp novamente</button><button class="back-home-btn">← Voltar ao cardápio</button></div>',
   },
 ];
 
