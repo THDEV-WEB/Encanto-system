@@ -57,7 +57,11 @@ export function buildOrderArgs(cart, form, endereco, requestId, enderecoId) {
    nenhuma query nova, só deixa de descartar um dado que já existia. null/ausente (retirada, ou
    endereço sem detalhamento) cai no fallback de texto livre de sempre.
    opts.createdAt (opcional): injeta o instante da montagem — default new Date() (o momento real da
-   confirmação); parametrizável só para o golden test determinístico (tests/checkout.golden.mjs). */
+   confirmação); parametrizável só para o golden test determinístico (tests/checkout.golden.mjs).
+   opts.deliveryEtaMin (REF-GOLIVE-01): tempo de entrega configurado pelo Admin (useDeliveryEta, lido
+   uma vez em StoreApp e repassado por CheckoutPage) — a mensagem que abre no WhatsApp do cliente deixa
+   de mostrar "35 a 45 min" fixo e passa a bater com o mesmo valor da comanda/Admin. Ausente cai no
+   fallback de buildComanda/textoTempoEntrega (compatível com chamadas antigas, ex.: testes). */
 export function buildOrderConfirmationMessage(customer, order, items, orderId, opts = {}) {
   const orderSnapshot = {
     id: orderId,
@@ -73,6 +77,7 @@ export function buildOrderConfirmationMessage(customer, order, items, orderId, o
     companyInfo: opts.companyInfo,
     troco: opts.troco,
     enderecoEstruturado: opts.enderecoEstruturado,
+    deliveryEtaMin: opts.deliveryEtaMin,
   });
   return comandaTexto(vm, { contexto: 'cliente' });
 }

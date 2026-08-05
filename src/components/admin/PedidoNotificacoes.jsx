@@ -2,11 +2,15 @@
    Mostra, POR STATUS da trilha do pedido, a mensagem que o cliente recebe (renderizada dos templates
    canonicos) + o ESTADO REAL de envio (fila notification_outbox). Antes da migration/credenciais: exibe
    as PREVIAS ("sera enviada ao mudar o status"). Depois: ✅ enviado / ⏳ na fila / ⚠️ falhou por status.
-   So leitura. Fonte de copy = messageTemplates (unica); estado = DS.getNotificacoes. */
+   So leitura. Fonte de copy = messageTemplates (unica); estado = DS.getNotificacoes. REF-GOLIVE-01: o
+   tempo estimado da previa vem de useDeliveryEta (mesma config do Admin), nao mais de uma constante
+   local — a previa mostrada aqui bate com o que o SQL (enc_tempo_estimado) realmente envia. */
 import { useEffect, useState } from 'react';
 import { DS } from '../../services/DataService.js';
 import { useCompanyInfo } from '../../hooks/useCompanyInfo.js';   // REF-COMPANY-02: nome curto na previa
-import { renderTemplate, TEMPO_ESTIMADO } from '../../services/notifications/messageTemplates.js';
+import { useDeliveryEta } from '../../hooks/useDeliveryEta.js';   // REF-GOLIVE-01: tempo real (nao mais constante local)
+import { renderTemplate } from '../../services/notifications/messageTemplates.js';
+import { textoTempoEntrega } from '../../services/delivery/deliveryEtaFormat.js';
 import { fluxoDoTipo, statusInfo } from '../pedidos/pedidoStatus.js';
 import { tipoDoPedido, refCurtaDoPedido } from './comanda/comandaModel.js';
 
@@ -21,6 +25,7 @@ const ESTADO = {
 
 export function PedidoNotificacoes({ order }) {
   const companyInfo = useCompanyInfo();
+  const deliveryEta = useDeliveryEta();   // REF-GOLIVE-01: mesma config administravel usada em toda a app
   const [outbox, setOutbox] = useState(null);   // null = carregando
   useEffect(() => {
     let vivo = true;
@@ -32,7 +37,7 @@ export function PedidoNotificacoes({ order }) {
   const tipo = tipoDoPedido(order);
   const cliente = order?.customers?.name || '';
   const numero = refCurtaDoPedido(order?.id).replace(/^#/, '');
-  const tempo = TEMPO_ESTIMADO[tipo];
+  const tempo = textoTempoEntrega(tipo, deliveryEta);
   // por status, o ULTIMO evento de outbox daquele status (estado mais recente)
   const porStatus = {};
   for (const row of outbox || []) porStatus[row.status] = row;

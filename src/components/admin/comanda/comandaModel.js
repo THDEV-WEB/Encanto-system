@@ -15,6 +15,7 @@
    preenchido; campos ausentes viram null/[] — nunca undefined), para comandaHtml/testes nao precisarem
    de guardas defensivas. */
 import { fmt, fmtDataHoraLoja } from '../../../utils/format.js';
+import { textoTempoEntrega } from '../../../services/delivery/deliveryEtaFormat.js';
 
 /* Rotulo de exibicao por GRUPO de adicional (a taxonomia crua vive em utils/addons.js; aqui e so copy).
    ESCALAVEL: grupo novo cai no fallback 'Adicionais' e aparece sem alteracao de codigo — se quiser rotulo
@@ -103,10 +104,6 @@ const PAGAMENTO_LABEL = {
   cartao_credito: 'Cartão (Crédito)',
 };
 
-/* Estimativa de preparo/entrega — constante local (o dado dinamico e dominio da REF-DELIVERY-01;
-   aqui usamos a MESMA copy que o cliente ja viu no header, sem acoplar). */
-const PREVISAO = { entrega: '35 a 45 min', retirada: 'cerca de 20 min' };
-
 const numeroFormatado = (numero, order) => {
   if (numero != null && numero !== '') return '#' + String(numero).replace(/^#/, '');
   const id = String(order?.id || '');
@@ -139,13 +136,15 @@ export const refCurtaDoPedido = (id) => {
 
 /* ── API principal ────────────────────────────────────────────────────────────────────────
    order  : linha de orders com order_items(...) e customers(name,phone) embutidos (DS.getPedidos).
-   opts   : { numero?, totalPedidosCliente?, companyInfo?, enderecoEstruturado?, troco? }  (o painel
-            passa o mesmo numero que exibe na tabela; companyInfo vem de useCompanyInfo() em
+   opts   : { numero?, totalPedidosCliente?, companyInfo?, enderecoEstruturado?, troco?, deliveryEtaMin? }
+            (o painel passa o mesmo numero que exibe na tabela; companyInfo vem de useCompanyInfo() em
             ComandaModal.jsx — este modulo continua PURO, nunca importa services/company/*,
             REF-COMPANY-02; enderecoEstruturado vem de DS.getPedidoEndereco — REF-COMANDA-ENDERECO-01;
             troco (REF-CHECKOUT-02) — so o CheckoutPage tem esse dado no instante da montagem (nao e
             persistido no banco, ver ADR REF-ORDER-01 §5 — gap honesto). Ausente/null preserva o
-            comportamento de sempre (Admin nunca passa troco). */
+            comportamento de sempre (Admin nunca passa troco). deliveryEtaMin (REF-GOLIVE-01) — tempo de
+            entrega configurado pelo Admin (useDeliveryEta), repassado por quem chama; ausente cai no
+            fallback de textoTempoEntrega (mesmo numero-default de services/delivery/deliveryEta.js). */
 export function buildComanda(order, opts = {}) {
   const o = order || {};
   /* nome curto da empresa (fallback 'Encanto' cobre chamadas sem companyInfo, ex.: testes). "DELIVERY"/
@@ -197,7 +196,7 @@ export function buildComanda(order, opts = {}) {
     numeroCurto: numeroCurtoDoPedido(o),
     refCurta: refCurtaDoPedido(o?.id),
     criadoEm: fmtDataHoraLoja(o?.created_at),
-    previsao: PREVISAO[tipo],
+    previsao: textoTempoEntrega(tipo, opts.deliveryEtaMin),
     previsaoLabel: tipo === 'retirada' ? 'Retirada prevista' : 'Entrega prevista',
     itens,
     cliente: {

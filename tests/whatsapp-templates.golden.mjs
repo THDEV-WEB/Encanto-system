@@ -5,7 +5,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { NOTIFY_TEMPLATES, renderTemplate, temTemplate, TEMPO_ESTIMADO } from '../src/services/notifications/messageTemplates.js';
+import { NOTIFY_TEMPLATES, renderTemplate, temTemplate } from '../src/services/notifications/messageTemplates.js';
+import { textoTempoEntrega } from '../src/services/delivery/deliveryEtaFormat.js';
 
 let fail = 0;
 const check = (m, fn) => { try { fn(); console.error('  ok ' + m); } catch (e) { fail++; console.error('  x  ' + m + ' — ' + (e?.message ?? e)); } };
@@ -21,12 +22,23 @@ check("'cancelado' NAO tem template (nao notifica)", () => {
 });
 
 check('render recebido substitui cliente/numero/tempo/empresa', () => {
-  const txt = renderTemplate('recebido', { cliente: 'Ana', numero: 'A1B2C', tempo: TEMPO_ESTIMADO.entrega, empresa: 'Encanto' });
+  const txt = renderTemplate('recebido', { cliente: 'Ana', numero: 'A1B2C', tempo: textoTempoEntrega('entrega', 45), empresa: 'Encanto' });
   assert.ok(txt.startsWith('🍽️ Encanto'));
   assert.ok(txt.includes('Olá, Ana.'));
   assert.ok(txt.includes('pedido #A1B2C'));
-  assert.ok(txt.includes('35 a 45 min'));
+  assert.ok(txt.includes('até 45 min'));
   assert.ok(!/\{\{/.test(txt), 'sobrou placeholder cru');
+});
+/* REF-GOLIVE-01 (bloqueador 2): trava a FRASE canonica de tempo — entrega usa o numero configuravel
+   (nunca mais uma string fixa "35 a 45 min"), retirada permanece constante de negocio. */
+check('textoTempoEntrega: entrega usa o numero configurado; retirada e constante fixa', () => {
+  assert.equal(textoTempoEntrega('entrega', 45), 'até 45 min');
+  assert.equal(textoTempoEntrega('entrega', 60), 'até 60 min');
+  assert.equal(textoTempoEntrega('retirada', 45), 'cerca de 20 min');
+  assert.equal(textoTempoEntrega('retirada', 60), 'cerca de 20 min');
+});
+check('textoTempoEntrega: sem etaMin explicito, cai no fallback (nunca undefined/NaN na mensagem)', () => {
+  assert.equal(textoTempoEntrega('entrega'), 'até 45 min');
 });
 check('render preparo/pronto/entrega usam numero/empresa', () => {
   for (const s of ['preparo', 'pronto', 'entrega']) {
@@ -66,6 +78,18 @@ check('enc_render_message (SQL, migrations/REF-COMPANY-02-notify-empresa.sql) em
   for (const s of COM_TEMPLATE) {
     assert.ok(sql.includes(NOTIFY_TEMPLATES[s]), `template '${s}' divergente entre .js e enc_render_message`);
   }
+});
+
+/* REF-GOLIVE-01 (bloqueador 2): enc_tempo_estimado() e a 3a copia do tempo de entrega — a que alimenta a
+   notificacao automatica REALMENTE enviada em producao (pg_cron). Trava que a versao vigente (migration
+   mais recente) le settings.delivery_eta_min em vez de devolver "35 a 45 min" fixo. */
+check('enc_tempo_estimado (SQL, migrations/REF-GOLIVE-01-tempo-entrega-unico.sql) le o tempo configuravel, nao hardcoded', () => {
+  const sqlPath = fileURLToPath(new URL('../migrations/REF-GOLIVE-01-tempo-entrega-unico.sql', import.meta.url));
+  const sql = readFileSync(sqlPath, 'utf8');
+  const corpo = sql.slice(sql.indexOf('BEGIN;'));   // só o SQL executável — o comentário de contexto acima cita o valor antigo de propósito
+  assert.ok(corpo.includes("get_setting('delivery_eta_min'"), 'enc_tempo_estimado nao le mais settings.delivery_eta_min');
+  assert.ok(!corpo.includes('35 a 45 min'), 'sobrou o valor hardcoded antigo no corpo da funcao');
+  assert.ok(corpo.includes('cerca de 20 min'), 'retirada deveria permanecer constante de negocio');
 });
 
 console.log(fail === 0 ? '\nOK whatsapp-templates.golden — copy canonica + paridade com a Edge Function' : `\nFALHA whatsapp-templates.golden — ${fail} caso(s)`);

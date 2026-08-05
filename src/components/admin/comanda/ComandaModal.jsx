@@ -4,9 +4,12 @@
    Sem estado de dados: deriva tudo do pedido via o dominio puro (buildComanda -> comandaHTML).
    `endereco` (REF-COMANDA-ENDERECO-01): endereco estruturado do pedido (DS.getPedidoEndereco), buscado
    pelo pai (AdminPedidos) — chega null enquanto carrega ou quando o pedido nao tem vinculo (comandaModel
-   cai no texto livre nesse caso). */
+   cai no texto livre nesse caso). `deliveryEtaMin` (REF-GOLIVE-01): tempo de entrega configurado pelo
+   Admin (useDeliveryEta), repassado ao buildComanda — a comanda impressa nao mostra mais "35 a 45 min"
+   fixo, e sim o valor real vigente. */
 import { useMemo, useState } from 'react';
 import { useCompanyInfo } from '../../../hooks/useCompanyInfo.js';   // REF-COMPANY-02: nome curto na comanda
+import { useDeliveryEta } from '../../../hooks/useDeliveryEta.js';   // REF-GOLIVE-01: tempo de entrega real na comanda impressa
 import { buildComanda } from './comandaModel.js';
 import { comandaHTML } from './comandaHtml.js';
 import { comandaTexto } from './comandaTexto.js';
@@ -36,11 +39,12 @@ const paperBtn = (on) => ({
 
 export function ComandaModal({ order, numero, totalPedidos, endereco, onClose }) {
   const companyInfo = useCompanyInfo();
+  const deliveryEta = useDeliveryEta();
   const [paper, setPaper] = useState('80mm');
   const [copiado, setCopiado] = useState(false);
   const vm = useMemo(
-    () => buildComanda(order, { numero, totalPedidosCliente: totalPedidos, companyInfo, enderecoEstruturado: endereco }),
-    [order, numero, totalPedidos, companyInfo, endereco],
+    () => buildComanda(order, { numero, totalPedidosCliente: totalPedidos, companyInfo, enderecoEstruturado: endereco, deliveryEtaMin: deliveryEta }),
+    [order, numero, totalPedidos, companyInfo, endereco, deliveryEta],
   );
   const html  = useMemo(() => comandaHTML(vm, { paper }), [vm, paper]);
   const texto = useMemo(() => comandaTexto(vm), [vm]);

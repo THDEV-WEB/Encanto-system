@@ -253,6 +253,26 @@ check('buildComanda: previsaoLabel muda por tipo; previsao (valor) intocada', ()
   assert.equal(buildComanda(pedidoEntrega, {}).previsaoLabel, 'Entrega prevista');
   assert.equal(buildComanda(pedidoRetirada, {}).previsaoLabel, 'Retirada prevista');
 });
+
+/* ── REF-GOLIVE-01 (bloqueador 2): previsao (entrega) deixou de ser "35 a 45 min" fixo — vem do MESMO
+   numero configurado pelo Admin (deliveryEtaMin), propagado pelo chamador (CheckoutPage/ComandaModal).
+   Retirada continua "cerca de 20 min" (constante de negocio, fora do escopo do REF-DELIVERY-01). ── */
+check('buildComanda: previsao (entrega) usa opts.deliveryEtaMin quando informado', () => {
+  assert.equal(buildComanda(pedidoEntrega, { deliveryEtaMin: 60 }).previsao, 'até 60 min');
+  assert.equal(buildComanda(pedidoEntrega, { deliveryEtaMin: 30 }).previsao, 'até 30 min');
+});
+check('buildComanda: previsao (entrega) sem deliveryEtaMin cai no fallback (nunca "35 a 45 min" fixo)', () => {
+  assert.equal(buildComanda(pedidoEntrega, {}).previsao, 'até 45 min');
+});
+check('buildComanda: previsao (retirada) e constante de negocio, ignora deliveryEtaMin', () => {
+  assert.equal(buildComanda(pedidoRetirada, { deliveryEtaMin: 60 }).previsao, 'cerca de 20 min');
+  assert.equal(buildComanda(pedidoRetirada, {}).previsao, 'cerca de 20 min');
+});
+check('comandaTexto: previsao dinamica aparece na comanda interna e na mensagem do cliente', () => {
+  const vm = buildComanda(pedidoEntrega, { numero: 42, deliveryEtaMin: 60 });
+  assert.ok(comandaTexto(vm).includes('Previsão: até 60 min'));
+  assert.ok(comandaTexto(vm, { contexto: 'cliente' }).includes('Entrega prevista: até 60 min'));
+});
 check('buildComanda: loja.nomeComercial vem de companyInfo.nomeCompleto quando presente', () => {
   const vm = buildComanda(pedidoEntrega, { companyInfo: { nomeCurto: 'Encanto', nomeCompleto: 'Encanto — Açaí & Marmitas' } });
   assert.equal(vm.loja.nomeComercial, 'Encanto — Açaí & Marmitas');

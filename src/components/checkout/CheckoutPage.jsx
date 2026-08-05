@@ -17,7 +17,7 @@ import { useAddress, AddressSummary, addressRepository } from '../../address/ind
 import { lerGuestIdentity, salvarGuestIdentity } from '../../utils/guestIdentity.js'; // REF-CUSTOMER-01: cache local so p/ visitante
 import { registrarBreadcrumb, marcarPedido } from '../../lib/sentry.js'; // REF-OBS-01/REF-SENTRY-01: no-op sem VITE_SENTRY_DSN
 
-export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode }) {
+export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEta }) {
   /* REF-CLIENTE-02 (vinculo pedido<->conta): create_order reusa o customer POR TELEFONE e nunca toca
      auth_user_id. Logo o pedido so aparece em "Meus Pedidos" se o telefone do checkout casar com o do
      cadastro (que carrega o auth_user_id). Para o cliente LOGADO, a identidade vem da conta e o telefone
@@ -118,9 +118,12 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode }) {
     try { window.dispatchEvent(new Event(LOYALTY_EVENT)); } catch (e) {}
     /* REF-CHECKOUT-03: repassa o endereco ESTRUTURADO (dominio Address, mesmo objeto ja usado no
        resumo/AddressSummary acima — retirada nao tem endereco de cliente, so null) para a mensagem
-       mostrar rua/numero/complemento/bairro/referencia sem re-derivar de string livre. */
+       mostrar rua/numero/complemento/bairro/referencia sem re-derivar de string livre.
+       REF-GOLIVE-01: deliveryEta (prop, vem de StoreApp -> useDeliveryEta, mesma fonte da DeliveryBar/
+       SuccessPage) elimina o "35 a 45 min" fixo que a mensagem de confirmacao tinha antes. */
     const msg = buildOrderConfirmationMessage(customer, order, items, orderId, {
       companyInfo, troco: form.troco, enderecoEstruturado: retirada ? null : endereco,
+      deliveryEtaMin: deliveryEta,
     });
     setLoading(false);
     submittingRef.current = false;

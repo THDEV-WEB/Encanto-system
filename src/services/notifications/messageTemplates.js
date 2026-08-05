@@ -11,7 +11,13 @@
    REF-COMPANY-02: {{empresa}} vem do NOME CURTO institucional (settings.company_info.nomeCurto),
    snapshotado no enqueue (enc_enqueue_notification) — mesmo modelo de frescor ja usado para
    cliente/numero/tempo (ver ADR REF-COMPANY-02 §Decisao B: staleness aceitavel, sem busca ao vivo
-   duplicada nos dois runtimes de disparo). */
+   duplicada nos dois runtimes de disparo).
+
+   REF-GOLIVE-01 (bloqueador 2): {{tempo}} NAO tem mais uma constante local aqui (TEMPO_ESTIMADO foi
+   removida) — quem enfileira a notificacao decide o valor. No servidor (caminho real de producao) e a
+   funcao SQL enc_tempo_estimado(), corrigida para ler settings.delivery_eta_min; no preview do Admin
+   (PedidoNotificacoes.jsx) e services/delivery/deliveryEtaFormat.js:textoTempoEntrega. As tres fontes do
+   tempo (SQL, preview JS, comanda) agora leem o MESMO numero configurado pelo Admin. */
 
 export const NOTIFY_TEMPLATES = Object.freeze({
   recebido: `🍽️ {{empresa}}
@@ -50,9 +56,6 @@ Seu pedido foi entregue.
 Esperamos que tenha gostado.
 Muito obrigado pela preferência.`,
 });
-
-/* Estimativa de tempo por tipo — mesma copy da comanda/header (nao inventa numeros novos). */
-export const TEMPO_ESTIMADO = Object.freeze({ entrega: '35 a 45 min', retirada: 'cerca de 20 min' });
 
 /* Ha template (e portanto notificacao) para este status? 'cancelado' NAO tem template no spec -> sem envio. */
 export const temTemplate = (status) => Object.prototype.hasOwnProperty.call(NOTIFY_TEMPLATES, status);
