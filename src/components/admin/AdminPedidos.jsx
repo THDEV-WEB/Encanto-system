@@ -85,6 +85,15 @@ function OrderCard({ order, onChanged, onComanda }) {
         </div>
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontWeight: 800, fontSize: 15 }}>{fmt(order.total)}</div>
+          {/* REF-DELIVERY-FEE-01: entrega/maquininha, quando existirem (0 em retirada/pedidos sem taxa). */}
+          {(Number(order.delivery_fee) > 0 || Number(order.maquininha_fee) > 0) && (
+            <div style={{ fontSize: 10.5, color: 'var(--gray-500,#6B5D50)' }}>
+              {[
+                Number(order.delivery_fee) > 0 ? `Entrega ${fmt(order.delivery_fee)}` : null,
+                Number(order.maquininha_fee) > 0 ? `Maquininha ${fmt(order.maquininha_fee)}` : null,
+              ].filter(Boolean).join(' + ')}
+            </div>
+          )}
           <div style={{ fontSize: 11.5, color: 'var(--gray-500,#6B5D50)' }}>{fmtDataHoraLoja(order.created_at)}</div>
         </div>
       </div>

@@ -8,6 +8,7 @@ import { AdminAdicionais } from './AdminAdicionais.jsx';
 import { AdminStatus } from './AdminStatus.jsx';
 import { AdminBusinessHours } from './AdminBusinessHours.jsx'; // REF-BUSINESS-HOURS-04: cronograma semanal administravel
 import { AdminDeliveryEta } from './AdminDeliveryEta.jsx';   // REF-DELIVERY-01: config do tempo de entrega
+import { AdminTaxaEntrega } from './AdminTaxaEntrega.jsx';   // REF-DELIVERY-FEE-01: taxa de entrega automatica por distancia
 import { AdminEmpresa } from './AdminEmpresa.jsx';           // REF-COMPANY-01: dados institucionais da empresa
 import { AdminFidelidade } from './AdminFidelidade.jsx';
 import { AdminHealth } from './AdminHealth.jsx';
@@ -23,12 +24,13 @@ export function AdminPanel({ admin, onExit, onLogout }) {
     {id:'categorias',icon:'🏷️', label:'Categorias'},
     {id:'adicionais',icon:'➕', label:'Adicionais'},
     {id:'status',    icon:'🏪', label:'Status'},
+    {id:'taxaentrega',icon:'🚚', label:'Taxa de Entrega'},
     {id:'empresa',   icon:'🏢', label:'Empresa'},
     {id:'fidelidade',icon:'🎁', label:'Fidelidade'},
     {id:'saude',     icon:'🩺', label:'Saúde'},
     {id:'minhaconta',icon:'👤', label:'Minha Conta'},
   ];
-  const titles = {dashboard:'Dashboard',pedidos:'Pedidos',products:'Produtos',categorias:'Categorias',adicionais:'Adicionais',status:'Status da Loja',empresa:'Dados da Empresa',fidelidade:'Fidelidade',saude:'Saúde do Sistema',minhaconta:'Minha Conta'};
+  const titles = {dashboard:'Dashboard',pedidos:'Pedidos',products:'Produtos',categorias:'Categorias',adicionais:'Adicionais',status:'Status da Loja',taxaentrega:'Taxa de Entrega',empresa:'Dados da Empresa',fidelidade:'Fidelidade',saude:'Saúde do Sistema',minhaconta:'Minha Conta'};
   return (
     <div className="admin-layout">
       <div className="admin-sidebar">
@@ -59,6 +61,7 @@ export function AdminPanel({ admin, onExit, onLogout }) {
           {tab==='categorias' && <AdminCategorias/>}
           {tab==='adicionais' && <AdminAdicionais/>}
           {tab==='status'     && <><AdminStatus/><AdminBusinessHours/><AdminDeliveryEta/></>}
+          {tab==='taxaentrega'&& <AdminTaxaEntrega/>}
           {tab==='empresa'    && <AdminEmpresa/>}
           {tab==='fidelidade' && <AdminFidelidade/>}
           {tab==='saude'      && <AdminHealth/>}
