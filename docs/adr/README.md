@@ -128,6 +128,18 @@ Supabase Auth, login Google nativo validado fisicamente sem regressão no Web/PW
 "Encerramento" registra oficialmente as 3 formas de uso (Navegador/PWA/APK) — ver
 [progress](../ref/REF-CAP-01-progress.md).
 
+🚦 [REF-GOLIVE-01 — Correções finais pré-aceite oficial do Go Live](REF-GOLIVE-01-correcoes-pre-aceite.md)
+— **Código implementado (2 bloqueadores); 1 migration pendente de aplicação manual no Supabase.** Uma
+auditoria técnica completa pré-aceite (05/08/2026) encontrou 2 bugs funcionais ativos: horário de
+funcionamento hardcoded e incorreto na `SuccessPage` (corrigido consumindo o mesmo `useBusinessHours()`
+do header, via prop) e tempo de entrega hardcoded em **3** cópias — não as 2 apontadas originalmente,
+mas também `enc_tempo_estimado()` (SQL), a que de fato alimenta a notificação automática de "recebido"
+via `pg_cron` em produção. Nova camada pura `services/delivery/deliveryEtaFormat.js` (zero imports, para
+não arrastar `lib/supabase.js` para dentro dos módulos Node-puros `messageTemplates.js`/`comandaModel.js`)
+centraliza a frase; a migration corrige o SQL para ler `settings.delivery_eta_min` via `get_setting()`
+(mesmo padrão das funções de fidelidade) e troca `IMMUTABLE` por `STABLE`. Retirada permanece constante
+de negócio, fora do escopo. `test:domain` 34/34 verde.
+
 ## Sequência da evolução arquitetural
 
 ```
