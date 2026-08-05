@@ -116,7 +116,12 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode }) {
        selo — apenas avisa a loja para re-buscar o estado oficial (get_my_loyalty) e refletir o novo
        selo do proprio cliente logado. Guest acumula na conta do telefone e ve ao logar depois. */
     try { window.dispatchEvent(new Event(LOYALTY_EVENT)); } catch (e) {}
-    const msg = buildOrderConfirmationMessage(customer, order, items, orderId, { companyInfo, troco: form.troco });
+    /* REF-CHECKOUT-03: repassa o endereco ESTRUTURADO (dominio Address, mesmo objeto ja usado no
+       resumo/AddressSummary acima — retirada nao tem endereco de cliente, so null) para a mensagem
+       mostrar rua/numero/complemento/bairro/referencia sem re-derivar de string livre. */
+    const msg = buildOrderConfirmationMessage(customer, order, items, orderId, {
+      companyInfo, troco: form.troco, enderecoEstruturado: retirada ? null : endereco,
+    });
     setLoading(false);
     submittingRef.current = false;
     requestIdRef.current = null;   // próximo pedido recebe nova idempotency key

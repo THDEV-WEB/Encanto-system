@@ -210,9 +210,7 @@ check('vm com companyInfo custom: cabecalho e rodape derivam do mesmo nomeCurto'
   assert.ok(comandaTexto(vmC).includes('Sabor Real Delivery'));
 });
 
-/* ── REF-CHECKOUT-02: opts.troco (buildComanda) + opts.contexto='cliente' (comandaTexto) ──
-   Admin nunca passa esses opts -> os testes acima (contexto 'interna' implicito) provam que o
-   comportamento antigo continua 100% intacto. Aqui cobrimos SO o caminho novo. */
+/* ── REF-CHECKOUT-02: opts.troco (buildComanda) — Admin nunca passa -> continua null sempre. ── */
 check('buildComanda: sem opts.troco -> pagamento.troco null (compat. Admin, igual a sempre)', () => {
   assert.equal(buildComanda(pedidoEntrega, { numero: 42 }).pagamento.troco, null);
 });
@@ -224,40 +222,116 @@ check('buildComanda: opts.troco string vazia/espacos -> null (nunca fabrica)', (
   assert.equal(buildComanda(pedidoEntrega, { troco: '' }).pagamento.troco, null);
   assert.equal(buildComanda(pedidoEntrega, { troco: '   ' }).pagamento.troco, null);
 });
-
 check('comandaTexto: sem opts (contexto interna implicito) -> comportamento 100% igual ao anterior', () => {
   assert.equal(comandaTexto(vmE), textoE);
   assert.ok(comandaTexto(vmE).includes('COBRAR DO CLIENTE'));
 });
-check("comandaTexto contexto 'cliente': omite COBRAR DO CLIENTE", () => {
-  const txt = comandaTexto(vmE, { contexto: 'cliente' });
-  assert.ok(!txt.includes('COBRAR DO CLIENTE'));
+
+/* ── REF-CHECKOUT-03: campos novos e ADITIVOS do view-model (numeroCurto/tipoLabelCliente/
+   previsaoLabel/loja.nomeComercial) — nenhum campo existente foi removido/alterado; a comanda
+   impressa do Admin (comandaHTML + comandaTextoInterna, testados acima) permanece byte-a-byte igual. ── */
+check('buildComanda: numeroCurto e sempre 5 digitos numericos derivados de created_at (nunca hash/UUID)', () => {
+  const vm = buildComanda(pedidoEntrega, {});
+  assert.match(vm.numeroCurto, /^\d{5}$/);
 });
-check("comandaTexto contexto 'cliente': mostra Troco quando presente no vm", () => {
-  const vmComTroco = buildComanda(pedidoEntrega, { numero: 42, troco: 'R$ 50,00' });
+check('buildComanda: numeroCurto e deterministico (mesmo created_at -> mesmo numero)', () => {
+  const a = buildComanda(pedidoEntrega, {}).numeroCurto;
+  const b = buildComanda(pedidoEntrega, {}).numeroCurto;
+  assert.equal(a, b);
+});
+check('buildComanda: numeroCurto muda com created_at diferente (nao e constante)', () => {
+  const a = buildComanda(pedidoEntrega, {}).numeroCurto;
+  const b = buildComanda({ ...pedidoEntrega, created_at: '2026-01-01 00:00:00' }, {}).numeroCurto;
+  assert.notEqual(a, b);
+});
+check('buildComanda: tipoLabelCliente = PARA ENTREGA (entrega) / RETIRADA (retirada); tipoLabel do Admin intocado', () => {
+  assert.equal(buildComanda(pedidoEntrega, {}).tipoLabelCliente, 'PARA ENTREGA');
+  assert.equal(buildComanda(pedidoRetirada, {}).tipoLabelCliente, 'RETIRADA');
+  assert.equal(buildComanda(pedidoEntrega, {}).tipoLabel, 'ENTREGA');   // Admin: sem mudanca
+});
+check('buildComanda: previsaoLabel muda por tipo; previsao (valor) intocada', () => {
+  assert.equal(buildComanda(pedidoEntrega, {}).previsaoLabel, 'Entrega prevista');
+  assert.equal(buildComanda(pedidoRetirada, {}).previsaoLabel, 'Retirada prevista');
+});
+check('buildComanda: loja.nomeComercial vem de companyInfo.nomeCompleto quando presente', () => {
+  const vm = buildComanda(pedidoEntrega, { companyInfo: { nomeCurto: 'Encanto', nomeCompleto: 'Encanto — Açaí & Marmitas' } });
+  assert.equal(vm.loja.nomeComercial, 'Encanto — Açaí & Marmitas');
+});
+check('buildComanda: loja.nomeComercial tem fallback quando companyInfo ausente (nao quebra testes/chamadas antigas)', () => {
+  assert.ok(buildComanda(pedidoEntrega, {}).loja.nomeComercial.includes('Encanto'));
+});
+
+/* ── REF-CHECKOUT-03: comandaTexto contexto 'cliente' — layout comercial completo (mock/imagem
+   de referencia anexada ao pedido). Reaproveita o MESMO view-model; comandaTextoInterna (testado
+   acima) prova que o Admin nao muda uma linha. ── */
+check("cliente: cabecalho e SO o tipo (PARA ENTREGA/RETIRADA), sem ENCANTO DELIVERY/Marmitas no topo", () => {
+  const txt = comandaTexto(vmE, { contexto: 'cliente' });
+  assert.ok(txt.startsWith('*PARA ENTREGA*'));
+  assert.ok(!txt.includes('ENCANTO DELIVERY'));
+  assert.ok(!txt.includes('Marmitas • Açaí'));
+});
+check('cliente: retirada usa cabecalho RETIRADA', () => {
+  const txt = comandaTexto(vmR, { contexto: 'cliente' });
+  assert.ok(txt.startsWith('*RETIRADA*'));
+});
+check('cliente: numero do pedido e "Pedido NNNNN" (5 digitos, sem #/hash/UUID)', () => {
+  const txt = comandaTexto(vmE, { contexto: 'cliente' });
+  assert.match(txt, /\*Pedido \d{5}\*/);
+  assert.ok(!txt.includes(vmE.numero));      // nunca o "#XXXXX" do Admin
+  assert.ok(!txt.includes(vmE.refCurta));    // nunca a ref curta (hex) do Admin
+});
+check('cliente: sem "Ref. cliente" (codigo tecnico sem utilidade pro proprio cliente)', () => {
+  const txt = comandaTexto(vmE, { contexto: 'cliente' });
+  assert.ok(!txt.includes('Ref. cliente'));
+});
+check('cliente: "Cobrar do cliente" MANTIDO (quem le a mensagem e a loja, nao o cliente)', () => {
+  const txt = comandaTexto(vmE, { contexto: 'cliente' });
+  assert.ok(txt.includes('*Cobrar do cliente*'));
+});
+check('cliente: troco SEMPRE aparece — "Troco para: X" quando informado', () => {
+  const vmComTroco = buildComanda(pedidoEntrega, { troco: 'R$ 50,00' });
   const txt = comandaTexto(vmComTroco, { contexto: 'cliente' });
   assert.ok(txt.includes('Troco para: R$ 50,00'));
 });
-check("comandaTexto contexto 'interna': tambem mostra Troco quando o vm tem (dado real do pedido, util p/ cozinha)", () => {
-  const vmComTroco = buildComanda(pedidoEntrega, { numero: 42, troco: 'R$ 50,00' });
-  const txt = comandaTexto(vmComTroco);
-  assert.ok(txt.includes('Troco para: R$ 50,00'));
+check('cliente: troco SEMPRE aparece — "Troco: Não precisa" quando ausente (nunca omite a linha)', () => {
+  const txt = comandaTexto(vmE, { contexto: 'cliente' });
+  assert.ok(txt.includes('Troco: Não precisa'));
 });
-check("comandaTexto contexto 'cliente': ajuste positivo rotula 'Taxa de entrega' (sem '/ ajuste')", () => {
-  const vm = buildComanda({ ...pedidoEntrega, total: 50 }, { numero: 1 });
+check('cliente: ajuste positivo (taxa) NAO aparece (ainda nao calculada automaticamente)', () => {
+  const vm = buildComanda({ ...pedidoEntrega, total: 50 }, {});
   const txt = comandaTexto(vm, { contexto: 'cliente' });
-  assert.ok(txt.includes(`Taxa de entrega: ${vm.totais.deltaFmt}`));
-  assert.ok(!txt.includes('Taxa de entrega / ajuste'));
+  assert.ok(!txt.includes('Taxa de entrega'));
+  assert.ok(!/^Taxa/m.test(txt));
 });
-check("comandaTexto contexto 'cliente': ajuste negativo rotula 'Desconto'", () => {
-  const vm = buildComanda({ ...pedidoEntrega, total: 45 }, { numero: 1 });
+check('cliente: ajuste negativo (desconto) aparece como "Desconto: X"', () => {
+  const vm = buildComanda({ ...pedidoEntrega, total: 45 }, {});
   const txt = comandaTexto(vm, { contexto: 'cliente' });
-  assert.ok(/Desconto: /.test(txt));
+  assert.ok(txt.includes(`Desconto: ${vm.totais.deltaFmt}`));
 });
-check("comandaTexto contexto 'interna': mantem rotulo 'Taxa de entrega / ajuste' (Admin intocado)", () => {
+check("interna: 'Taxa de entrega / ajuste' continua aparecendo (Admin 100% intocado)", () => {
   const vm = buildComanda({ ...pedidoEntrega, total: 50 }, { numero: 1 });
   const txt = comandaTexto(vm);
   assert.ok(txt.includes('Taxa de entrega / ajuste'));
+});
+check('cliente: endereco estruturado aparece sob "Entrega:" (retirada nunca mostra bloco de endereco)', () => {
+  const vm = buildComanda(pedidoEntrega, {
+    enderecoEstruturado: { rua: 'Rua Nova', numero: '10', bairro: 'Centro', cidade: 'Timbó', referencia: 'Perto do mercado' },
+  });
+  const txt = comandaTexto(vm, { contexto: 'cliente' });
+  assert.ok(txt.includes('Entrega:'));
+  assert.ok(txt.includes('Rua Nova, 10'));
+  assert.ok(txt.includes('Ponto de referência: Perto do mercado'));
+  const txtRetirada = comandaTexto(vmR, { contexto: 'cliente' });
+  assert.ok(!txtRetirada.includes('Entrega:'));
+});
+check('cliente: rodape e so o nome comercial (sem "Obrigado pela preferencia")', () => {
+  const txt = comandaTexto(vmE, { contexto: 'cliente' });
+  assert.ok(!txt.includes('Obrigado pela preferência'));
+  assert.ok(txt.trim().endsWith(vmE.loja.nomeComercial));
+});
+check('cliente: nunca contem marcacao HTML (texto puro, igual a comandaTextoInterna)', () => {
+  const txt = comandaTexto(vmE, { contexto: 'cliente' });
+  assert.ok(!/<[a-z]/i.test(txt));
 });
 
 console.log(fail === 0 ? '\nOK comanda.golden — view-model + HTML termico + texto simples estaveis' : `\nFALHA comanda.golden — ${fail} caso(s)`);

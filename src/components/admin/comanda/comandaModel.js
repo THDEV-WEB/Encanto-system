@@ -113,6 +113,23 @@ const numeroFormatado = (numero, order) => {
   return id ? '#' + id.slice(-5).toUpperCase() : '#—';
 };
 
+/* REF-CHECKOUT-03: "numero" (acima) e "refCurta" (abaixo) sao derivados do UUID — otimos p/ a cozinha
+   cruzar referencia interna, pessimos p/ o CLIENTE ler ("#604C0", "#F5DDB1E0" parecem hash, nao um
+   pedido comercial real). O banco NAO tem coluna sequencial (auditado: orders so tem id uuid +
+   created_at — checagem read-only, sem alterar schema/persistencia, fora de escopo desta ref).
+   numeroCurto = aproximacao honesta: epoch (segundos) do created_at, ultimos 5 digitos — sempre
+   NUMERICO, cresce com o tempo (parece "sequencial" numa janela de uso), mas REINICIA o ciclo a cada
+   ~27h (100000s) e pode colidir entre pedidos de dias diferentes na mesma janela. Gap documentado no
+   ADR REF-CHECKOUT-03 — trabalho futuro: sequence/coluna propria no banco, se o dono priorizar. So
+   usado na mensagem do CLIENTE (comandaTexto contexto:'cliente'); a comanda impressa do Admin continua
+   com "numero"/"refCurta" (acima) intocados. */
+const numeroCurtoDoPedido = (order) => {
+  const t = order?.created_at ? new Date(order.created_at).getTime() : NaN;
+  if (!Number.isFinite(t)) return '—';
+  const epochSec = Math.floor(t / 1000);
+  return String(((epochSec % 100000) + 100000) % 100000).padStart(5, '0');
+};
+
 /* Ref curta do cliente = MESMA derivacao do app "Meus Pedidos" (PedidoCard) e da notificacao WhatsApp:
    8 primeiros hex, sem hifen, maiusculo. Permite a cozinha casar um contato do cliente ("meu pedido #XXXX"). */
 export const refCurtaDoPedido = (id) => {
@@ -134,6 +151,12 @@ export function buildComanda(order, opts = {}) {
   /* nome curto da empresa (fallback 'Encanto' cobre chamadas sem companyInfo, ex.: testes). "DELIVERY"/
      "Delivery" fica fixo no codigo — rotulo de tipo de documento (como tipoLabel), nao parte do nome. */
   const nomeCurto = (opts.companyInfo && opts.companyInfo.nomeCurto) || 'Encanto';
+  /* REF-CHECKOUT-03: nome COMERCIAL completo (campo ja administravel pelo dono — useCompanyInfo/
+     Central de Configuracao, REF-COMPANY-02/03 — nunca hardcoded aqui) para o cabecalho/rodape da
+     mensagem do CLIENTE, que troca "ENCANTO DELIVERY" + "Marmitas • Açaí" (2 linhas, jargao de
+     documento interno) por uma unica linha de identificacao comercial. Fallback so cobre chamadas sem
+     companyInfo (testes). */
+  const nomeComercial = (opts.companyInfo && opts.companyInfo.nomeCompleto) || `${nomeCurto} — Açaí & Marmitas`;
   const itensRaw = Array.isArray(o.order_items) ? o.order_items : [];
   const tipo = tipoDoPedido(o);
 
@@ -163,13 +186,19 @@ export function buildComanda(order, opts = {}) {
       nome:       `${nomeCurto.toUpperCase()} DELIVERY`,
       nomeFooter: `${nomeCurto} Delivery`,
       linha2:     'Marmitas • Açaí',
+      nomeComercial,
     },
     tipo,
     tipoLabel: tipo === 'retirada' ? 'RETIRADA' : 'ENTREGA',
+    /* REF-CHECKOUT-03: rotulo do cabecalho SOZINHO da mensagem do cliente ("PARA ENTREGA"/"RETIRADA") —
+       tipoLabel (acima) continua servindo a comanda impressa do Admin, intocado. */
+    tipoLabelCliente: tipo === 'retirada' ? 'RETIRADA' : 'PARA ENTREGA',
     numero: numeroFormatado(opts.numero, o),
+    numeroCurto: numeroCurtoDoPedido(o),
     refCurta: refCurtaDoPedido(o?.id),
     criadoEm: fmtDataHoraLoja(o?.created_at),
     previsao: PREVISAO[tipo],
+    previsaoLabel: tipo === 'retirada' ? 'Retirada prevista' : 'Entrega prevista',
     itens,
     cliente: {
       nome: (o?.customers?.name && String(o.customers.name).trim()) || '—',

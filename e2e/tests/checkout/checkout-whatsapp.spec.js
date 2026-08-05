@@ -1,8 +1,9 @@
-/* e2e/tests/checkout/checkout-whatsapp.spec.js — REF-CHECKOUT-02 (@writes).
-   Cobre o NOVO fluxo obrigatório de confirmação via WhatsApp: abertura automática (sem escolha do
-   cliente), mensagem completa (reaproveitada de buildComanda/comandaTexto), e a tela de contingência
-   quando window.open() é bloqueado. Mesmo fixture/infra dos demais specs de checkout (retirada evita
-   o fluxo de endereço/geocoding, fora do escopo aqui — ver StorePage.js). */
+/* e2e/tests/checkout/checkout-whatsapp.spec.js — REF-CHECKOUT-02/03 (@writes).
+   Cobre o fluxo obrigatório de confirmação via WhatsApp: abertura automática (sem escolha do
+   cliente), mensagem completa em layout comercial (reaproveitada de buildComanda/comandaTexto,
+   REF-CHECKOUT-03), e a tela de contingência quando window.open() é bloqueado. Mesmo fixture/infra
+   dos demais specs de checkout (retirada evita o fluxo de endereço/geocoding, fora do escopo aqui —
+   ver StorePage.js). */
 import { test, expect } from '../../fixtures/index.js';
 import { forcarStoreMode } from '../../support/storeMode.js';
 import { limparDadosDeTeste, PREFIXO_TESTE } from '../../support/cleanup.js';
@@ -60,16 +61,19 @@ test.describe('checkout — confirmação automática via WhatsApp (REF-CHECKOUT
     expect(url).toMatch(/^https:\/\/(wa\.me|api\.whatsapp\.com)\//);
     const texto = decodeURIComponent(new URL(url).searchParams.get('text') || '');
 
-    // Conteúdo obrigatório (REF-CHECKOUT-02): nº do pedido, tipo, cliente/telefone, itens, obs, total —
+    // Conteúdo obrigatório (REF-CHECKOUT-03): cabeçalho comercial, nº do pedido (5 dígitos, sem
+    // hash/UUID), cliente/telefone, itens, obs, total, "Cobrar do cliente" (quem lê é a loja) —
     // mesma estrutura da comanda do Admin (buildComanda/comandaTexto contexto:'cliente').
-    expect(texto).toContain('Pedido #');
-    expect(texto).toContain('RETIRADA');
+    expect(texto.startsWith('*RETIRADA*')).toBe(true);
+    expect(texto).toMatch(/\*Pedido \d{5}\*/);
     expect(texto).toContain(nome);
     expect(texto).toContain(telefone);
     expect(texto).toContain('Sem cebola por favor');
     expect(texto).toContain('Subtotal');
     expect(texto).toContain('TOTAL');
-    expect(texto).not.toContain('COBRAR DO CLIENTE'); // jargão interno da cozinha, sem sentido pro cliente
+    expect(texto).toContain('*Cobrar do cliente*');
+    expect(texto).toContain('Troco: Não precisa');
+    expect(texto).not.toContain('Ref. cliente'); // código técnico sem utilidade pro próprio cliente
 
     await popup.close();
   });

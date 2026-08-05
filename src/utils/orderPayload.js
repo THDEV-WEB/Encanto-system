@@ -51,6 +51,11 @@ export function buildOrderArgs(cart, form, endereco, requestId, enderecoId) {
    — sem query adicional, sem duplicar regra de negócio. buildComanda/comandaTexto(contexto:'cliente')
    são a MESMA função pura usada na comanda do Admin (ver comandaModel.js/comandaTexto.js).
    troco: só o checkout tem esse dado (nunca persistido, ver ADR REF-ORDER-01 §5 — gap honesto).
+   opts.enderecoEstruturado (REF-CHECKOUT-03): o objeto do domínio Address (rua/numero/complemento/
+   bairro/cidade/estado/cep/referência — mesmo shape que DS.getPedidoEndereco devolve pro Admin, ver
+   comandaModel.enderecoEstruturadoEmLinhas) já disponível no CheckoutPage no instante do submit —
+   nenhuma query nova, só deixa de descartar um dado que já existia. null/ausente (retirada, ou
+   endereço sem detalhamento) cai no fallback de texto livre de sempre.
    opts.createdAt (opcional): injeta o instante da montagem — default new Date() (o momento real da
    confirmação); parametrizável só para o golden test determinístico (tests/checkout.golden.mjs). */
 export function buildOrderConfirmationMessage(customer, order, items, orderId, opts = {}) {
@@ -64,7 +69,11 @@ export function buildOrderConfirmationMessage(customer, order, items, orderId, o
     order_items: items,
     customers: { name: customer.name, phone: customer.phone },
   };
-  const vm = buildComanda(orderSnapshot, { companyInfo: opts.companyInfo, troco: opts.troco });
+  const vm = buildComanda(orderSnapshot, {
+    companyInfo: opts.companyInfo,
+    troco: opts.troco,
+    enderecoEstruturado: opts.enderecoEstruturado,
+  });
   return comandaTexto(vm, { contexto: 'cliente' });
 }
 

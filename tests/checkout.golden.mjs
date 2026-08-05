@@ -72,11 +72,13 @@ console.error('— (A) GOLDEN DE DOMÍNIO (payload + invariantes)');
 const cart = mkCart();
 check('1. snapshot do payload (byte-a-byte)', () => assert.deepStrictEqual(buildRpcPayload(cart, FORM, ENDERECO, REQ), GOLDEN_PAYLOAD));
 
-/* ── (C) REF-CHECKOUT-02 — mensagem de confirmação automática do WhatsApp ──
+/* ── (C) REF-CHECKOUT-02/03 — mensagem de confirmação automática do WhatsApp ──
    buildOrderConfirmationMessage substituiu a antiga buildWhatsAppMessage: em vez de um payload próprio,
    monta um snapshot no MESMO formato que buildComanda/comandaTexto já consomem (Admin) e delega a
-   MESMA função pura — única fonte de verdade entre comanda e mensagem do cliente. */
-console.error('— (C) GOLDEN DA MENSAGEM DE CONFIRMAÇÃO (REF-CHECKOUT-02 — reaproveita buildComanda/comandaTexto)');
+   MESMA função pura — única fonte de verdade entre comanda e mensagem do cliente. REF-CHECKOUT-03
+   trocou o layout por um formato comercial (cabeçalho PARA ENTREGA/RETIRADA, Pedido NNNNN sem hash,
+   troco sempre explícito) — ver docs/adr/REF-CHECKOUT-03-*.md. */
+console.error('— (C) GOLDEN DA MENSAGEM DE CONFIRMAÇÃO (reaproveita buildComanda/comandaTexto)');
 const ORDER_ID = '22222222-2222-4222-8222-222222222222';
 check('C1. mensagem = EXATAMENTE buildComanda+comandaTexto(contexto:cliente) sobre o mesmo snapshot (sem lógica própria duplicada)', () => {
   const { customer, order, items } = buildOrderArgs(cart, FORM, ENDERECO, REQ);
@@ -90,12 +92,12 @@ check('C1. mensagem = EXATAMENTE buildComanda+comandaTexto(contexto:cliente) sob
   const esperado = comandaTexto(buildComanda(snapshot, {}), { contexto: 'cliente' });
   assert.strictEqual(msg, esperado);
 });
-check('C2. mensagem contém os campos exigidos (cliente/telefone/tipo/endereço/pagamento/itens+adicionais+obs/subtotal/total), sem jargão interno', () => {
+check('C2. mensagem contém os campos exigidos (cliente/telefone/tipo/endereço/pagamento/itens+adicionais+obs/subtotal/total), com "Cobrar do cliente" (quem lê é a loja)', () => {
   const { customer, order, items } = buildOrderArgs(cart, FORM, ENDERECO, REQ);
   const msg = buildOrderConfirmationMessage(customer, order, items, ORDER_ID, {});
   assert.ok(msg.includes('Maria Teste'));
   assert.ok(msg.includes('38999990000'));
-  assert.ok(msg.includes('ENTREGA'));
+  assert.ok(msg.startsWith('*PARA ENTREGA*'));
   assert.ok(msg.includes('Rua A'));
   assert.ok(msg.includes('PIX'));
   assert.ok(msg.includes('Açaí 500ml'));
@@ -105,30 +107,40 @@ check('C2. mensagem contém os campos exigidos (cliente/telefone/tipo/endereço/
   assert.ok(msg.includes('sem cebola'));
   assert.ok(msg.includes('Subtotal'));
   assert.ok(msg.includes('TOTAL'));
-  assert.ok(!msg.includes('COBRAR DO CLIENTE'), 'instrução interna da cozinha não deve ir na mensagem do cliente');
+  assert.match(msg, /\*Pedido \d{5}\*/);
+  assert.ok(msg.includes('*Cobrar do cliente*'));
 });
 check('C3. troco (só existe no checkout, nunca persistido) aparece na mensagem quando informado', () => {
   const { customer, order, items } = buildOrderArgs(cart, FORM, ENDERECO, REQ);
   const msg = buildOrderConfirmationMessage(customer, order, items, ORDER_ID, { troco: 'R$ 60,00' });
   assert.ok(msg.includes('Troco para: R$ 60,00'));
 });
-check('C4. ausência de troco não fabrica linha', () => {
+check('C4. ausência de troco mostra "Troco: Não precisa" (nunca omite a linha, REF-CHECKOUT-03)', () => {
   const { customer, order, items } = buildOrderArgs(cart, FORM, ENDERECO, REQ);
   const msg = buildOrderConfirmationMessage(customer, order, items, ORDER_ID, {});
-  assert.ok(!msg.includes('Troco para:'));
+  assert.ok(msg.includes('Troco: Não precisa'));
 });
-/* REF-COMPANY-02: nomeCurto continua chegando via opts.companyInfo — mesma fiação de sempre. */
-check('C5. nomeCurto customizado troca o cabeçalho da mensagem', () => {
+/* REF-COMPANY-02/03: nomeCompleto (nome comercial) continua chegando via opts.companyInfo. */
+check('C5. companyInfo.nomeCompleto customizado aparece no cabeçalho/rodapé da mensagem', () => {
   const { customer, order, items } = buildOrderArgs(cart, FORM, ENDERECO, REQ);
-  const msg = buildOrderConfirmationMessage(customer, order, items, ORDER_ID, { companyInfo: { nomeCurto: 'Empório Teste' } });
-  assert.ok(msg.startsWith('*EMPÓRIO TESTE DELIVERY*'));
+  const msg = buildOrderConfirmationMessage(customer, order, items, ORDER_ID, { companyInfo: { nomeCurto: 'Empório', nomeCompleto: 'Empório Teste — Comida Boa' } });
+  assert.ok(msg.includes('Empório Teste — Comida Boa'));
 });
-check('C6. pedido de retirada: mensagem usa RETIRADA (mesmo discriminador da comanda) e omite bloco ENDEREÇO', () => {
+check('C6. pedido de retirada: mensagem usa RETIRADA (mesmo discriminador da comanda) e omite bloco "Entrega:"', () => {
   const cartRetirada = mkCart();
   const { customer, order, items } = buildOrderArgs(cartRetirada, FORM, 'Retirada na loja — Rua João Schley, 77', REQ);
   const msg = buildOrderConfirmationMessage(customer, order, items, ORDER_ID, {});
-  assert.ok(msg.includes('RETIRADA'));
-  assert.ok(!msg.includes('*ENDEREÇO*'));
+  assert.ok(msg.startsWith('*RETIRADA*'));
+  assert.ok(!msg.includes('Entrega:'));
+});
+check('C7. endereco estruturado (dominio Address, ja disponivel no CheckoutPage) aparece formatado na mensagem', () => {
+  const { customer, order, items } = buildOrderArgs(cart, FORM, ENDERECO, REQ);
+  const msg = buildOrderConfirmationMessage(customer, order, items, ORDER_ID, {
+    enderecoEstruturado: { rua: 'Rua das Palmeiras', numero: '55', bairro: 'Vila Nova', cidade: 'Timbó', referencia: 'Perto da praça' },
+  });
+  assert.ok(msg.includes('Entrega:'));
+  assert.ok(msg.includes('Rua das Palmeiras, 55'));
+  assert.ok(msg.includes('Ponto de referência: Perto da praça'));
 });
 check('3. reconciliação Σ(price×qty)=total',  () => {
   const p = buildRpcPayload(cart, FORM, ENDERECO, REQ);
