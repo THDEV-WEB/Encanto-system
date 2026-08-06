@@ -176,6 +176,23 @@ pré-existente e documentado, não desta ref). Gates: `test:company` (+7 casos) 
 (+5 checagens) + `e2e/tests/admin/admin-taxa-entrega.spec.js` (rodado de verdade, 2 estados confirmados por
 screenshot); `test:domain` 37/37 + build verdes.
 
+⚡ [REF-PERF-01 — Performance de inicialização](REF-PERF-01-performance-inicializacao.md) —
+**Implementada no código (Ondas A-D); Onda E (o maior ganho da auditoria) com script pronto e dry-run
+executado, cutover pendente de decisão do dono.** Auditoria com medição real (build de produção +
+Lighthouse mobile + treemap do bundle + tráfego real contra o Supabase de produção) achou o gargalo
+dominante: `ImageUploader.jsx` subia imagem de produto sem resize/compressão — 38 produtos somando
+53,2MB no Storage, até 2,1MB cada. Onda A comprime uploads futuros no navegador (Canvas, 1280px/JPEG
+0,82). Onda B reencoda os assets fixos do boot (`header-bg`/`logo`/`valion-mark` → `.webp`, −78%) +
+preload/fetchpriority do banner. Onda C faz code splitting (`React.lazy`) de `Checkout`/`ProductModal`/
+telas do menu — chunk principal 154,93KB→137,76KB gzip. Onda D (dynamic import dos plugins Capacitor)
+avaliada e descartada (ganho pequeno, área encerrada pela REF-CAP-01). Onda E (script de reprocessamento
+das imagens já publicadas) rodou em dry-run real contra produção: 53,2MB→2,9MB (−95%), 0 falhas —
+cutover (`--apply`) exige `SUPABASE_SERVICE_ROLE_KEY`, ausente neste ambiente por desenho (mesmo padrão
+de isolamento de credenciais de escrita já usado pelos scripts de E2E). Lighthouse mobile antes/depois
+das Ondas A-C: Performance 37→41/100, LCP 5,9s→4,4s (−25%), TTI 8,1s→7,1s — maior salto projetado só
+após o cutover da Onda E. `test:render`/`test:deps`/`test:domain`/`build` verdes; smoke interativo via
+Playwright confirmou os chunks lazy sem erro — ver [progress](../ref/REF-PERF-01-progress.md).
+
 ## Sequência da evolução arquitetural
 
 ```
