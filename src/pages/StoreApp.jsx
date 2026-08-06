@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
+import { useState, useMemo, useRef, useCallback, forwardRef, useImperativeHandle, lazy, Suspense } from 'react';
 import { LOGO } from '../lib/supabase.js';
 import { fmt } from '../utils/format.js';
 import { resolverAdicionais, selecionarFonteAdicionais } from '../utils/addons.js';
@@ -14,8 +14,6 @@ import { useLoyalty } from '../hooks/useLoyalty.js';               // REF-LOYALT
 import { Spinner } from '../components/ui/Spinner.jsx';
 import { StoreMenu } from '../components/menu/StoreMenu.jsx'; // LOGIN-ARCH-02: menu lateral (drawer) + login
 import { ProductCard } from '../components/ProductCard.jsx';
-import { ProductModal } from '../components/ProductModal/index.jsx';
-import { CartSidebar } from '../components/CartSidebar.jsx';
 import { DeliveryBar } from '../components/DeliveryBar.jsx';       // REF-UI-HEADER-02: barra Entrega/Retirada extraida (seletor + ETA + endereco-link)
 import { StoreHighlights } from '../components/StoreHighlights.jsx'; // REF-UI-TOPBAR-01: chips de destaque (substituem o banner .hero)
 import { CategoryNav } from '../components/nav/CategoryNav.jsx';   // REF-UI-CATEGORY-01 Fase 2: seletor "Categorias v" (desktop/tablet)
@@ -29,11 +27,19 @@ import { useDeliveryEta } from '../hooks/useDeliveryEta.js';             // REF-
 import { useCompanyInfo } from '../hooks/useCompanyInfo.js';             // REF-COMPANY-01: dados institucionais (config unica Supabase)
 import { AddressProvider, useAddress } from '../address/index.js'; // REF-CHECKOUT-ADDRESS-01: fonte unica do endereco (provider)
 import { LazySection } from '../components/ui/LazySection.jsx';
-import { SuccessPage } from '../components/checkout/SuccessPage.jsx';
-import { CheckoutPage } from '../components/checkout/CheckoutPage.jsx';
 import { DS } from '../services/DataService.js';                       // REF-CLIENTE-02: catalogo atual p/ recompra
 import { montarRecompra } from '../components/pedidos/recompra.js';   // REF-CLIENTE-02 Onda 4 (regras puras)
 import { ValionCredit } from '../components/ValionCredit.jsx';        // REF-BRAND-02: assinatura institucional do rodape
+
+/* REF-PERF-01: code splitting — nenhum destes 4 e necessario pra 1a renderizacao (chegam so por
+   interacao: abrir um produto, abrir o carrinho, ir pro checkout). Cada um vira um chunk proprio,
+   baixado sob demanda em vez de entrar no bundle inicial da loja (achado da auditoria: bundle unico
+   de 538KB/155KB gzip, ~92KB estimados pelo Lighthouse como JS nao usado no boot). Exports nomeados
+   -> `.then(m => ({default: m.X}))` remapeia pro formato que React.lazy exige. */
+const ProductModal = lazy(() => import('../components/ProductModal/index.jsx').then(m => ({ default: m.ProductModal })));
+const CartSidebar   = lazy(() => import('../components/CartSidebar.jsx').then(m => ({ default: m.CartSidebar })));
+const CheckoutPage  = lazy(() => import('../components/checkout/CheckoutPage.jsx').then(m => ({ default: m.CheckoutPage })));
+const SuccessPage   = lazy(() => import('../components/checkout/SuccessPage.jsx').then(m => ({ default: m.SuccessPage })));
 
 // REF-CAP-01 · Onda 4: forwardRef repassado até StoreAppContent — único consumidor é o botão físico
 // "voltar" do Android (hooks/useCapacitorBackButton.js via App.jsx), que precisa fechar o que estiver
@@ -153,8 +159,8 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
     },
   }), [page, modal, cartOpen, showLoyalty, loyaltyTeaser]);
 
-  if (page==='checkout') return <CheckoutPage cart={cart} deliveryMode={deliveryMode} deliveryEta={deliveryEta} onBack={()=>setPage('home')} onSuccess={msg=>{setWaMsg(msg);setPage('success');}}/>;
-  if (page==='success')  return <SuccessPage  msg={waMsg} cart={cart} onBack={()=>setPage('home')} deliveryEta={deliveryEta} deliveryMode={deliveryMode} whatsapp={companyInfo.whatsapp} horario={horario}/>;
+  if (page==='checkout') return <Suspense fallback={<Spinner/>}><CheckoutPage cart={cart} deliveryMode={deliveryMode} deliveryEta={deliveryEta} onBack={()=>setPage('home')} onSuccess={msg=>{setWaMsg(msg);setPage('success');}}/></Suspense>;
+  if (page==='success')  return <Suspense fallback={<Spinner/>}><SuccessPage  msg={waMsg} cart={cart} onBack={()=>setPage('home')} deliveryEta={deliveryEta} deliveryMode={deliveryMode} whatsapp={companyInfo.whatsapp} horario={horario}/></Suspense>;
 
   return (
     <div className="app">
@@ -617,28 +623,32 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
       )}
 
       {modal&&(
-        <ProductModal
-          prod={modal}
-          catNome={(modal._catNome)||''}
-          adicionais={resolverAdicionais(selecionarFonteAdicionais(modal, adicionais), modal)}
-          onClose={()=>setModal(null)}
-          onAdd={(p,q,a,o)=>{ cart.add(p,q,a,o); }}
-          onSuggest={()=>{
-            setModal(null);
-            requestAnimationFrame(()=>{
-              const el=document.getElementById('sec-bebidas');
-              if(el) el.scrollIntoView({behavior:'smooth',block:'start'});
-            });
-          }}
-        />
+        <Suspense fallback={null}>
+          <ProductModal
+            prod={modal}
+            catNome={(modal._catNome)||''}
+            adicionais={resolverAdicionais(selecionarFonteAdicionais(modal, adicionais), modal)}
+            onClose={()=>setModal(null)}
+            onAdd={(p,q,a,o)=>{ cart.add(p,q,a,o); }}
+            onSuggest={()=>{
+              setModal(null);
+              requestAnimationFrame(()=>{
+                const el=document.getElementById('sec-bebidas');
+                if(el) el.scrollIntoView({behavior:'smooth',block:'start'});
+              });
+            }}
+          />
+        </Suspense>
       )}
 
       {cartOpen&&(
+        <Suspense fallback={null}>
         <CartSidebar
           cart={cart} catMap={catMap}
           onClose={()=>setCartOpen(false)}
           onCheckout={()=>{setCartOpen(false);setPage('checkout');}}
         />
+        </Suspense>
       )}
 
       {/* Carrinho inferior (desktop) + botão flutuante (mobile) */}

@@ -1,16 +1,19 @@
 /* components/menu/StoreMenu.jsx — botão ☰ do header + orquestração do drawer e telas (LOGIN-ARCH-02).
    Auto-contido: StoreApp só renderiza <StoreMenu/> no header (App.jsx intocado). O botão reusa a
    classe do header (mesmo padding/tamanho/raio/hover que carrinho e engrenagem). */
-import { useState, forwardRef, useImperativeHandle } from 'react';
-import { SideDrawer } from './SideDrawer.jsx';
-import { LoginScreen } from './LoginScreen.jsx';
-import { ContatoScreen } from './ContatoScreen.jsx';
-import { SobreScreen } from './SobreScreen.jsx';
-import { TermosScreen } from './TermosScreen.jsx';
-import { FidelidadeScreen } from './FidelidadeScreen.jsx';
-import { CompletarCadastro } from './CompletarCadastro.jsx';
-import { MeusPedidosScreen } from '../pedidos/MeusPedidosScreen.jsx';
-import { MinhaContaScreen } from '../conta/MinhaContaScreen.jsx';
+import { useState, forwardRef, useImperativeHandle, lazy, Suspense } from 'react';
+import { CompletarCadastro } from './CompletarCadastro.jsx'; // sempre ativo (auto-oculta) — nunca atras de `tela`, fica eager
+
+/* REF-PERF-01: code splitting — nenhuma destas telas e necessaria pra 1a renderizacao da loja (so
+   abrem se o cliente clicar no menu ☰). Cada uma vira um chunk proprio, baixado sob demanda. */
+const SideDrawer         = lazy(() => import('./SideDrawer.jsx').then(m => ({ default: m.SideDrawer })));
+const LoginScreen        = lazy(() => import('./LoginScreen.jsx').then(m => ({ default: m.LoginScreen })));
+const ContatoScreen      = lazy(() => import('./ContatoScreen.jsx').then(m => ({ default: m.ContatoScreen })));
+const SobreScreen        = lazy(() => import('./SobreScreen.jsx').then(m => ({ default: m.SobreScreen })));
+const TermosScreen       = lazy(() => import('./TermosScreen.jsx').then(m => ({ default: m.TermosScreen })));
+const FidelidadeScreen   = lazy(() => import('./FidelidadeScreen.jsx').then(m => ({ default: m.FidelidadeScreen })));
+const MeusPedidosScreen  = lazy(() => import('../pedidos/MeusPedidosScreen.jsx').then(m => ({ default: m.MeusPedidosScreen })));
+const MinhaContaScreen   = lazy(() => import('../conta/MinhaContaScreen.jsx').then(m => ({ default: m.MinhaContaScreen })));
 
 // REF-CAP-01 · Onda 4: forwardRef + useImperativeHandle expõem SÓ um resumo imperativo do estado que já
 // existia (drawer/tela) — nada é movido/renomeado. Único consumidor: o botão físico "voltar" do Android
@@ -35,14 +38,16 @@ export const StoreMenu = forwardRef(function StoreMenu({ onRecomprar }, ref) {
           <line x1="4" y1="7" x2="20" y2="7" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="17" x2="20" y2="17" />
         </svg>
       </button>
-      {drawer && <SideDrawer onClose={() => setDrawer(false)} onNavigate={navegar} />}
-      {tela === 'login' && <LoginScreen onClose={fechar} />}
-      {tela === 'pedidos' && <MeusPedidosScreen onClose={fechar} onRecomprar={onRecomprar} />}
-      {tela === 'conta' && <MinhaContaScreen onClose={fechar} />}
-      {tela === 'contato' && <ContatoScreen onClose={fechar} />}
-      {tela === 'sobre' && <SobreScreen onClose={fechar} />}
-      {tela === 'termos' && <TermosScreen onClose={fechar} />}
-      {tela === 'fidelidade' && <FidelidadeScreen onClose={fechar} />}
+      <Suspense fallback={null}>
+        {drawer && <SideDrawer onClose={() => setDrawer(false)} onNavigate={navegar} />}
+        {tela === 'login' && <LoginScreen onClose={fechar} />}
+        {tela === 'pedidos' && <MeusPedidosScreen onClose={fechar} onRecomprar={onRecomprar} />}
+        {tela === 'conta' && <MinhaContaScreen onClose={fechar} />}
+        {tela === 'contato' && <ContatoScreen onClose={fechar} />}
+        {tela === 'sobre' && <SobreScreen onClose={fechar} />}
+        {tela === 'termos' && <TermosScreen onClose={fechar} />}
+        {tela === 'fidelidade' && <FidelidadeScreen onClose={fechar} />}
+      </Suspense>
       {/* 1o acesso: pede telefone (identidade) apos login por Google/e-mail. Auto-oculta. */}
       <CompletarCadastro />
     </>
