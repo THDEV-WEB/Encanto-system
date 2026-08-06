@@ -1,12 +1,12 @@
 # ADR REF-PERF-01 — Performance de inicialização (startup performance)
 
-**Status:** Implementada no código (Ondas A–D); Onda E (reprocessamento das imagens de produto já
-publicadas) com script pronto e **dry-run executado** — cutover real (`--apply`) pendente de decisão/
-execução do dono (exige `SUPABASE_SERVICE_ROLE_KEY`, que este ambiente não tem por design).
+**Status:** ✅ CONCLUÍDA — Ondas A-E implementadas, cutover de produção da Onda E executado e validado
+(2 fases controladas: piloto de 2 produtos + validação, depois o restante do catálogo). Performance
+Lighthouse mobile final: **37→68/100**, payload **23,6MB→1,6MB (−93%)**.
 **Depende de:** nenhuma REF anterior especificamente — toca a loja inteira (boot, catálogo, checkout,
 menu) e o pipeline de upload de imagem do Admin (`ImageUploader.jsx`, REF-APP-01 · Onda 6.3).
-**Push/deploy:** commits locais, push não realizado (aguardando pedido explícito, mesma disciplina do
-resto do projeto).
+**Push/deploy:** commits locais; push condicionado à aprovação explícita do dono após a validação
+completa (autorizada — ver §5).
 
 ## 1. Contexto
 
@@ -108,7 +108,7 @@ o ganho real é pequeno (~6-7KB gzip, medido no treemap) e o código que precisa
 tocada pela REF-CAP-01 (**"ENCERRADA, não revisitar"**, ver memória do projeto). Risco/retorno
 desfavorável comparado às ondas A-C; registrado como achado, sem ação.
 
-### Onda E — reprocessamento das imagens de produto já publicadas (script pronto; cutover pendente)
+### Onda E — reprocessamento das imagens de produto já publicadas (CONCLUÍDA, cutover aplicado)
 
 O maior gargalo medido (§2.1) só se resolve reprocessando o que **já está** no Storage — Onda A cobre
 só uploads futuros. `scripts/reprocess-product-images.mjs`:
@@ -119,14 +119,35 @@ só uploads futuros. `scripts/reprocess-product-images.mjs`:
 - **Modo `--apply`**: sobe a versão reprocessada como **arquivo novo** no bucket (nunca apaga/sobrescreve
   o original) e só então faz `UPDATE products.imagem_url`. Exige `SUPABASE_SERVICE_ROLE_KEY` em
   `.env.local` (gitignored) porque `products.UPDATE` é restrito a `is_admin()` via RLS
-  (`AUTH-01-step2-harden-rls.sql`) — a anon key nunca teria permissão, e essa chave de escrita **não
-  existe neste ambiente de desenvolvimento**, por desenho (mesmo padrão já usado pelos scripts de E2E
-  deste projeto: credenciais de escrita de produção nunca ficam no alcance do agente/repo). Grava um log
-  JSON (id + url antiga + url nova) antes de cada `UPDATE`, pra reversão manual se necessário.
+  (`AUTH-01-step2-harden-rls.sql`) — a anon key nunca teria permissão. O dono forneceu a chave (adicionada
+  por mim direto em `.env.local`, nunca commitada) depois de aprovar o plano de execução controlada.
+- **Modo `--rollback <log.json>`** (adicionado antes da execução em massa, a pedido do dono): lê o log de
+  reversão de um `--apply` anterior e devolve `imagem_url` pra `url_antiga`, um a um — só se o valor
+  atual ainda for exatamente o que aquele apply escreveu (guarda contra apagar uma edição mais recente
+  feita por outro canal). Nunca apaga o `.webp` reprocessado do Storage.
+- Filtro anti-reprocessamento (`/reprocessed_` na URL): uma 2ª rodada do script nunca reprocessa um item
+  já tratado numa rodada anterior — necessário porque a execução real virou 2 fases (piloto + resto).
 
-**Resultado do dry-run (executado, real, contra produção):** 38 produtos, **53,2 MB → 2,9 MB (−95%)**,
-0 falhas. Cutover (`--apply`) depende do dono rodar o script com a service role key (ou fornecê-la para
-rodar por aqui) — ver `scripts/reprocess-product-images.mjs` para o passo a passo.
+**Execução real (produção), em 2 fases controladas, por pedido do dono:**
+
+1. **Piloto — `--apply --limit 2`:** 2 produtos, 3.142,4KB→151,5KB (−95%), 0 falhas. Validação: fetch
+   direto das novas URLs (200, `image/webp`, tamanho correto) + inspeção visual (nítidas, sem distorção,
+   sem artefato) + Playwright headless na loja real — screenshot do card no catálogo, do modal do produto
+   (imagem inteira, sem corte indevido) e do carrinho (miniatura correta), zero erro de console/rede. O
+   2º produto do piloto (`Água de Coco`) está com `disponivel:false` no banco (estado pré-existente,
+   não relacionado a esta REF) — não aparece na vitrine por desenho; validado só pela URL/imagem direta e
+   pelo código do Admin (`AdminProducts.jsx:268-269` usa o mesmíssimo padrão `<img src={imagem_url}>` da
+   loja, sem validação extra de formato/dimensão — não foi possível logar no Admin nesta sessão por falta
+   de credencial, mas o mecanismo de renderização é idêntico ao já validado).
+2. **Restante do catálogo — `--apply` (36 produtos):** 51.358,9KB→2.829,5KB (−94%), 0 falhas.
+3. **Validação ampla pós-cutover completo:** Playwright headless rolando a loja inteira do topo ao fim
+   (dispara todos os `LazySection`/`loading="lazy"`) — 28 cards renderizados no DOM, **0 imagem quebrada**
+   (`naturalWidth===0`), 0 request de Storage com erro, 0 erro de console/JS.
+
+**Total combinado (piloto + restante):** 38 produtos, **54.501,3KB → 2.981,0KB (−95%)** — bate com o
+dry-run original quase ao byte. Log de reversão de cada fase commitado no repositório (auditoria/rollback
+futuro): `reprocess-product-images.revert.1786038246002.json` (piloto) e
+`reprocess-product-images.revert.1786039374075.json` (restante).
 
 ## 4. O que NÃO mudou / avaliado e descartado
 
@@ -144,28 +165,26 @@ rodar por aqui) — ver `scripts/reprocess-product-images.mjs` para o passo a pa
 
 ## 5. Benchmark antes/depois
 
-Lighthouse mobile, simulate throttling, mesmo ambiente (`vite preview` + Edge headless), medido após as
-Ondas A–C (Onda E ainda não aplicada em produção — os 53,2MB de imagem de produto continuam no ar até o
-cutover):
+Lighthouse mobile, simulate throttling, mesmo ambiente (`vite preview` + Edge headless) nas 3 rodadas —
+baseline, depois das Ondas A-C (código, antes do cutover), e depois da Onda E (cutover completo):
 
-| Métrica | Antes | Depois (A-C) |
-|---|---|---|
-| Performance score | 37/100 | 41/100 |
-| First Contentful Paint | 2,1s | 2,0s |
-| **Largest Contentful Paint** | **5,9s** | **4,4s** (−25%) |
-| Total Blocking Time | 910ms | 970ms |
-| Cumulative Layout Shift | 0,3 | 0,302 |
-| Speed Index | 4,9s | 5,9s |
-| Time to Interactive | 8,1s | 7,1s |
-| Payload total | 23,6 MB | 23,2 MB |
+| Métrica | Antes | Depois (A-C) | Depois (+ Onda E) |
+|---|---|---|---|
+| **Performance score** | 37/100 | 41/100 | **68/100** |
+| First Contentful Paint | 2,1s | 2,0s | 2,1s |
+| **Largest Contentful Paint** | **5,9s** | 4,4s | **4,3s** (−27%) |
+| **Total Blocking Time** | 910ms | 970ms | **160ms** (−82%) |
+| Cumulative Layout Shift | 0,3 | 0,302 | 0,256 |
+| **Speed Index** | 4,9s | 5,9s | **3,1s** (−37%) |
+| Time to Interactive | 8,1s | 7,1s | 6,9s |
+| **Payload total** | 23,6 MB | 23,2 MB | **1,6 MB** (−93%) |
 
-LCP e TTI melhoraram de forma consistente com as ondas de código (banner descoberto mais cedo + menos JS
-no caminho crítico). TBT/Speed Index/payload continuam dominados pelos 53,2MB de imagens de produto
-ainda não reprocessadas (Onda E) — são métricas mais sensíveis a trabalho de CPU/bytes de imagem do que
-a bytes de JS, e o catálogo inteiro ainda carrega em resolução original enquanto o cutover não roda.
-**Projeção pós-Onda E** (baseado no dry-run real, −95% no peso do catálogo): payload cai em ~50MB,
-LCP/TBT/Speed Index devem melhorar substancialmente mais — o maior lance de toda a auditoria está
-represado nessa onda.
+Confirma a leitura da auditoria: LCP/TTI já tinham melhorado com as Ondas A-C (banner descoberto mais
+cedo, menos JS no caminho crítico), mas TBT/Speed Index/payload só destravaram de verdade depois do
+cutover da Onda E — o catálogo inteiro carregando em resolução original é o que dominava essas métricas
+(trabalho de CPU decodificando/pintando dezenas de MB de imagem, não bytes de JS). O resultado real bateu
+com a projeção do dry-run (payload caiu ~22MB, perto do ~23,6MB→1,6MB observado, já contando os outros
+assets também reduzidos nas Ondas A-C).
 
 ## 6. Testes executados
 
@@ -178,8 +197,11 @@ represado nessa onda.
   Onda C.
 - Smoke interativo via Playwright headless (`chromium` de `@playwright/test`, script ad-hoc): abrir
   produto, abrir carrinho, abrir menu — todos os chunks lazy carregam, zero erro de console/rede.
-- `scripts/reprocess-product-images.mjs` (dry-run) contra o Supabase de **produção** — só leitura,
-  0 falhas em 38 imagens.
+- `scripts/reprocess-product-images.mjs`: dry-run (0 falhas/38), piloto `--apply --limit 2` (0 falhas,
+  validado por fetch direto das URLs + inspeção visual + Playwright na loja real: card/modal/carrinho) e
+  `--apply` do restante (0 falhas/36) — todos contra o Supabase de **produção** real.
+- Validação ampla pós-cutover (Playwright, scroll completo da loja): 28 cards no DOM, 0 imagem quebrada
+  (`naturalWidth===0`), 0 request de Storage com erro, 0 erro de console/JS.
 
 ## 7. Arquivos modificados
 
@@ -188,16 +210,21 @@ represado nessa onda.
   (novos) · `index.html` · `src/pages/StoreApp.jsx` · `src/lib/supabase.js` ·
   `src/components/ValionCredit.jsx` (Onda B)
 - `src/pages/StoreApp.jsx` · `src/components/menu/StoreMenu.jsx` (Onda C)
-- `scripts/reprocess-product-images.mjs` (novo, Onda E)
+- `scripts/reprocess-product-images.mjs` (novo, Onda E: dry-run + apply + rollback) ·
+  `reprocess-product-images.revert.*.json` (2 logs de reversão do cutover real, commitados)
 - `tests/render.smoke.mjs` (snapshot atualizado) · `package.json`/`package-lock.json` (devDependency
   `sharp`, usada só em scripts de build/tooling — nunca entra no bundle do navegador)
+- `products.imagem_url` de 38 linhas (produção, Supabase) — apontam agora pros arquivos `reprocessed_*`
+  reprocessados; originais preservados no Storage, nunca apagados.
 
 ## 8. Impacto e próximos passos
 
-Ondas A-D fecham a REF no código: uploads futuros já saem comprimidos, os assets fixos do boot pesam
-78% menos, e o bundle inicial da loja carrega ~17KB gzip a menos de JS que ninguém usa na 1ª tela. O
-maior ganho absoluto da auditoria inteira (Onda E, −95% no peso do catálogo) está pronto e testado em
-dry-run, mas **depende de decisão do dono** para o cutover real — ver `scripts/
-reprocess-product-images.mjs` para instruções de `--apply`. Depois do cutover, recomenda-se rodar este
-mesmo benchmark (Lighthouse antes/depois já documentado aqui) de novo para fechar o ciclo com o número
-final.
+REF concluída de ponta a ponta: uploads futuros já saem comprimidos (Onda A), os assets fixos do boot
+pesam 78% menos (Onda B), o bundle inicial da loja carrega ~17KB gzip a menos de JS que ninguém usa na
+1ª tela (Onda C), e as 38 imagens de produto já publicadas foram reprocessadas em produção com validação
+em 2 fases (Onda E) — payload total da loja caiu de 23,6MB para 1,6MB (−93%), Performance Lighthouse
+37→68/100. Nenhuma regressão encontrada em nenhuma fase (testes automatizados + validação visual manual
++ Playwright). Próximo passo é só operacional: push dos 8 commits locais (autorizado pelo dono,
+condicionado à validação completa — cumprida) e, mais adiante, uma limpeza deliberada dos arquivos
+originais órfãos no Storage (fora de escopo desta REF — não há pressa, eles não são mais referenciados
+por nenhum produto e não pesam no boot da loja).

@@ -1,14 +1,14 @@
 # REF-PERF-01 — Progresso de execução
 
-Arquivo de retomada. Se a execução for interrompida, retomar a partir daqui. ADR completo (auditoria,
-decisões técnicas, benchmark antes/depois): [REF-PERF-01-performance-inicializacao.md](../adr/REF-PERF-01-performance-inicializacao.md).
+Arquivo de retomada. ADR completo (auditoria, decisões técnicas, benchmark antes/depois):
+[REF-PERF-01-performance-inicializacao.md](../adr/REF-PERF-01-performance-inicializacao.md).
 
 ## Estado atual
 
-✅ Ondas A–D **CONCLUÍDAS e commitadas localmente** (push não realizado — aguardando pedido). Onda E
-(o maior ganho de toda a auditoria) tem o script pronto e o **dry-run já executado com sucesso** contra
-produção; falta só o cutover real (`--apply`), que **depende de decisão do dono** — exige
-`SUPABASE_SERVICE_ROLE_KEY`, ausente neste ambiente por desenho.
+✅ **CONCLUÍDA — Ondas A-E implementadas e validadas.** Cutover de produção da Onda E executado em 2
+fases controladas (piloto de 2 produtos + validação, depois o restante), sem nenhuma falha ou regressão.
+Performance Lighthouse mobile: **37→68/100**; payload da loja: **23,6MB→1,6MB (−93%)**. Commits locais
+(8), push condicionado à aprovação do dono após validação completa — **autorizado, aguardando execução**.
 
 ## Onda A — Compressão client-side no upload
 
@@ -33,23 +33,42 @@ vs. risco de tocar `AuthService.js`/`useCapacitorBackButton.js`, área encerrada
 
 ## Onda E — Reprocessamento das imagens de produto já publicadas
 
-Status: 🟡 SCRIPT PRONTO + DRY-RUN EXECUTADO, cutover pendente. `scripts/reprocess-product-images.mjs`
-— dry-run (client anônimo, só leitura) mediu **53,2MB → 2,9MB (−95%)** nas 38 imagens de produto do
-catálogo real, 0 falhas. Commit `97ce3aa` (script + dry-run documentado).
+Status: ✅ **CONCLUÍDA — cutover de produção executado e validado.**
 
-**Próximo passo (decisão do dono):** rodar `node scripts/reprocess-product-images.mjs --apply` com
-`SUPABASE_SERVICE_ROLE_KEY` em `.env.local` (gitignored) — ou fornecer a chave para rodar por aqui. O
-script nunca apaga/sobrescreve o original (sobe arquivo novo + `UPDATE imagem_url`) e grava um log JSON
-de reversão antes de cada escrita. Recomendação: rodar primeiro com `--apply --limit 2` (teste
-controlado em 2 produtos) antes do catálogo inteiro.
+- Script (dry-run/apply/rollback) — commits `97ce3aa` (dry-run) + `47f3503` (rollback automatizado,
+  pedido antes da execução em massa).
+- **Piloto** (`--apply --limit 2`): 2 produtos, 3.142,4KB→151,5KB (−95%), 0 falhas. Validado por fetch
+  direto das URLs (200/webp/tamanho correto), inspeção visual (nítido, sem distorção) e Playwright na
+  loja real (card, modal do produto, carrinho) — zero erro de console/rede. Um dos 2 produtos do piloto
+  está `disponivel:false` no banco (pré-existente, não relacionado a esta REF) — validado só pela
+  imagem/URL direta, já que não aparece na vitrine.
+- **Restante do catálogo** (`--apply`, 36 produtos): 51.358,9KB→2.829,5KB (−94%), 0 falhas.
+- **Validação ampla pós-cutover**: Playwright rolando a loja inteira — 28 cards no DOM, 0 imagem
+  quebrada, 0 erro de rede/console.
+- Logs de reversão de cada fase commitados no repositório (rastreabilidade + `--rollback` disponível a
+  qualquer momento).
+- Total combinado: 38 produtos, **54.501,3KB → 2.981,0KB (−95%)** — bate com o dry-run original.
 
-## Benchmark
+## Benchmark final
 
-Lighthouse mobile antes/depois das Ondas A–C — ver ADR §5. Performance 37→41/100; LCP 5,9s→4,4s (−25%);
-TTI 8,1s→7,1s. TBT/Speed Index/payload continuam dominados pelas imagens de produto ainda não
-reprocessadas — maior salto projetado só depois do cutover da Onda E.
+| Métrica | Antes | Depois (A-C) | Depois (+ Onda E) |
+|---|---|---|---|
+| Performance score | 37/100 | 41/100 | **68/100** |
+| LCP | 5,9s | 4,4s | 4,3s |
+| TBT | 910ms | 970ms | **160ms** |
+| Speed Index | 4,9s | 5,9s | **3,1s** |
+| Payload total | 23,6 MB | 23,2 MB | **1,6 MB** |
+
+Detalhe completo no ADR §5.
 
 ## Testes
 
-`test:render` (16/16) · `test:deps` (isolamento dos domínios) · `test:domain` (37/37) · `build` (3x,
-sem warning de chunk >500KB depois da Onda C) — todos verdes. Detalhe completo no ADR §6.
+`test:render` (16/16) · `test:deps` (isolamento dos domínios) · `test:domain` (37/37) · `build` (verde,
+sem warning de chunk >500KB) · validação visual manual (screenshots + inspeção de imagem) · Playwright
+(smoke de chunks lazy + QA do piloto + validação ampla pós-cutover, todos zero erro) — ver ADR §6.
+
+## Próximo passo
+
+Push dos 8 commits locais — autorizado pelo dono, condicionado à validação completa (cumprida nesta
+sessão). Limpeza dos arquivos originais órfãos no Storage fica fora de escopo desta REF (não há pressa
+operacional; eles não pesam no boot da loja).
