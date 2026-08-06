@@ -7,22 +7,32 @@
    exibir o catálogo — baixa cada imagem pela URL pública e mede o antes/depois; nada é gravado).
 
    Modo --apply escreve de verdade: sobe a versão redimensionada como ARQUIVO NOVO no bucket
-   'products' e faz UPDATE em products.imagem_url pro novo arquivo (nunca DELETE do antigo — reversível
-   por UPDATE manual caso necessário). Exige SUPABASE_SERVICE_ROLE_KEY (products.UPDATE é restrito a
-   is_admin(), ver migrations/AUTH-01-step2-harden-rls.sql — a anon key nunca teria permissão) em
-   .env.local (mesmo arquivo gitignored que já guarda segredos locais deste projeto — nunca commitado).
-   Grava um log de reversão (JSON: id, url antiga, url nova) antes de cada UPDATE.
+   'products' e faz UPDATE em products.imagem_url pro novo arquivo (nunca DELETE do antigo — o arquivo
+   original fica intocado no Storage, achável por quem tem a URL antiga, até uma limpeza manual futura
+   e deliberada). Exige SUPABASE_SERVICE_ROLE_KEY (products.UPDATE é restrito a is_admin(), ver
+   migrations/AUTH-01-step2-harden-rls.sql — a anon key nunca teria permissão) em .env.local (mesmo
+   arquivo gitignored que já guarda segredos locais deste projeto — nunca commitado). Grava um log de
+   reversão (JSON: id, url antiga, url nova) antes de cada UPDATE.
+
+   Modo --rollback <arquivo.json> desfaz um --apply anterior: lê o log de reversão gerado por ele e
+   devolve products.imagem_url pra url_antiga — SÓ quando o valor atual ainda for exatamente a
+   url_nova que este script escreveu (guarda contra apagar uma edição mais recente feita por outro
+   canal, ex.: o Admin trocando a imagem de novo depois do cutover). Não apaga o arquivo reprocessado
+   do Storage (reversão de dado, não de arquivo — o novo webp fica órfão mas inofensivo).
 
    Uso:
-     node scripts/reprocess-product-images.mjs                # dry-run (leitura, seguro, sem SERVICE_ROLE_KEY)
-     node scripts/reprocess-product-images.mjs --apply         # grava de verdade (requer SERVICE_ROLE_KEY)
-     node scripts/reprocess-product-images.mjs --apply --limit 2   # aplica só nas 2 primeiras (teste controlado) */
+     node scripts/reprocess-product-images.mjs                          # dry-run (leitura, seguro, sem SERVICE_ROLE_KEY)
+     node scripts/reprocess-product-images.mjs --apply                  # grava de verdade (requer SERVICE_ROLE_KEY)
+     node scripts/reprocess-product-images.mjs --apply --limit 2        # aplica só nas 2 primeiras (teste controlado)
+     node scripts/reprocess-product-images.mjs --rollback <log.json>    # desfaz um --apply anterior (requer SERVICE_ROLE_KEY) */
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { createClient } from '@supabase/supabase-js';
 import sharp from 'sharp';
 
 const ARGS = process.argv.slice(2);
 const APLICAR = ARGS.includes('--apply');
+const ROLLBACK_IDX = ARGS.indexOf('--rollback');
+const ROLLBACK_LOG = ROLLBACK_IDX >= 0 ? ARGS[ROLLBACK_IDX + 1] : null;
 const LIMIT_IDX = ARGS.indexOf('--limit');
 const LIMIT = LIMIT_IDX >= 0 ? Number(ARGS[LIMIT_IDX + 1]) : Infinity;
 
@@ -50,18 +60,46 @@ if (!SUPABASE_URL || !ANON_KEY) {
   console.error('ERRO: VITE_SUPABASE_URL/VITE_SUPABASE_KEY ausentes (.env).');
   process.exit(2);
 }
-if (APLICAR && !SERVICE_KEY) {
-  console.error('ERRO: --apply exige SUPABASE_SERVICE_ROLE_KEY em .env.local (products.UPDATE e is_admin()-only — a anon key nao grava). Sem a chave, rode sem --apply (dry-run).');
+if ((APLICAR || ROLLBACK_LOG) && !SERVICE_KEY) {
+  console.error('ERRO: --apply/--rollback exigem SUPABASE_SERVICE_ROLE_KEY em .env.local (products.UPDATE e is_admin()-only — a anon key nao grava). Sem a chave, rode sem essas flags (dry-run).');
   process.exit(2);
 }
 
 const anon  = createClient(SUPABASE_URL, ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
-const admin = APLICAR ? createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false } }) : null;
+const admin = (APLICAR || ROLLBACK_LOG) ? createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false } }) : null;
 
 const kb = n => (n / 1024).toFixed(1) + ' KB';
 const BUCKET_MARK = '/storage/v1/object/public/products/';
 
+async function rollback(logPath) {
+  const entries = JSON.parse(readFileSync(logPath, 'utf8'));
+  console.log(`ROLLBACK — ${entries.length} entrada(s) em ${logPath}.\n`);
+  let ok = 0, pulados = 0, falhas = 0;
+  for (const e of entries) {
+    try {
+      // guarda: só reverte se o valor atual ainda for o que ESTE apply escreveu (nunca pisa em
+      // edição mais recente feita por outro canal, ex.: Admin trocando a imagem de novo).
+      const { data: atual, error: selErr } = await admin.from('products').select('imagem_url').eq('id', e.id).single();
+      if (selErr) throw new Error('select: ' + selErr.message);
+      if (atual?.imagem_url !== e.url_nova) {
+        console.log(`${String(e.id).padEnd(6)} PULADO (imagem_url mudou depois do apply — nao sobrescrito): ${e.nome || ''}`);
+        pulados++; continue;
+      }
+      const { error: updErr } = await admin.from('products').update({ imagem_url: e.url_antiga }).eq('id', e.id);
+      if (updErr) throw new Error('update: ' + updErr.message);
+      console.log(`${String(e.id).padEnd(6)} revertido -> ${e.url_antiga}`);
+      ok++;
+    } catch (err) {
+      falhas++;
+      console.error(`${String(e.id).padEnd(6)} FALHOU: ${err.message}`);
+    }
+  }
+  console.log(`\nRevertidos: ${ok}  |  pulados (mudaram depois): ${pulados}  |  falhas: ${falhas}`);
+  console.log('(o arquivo .webp reprocessado NAO foi apagado do Storage — reversao so de dado)');
+}
+
 async function main() {
+  if (ROLLBACK_LOG) { await rollback(ROLLBACK_LOG); return; }
   const { data: produtos, error } = await anon.from('products').select('id, nome, imagem_url').order('id');
   if (error) { console.error('ERRO ao listar produtos:', error.message); process.exit(1); }
 
@@ -107,7 +145,7 @@ async function main() {
     const logPath = new URL(`../reprocess-product-images.revert.${Date.now()}.json`, import.meta.url);
     writeFileSync(logPath, JSON.stringify(revertLog, null, 2));
     console.log(`\nLog de reversao gravado em: ${logPath.pathname.replace(/^\/([A-Za-z]):/, '$1:')}`);
-    console.log('Para reverter um item: UPDATE products SET imagem_url = <url_antiga> WHERE id = <id>;');
+    console.log(`Para reverter: node scripts/reprocess-product-images.mjs --rollback "${logPath.pathname.replace(/^\/([A-Za-z]):/, '$1:')}"`);
   } else if (!APLICAR) {
     console.log('\n(dry-run — nada foi gravado no Storage nem no banco. Rode com --apply, com SUPABASE_SERVICE_ROLE_KEY em .env.local, pra aplicar de verdade.)');
   }
