@@ -161,6 +161,21 @@ cálculo de divergência (ver ADR §3 — correção não bloqueante). Gates nov
 verdade, confirmado visualmente); `test:domain` 37/37 + build verdes — ver
 [progress](../ref/REF-DELIVERY-FEE-01-progress.md).
 
+🚚 [REF-DELIVERY-FEE-02 — Blindagem operacional da localização da loja](REF-DELIVERY-FEE-02-blindagem-localizacao-loja.md)
+— **Implementada no código; 1 migration nova pendente de aplicação manual no Supabase (produção); push/
+deploy não realizados, aguardando aprovação.** Auditoria pós-implantação da REF-DELIVERY-FEE-01 achou o
+bloqueante operacional real: sem `company_info.lojaLat/lojaLng`, toda entrega sai com taxa R$0,00
+silenciosamente. Nova função pura `localizacaoLojaConfigurada` (fonte única, reaproveitada por
+`AdminTaxaEntrega.jsx` e `CheckoutPage.jsx` — fecha um bug real de 2 checagens divergentes, uma delas só
+olhava `lojaLat`). Banner destacado ✅/❌ no topo da tela (diagnóstico no carregamento + indicador de saúde
+numa peça só) + botão "Centralizar no ponto salvo". Migration nova (`CREATE OR REPLACE` de
+`set_company_info`, mesmo padrão de toda a evolução da RPC) fecha a única lacuna real de validação
+server-side que existia (lat/lng nunca tinham guarda no servidor, ao contrário de nome/telefone/e-mail).
+Achado adicional: `get_/set_company_info` não existem no projeto Supabase de E2E (nunca migrado, gap
+pré-existente e documentado, não desta ref). Gates: `test:company` (+7 casos) + `test:delivery-fee-admin-guard`
+(+5 checagens) + `e2e/tests/admin/admin-taxa-entrega.spec.js` (rodado de verdade, 2 estados confirmados por
+screenshot); `test:domain` 37/37 + build verdes.
+
 ## Sequência da evolução arquitetural
 
 ```
