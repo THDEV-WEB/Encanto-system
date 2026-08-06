@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../../lib/supabase.js';
 import { DS } from '../../services/DataService.js';
 import { isHttpUrl } from '../../utils/catalog.js';
+import { comprimirImagem } from '../../utils/imageCompression.js';
 
 /* ── ImageUploader inline component ─────────────────────────────
    Upload de imagem com Supabase Storage.
@@ -34,13 +35,17 @@ export function ImageUploader({ currentUrl, onUpload }) {
     const localUrl = URL.createObjectURL(file);
     setPreview(localUrl); setProgress(40);
     try {
+      // REF-PERF-01: redimensiona/recomprime no navegador ANTES de subir — sem isso, fotos de
+      // câmera (achado real: até 2,1MB por imagem) vão inteiras pro Storage e pesam a loja inteira
+      // pra sempre. GIF fica de fora (perderia a animação ao redesenhar em canvas).
+      const arquivoEnvio = file.type === 'image/gif' ? file : await comprimirImagem(file);
       let publicUrl = null;
       if (db) {
         setProgress(55);
-        const ext  = file.name.split('.').pop().toLowerCase() || 'jpg';
+        const ext  = arquivoEnvio.name.split('.').pop().toLowerCase() || 'jpg';
         const name = `products/product_${Date.now()}_${Math.random().toString(36).slice(2,7)}.${ext}`;
-        const { error: upErr } = await db.storage.from('products').upload(name, file, {
-          cacheControl:'3600', upsert:false, contentType:file.type,
+        const { error: upErr } = await db.storage.from('products').upload(name, arquivoEnvio, {
+          cacheControl:'3600', upsert:false, contentType:arquivoEnvio.type,
         });
         if (upErr) { DS.logEvent('upload','image','error', upErr.message, { ext }); throw new Error(upErr.message); }
         setProgress(80);
