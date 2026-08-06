@@ -15,6 +15,7 @@ import { useDeliveryFeeConfig } from '../../hooks/useDeliveryFeeConfig.js';
 import { useCompanyInfo } from '../../hooks/useCompanyInfo.js';
 import { definirDeliveryFeeConfig } from '../../services/delivery/deliveryFeeConfig.js';
 import { salvarCompanyInfo } from '../../services/company/companyInfo.js';
+import { localizacaoLojaConfigurada } from '../../services/company/companyInfoRules.js';
 import { paraEditavel, paraPersistirFaixas, validarFaixas, valorMaquininhaValido } from '../../services/delivery/deliveryFeeConfigForm.js';
 import { carregarLeaflet, criarMapa, destruirMapa, formatarCoord, CENTRO_PADRAO } from '../../address/index.js';
 
@@ -44,6 +45,39 @@ function ToggleRow({ titulo, descricao, ativo, onChange, disabled }) {
         <input type="checkbox" checked={ativo} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
         <span className="toggle-slider" />
       </label>
+    </div>
+  );
+}
+
+/* REF-DELIVERY-FEE-02: banner de status — bloqueante operacional real da REF-DELIVERY-FEE-01 (auditoria
+   pós-implantação): sem lojaLat/lojaLng, TODO pedido de entrega cai no fallback "sem_coordenadas" e sai
+   com taxa R$ 0,00, mas nada na tela avisava isso de forma destacada (só uma legenda cinza pequena perto
+   do mapa). Aparece assim que o Admin abre a aba (mesmo antes de qualquer interação) — é o "diagnóstico
+   no carregamento" + o "indicador de saúde" ✅/❌ pedidos na auditoria, numa peça só: 2 indicadores
+   fisicamente separados do MESMO estado poderiam divergir (foi exatamente o bug que motivou
+   localizacaoLojaConfigurada existir). Não é uma tabela/serviço novo — deriva 100% de useCompanyInfo(),
+   já carregado por esta tela. */
+function StatusLocalizacaoLoja({ configurada }) {
+  const cor = configurada ? '#16A34A' : '#DC2626';
+  const fundo = configurada ? '#F0FDF4' : '#FEF2F2';
+  return (
+    <div role="status" data-testid="status-localizacao-loja" data-configurada={configurada} style={{
+      display: 'flex', alignItems: 'flex-start', gap: 10, padding: '14px 16px', borderRadius: 12,
+      background: fundo, border: `1.5px solid ${cor}`, marginBottom: 20,
+    }}>
+      <span aria-hidden="true" style={{ fontSize: 20, lineHeight: 1 }}>{configurada ? '✅' : '❌'}</span>
+      <div>
+        <div data-testid="status-localizacao-titulo" style={{ fontSize: 13.5, fontWeight: 700, color: cor }}>
+          {configurada ? 'Localização da loja configurada' : 'Localização da loja NÃO configurada'}
+        </div>
+        <div style={{ fontSize: 12.5, color: 'var(--gray-700)', marginTop: 3, lineHeight: 1.6 }}>
+          {configurada
+            ? 'O cálculo de distância está ativo — cada pedido de entrega recebe a taxa da faixa correspondente.'
+            : 'Sem essa configuração, TODOS os pedidos de entrega saem com taxa R$ 0,00 (o checkout nunca é '
+              + 'bloqueado, mas a cobrança real não acontece). Arraste o pino até a loja no mapa abaixo e clique '
+              + 'em "Salvar localização".'}
+        </div>
+      </div>
     </div>
   );
 }
@@ -82,12 +116,17 @@ function MapaLocalizacaoLoja({ lat, lng, onMudar }) {
 
 function BlocoLocalizacao() {
   const info = useCompanyInfo();
+  const configurada = localizacaoLojaConfigurada(info);
   const coordKey = `${info.lojaLat ?? ''}|${info.lojaLng ?? ''}`;
-  const latOficial = Number.isFinite(info.lojaLat) ? info.lojaLat : CENTRO_PADRAO.lat;
-  const lngOficial = Number.isFinite(info.lojaLng) ? info.lojaLng : CENTRO_PADRAO.lng;
+  const latOficial = configurada ? info.lojaLat : CENTRO_PADRAO.lat;
+  const lngOficial = configurada ? info.lojaLng : CENTRO_PADRAO.lng;
   const [novaPin, setNovaPin] = useState(null);   // null = nada pendente nesta sessão
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState(null);
+  // REF-DELIVERY-FEE-02: bump força o mapa a REMONTAR na posição OFICIAL (mesmo mecanismo do `key` de
+  // coordKey abaixo) mesmo quando ela não mudou — é assim que "Centralizar" descarta um arrasto
+  // pendente sem precisar de acesso imperativo ao marker do Leaflet (que mapService.js não expõe).
+  const [resetTick, setResetTick] = useState(0);
 
   useEffect(() => { setNovaPin(null); setMsg(null); }, [coordKey]);
 
@@ -100,10 +139,12 @@ function BlocoLocalizacao() {
     else setMsg({ tipo: 'erro', texto: r.error || 'Não foi possível salvar.' });
   };
 
+  const centralizar = () => { setNovaPin(null); setMsg(null); setResetTick((t) => t + 1); };
+
   return (
     <Bloco icone="📍" titulo="Localização da loja"
       descricao="Arraste (ou clique n) o pino até o endereço da loja. Essa coordenada é usada para calcular a distância até o cliente e definir a taxa de entrega automaticamente — sem ela, nenhum pedido tem taxa calculada.">
-      <MapaLocalizacaoLoja key={coordKey} lat={latOficial} lng={lngOficial} onMudar={(lat, lng) => setNovaPin({ lat, lng })} />
+      <MapaLocalizacaoLoja key={`${coordKey}-${resetTick}`} lat={latOficial} lng={lngOficial} onMudar={(lat, lng) => setNovaPin({ lat, lng })} />
       <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <button type="button" onClick={salvar} disabled={!novaPin || salvando}
           style={{
@@ -114,13 +155,26 @@ function BlocoLocalizacao() {
           }}>
           💾 {salvando ? 'Salvando…' : 'Salvar localização'}
         </button>
+        <button type="button" onClick={centralizar}
+          title="Descarta qualquer arrasto não salvo e volta o mapa para a posição atualmente cadastrada"
+          style={{
+            padding: '9px 16px', borderRadius: 10, border: '1.5px solid var(--gray-300)', fontWeight: 600, fontSize: 13, fontFamily: 'var(--font-body)',
+            cursor: 'pointer', background: 'transparent', color: 'var(--gray-700)',
+          }}>
+          🎯 Centralizar no ponto salvo
+        </button>
         {!novaPin && !msg && (
-          <span style={{ fontSize: 12.5, color: 'var(--gray-400)' }}>
-            {Number.isFinite(info.lojaLat) ? '📍 Localização salva.' : '⚠️ Localização ainda não definida — arraste o pino até a loja.'}
+          <span style={{ fontSize: 12.5, color: configurada ? 'var(--gray-400)' : '#DC2626', fontWeight: configurada ? 400 : 600 }}>
+            {configurada ? '📍 Localização salva.' : '⚠️ Localização ainda não definida — arraste o pino até a loja.'}
           </span>
         )}
         {msg && <span style={{ fontSize: 13, fontWeight: 600, color: msg.tipo === 'ok' ? '#16A34A' : '#DC2626' }}>{msg.texto}</span>}
       </div>
+      {!configurada && (
+        <p style={{ fontSize: 11.5, color: 'var(--gray-500)', marginTop: 8 }}>
+          Sem posição salva ainda: o mapa mostra o centro padrão da cidade (Timbó), não a loja de verdade.
+        </p>
+      )}
     </Bloco>
   );
 }
@@ -266,6 +320,7 @@ function BlocoFaixas() {
 }
 
 export function AdminTaxaEntrega() {
+  const info = useCompanyInfo();
   return (
     <div>
       <div style={{ marginBottom: 20 }}>
@@ -275,6 +330,7 @@ export function AdminTaxaEntrega() {
           código: tudo aqui é editável, sem precisar de deploy.
         </p>
       </div>
+      <StatusLocalizacaoLoja configurada={localizacaoLojaConfigurada(info)} />
       <BlocoLocalizacao />
       <BlocoFaixas />
     </div>

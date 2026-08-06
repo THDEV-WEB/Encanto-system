@@ -1,4 +1,5 @@
-/* tests/deliveryFee-admin.guard.mjs — REF-DELIVERY-FEE-01. Roda: node tests/deliveryFee-admin.guard.mjs
+/* tests/deliveryFee-admin.guard.mjs — REF-DELIVERY-FEE-01 (+ REF-DELIVERY-FEE-02).
+   Roda: node tests/deliveryFee-admin.guard.mjs
    GUARDA ESTRUTURAL da UI Admin da taxa de entrega. Analise estatica pura (sem banco/rede/React). Prova
    mecanicamente que:
      (1) AdminPanel registra a aba "Taxa de Entrega" e monta AdminTaxaEntrega;
@@ -9,7 +10,13 @@
      (4) NENHUM valor de faixa/maquininha fica hardcoded no componente (a tabela padrao so existe na
          migration SQL e no fallback de resiliencia do IO, nunca na UI);
      (5) AdminPedidos exibe delivery_fee/maquininha_fee lendo o pedido (sem recalcular a regra de negocio -
-         nenhum import de deliveryFeeRules ali). */
+         nenhum import de deliveryFeeRules ali);
+     (6) REF-DELIVERY-FEE-02 — AdminTaxaEntrega tem o banner de status (bloqueante operacional) e REAPROVEITA
+         localizacaoLojaConfigurada (companyInfoRules) em vez de reimplementar a checagem Number.isFinite
+         inline — a duplicata dessa checagem foi o bug real encontrado na auditoria (2 lugares podiam
+         divergir sobre o mesmo estado);
+     (7) REF-DELIVERY-FEE-02 — CheckoutPage usa a MESMA localizacaoLojaConfigurada (nunca uma 2ª versão
+         divergente da checagem "loja tem posição?" entre Admin e Checkout). */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
@@ -23,6 +30,7 @@ const check = (m, fn) => { try { fn(); console.error('  ok ' + m); } catch (e) {
 const panel = strip(read('components/admin/AdminPanel.jsx'));
 const admin = strip(read('components/admin/AdminTaxaEntrega.jsx'));
 const pedidos = strip(read('components/admin/AdminPedidos.jsx'));
+const checkout = strip(read('components/checkout/CheckoutPage.jsx'));
 
 /* (1) registro no painel */
 check('(1) AdminPanel importa AdminTaxaEntrega e registra a aba "taxaentrega"', () => {
@@ -60,6 +68,29 @@ check('(4) AdminTaxaEntrega consome useDeliveryFeeConfig/useCompanyInfo — não
 check('(5) AdminPedidos exibe order.delivery_fee/order.maquininha_fee sem importar a regra de calculo', () => {
   assert.ok(/order\.delivery_fee/.test(pedidos) && /order\.maquininha_fee/.test(pedidos));
   assert.ok(!/deliveryFeeRules/.test(pedidos), 'AdminPedidos deve so EXIBIR os campos persistidos, nunca recalcular a taxa');
+});
+
+/* (6) REF-DELIVERY-FEE-02 — banner de status + reuso da checagem pura, sem checagem inline duplicada */
+check('(6a) AdminTaxaEntrega importa localizacaoLojaConfigurada de companyInfoRules.js', () => {
+  assert.ok(/from\s*['"]\.\.\/\.\.\/services\/company\/companyInfoRules\.js['"]/.test(admin));
+  assert.ok(/localizacaoLojaConfigurada/.test(admin));
+});
+check('(6b) AdminTaxaEntrega NÃO reimplementa a checagem inline (Number.isFinite duplicado da lat/lng) fora do próprio import', () => {
+  assert.ok(!/Number\.isFinite\(\s*info\.lojaLat/.test(admin), 'checagem inline de lojaLat deve morar só em localizacaoLojaConfigurada');
+});
+check('(6c) AdminTaxaEntrega renderiza o indicador ✅/❌ de localização (StatusLocalizacaoLoja)', () => {
+  assert.ok(/StatusLocalizacaoLoja/.test(admin));
+  assert.ok(/'✅'/.test(admin) && /'❌'/.test(admin));
+});
+check('(6d) AdminTaxaEntrega tem o botão de centralizar o mapa na posição salva', () => {
+  assert.ok(/Centralizar no ponto salvo/.test(admin));
+});
+
+/* (7) REF-DELIVERY-FEE-02 — Checkout usa a MESMA fonte, nunca uma checagem divergente */
+check('(7) CheckoutPage importa e usa localizacaoLojaConfigurada (nunca recalcula Number.isFinite(lojaLat) por conta própria)', () => {
+  assert.ok(/from\s*['"]\.\.\/\.\.\/services\/company\/companyInfoRules\.js['"]/.test(checkout));
+  assert.ok(/localizacaoLojaConfigurada\(companyInfo\)/.test(checkout));
+  assert.ok(!/Number\.isFinite\(\s*companyInfo\.lojaLat/.test(checkout), 'checagem inline de lojaLat não deve mais existir no Checkout');
 });
 
 console.log(fail === 0
