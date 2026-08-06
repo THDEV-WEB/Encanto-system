@@ -4,7 +4,7 @@
    importa companyInfoRules.js diretamente (NAO companyInfo.js, que importa lib/supabase.js/import.meta.env
    e quebraria em Node puro — mesmo cuidado de business-hours.golden.mjs com override.js). */
 import assert from 'node:assert/strict';
-import { DEFAULT_COMPANY_INFO, formatarTelefoneBR, validarPatchCompanyInfo } from '../src/services/company/companyInfoRules.js';
+import { DEFAULT_COMPANY_INFO, formatarTelefoneBR, validarPatchCompanyInfo, localizacaoLojaConfigurada } from '../src/services/company/companyInfoRules.js';
 
 let fail = 0;
 const check = (m, fn) => { try { fn(); console.error('  ok ' + m); } catch (e) { fail++; console.error('  x  ' + m + ' — ' + (e?.message ?? e)); } };
@@ -205,6 +205,32 @@ check('lojaLat/lojaLng null -> aceito (limpar o pino é uma ação válida)', ()
 check('lojaLat não numérico -> erro (nunca salva lixo)', () => {
   const r = validarPatchCompanyInfo({ lojaLat: 'abc' });
   assert.ok(r.erro);
+});
+
+console.error('— localizacaoLojaConfigurada (REF-DELIVERY-FEE-02) — fonte única "loja tem posição definida?"');
+
+check('empresa SEM coordenadas (default de fábrica: null/null) -> false', () => {
+  assert.equal(localizacaoLojaConfigurada(DEFAULT_COMPANY_INFO), false);
+});
+check('empresa COM coordenadas válidas (lat e lng finitos) -> true', () => {
+  assert.equal(localizacaoLojaConfigurada({ ...DEFAULT_COMPANY_INFO, lojaLat: -26.795, lojaLng: -49.270 }), true);
+});
+check('coordenada 0,0 (litoral da África, mas um número finito válido) -> true — 0 nunca é confundido com "ausente"', () => {
+  assert.equal(localizacaoLojaConfigurada({ ...DEFAULT_COMPANY_INFO, lojaLat: 0, lojaLng: 0 }), true);
+});
+check('só lat definida, lng ainda null (estado impossível pela UI, mas defendido) -> false', () => {
+  assert.equal(localizacaoLojaConfigurada({ ...DEFAULT_COMPANY_INFO, lojaLat: -26.795, lojaLng: null }), false);
+});
+check('só lng definida, lat ainda null -> false', () => {
+  assert.equal(localizacaoLojaConfigurada({ ...DEFAULT_COMPANY_INFO, lojaLat: null, lojaLng: -49.270 }), false);
+});
+check('coordenadas não numéricas/NaN (defesa contra dado corrompido vindo do servidor) -> false, nunca lança', () => {
+  assert.equal(localizacaoLojaConfigurada({ lojaLat: NaN, lojaLng: -49.270 }), false);
+  assert.equal(localizacaoLojaConfigurada({ lojaLat: 'abc', lojaLng: -49.270 }), false);
+});
+check('info ausente/undefined -> false, nunca lança (guarda de entrada)', () => {
+  assert.equal(localizacaoLojaConfigurada(undefined), false);
+  assert.equal(localizacaoLojaConfigurada(null), false);
 });
 
 console.log(fail === 0 ? '\nOK company-info.golden — defaults + formatacao + validacao de patch congelados' : `\nFALHA company-info.golden — ${fail} caso(s)`);

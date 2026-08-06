@@ -16,6 +16,7 @@ import { LOYALTY_EVENT } from '../../services/loyalty/index.js';   // REF-LOYALT
 import { STORE_INFO } from '../../constants/storeInfo.js';
 import { useAddress, AddressSummary, addressRepository, geocoding, distanciaKm } from '../../address/index.js';   // REF-CHECKOUT-ADDRESS-01: FONTE UNICA do endereco
 import { montarResumoFinanceiro } from '../../services/delivery/deliveryFeeRules.js';   // REF-DELIVERY-FEE-01: fonte unica da regra de negocio
+import { localizacaoLojaConfigurada } from '../../services/company/companyInfoRules.js';   // REF-DELIVERY-FEE-02: mesma checagem do Admin, nunca diverge
 import { lerGuestIdentity, salvarGuestIdentity } from '../../utils/guestIdentity.js'; // REF-CUSTOMER-01: cache local so p/ visitante
 import { registrarBreadcrumb, marcarPedido } from '../../lib/sentry.js'; // REF-OBS-01/REF-SENTRY-01: no-op sem VITE_SENTRY_DSN
 
@@ -74,7 +75,7 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
   }, [retirada, endereco]);
   /* Coordenada da LOJA (Admin > Taxa de Entrega, arraste do pino) + distância + resumo financeiro —
      recalculam sozinhos a cada mudança relevante, sem precisar finalizar o pedido (tempo real). */
-  const coordLoja = (Number.isFinite(companyInfo.lojaLat) && Number.isFinite(companyInfo.lojaLng))
+  const coordLoja = localizacaoLojaConfigurada(companyInfo)
     ? { lat: companyInfo.lojaLat, lng: companyInfo.lojaLng } : null;
   const distancia = (coordLoja && coordCliente) ? distanciaKm(coordLoja, coordCliente) : null;
   const resumo = useMemo(() => montarResumoFinanceiro({

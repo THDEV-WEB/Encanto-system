@@ -189,3 +189,13 @@ export function validarPatchCompanyInfo(patch) {
 
   return { patch: p };
 }
+
+/* REF-DELIVERY-FEE-02: FONTE UNICA de "a loja tem localizacao definida?" — reaproveitada pelo Admin
+   (banner/indicador de saude da tela Taxa de Entrega) e pelo Checkout (decidir se calcula a distancia
+   real ou cai no fallback "sem coordenadas"). Antes desta ref havia 2 checagens divergentes do MESMO
+   estado (uma só olhava lojaLat, a outra olhava lat+lng) — nunca dar 2 respostas diferentes pra mesma
+   pergunta. Exige AMBAS lat/lng numericas finitas (nunca uma sem a outra). */
+export function localizacaoLojaConfigurada(info) {
+  const i = info || {};
+  return Number.isFinite(i.lojaLat) && Number.isFinite(i.lojaLng);
+}
