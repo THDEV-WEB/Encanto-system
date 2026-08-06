@@ -157,7 +157,9 @@ const CASES = [
     el: () => h(ValionCredit),
     /* REF-BRAND (ajuste fino 2): link institucional desativado de proposito (virou <div>) enquanto o
        site esta em desenvolvimento — snapshot atualizado pra refletir o markup atual (ver ValionCredit.jsx). */
-    snap: '<div class="valion-credit-link"><span class="valion-eyebrow">Plataforma desenvolvida por</span><span class="valion-word"><img class="valion-v-icon" src="undefinedvalion-mark.png" alt="" loading="lazy"/><b>ALION</b><i>SISTEMAS</i></span><span class="valion-underline" aria-hidden="true"></span><span class="valion-tagline">Soluções digitais que impulsionam negócios.</span></div>',
+    /* REF-PERF-01: .webp no lugar de .png (mesmo arquivo redimensionado/recomprimido — ver
+       scripts/optimize-static-images.mjs) — snapshot atualizado só na extensão. */
+    snap: '<div class="valion-credit-link"><span class="valion-eyebrow">Plataforma desenvolvida por</span><span class="valion-word"><img class="valion-v-icon" src="undefinedvalion-mark.webp" alt="" loading="lazy"/><b>ALION</b><i>SISTEMAS</i></span><span class="valion-underline" aria-hidden="true"></span><span class="valion-tagline">Soluções digitais que impulsionam negócios.</span></div>',
   },
   {
     /* REF-GOLIVE-01 (bloqueador 1): horario deixou de ser hardcoded — vem inteiramente da prop `horario`

@@ -32,8 +32,10 @@ export const RPC_TIMEOUT = Number(TEM_VITE_ENV ? import.meta.env.VITE_RPC_TIMEOU
 /* REF-AUDIT-01: era base64 em logo.js (inflava o bundle JS ~46KB) -> arquivo em /public, cacheavel.
    REF-BRAND-01: prefixado com BASE_URL (não mais '/logo.jpg' fixo) -> continua correto agora que o
    app é servido sob /encanto/ (Vite injeta BASE_URL no build; TEM_VITE_ENV cobre os scripts Node que
-   importam este módulo fora do Vite, mesmo padrão das constantes acima). */
-export const LOGO     = `${TEM_VITE_ENV ? import.meta.env.BASE_URL : '/'}logo.jpg`;
+   importam este módulo fora do Vite, mesmo padrão das constantes acima).
+   REF-PERF-01: .webp (scripts/optimize-static-images.mjs) — 45,9KB -> 11,3KB, mesma imagem/qualidade,
+   redimensionada pro tamanho real exibido (≤147px). Original .jpg preservado em public/. */
+export const LOGO     = `${TEM_VITE_ENV ? import.meta.env.BASE_URL : '/'}logo.webp`;
 
 /* Migração 1x: uma sessão de Admin salva ANTES desta onda vive sob a chave default do supabase-js
    (sb-<ref>-auth-token) — nunca reconstruída via URL aqui (dependência implícita é exatamente o que

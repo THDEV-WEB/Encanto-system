@@ -18,7 +18,7 @@ export function ValionCredit() {
       <span className="valion-word">
         <img
           className="valion-v-icon"
-          src={`${import.meta.env.BASE_URL}valion-mark.png`}
+          src={`${import.meta.env.BASE_URL}valion-mark.webp`}
           alt=""
           loading="lazy"
         />

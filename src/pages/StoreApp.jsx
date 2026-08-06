@@ -166,8 +166,11 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
 
       {/* ── HEADER PRINCIPAL (roxo) ── */}
       {/* REF-BRAND-01: --header-bg-url setada aqui (nao em index.css) pois url('/header-bg.jpg')
-          absoluto nao e reescrito pelo Vite quando base != '/' (app agora servido sob /encanto/). */}
-      <header className="header" style={{ '--header-bg-url': `url(${import.meta.env.BASE_URL}header-bg.jpg)` }}>
+          absoluto nao e reescrito pelo Vite quando base != '/' (app agora servido sob /encanto/).
+          REF-PERF-01: .webp (gerado por scripts/optimize-static-images.mjs) — 352,7KB -> 79KB, mesma
+          imagem/qualidade visual, so' resolucao/formato adequados ao tamanho real exibido (96-128px
+          de altura). Original .jpg preservado em public/ (nao usado em runtime). */}
+      <header className="header" style={{ '--header-bg-url': `url(${import.meta.env.BASE_URL}header-bg.webp)` }}>
 
         {/* Coluna esquerda: logo */}
         <div className="header-brand-col">

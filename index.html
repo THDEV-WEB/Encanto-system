@@ -38,8 +38,16 @@
 <meta name="twitter:image" content="https://valionsistemas.com.br/encanto/logo.jpg"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link rel="preconnect" href="https://images.unsplash.com" crossorigin>
 <link rel="dns-prefetch" href="https://hvbcdxsagkjtfjwvnslo.supabase.co">
+<!-- REF-PERF-01: images.unsplash.com preconnect removido — so' e' referenciado no fallback MOCK
+     (src/data/mockCatalog.js, usado quando o Supabase esta' offline); no caminho normal (produtos reais
+     no Supabase Storage) essa conexao nunca era usada, so' gastava tempo de boot com DNS/TCP/TLS a toa. -->
+<!-- REF-PERF-01: preload do banner do header (--header-bg-url em StoreApp.jsx) — sem isto, o navegador
+     so' descobre essa imagem depois do JS montar e aplicar o style inline (a URL vem de uma custom
+     property, invisivel ao HTML parser). fetchpriority=high pois e' o maior candidato a LCP da loja.
+     Caminho fixo em /encanto/ (mesmo padrao ja usado pelo manifest/favicons acima — so' a build web
+     serve este HTML por esse caminho; Admin/Capacitor nao usam .header, preload vira no-op ali). -->
+<link rel="preload" as="image" href="/encanto/header-bg.webp" fetchpriority="high"/>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
 </head>
 <body>
