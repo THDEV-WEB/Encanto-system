@@ -1,0 +1,14 @@
+[
+  {
+    "id": "00043a4e-5eb1-47f3-b977-75e373389dd6",
+    "nome": "Batidinha de Creme de Leitinho",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/product_1784146003245_031yl.png",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_00043a4e-5eb1-47f3-b977-75e373389dd6_1786038243149.webp"
+  },
+  {
+    "id": "04c2ab72-9287-4fb2-877e-7d49474fd4f4",
+    "nome": "Agua de Coco",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/agua-de-coco.png",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_04c2ab72-9287-4fb2-877e-7d49474fd4f4_1786038245069.webp"
+  }
+]

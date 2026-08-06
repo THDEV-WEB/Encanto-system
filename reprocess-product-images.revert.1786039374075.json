@@ -1,0 +1,218 @@
+[
+  {
+    "id": "275f3481-8223-47a4-acc8-10439cfbfc09",
+    "nome": "Açaí Zero Açúcar",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/product_1784132194946_3a6vw.png",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_275f3481-8223-47a4-acc8-10439cfbfc09_1786039329058.webp"
+  },
+  {
+    "id": "3202f176-9233-4cea-b196-44f6e2cda945",
+    "nome": "Especial Bife Acebolado",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/product_1784155944210_v55jw.png",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_3202f176-9233-4cea-b196-44f6e2cda945_1786039330345.webp"
+  },
+  {
+    "id": "3a2ded22-af6d-47f3-bd26-ac5a5a02138c",
+    "nome": "Suco de Couve",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/suco-de-couve.png",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_3a2ded22-af6d-47f3-bd26-ac5a5a02138c_1786039331674.webp"
+  },
+  {
+    "id": "40ba0ed1-916c-4aa7-ac60-ec0ae8dc5e30",
+    "nome": "Coca-Cola Lata",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/coca-cola-lata.png",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_40ba0ed1-916c-4aa7-ac60-ec0ae8dc5e30_1786039332414.webp"
+  },
+  {
+    "id": "43f1fd4a-34fe-4196-99c1-7c58e8adc9c6",
+    "nome": "Marmita Especial Parmegiana",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/marmita-especial-parmegiana.png",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_43f1fd4a-34fe-4196-99c1-7c58e8adc9c6_1786039333339.webp"
+  },
+  {
+    "id": "4c41a11f-29dc-4deb-ac09-b0c87e47f76c",
+    "nome": "Suco de Abacaxi ",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/product_1784148285111_rtw4c.png",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_4c41a11f-29dc-4deb-ac09-b0c87e47f76c_1786039334607.webp"
+  },
+  {
+    "id": "4d8babcb-ff3d-4f8a-b1a1-47e2d54a524c",
+    "nome": "Encanto Tropical",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/encanto-tropical.png",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_4d8babcb-ff3d-4f8a-b1a1-47e2d54a524c_1786039336097.webp"
+  },
+  {
+    "id": "512906ab-f131-4d0c-b373-c6e8ce9e2574",
+    "nome": "Marmita G Feijoada",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/marmita-g-feijoada.png",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_512906ab-f131-4d0c-b373-c6e8ce9e2574_1786039337448.webp"
+  },
+  {
+    "id": "516ddbaa-f50e-4421-97e4-26e2cc8109d6",
+    "nome": "Batidinha Tradicional",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/product_1784138707107_0ot7j.png",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_516ddbaa-f50e-4421-97e4-26e2cc8109d6_1786039338802.webp"
+  },
+  {
+    "id": "61b843ee-f4f5-46e5-b6a3-ea74c7327e1a",
+    "nome": "Batidinha de Maracujá",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/product_1784138545956_ylrqe.png",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_61b843ee-f4f5-46e5-b6a3-ea74c7327e1a_1786039339803.webp"
+  },
+  {
+    "id": "6ebd0eb0-a1dd-42c9-8b70-677df96f4065",
+    "nome": "Marmita Média",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/product_1784131840840_ghkmk.jpg",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_6ebd0eb0-a1dd-42c9-8b70-677df96f4065_1786039341000.webp"
+  },
+  {
+    "id": "7829c857-882a-494f-a3fe-062b9f3c6e66",
+    "nome": "Açaí + Cupuaçu",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/product_1784081798179_8bez2.png",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_7829c857-882a-494f-a3fe-062b9f3c6e66_1786039342389.webp"
+  },
+  {
+    "id": "791f06aa-44c1-48ff-9941-7b1b759ceb5f",
+    "nome": "Marmita Média com Açaí 300 ml",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/product_1784131423110_chzkl.jpeg",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_791f06aa-44c1-48ff-9941-7b1b759ceb5f_1786039343519.webp"
+  },
+  {
+    "id": "7a69d8dc-4c6d-4c5f-98ca-ad51733068d6",
+    "nome": "Suco Natural de Goiaba",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/suco-natural-de-goiaba.png",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_7a69d8dc-4c6d-4c5f-98ca-ad51733068d6_1786039345289.webp"
+  },
+  {
+    "id": "8461aa8c-dd06-4520-a55b-7eb7e32861cf",
+    "nome": "Fanta Laranja Lata",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/fanta-laranja-lata.png",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_8461aa8c-dd06-4520-a55b-7eb7e32861cf_1786039346403.webp"
+  },
+  {
+    "id": "89026727-4e68-4a09-b6b0-769af7cf45c2",
+    "nome": "Água Mineral 500 ml",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/agua-mineral-500-ml.png",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_89026727-4e68-4a09-b6b0-769af7cf45c2_1786039347606.webp"
+  },
+  {
+    "id": "8a5f0bd5-c340-42f0-a2a4-04d0822ef40f",
+    "nome": "Encanto Fit",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/product_1784135531759_f9yhx.png",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_8a5f0bd5-c340-42f0-a2a4-04d0822ef40f_1786039349036.webp"
+  },
+  {
+    "id": "8b0d5854-33d9-42fb-808a-5110b0051419",
+    "nome": "Cupuaçu",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/product_1784144835327_n20dv.png",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_8b0d5854-33d9-42fb-808a-5110b0051419_1786039350527.webp"
+  },
+  {
+    "id": "9c5ef7b0-42c0-4414-b383-784d90314be7",
+    "nome": "Mousse de Maracujá",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/product_1784145230049_zbtwm.png",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_9c5ef7b0-42c0-4414-b383-784d90314be7_1786039351540.webp"
+  },
+  {
+    "id": "9f4065ca-2dee-41fe-a2ae-019df2b67045",
+    "nome": "Marmita Grande",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/product_1784137218405_66j8d.png",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_9f4065ca-2dee-41fe-a2ae-019df2b67045_1786039352562.webp"
+  },
+  {
+    "id": "a496e61d-1905-40fa-b979-0f026a16f932",
+    "nome": "Açaí Fit",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/product_1784132174139_c1q8t.png",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_a496e61d-1905-40fa-b979-0f026a16f932_1786039353754.webp"
+  },
+  {
+    "id": "ab14feb5-be14-48c8-a066-3685dcb2f10b",
+    "nome": "Suco Natural de Maracujá",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/product_1784148122742_p8svu.png",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_ab14feb5-be14-48c8-a066-3685dcb2f10b_1786039355486.webp"
+  },
+  {
+    "id": "ad7db280-afd5-402d-9d17-906c73d0d5e3",
+    "nome": "Encanto Clássico",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/encanto-classico.png",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_ad7db280-afd5-402d-9d17-906c73d0d5e3_1786039356718.webp"
+  },
+  {
+    "id": "b69ab217-5cb2-41ed-9cf9-27741e8ddac8",
+    "nome": "Batidinha de Nutella",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/product_1784147842774_9wtt9.png",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_b69ab217-5cb2-41ed-9cf9-27741e8ddac8_1786039357869.webp"
+  },
+  {
+    "id": "b8af08dc-9833-4365-87a5-9029f8bc036b",
+    "nome": "Marmita P",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/product_1784131671696_qix9v.jpg",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_b8af08dc-9833-4365-87a5-9029f8bc036b_1786039358853.webp"
+  },
+  {
+    "id": "bee7e771-f706-4eba-a570-9b4591bcbb72",
+    "nome": "Marmita G com Açaí 500 ml",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/product_1784137924092_yypwl.jpeg",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_bee7e771-f706-4eba-a570-9b4591bcbb72_1786039359951.webp"
+  },
+  {
+    "id": "c149a979-ab8b-432b-80dc-724ffb04a812",
+    "nome": "Coca-Cola 600ml",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/coca-cola-600-ml.png",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_c149a979-ab8b-432b-80dc-724ffb04a812_1786039361709.webp"
+  },
+  {
+    "id": "c269049c-ad04-473e-ade2-b465c86433f7",
+    "nome": "Açaí",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/product_1784129228912_tdtj7.png",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_c269049c-ad04-473e-ade2-b465c86433f7_1786039362739.webp"
+  },
+  {
+    "id": "c5819009-153a-4841-9702-692528894976",
+    "nome": "Marmita Média com Suco Natural 300ml",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/product_1784136371889_ttowy.png",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_c5819009-153a-4841-9702-692528894976_1786039364011.webp"
+  },
+  {
+    "id": "cb7d5883-7b4b-44c0-8da0-d34722c6323b",
+    "nome": "Encanto Mineiro",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/encanto-mineiro.png",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_cb7d5883-7b4b-44c0-8da0-d34722c6323b_1786039365361.webp"
+  },
+  {
+    "id": "d2d5f43e-df11-4ac4-999b-0c8da7401c67",
+    "nome": "Encanto Casadinho",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/product_1784081853455_8nzyo.png",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_d2d5f43e-df11-4ac4-999b-0c8da7401c67_1786039366623.webp"
+  },
+  {
+    "id": "d75fb0da-ac80-4aa9-a776-9ee671dd53a5",
+    "nome": "Marmita Fitness Personalizada",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/marmita-fitness-personalizada.png",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_d75fb0da-ac80-4aa9-a776-9ee671dd53a5_1786039368243.webp"
+  },
+  {
+    "id": "d7d8b023-a372-4396-886e-4e816780e560",
+    "nome": "Guaraná Antarctica Lata",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/guarana-antarctica-lata.png",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_d7d8b023-a372-4396-886e-4e816780e560_1786039369528.webp"
+  },
+  {
+    "id": "ec64e9d1-5817-4417-8202-f074ff573e59",
+    "nome": "Marmita M com Refri Lata",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/product_1784139242206_yxok0.png",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_ec64e9d1-5817-4417-8202-f074ff573e59_1786039370732.webp"
+  },
+  {
+    "id": "f218c15a-1fee-494a-aa30-4e147103b499",
+    "nome": "Especial Strogonoff de Frango",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/product_1784156315546_hb03s.png",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_f218c15a-1fee-494a-aa30-4e147103b499_1786039371896.webp"
+  },
+  {
+    "id": "f24d8c8e-84ab-47f9-83ef-cf98cf167f21",
+    "nome": "Marmita de Fricassê de frango ",
+    "url_antiga": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/product_1784149597045_deh11.png",
+    "url_nova": "https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/products/reprocessed_f24d8c8e-84ab-47f9-83ef-cf98cf167f21_1786039373096.webp"
+  }
+]

@@ -103,8 +103,11 @@ async function main() {
   const { data: produtos, error } = await anon.from('products').select('id, nome, imagem_url').order('id');
   if (error) { console.error('ERRO ao listar produtos:', error.message); process.exit(1); }
 
-  const alvo = (produtos ?? []).filter(p => p.imagem_url && p.imagem_url.includes(BUCKET_MARK)).slice(0, LIMIT);
-  console.log(`${APLICAR ? 'APLICANDO' : 'DRY-RUN'} — ${alvo.length} produto(s) com imagem no bucket 'products'.\n`);
+  // '/reprocessed_' -> já passou por este script numa rodada anterior (ver upload em --apply, abaixo).
+  // Sem este filtro, rodar de novo sem --limit reprocessaria o lote piloto uma 2a vez em cima da 1a
+  // (URL já otimizada), inflando o log de reversão com um elo a mais sem necessidade.
+  const alvo = (produtos ?? []).filter(p => p.imagem_url && p.imagem_url.includes(BUCKET_MARK) && !p.imagem_url.includes('/reprocessed_')).slice(0, LIMIT);
+  console.log(`${APLICAR ? 'APLICANDO' : 'DRY-RUN'} — ${alvo.length} produto(s) com imagem no bucket 'products' (ja reprocessados nesta REF ficam de fora).\n`);
 
   const revertLog = [];
   let totalAntes = 0, totalDepois = 0, falhas = 0;
