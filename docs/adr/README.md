@@ -193,6 +193,25 @@ confirmou 0 imagem quebrada. Lighthouse mobile final: **Performance 37→68/100*
 910ms→160ms, **payload total 23,6MB→1,6MB (−93%)**. `test:render`/`test:deps`/`test:domain`/`build`
 verdes em toda a execução — ver [progress](../ref/REF-PERF-01-progress.md).
 
+## Plataforma multi-tenant (REF-SAAS-01 — nova trilha, VALION SISTEMAS)
+
+🏗️ [REF-SAAS-01 — Fundação Multi-Tenant da Plataforma VALION SISTEMAS](REF-SAAS-01-fundacao-multitenant.md)
+— **Proposto — decisões arquiteturais fechadas, implementação não iniciada.** A Encanto Marmitaria deixa
+de ser o único sistema e passa a ser o Cliente Zero de uma plataforma SaaS. Precedida por uma auditoria
+read-only completa e por uma revalidação (após 39 commits/5 REFs novas) que confirmaram: zero
+`store_id`/`tenant_id` em qualquer lugar do schema, `settings` como singleton global, `admins` sem
+papel/escopo — sistema 100% single-tenant hoje. O ADR mestre decide o que a auditoria deixou aberto:
+identidade do cliente por loja com autenticação Supabase global reaproveitada (não SSO cross-store, não
+projeto por loja), isolamento via shared-schema + RLS por `store_id` (não schema/banco por tenant),
+autorização em 3 camadas (`super_admins` da VALION, `admins.store_id`, `is_admin()` como wrapper de
+compatibilidade), resolução de loja **sempre explícita** (`p_store_id` em toda RPC, nunca inferida de
+sessão/JWT) e convenções obrigatórias para toda tabela/RPC/policy/REF futura. Roadmap de 10 ondas
+(fundação de dados → gateway de autorização → catálogo → identidade do cliente → pedidos/fidelidade/
+entrega → admin multi-loja → frontend multi-loja → WhatsApp por loja → provisionamento → mobile),
+executado com o mesmo ciclo disciplinado já usado em REF-APP-01/REF-ADMIN-04 (auditoria da onda → plano →
+implementação → testes → regressão → commit → push → doc → relatório). Ledger de execução:
+[REF-SAAS-01-plano-ondas.md](../ref/REF-SAAS-01-plano-ondas.md).
+
 ## Sequência da evolução arquitetural
 
 ```
