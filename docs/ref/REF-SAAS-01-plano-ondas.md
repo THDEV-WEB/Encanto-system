@@ -30,7 +30,7 @@ Toma as decisões que a auditoria/revalidação deixaram abertas: modelo de iden
 | Onda | Objetivo | Depende de | Status |
 |---|---|---|---|
 | **0** | Fundação de dados: tabela `stores`; `store_id` nullable em todas as tabelas de negócio; backfill com a loja "encanto" | ADR mestre | ✅ **Concluída (2026-08-07)** — ver seção própria abaixo |
-| **1** | Gateway de autorização: `super_admins`, `is_admin_of(store_id)`, `admins.store_id`, `is_admin()` como wrapper de compatibilidade | Onda 0 | 📋 Não iniciada |
+| **1** | Gateway de autorização: `super_admins`, `is_admin_of(store_id)`, `admins.store_id`, `is_admin()` como wrapper de compatibilidade | Onda 0 | ✅ **Concluída (2026-08-07)** — ver seção própria abaixo |
 | **2** | RLS + RPCs do catálogo (`products/categories/adicionais/product_collections`) com `store_id` | Onda 1 | 📋 Não iniciada |
 | **3** | Identidade do cliente — decisão já tomada no ADR §2 (por loja, auth global); esta onda é só a implementação (`customers.store_id`, uniques compostos, `link_customer_to_auth`) | Onda 0 | 📋 Não iniciada |
 | **4** | RLS + RPCs de pedidos/fidelidade/entrega/horário (`orders` + `delivery_fee`/`maquininha_fee`, `loyalty_*`, `business_hours_schedule`, `delivery_fee_config` → `store_settings`) | Ondas 1–3 | 📋 Não iniciada |
@@ -83,3 +83,45 @@ Commit único cobrindo migration + rollback + script de verificação + registro
 ### Relatório técnico da onda
 
 **Objetivo cumprido:** fundação de dados criada — `stores` existe com a loja "encanto" como Cliente Zero, e as 13 tabelas de negócio já têm `store_id` (nullable, indexado, com FK), 100% retrocompatível. **Nada em `src/` foi alterado** — a Encanto Marmitaria continua funcionando exatamente igual, porque nenhuma RPC/RLS/componente lê essa coluna ainda. **Escopo respeitado:** `admins` (Onda 1), `settings`→`store_settings` (Onda 4) e `address_gazetteer` (permanece global) ficaram de fora, como decidido no ADR. **Risco durante a execução:** nenhum incidente — volume de dados pequeno (total ~800 linhas somadas), transação única, sem lock prolongado. **Pronta para a Onda 1** (gateway de autorização: `super_admins`, `admins.store_id`, `is_admin_of()`, `is_admin()` como wrapper).
+
+---
+
+## Onda 1 — Gateway de autorização
+
+**✅ CONCLUÍDA (2026-08-07)**
+
+### Auditoria específica da onda
+
+Estado pré-onda confirmado por leitura direta: `public.admins` tinha 1 única linha (`user_id b9dc7626-af9c-4ab5-95f7-3207e6469129`, o admin real de produção da Encanto), `UNIQUE(user_id)`, sem `store_id`. `is_admin()` consultava essa tabela direto. Nenhum papel de super admin existia.
+
+### Plano técnico
+
+1. `CREATE TABLE super_admins` (global, `user_id` PK → `auth.users`, sem `store_id` por definição — ADR §1.3), RLS habilitado + policy de self-read (mesmo padrão de `admins`).
+2. `admins.store_id`: adiciona nullable → backfill com a loja "encanto" (único admin hoje) → `SET NOT NULL` → troca `UNIQUE(user_id)` por `UNIQUE(store_id, user_id)` (permite 1 `user_id` em várias lojas sem tabela de vínculo separada — ADR §1.4). Diferente da Onda 0 (que manteve tudo nullable), aqui a coluna vai direto a `NOT NULL` na mesma migration porque só existe 1 admin hoje e nenhuma RPC além de `is_admin()` toca essa tabela.
+3. `is_super_admin()` / `is_admin_of(p_store_id)` — novas, `SECURITY DEFINER`, mesmo estilo das RPCs existentes.
+4. `is_admin()` — `CREATE OR REPLACE` (mesma assinatura) passa a delegar para `is_admin_of(<id da loja "encanto">)`. Retrocompatibilidade: nenhuma das ~30 RPCs que já chamam `is_admin()` precisou mudar.
+
+Migrations: `migrations/REF-SAAS-01-onda1-autorizacao.sql` + `-rollback.sql`.
+
+### Testes
+
+`scripts/saas01-onda1-authz-test.mjs` (`npm run test:saas01-onda1-authz`) — 2 camadas: (A) estrutural somente-leitura e (B) **comportamental**, simulando sessão real via `SET LOCAL ROLE` + `request.jwt.claims` dentro de `BEGIN...ROLLBACK` (mesmo padrão de `scripts/auth-rls-test.mjs` já usado no projeto) — prova que o admin real de produção continua autorizado identicamente a antes da migration, que um usuário aleatório é negado, e que `is_super_admin()` implica `is_admin_of()` em qualquer loja (testado inserindo um super admin fictício que o `ROLLBACK` desfaz — mutação líquida zero). `npm run test:domain` roda depois, para confirmar zero regressão no app.
+
+### Migration — aplicada (2026-08-07)
+
+Via `node run.mjs --file migrations/REF-SAAS-01-onda1-autorizacao.sql`. Transação única, sem erro.
+
+### Validação
+
+- `npm run test:saas01-onda1-authz` → **9/9 PASS na primeira execução limpa** (3 achados na primeira rodada foram corrigidos no *script de teste*, não na migration — ver nota abaixo). Prova comportamental real: o admin de produção (`b9dc7626-...`) continua com `is_admin()=true` e agora também `is_admin_of(<id encanto>)=true`; um usuário sem vínculo nenhum é negado em ambas; um super admin simulado (inserido e desfeito dentro do mesmo `ROLLBACK`, nunca persiste) tem `is_admin_of()=true` em uma loja aleatória onde não tem nenhuma linha em `admins` — prova que a composição `is_super_admin() OR EXISTS(...)` funciona como desenhado no ADR §4.
+- `npm run test:domain` → **exit 0**, zero regressão.
+
+**Nota de qualidade do processo (não é desvio do ADR, é acerto do processo de validação):** a primeira execução do script de teste apontou 3 falhas, todas no *script*, não na migration: (1) comparação de array via `JSON.stringify` sem `::text` no `array_agg` (domínio `sql_identifier` do `information_schema` não é reconhecido pelo parser de arrays do driver `pg`); (2) duas checagens tentaram reconsultar `public.stores` de dentro da sessão simulada como `authenticated` — mas `stores` tem RLS habilitado sem nenhuma policy (de propósito, Onda 0), então essa subconsulta sempre voltava vazia sob esse papel, testando `is_admin_of(NULL)` por engano; corrigido resolvendo o `id` da loja uma vez, como superusuário, antes de entrar na sessão simulada; (3) o teste de super admin tentava inserir um `user_id` fictício que não existe em `auth.users`, violando a FK de `super_admins` — corrigido reaproveitando o `user_id` real do admin de produção (que já satisfaz a FK) para provar o mesmo comportamento. As 3 correções foram só no arquivo de teste; a migration não mudou.
+
+### Commit / Push
+
+Commit único cobrindo migration + rollback + script de verificação (já corrigido) + registro no `package.json` + este ledger.
+
+### Relatório técnico da onda
+
+**Objetivo cumprido:** `super_admins` (papel global da VALION) e `is_admin_of(store_id)`/`is_super_admin()` existem; `admins.store_id` é `NOT NULL` com `UNIQUE(store_id, user_id)`; `is_admin()` agora delega para `is_admin_of()` mantendo o mesmo comportamento para o admin único de hoje — **retrocompatibilidade comprovada por teste comportamental real**, não só por leitura de schema. **Diferença deliberada em relação à Onda 0:** `admins.store_id` foi direto a `NOT NULL` na mesma migration (não ficou nullable-para-sempre) porque só existe 1 admin hoje e nenhuma outra RPC/RLS depende dessa tabela ainda — decisão dentro do espírito do ADR (§9: nullable-primeiro é sobre não quebrar o que já depende da coluna; aqui nada dependia). **Risco:** nenhum incidente; a suíte de teste pegou 3 bugs *de teste* antes do commit, exatamente a função da etapa de Validação. **Pronta para a Onda 2** (RLS/RPCs do catálogo: `products/categories/adicionais/product_collections` ganham policy com predicado de `store_id`).
