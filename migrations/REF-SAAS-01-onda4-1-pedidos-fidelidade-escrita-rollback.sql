@@ -394,6 +394,11 @@ begin
   end;
 end;$function$;
 
+-- Mesmo motivo da migration direta: este CREATE OR REPLACE recria create_order (4 args) como objeto
+-- NOVO no catalogo (a versao de 5 args deixou de existir), que herdaria EXECUTE de PUBLIC por padrao
+-- se nao for revogado de novo aqui -- restaura o hardening original (REF-AUDIT-01/HARDEN-ORDERS-RLS).
+REVOKE EXECUTE ON FUNCTION public.create_order(jsonb, jsonb, jsonb, uuid) FROM PUBLIC;
+
 -- ===== store_id volta a nullable, sem DEFAULT =====
 ALTER TABLE public.notification_outbox  ALTER COLUMN store_id DROP NOT NULL;
 ALTER TABLE public.loyalty_events       ALTER COLUMN store_id DROP NOT NULL;

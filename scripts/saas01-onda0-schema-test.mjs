@@ -41,7 +41,18 @@ const TABELAS_COM_STORE_ID = [
   'orders', 'order_items', 'order_events', 'loyalty_accounts', 'loyalty_events',
   'notification_outbox', 'addresses', 'application_logs',
 ];
-const TABELAS_SEM_STORE_ID_NESTA_ONDA = ['admins', 'settings', 'address_gazetteer'];
+// admins ganhou store_id na Onda 1 (por decisao explicita, documentada la) -- removida daqui.
+// settings/address_gazetteer permanecem globais de proposito PARA SEMPRE (ADR §6) -- as 2 unicas
+// exceptions permanentes desta lista.
+const TABELAS_SEM_STORE_ID_NESTA_ONDA = ['settings', 'address_gazetteer'];
+// Ondas 2 (catalogo)/3 (customers)/4.1 (pedidos+fidelidade) promoveram store_id a NOT NULL nessas 11
+// tabelas, por decisao explicita e documentada em cada onda (nullable-primeiro so durante a transicao).
+// application_logs fica nullable/opcional PARA SEMPRE por design (ADR §6 -- log nem sempre tem
+// contexto de loja no momento de escrever). addresses continua nullable porque nenhuma onda desta REF
+// a promoveu ainda (fora do escopo da REF-SAAS-01 ate agora, pertence a REF-ADDRESS-02) -- nao e
+// "esquecida", so ainda nao chegou a vez dela.
+const TABELAS_AINDA_NULLABLE = ['application_logs', 'addresses'];
+const TABELAS_NOT_NULL_APOS_ONDAS_POSTERIORES = TABELAS_COM_STORE_ID.filter(t => !TABELAS_AINDA_NULLABLE.includes(t));
 
 const R = []; const out = (s = '') => R.push(s);
 let passes = 0, failures = 0;
@@ -85,7 +96,7 @@ try {
   }
   out('');
 
-  out('— S3: cada uma das 13 tabelas de negocio tem store_id (uuid, nullable, FK->stores) —');
+  out('— S3: cada uma das 13 tabelas de negocio tem store_id (uuid, FK->stores); NOT NULL onde ondas posteriores ja promoveram, nullable so em application_logs —');
   {
     const r = await client.query(`
       SELECT c.table_name, c.data_type, c.is_nullable
@@ -95,11 +106,15 @@ try {
     const byTable = Object.fromEntries(r.rows.map(x => [x.table_name, x]));
     const faltando = TABELAS_COM_STORE_ID.filter(t => !byTable[t]);
     const tipoErrado = TABELAS_COM_STORE_ID.filter(t => byTable[t] && byTable[t].data_type !== 'uuid');
-    const naoNullable = TABELAS_COM_STORE_ID.filter(t => byTable[t] && byTable[t].is_nullable !== 'YES');
-    const ok = faltando.length === 0 && tipoErrado.length === 0 && naoNullable.length === 0;
+    // Ondas 2/3/4.1 ja promoveram estas 11 a NOT NULL -- aqui isso e o esperado, nao uma falha.
+    const deveriaSerNotNull = TABELAS_NOT_NULL_APOS_ONDAS_POSTERIORES.filter(t => byTable[t] && byTable[t].is_nullable !== 'NO');
+    // application_logs (pra sempre) e addresses (ainda nao chegou a vez, fora do escopo ate agora)
+    // continuam nullable de proposito.
+    const deveriaContinuarNullable = TABELAS_AINDA_NULLABLE.filter(t => byTable[t] && byTable[t].is_nullable !== 'YES');
+    const ok = faltando.length === 0 && tipoErrado.length === 0 && deveriaSerNotNull.length === 0 && deveriaContinuarNullable.length === 0;
     if (ok) passes++; else failures++;
-    out(`  [${ok ? 'PASS' : 'FAIL'}] S3 store_id presente/uuid/nullable em todas as ${TABELAS_COM_STORE_ID.length} tabelas`);
-    out(`         -> faltando: [${faltando.join(',')}] · tipo!=uuid: [${tipoErrado.join(',')}] · NOT NULL indevido: [${naoNullable.join(',')}]`);
+    out(`  [${ok ? 'PASS' : 'FAIL'}] S3 store_id presente/uuid/FK em todas as ${TABELAS_COM_STORE_ID.length}; NOT NULL nas 11 promovidas; nullable em application_logs/addresses`);
+    out(`         -> faltando: [${faltando.join(',')}] · tipo!=uuid: [${tipoErrado.join(',')}] · deveria ser NOT NULL mas nao e: [${deveriaSerNotNull.join(',')}] · deveria continuar nullable mas nao esta: [${deveriaContinuarNullable.join(',')}]`);
 
     const fk = await client.query(`
       SELECT tc.table_name
@@ -117,16 +132,21 @@ try {
   }
   out('');
 
-  out('— S4: backfill 100% completo (zero linha com store_id NULL nas tabelas que ja tinham dado) —');
+  out('— S4: backfill 100% completo (zero linha com store_id NULL) -- exceto application_logs, opcional pra sempre por design (ADR §6), reportado so informativamente —');
   {
     for (const t of TABELAS_COM_STORE_ID) {
       let v = 'FAIL', d = '';
       try {
         const r = await client.query(`SELECT count(*)::int AS total, count(*) FILTER (WHERE store_id IS NULL)::int AS nulos FROM public.${t}`);
         const { total, nulos } = r.rows[0];
-        const ok = nulos === 0;
-        v = ok ? 'PASS' : 'FAIL';
-        d = `total=${total} · store_id NULL=${nulos}`;
+        if (t === 'application_logs') {
+          v = 'PASS'; // opcional por design -- linhas novas sem contexto de loja sao esperadas e ok
+          d = `total=${total} · store_id NULL=${nulos} (informativo, nao exige zero -- coluna opcional por design)`;
+        } else {
+          const ok = nulos === 0;
+          v = ok ? 'PASS' : 'FAIL';
+          d = `total=${total} · store_id NULL=${nulos}`;
+        }
       } catch (e) { d = redact(e.message).split('\n')[0]; }
       record(`S4:${t}`, 'backfill completo', v, d);
     }
@@ -145,7 +165,7 @@ try {
   }
   out('');
 
-  out('— S6: fora de escopo desta onda — admins/settings/address_gazetteer NAO tem store_id —');
+  out('— S6: settings/address_gazetteer permanecem globais PARA SEMPRE (ADR §6) — admins ganhou store_id na Onda 1, por decisao explicita, e foi removida desta checagem —');
   {
     const r = await client.query(`
       SELECT table_name FROM information_schema.columns
@@ -154,7 +174,7 @@ try {
     const comStoreId = r.rows.map(x => x.table_name);
     const ok = comStoreId.length === 0;
     if (ok) passes++; else failures++;
-    out(`  [${ok ? 'PASS' : 'FAIL'}] S6 nenhuma das 3 tabelas fora de escopo ganhou store_id`);
+    out(`  [${ok ? 'PASS' : 'FAIL'}] S6 nenhuma das 2 tabelas globais permanentes ganhou store_id`);
     out(`         -> ganharam (nao deveriam ter ganho): [${comStoreId.join(',')}]`);
   }
   out('');

@@ -53,6 +53,13 @@ try {
   out('— Fingerprint — Project ' + projectRef(host, user) + ' · sessao ' + meta.who + ' · TIMEZONE=' + meta.tz + ' · ' + meta.utc + ' UTC');
   out('');
 
+  // REF-SAAS-01 · Onda 4.1 (2026-08-08): orders_health() passou a exigir is_admin_of(p_store_id) --
+  // antes nao tinha checagem nenhuma (achado de seguranca pre-existente fechado naquela onda). Esta
+  // suite so le (sem BEGIN/ROLLBACK, sem SET ROLE), entao simula a identidade do admin real via GUC de
+  // sessao (nao-local: sobrevive fora de transacao, nao grava nada) -- p_store_id usa o DEFAULT
+  // (default_store_id() -> encanto), sem precisar mudar nenhuma chamada abaixo.
+  await client.query("SELECT set_config('request.jwt.claims', $1, false)", [JSON.stringify({ sub: 'b9dc7626-af9c-4ab5-95f7-3207e6469129', role: 'authenticated' })]);
+
   out('— Pre-requisito: orders_health() ja tem o fix aplicado (Fase 1: AT TIME ZONE inline, OU Fase 2a: dia_loja()) —');
   {
     const src = (await client.query(`SELECT pg_get_functiondef(p.oid) AS def FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname='orders_health'`)).rows[0]?.def || '';

@@ -195,13 +195,23 @@ try {
     await client.query('ROLLBACK').catch(() => {});
   }
 
-  out('— CO6 · assinatura de create_order não mudou (só o corpo — CREATE OR REPLACE seguro) —');
+  // REF-SAAS-01 · Onda 4.1 (2026-08-08): create_order ganhou um 5º parâmetro (p_store_id uuid, com
+  // DEFAULT) para suportar multi-loja — mudança arquitetural deliberada, documentada em
+  // docs/ref/REF-SAAS-01-plano-ondas.md. O invariante que importa deixou de ser "a assinatura nunca
+  // muda" e passou a ser "os 4 parâmetros originais mantêm nome/tipo/ordem, e anon/authenticated
+  // continuam com EXECUTE" — checado explicitamente abaixo (o DROP FUNCTION + CREATE OR REPLACE
+  // daquela migration recria o objeto no catálogo, o que já resetou o ACL de create_order uma vez
+  // nesta mesma REF; corrigido, mas este teste passa a vigiar isso também).
+  out('— CO6 · assinatura de create_order evoluiu (REF-SAAS-01 Onda 4.1 — ganhou p_store_id); 4 parâmetros originais + grants anon/authenticated preservados —');
   {
     const sig = (await client.query(`SELECT pronargs, proargtypes::regtype[]::text[] AS tipos FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname='create_order'`)).rows[0];
-    const ok = sig.pronargs === 4 && JSON.stringify(sig.tipos) === JSON.stringify(['jsonb', 'jsonb', 'jsonb', 'uuid']);
+    const acl = (await client.query(`SELECT proacl::text AS acl FROM pg_proc WHERE proname='create_order' AND pronamespace='public'::regnamespace`)).rows[0].acl;
+    const assinaturaOk = sig.pronargs === 5 && JSON.stringify(sig.tipos) === JSON.stringify(['jsonb', 'jsonb', 'jsonb', 'uuid', 'uuid']);
+    const grantsOk = /anon=X/.test(acl) && /authenticated=X/.test(acl);
+    const ok = assinaturaOk && grantsOk;
     if (ok) passes++; else failures++;
-    out(`  [${ok ? 'PASS' : 'FAIL'}] CO6 4 parâmetros (jsonb,jsonb,jsonb,uuid) — grants existentes (anon/authenticated) permanecem válidos`);
-    out(`         -> pronargs=${sig.pronargs} tipos=${JSON.stringify(sig.tipos)}`);
+    out(`  [${ok ? 'PASS' : 'FAIL'}] CO6 5 parâmetros (jsonb,jsonb,jsonb,uuid,uuid — o 5º é p_store_id) e grants anon/authenticated intactos`);
+    out(`         -> pronargs=${sig.pronargs} tipos=${JSON.stringify(sig.tipos)} · acl=${acl}`);
   }
   out('');
 

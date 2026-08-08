@@ -124,6 +124,13 @@ begin
   end;
 end;$function$;
 
+-- IMPORTANTE (achado so descoberto ao fechar a Onda 4.3, ver ledger): o DROP FUNCTION + CREATE acima
+-- recria create_order como objeto NOVO no catalogo do Postgres, que herda os privilegios PADRAO do
+-- schema -- inclusive EXECUTE para PUBLIC. create_order tinha esse EXECUTE de PUBLIC explicitamente
+-- revogado ha muito tempo (REF-AUDIT-01/HARDEN-ORDERS-RLS, ver scripts/harden-orders-rls-test.mjs) --
+-- sem esta linha, essa migration desfaz aquele reforco de seguranca sem intencao.
+REVOKE EXECUTE ON FUNCTION public.create_order(jsonb, jsonb, jsonb, uuid, uuid) FROM PUBLIC;
+
 -- ===== 3. Triggers de auditoria/notificacao: propagam store_id (da propria linha, sem precisar de
 -- ponte -- orders/order_items ja carregam seu store_id real, gracas ao create_order acima) =====
 

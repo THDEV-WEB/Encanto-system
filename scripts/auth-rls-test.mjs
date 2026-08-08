@@ -78,9 +78,11 @@ try {
   await expectDeniedWrite('CW4', 'authenticated', clientA, 'cliente(nao-admin) INSERT adicionais NEGADO', `INSERT INTO public.adicionais(nome,grupo,aplica_categoria_id) VALUES('__auth_rls_a','simples',NULL)`);
 
   // ── ADMIN (linha em admins): ESCREVE catalogo ──
+  // REF-SAAS-01 · Onda 1: admins.store_id e NOT NULL (sem DEFAULT) -- precisa ser informado explicito,
+  // senao o INSERT de setup falha com "null value in column store_id violates not-null constraint".
   if (adminUid) {
-    await expectAllowed('AD1', 'authenticated', adminUid, 'admin UPDATE products PERMITIDO', [`INSERT INTO public.admins(user_id) VALUES('${adminUid}') ON CONFLICT DO NOTHING`], [`UPDATE public.products SET disponivel=disponivel WHERE id='${pid}'`]);
-    await expectAllowed('AD2', 'authenticated', adminUid, 'admin INSERT categories PERMITIDO', [`INSERT INTO public.admins(user_id) VALUES('${adminUid}') ON CONFLICT DO NOTHING`], [`INSERT INTO public.categories(id,nome,slug,tipo,ordem,ativo) VALUES('__auth_rls_ad','X','__auth-rls-ad','business',999,true)`]);
+    await expectAllowed('AD1', 'authenticated', adminUid, 'admin UPDATE products PERMITIDO', [`INSERT INTO public.admins(user_id, store_id) VALUES('${adminUid}', (SELECT id FROM public.stores WHERE slug='encanto')) ON CONFLICT DO NOTHING`], [`UPDATE public.products SET disponivel=disponivel WHERE id='${pid}'`]);
+    await expectAllowed('AD2', 'authenticated', adminUid, 'admin INSERT categories PERMITIDO', [`INSERT INTO public.admins(user_id, store_id) VALUES('${adminUid}', (SELECT id FROM public.stores WHERE slug='encanto')) ON CONFLICT DO NOTHING`], [`INSERT INTO public.categories(id,nome,slug,tipo,ordem,ativo) VALUES('__auth_rls_ad','X','__auth-rls-ad','business',999,true)`]);
   } else rec('FAIL', 'AD1', 'admin write', 'sem usuario em auth.users para simular admin');
 
   // ── isolamento de leitura (leak guard): cliente NAO-admin NAO ve pedidos/clientes alheios ──
