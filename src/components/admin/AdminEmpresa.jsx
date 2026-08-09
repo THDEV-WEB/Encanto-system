@@ -1,37 +1,49 @@
-/* components/admin/AdminEmpresa.jsx — REF-COMPANY-01 (+03: Central de Configuração da Empresa).
+/* components/admin/AdminEmpresa.jsx — REF-COMPANY-01 (+03: Central de Configuração da Empresa;
+   +REF-SAAS-01 · Onda 6.2: branding por loja).
    Controle administrativo de TODOS os dados institucionais da empresa — identidade, contato, texto
-   "Sobre nós", redes sociais, endereço institucional, dados legais e configurações de preparo (timezone/
-   idioma/moeda). FONTE ÚNICA no Supabase (settings via RPC set_company_info, mesmo par de RPCs desde a
-   REF-COMPANY-01 — nenhuma migration nova nesta ref: o merge raso do servidor já aceita qualquer campo
-   novo). Consome o MESMO valor que a loja (useCompanyInfo).
+   "Sobre nós", redes sociais, endereço institucional, dados legais, configurações de preparo (timezone/
+   idioma/moeda) e branding (logo/favicon/paleta/Termos/Fidelidade). FONTE ÚNICA no Supabase
+   (store_settings via RPC set_company_info, mesmo par de RPCs desde a REF-COMPANY-01 — a Onda 6.2 só
+   migrou a tabela de settings global para store_settings por loja e ampliou o merge raso do servidor
+   com os campos de branding). Consome o MESMO valor que a loja (useCompanyInfo).
 
    Fluxo CLARO: TODOS os campos ficam pendentes num único form local até "Salvar Alterações" (botão único,
    no fim da página) — sem auto-save por bloco. Exceção: o toggle do botão flutuante do WhatsApp grava
    IMEDIATAMENTE (mesmo padrão de AdminFidelidade.toggleEnabled), mas de forma TRUTHFUL — só reflete o
    novo estado se o servidor confirmar. Valida no cliente (evita round-trip óbvio); o servidor sempre
-   revalida (is_admin + as mesmas regras — ver companyInfoRules.js).
+   revalida (is_admin_of(store_id) + as mesmas regras — ver companyInfoRules.js).
 
    ENDEREÇO: o bloco "📍 Endereço" aqui é o ENDEREÇO INSTITUCIONAL da empresa (company_info) — entidade
    INDEPENDENTE do endereço de RETIRADA usado no checkout (STORE_INFO.retirada, constants/storeInfo.js).
-   Este componente NUNCA lê STORE_INFO — não há acoplamento entre as duas fontes. */
+   Este componente NUNCA lê STORE_INFO — não há acoplamento entre as duas fontes.
+
+   BRANDING (Onda 6.2): logo/favicon/paleta/Termos/Fidelidade só têm efeito visual no bundle do
+   STOREFRONT (StoreApp.jsx) — o Admin não é skinado por loja (ver comentário de cabeçalho de
+   companyInfoRules.js). ImageUploader é o MESMO componente já em produção para imagem de produto
+   (Storage bucket "products"), só com uma subpasta diferente ("branding/"). */
 import { useState, useEffect, useMemo } from 'react';
 import { useCompanyInfo } from '../../hooks/useCompanyInfo.js';
 import { salvarCompanyInfo, formatarTelefoneBR } from '../../services/company/companyInfo.js';
 import { normalizePhoneBR } from '../../services/notifications/WhatsAppService.js';
+import { ImageUploader } from './ImageUploader.jsx';
 
 /* Campos do form PENDENTE (chave -> como extrair de `info` p/ o estado local editável). Telefone/whatsapp
-   entram FORMATADOS para edição; os demais, como estão. whatsappFloatEnabled fica de fora (grava direto). */
+   entram FORMATADOS para edição; os demais, como estão. whatsappFloatEnabled fica de fora (grava direto).
+   termosSecoes/fidelidadeTexto (arrays) ficam fora desta lista — tratados à parte em paraForm/paraPatch. */
 const CAMPOS_TEXTO = [
   'nomeCurto', 'nomeCompleto', 'email', 'sobre',
   'instagram', 'facebook', 'tiktok', 'site', 'cardapio', 'googleMaps',
   'cep', 'rua', 'numero', 'bairro', 'cidade', 'estado',
   'cnpj', 'razaoSocial', 'nomeFantasia',
   'timezone', 'idioma', 'moeda',
+  'logoUrl', 'faviconUrl', 'corPrimaria', 'corSecundaria', 'corDestaque',
 ];
 
 function paraForm(info) {
   const f = { telefone: formatarTelefoneBR(info.telefone), whatsapp: formatarTelefoneBR(info.whatsapp) };
   for (const k of CAMPOS_TEXTO) f[k] = info[k] ?? '';
+  f.termosSecoes = (info.termosSecoes || []).map((s) => ({ ...s }));
+  f.fidelidadeTexto = [...(info.fidelidadeTexto || [])];
   return f;
 }
 
@@ -39,6 +51,8 @@ function paraForm(info) {
 function paraPatch(form) {
   const p = { telefone: normalizePhoneBR(form.telefone), whatsapp: normalizePhoneBR(form.whatsapp) };
   for (const k of CAMPOS_TEXTO) p[k] = k === 'email' ? form[k].trim().toLowerCase() : form[k];
+  p.termosSecoes = form.termosSecoes;
+  p.fidelidadeTexto = form.fidelidadeTexto;
   return p;
 }
 
@@ -65,20 +79,13 @@ function Campo({ label, hint, testId, ...props }) {
   );
 }
 
-/* Card "Em breve" — reserva o LAYOUT para Logo/Favicon sem nenhum campo de dado (sem upload ainda). Quando
-   a funcionalidade existir, o slot já está no lugar certo — não precisa reorganizar o bloco de Identidade. */
-function EmBreveCard({ icone, titulo }) {
+/* Rótulo simples acima de um widget não-textual (ImageUploader, color picker) — mesma linguagem visual
+   de Campo/form-label, sem o <input> genérico. */
+function Rotulo({ children, hint }) {
   return (
-    <div style={{
-      flex: 1, minWidth: 160, border: '1.5px dashed var(--gray-300)', borderRadius: 12,
-      padding: '20px 16px', textAlign: 'center', color: 'var(--gray-400)',
-    }}>
-      <div style={{ fontSize: 28, marginBottom: 8 }}>{icone}</div>
-      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--gray-600)' }}>{titulo}</div>
-      <div style={{
-        fontSize: 11, fontWeight: 700, color: 'var(--gray-400)', background: 'var(--gray-100)',
-        borderRadius: 20, padding: '3px 10px', display: 'inline-block', marginTop: 8,
-      }}>Em breve</div>
+    <div style={{ marginBottom: 6 }}>
+      <label className="form-label">{children}</label>
+      {hint && <p style={{ fontSize: 11, color: 'var(--gray-400)', margin: '2px 0 4px' }}>{hint}</p>}
     </div>
   );
 }
@@ -134,10 +141,82 @@ export function AdminEmpresa() {
           <Campo testId="empresa-form-nome-completo" label="Nome completo" value={form.nomeCompleto} onChange={campo('nomeCompleto')}
             hint="Título do site e documentos." />
         </div>
-        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-          <EmBreveCard icone="🖼️" titulo="Logo da empresa" />
-          <EmBreveCard icone="🔖" titulo="Favicon" />
+        <div className="form-row">
+          <div>
+            <Rotulo hint="Substitui a logo padrão no cabeçalho da loja. Deixe em branco para usar a logo padrão.">🖼️ Logo da empresa</Rotulo>
+            <ImageUploader currentUrl={form.logoUrl || null} pasta="branding/logo"
+              onUpload={(url) => { setForm((f) => ({ ...f, logoUrl: url || '' })); setMsg(null); }} />
+          </div>
+          <div>
+            <Rotulo hint="Ícone exibido na aba do navegador. Deixe em branco para usar o favicon padrão.">🔖 Favicon</Rotulo>
+            <ImageUploader currentUrl={form.faviconUrl || null} pasta="branding/favicon"
+              onUpload={(url) => { setForm((f) => ({ ...f, faviconUrl: url || '' })); setMsg(null); }} />
+          </div>
         </div>
+      </Bloco>
+
+      <Bloco icone="🎨" titulo="Paleta de Cores" descricao="Cores da loja (cabeçalho, botões, destaques). Aplicadas apenas na loja — o painel administrativo mantém a identidade própria.">
+        <div className="form-row">
+          <div className="form-group">
+            <label className="form-label">Cor primária</label>
+            <input type="color" data-testid="empresa-form-cor-primaria" value={form.corPrimaria}
+              onChange={campo('corPrimaria')} style={{ width: '100%', height: 44, borderRadius: 8, border: '1px solid var(--gray-200)', cursor: 'pointer' }} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Cor secundária</label>
+            <input type="color" data-testid="empresa-form-cor-secundaria" value={form.corSecundaria}
+              onChange={campo('corSecundaria')} style={{ width: '100%', height: 44, borderRadius: 8, border: '1px solid var(--gray-200)', cursor: 'pointer' }} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Cor de destaque</label>
+            <input type="color" data-testid="empresa-form-cor-destaque" value={form.corDestaque}
+              onChange={campo('corDestaque')} style={{ width: '100%', height: 44, borderRadius: 8, border: '1px solid var(--gray-200)', cursor: 'pointer' }} />
+          </div>
+        </div>
+      </Bloco>
+
+      <Bloco icone="📜" titulo="Termos de Uso" descricao='Seções exibidas na tela "Termos e Políticas" da loja.'>
+        {form.termosSecoes.map((s, i) => (
+          <div key={i} style={{ border: '1px solid var(--gray-200)', borderRadius: 10, padding: 14, marginBottom: 12 }}>
+            <div className="form-group" style={{ marginBottom: 10 }}>
+              <label className="form-label">Título</label>
+              <input className="form-input" data-testid={`empresa-form-termos-titulo-${i}`} value={s.titulo}
+                onChange={(e) => setForm((f) => ({ ...f, termosSecoes: f.termosSecoes.map((x, idx) => (idx === i ? { ...x, titulo: e.target.value } : x)) }))} />
+            </div>
+            <div className="form-group" style={{ marginBottom: 10 }}>
+              <label className="form-label">Texto</label>
+              <textarea className="form-input" data-testid={`empresa-form-termos-corpo-${i}`} rows={3} value={s.corpo}
+                style={{ resize: 'vertical' }}
+                onChange={(e) => setForm((f) => ({ ...f, termosSecoes: f.termosSecoes.map((x, idx) => (idx === i ? { ...x, corpo: e.target.value } : x)) }))} />
+            </div>
+            <button type="button" className="btn-secondary" data-testid={`empresa-form-termos-remover-${i}`}
+              onClick={() => setForm((f) => ({ ...f, termosSecoes: f.termosSecoes.filter((_, idx) => idx !== i) }))}>
+              🗑️ Remover seção
+            </button>
+          </div>
+        ))}
+        <button type="button" className="btn-secondary" data-testid="empresa-form-termos-adicionar"
+          onClick={() => setForm((f) => ({ ...f, termosSecoes: [...f.termosSecoes, { titulo: '', corpo: '' }] }))}>
+          ➕ Adicionar seção
+        </button>
+      </Bloco>
+
+      <Bloco icone="🎁" titulo="Fidelidade" descricao='Parágrafos exibidos na tela "Programa de Fidelidade" da loja.'>
+        {form.fidelidadeTexto.map((par, i) => (
+          <div key={i} style={{ display: 'flex', gap: 10, marginBottom: 10, alignItems: 'flex-start' }}>
+            <textarea className="form-input" data-testid={`empresa-form-fidelidade-${i}`} rows={2} value={par}
+              style={{ resize: 'vertical', flex: 1 }}
+              onChange={(e) => setForm((f) => ({ ...f, fidelidadeTexto: f.fidelidadeTexto.map((x, idx) => (idx === i ? e.target.value : x)) }))} />
+            <button type="button" className="btn-secondary" data-testid={`empresa-form-fidelidade-remover-${i}`}
+              onClick={() => setForm((f) => ({ ...f, fidelidadeTexto: f.fidelidadeTexto.filter((_, idx) => idx !== i) }))}>
+              🗑️
+            </button>
+          </div>
+        ))}
+        <button type="button" className="btn-secondary" data-testid="empresa-form-fidelidade-adicionar"
+          onClick={() => setForm((f) => ({ ...f, fidelidadeTexto: [...f.fidelidadeTexto, ''] }))}>
+          ➕ Adicionar parágrafo
+        </button>
       </Bloco>
 
       <Bloco icone="📞" titulo="Contato" descricao="Telefone, WhatsApp e e-mail usados pela loja e pelo checkout.">

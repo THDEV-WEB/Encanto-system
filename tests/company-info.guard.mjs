@@ -17,7 +17,9 @@
      (8) REF-COMPANY-03 (Central de Configuração): STORE_INFO nao guarda mais `endereco`/`social`
          (migrados p/ company_info); `retirada` (endereco de RETIRADA do checkout) permanece intocado —
          entidade INDEPENDENTE do endereco institucional. SideDrawer consome useCompanyInfo p/ os links
-         sociais (nao mais STORE_INFO.social). */
+         sociais (nao mais STORE_INFO.social).
+     (9) REF-SAAS-01 Onda 6.2: TERMOS_SECOES/FIDELIDADE_TEXTO nunca reaparecem em constants/storeInfo.js;
+         TermosScreen/FidelidadeScreen consomem useCompanyInfo (termosSecoes/fidelidadeTexto). */
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
@@ -113,7 +115,21 @@ check('(8) STORE_INFO sem social/endereco (migrados); retirada intocado; SideDra
   assert.ok(!/STORE_INFO\.social/.test(drawerCode), 'SideDrawer NAO deveria mais ler STORE_INFO.social');
 });
 
+/* (9) REF-SAAS-01 Onda 6.2: TERMOS_SECOES/FIDELIDADE_TEXTO nunca reaparecem; Termos/FidelidadeScreen usam useCompanyInfo */
+check('(9) TERMOS_SECOES/FIDELIDADE_TEXTO nao existem mais (migrados p/ company_info); Termos/FidelidadeScreen usam useCompanyInfo', () => {
+  for (const nome of ['TERMOS_SECOES', 'FIDELIDADE_TEXTO']) {
+    const viol = files.filter((f) => new RegExp(`export\\s+const\\s+${nome}\\b`).test(strip(read(f))));
+    assert.deepStrictEqual(viol, [], `${nome} reintroduzido em: ${JSON.stringify(viol)}`);
+  }
+  const termos = strip(read('components/menu/TermosScreen.jsx'));
+  assert.ok(/useCompanyInfo/.test(termos), 'TermosScreen deveria consumir useCompanyInfo');
+  assert.ok(/termosSecoes/.test(termos), 'TermosScreen deveria ler companyInfo.termosSecoes (nao TERMOS_SECOES)');
+  const fidelidade = strip(read('components/menu/FidelidadeScreen.jsx'));
+  assert.ok(/useCompanyInfo/.test(fidelidade), 'FidelidadeScreen deveria consumir useCompanyInfo');
+  assert.ok(/fidelidadeTexto/.test(fidelidade), 'FidelidadeScreen deveria ler companyInfo.fidelidadeTexto (nao FIDELIDADE_TEXTO)');
+});
+
 console.log(fail === 0
-  ? '\nOK company-info.guard — fonte unica preservada (sem WHATSAPP/STORE_INFO/SOBRE_TEXTO/social hardcoded, hook unico, botao condicional)'
+  ? '\nOK company-info.guard — fonte unica preservada (sem WHATSAPP/STORE_INFO/SOBRE_TEXTO/TERMOS_SECOES/FIDELIDADE_TEXTO/social hardcoded, hook unico, botao condicional)'
   : `\nFALHA company-info.guard — ${fail} invariante(s)`);
 process.exit(fail ? 1 : 0);

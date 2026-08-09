@@ -14,12 +14,15 @@ console.error('— DEFAULT_COMPANY_INFO (fallback do modo degradado)');
 const CAMPOS_OBRIGATORIOS = ['nomeCurto', 'nomeCompleto', 'telefone', 'whatsapp', 'email', 'whatsappFloatEnabled', 'sobre', 'timezone', 'idioma', 'moeda'];
 const CAMPOS_OPCIONAIS = ['instagram', 'facebook', 'tiktok', 'site', 'cardapio', 'googleMaps', 'cep', 'rua', 'numero', 'bairro', 'cidade', 'estado', 'cnpj', 'razaoSocial', 'nomeFantasia'];
 const CAMPOS_COORDENADAS = ['lojaLat', 'lojaLng']; // REF-DELIVERY-FEE-01 — localização operacional da loja (null até o pino ser posicionado)
+const CAMPOS_BRANDING_URL = ['logoUrl', 'faviconUrl']; // REF-SAAS-01 Onda 6.2 — null até o admin subir uma imagem
+const CAMPOS_BRANDING_COR = ['corPrimaria', 'corSecundaria', 'corDestaque']; // REF-SAAS-01 Onda 6.2 — hex #RRGGBB, nunca vazio
+const CAMPOS_BRANDING_CONTEUDO = ['termosSecoes', 'fidelidadeTexto']; // REF-SAAS-01 Onda 6.2 — arrays, aposentam constants/storeInfo.js
 
-check('DEFAULT_COMPANY_INFO tem os 27 campos da Central de Configuração (REF-COMPANY-03 + REF-DELIVERY-FEE-01) e os obrigatórios nunca vazios', () => {
-  for (const k of [...CAMPOS_OBRIGATORIOS, ...CAMPOS_OPCIONAIS, ...CAMPOS_COORDENADAS]) {
+check('DEFAULT_COMPANY_INFO tem os 34 campos da Central de Configuração (REF-COMPANY-03 + REF-DELIVERY-FEE-01 + REF-SAAS-01 Onda 6.2) e os obrigatórios nunca vazios', () => {
+  for (const k of [...CAMPOS_OBRIGATORIOS, ...CAMPOS_OPCIONAIS, ...CAMPOS_COORDENADAS, ...CAMPOS_BRANDING_URL, ...CAMPOS_BRANDING_COR, ...CAMPOS_BRANDING_CONTEUDO]) {
     assert.ok(k in DEFAULT_COMPANY_INFO, `campo ausente: ${k}`);
   }
-  assert.equal(Object.keys(DEFAULT_COMPANY_INFO).length, 27);
+  assert.equal(Object.keys(DEFAULT_COMPANY_INFO).length, 34);
   assert.equal(typeof DEFAULT_COMPANY_INFO.whatsappFloatEnabled, 'boolean');
   assert.ok(DEFAULT_COMPANY_INFO.sobre.length > 10);
   assert.equal(DEFAULT_COMPANY_INFO.timezone, 'America/Sao_Paulo');
@@ -29,6 +32,18 @@ check('DEFAULT_COMPANY_INFO: campos opcionais (redes sociais/endereço/instituci
 });
 check('DEFAULT_COMPANY_INFO: coordenadas da loja começam null — nunca um pino falso no mapa', () => {
   for (const k of CAMPOS_COORDENADAS) assert.equal(DEFAULT_COMPANY_INFO[k], null, `${k} deveria ser null por padrão`);
+});
+check('DEFAULT_COMPANY_INFO (REF-SAAS-01 Onda 6.2): logoUrl/faviconUrl começam null (asset estático é o fallback)', () => {
+  for (const k of CAMPOS_BRANDING_URL) assert.equal(DEFAULT_COMPANY_INFO[k], null, `${k} deveria ser null por padrão`);
+});
+check('DEFAULT_COMPANY_INFO (REF-SAAS-01 Onda 6.2): paleta de cores começa com hex válido #RRGGBB (nunca vazia)', () => {
+  for (const k of CAMPOS_BRANDING_COR) assert.match(DEFAULT_COMPANY_INFO[k], /^#[0-9A-Fa-f]{6}$/, `${k} deveria ser um hex #RRGGBB`);
+});
+check('DEFAULT_COMPANY_INFO (REF-SAAS-01 Onda 6.2): termosSecoes/fidelidadeTexto começam com o conteúdo hoje hardcoded (byte-idêntico, zero mudança visual)', () => {
+  assert.ok(Array.isArray(DEFAULT_COMPANY_INFO.termosSecoes) && DEFAULT_COMPANY_INFO.termosSecoes.length >= 1);
+  for (const s of DEFAULT_COMPANY_INFO.termosSecoes) { assert.ok(s.titulo); assert.ok(s.corpo); }
+  assert.ok(Array.isArray(DEFAULT_COMPANY_INFO.fidelidadeTexto) && DEFAULT_COMPANY_INFO.fidelidadeTexto.length >= 1);
+  for (const p of DEFAULT_COMPANY_INFO.fidelidadeTexto) assert.ok(typeof p === 'string' && p.length > 0);
 });
 
 console.error('— formatarTelefoneBR (E.164 -> exibicao humana)');
@@ -231,6 +246,57 @@ check('coordenadas não numéricas/NaN (defesa contra dado corrompido vindo do s
 check('info ausente/undefined -> false, nunca lança (guarda de entrada)', () => {
   assert.equal(localizacaoLojaConfigurada(undefined), false);
   assert.equal(localizacaoLojaConfigurada(null), false);
+});
+
+console.error('— Branding por loja (REF-SAAS-01 · Onda 6.2)');
+
+check('logoUrl/faviconUrl válidos (URL http(s)) -> aceitos', () => {
+  const r = validarPatchCompanyInfo({ logoUrl: 'https://cdn.exemplo.com/logo.png', faviconUrl: 'https://cdn.exemplo.com/favicon.png' });
+  assert.ok(!r.erro);
+  assert.equal(r.patch.logoUrl, 'https://cdn.exemplo.com/logo.png');
+});
+check('logoUrl/faviconUrl vazio/null -> normalizado para null (usa o asset estático)', () => {
+  const r = validarPatchCompanyInfo({ logoUrl: '', faviconUrl: null });
+  assert.ok(!r.erro);
+  assert.equal(r.patch.logoUrl, null);
+  assert.equal(r.patch.faviconUrl, null);
+});
+check('logoUrl sem http(s) -> erro (nunca salva link quebrado)', () => {
+  const r = validarPatchCompanyInfo({ logoUrl: 'ftp://exemplo.com/logo.png' });
+  assert.ok(r.erro);
+});
+check('corPrimaria/corSecundaria/corDestaque em hex válido -> aceitos', () => {
+  const r = validarPatchCompanyInfo({ corPrimaria: '#112233', corSecundaria: '#AABBCC', corDestaque: '#ffbf00' });
+  assert.deepEqual({ p: r.patch.corPrimaria, s: r.patch.corSecundaria, d: r.patch.corDestaque },
+    { p: '#112233', s: '#AABBCC', d: '#ffbf00' });
+});
+check('cor fora do formato #RRGGBB -> erro', () => {
+  assert.ok(validarPatchCompanyInfo({ corPrimaria: 'roxo' }).erro);
+  assert.ok(validarPatchCompanyInfo({ corPrimaria: '#12345' }).erro);
+});
+check('termosSecoes válido (array de {titulo,corpo}) -> normalizado (trim)', () => {
+  const r = validarPatchCompanyInfo({ termosSecoes: [{ titulo: '  Uso  ', corpo: '  Texto de teste.  ' }] });
+  assert.deepEqual(r.patch.termosSecoes, [{ titulo: 'Uso', corpo: 'Texto de teste.' }]);
+});
+check('termosSecoes com seção sem título/corpo -> erro', () => {
+  assert.ok(validarPatchCompanyInfo({ termosSecoes: [{ titulo: '', corpo: 'x' }] }).erro);
+  assert.ok(validarPatchCompanyInfo({ termosSecoes: [{ titulo: 'x', corpo: '' }] }).erro);
+});
+check('termosSecoes vazio -> aceito (admin removeu todas as seções deliberadamente)', () => {
+  const r = validarPatchCompanyInfo({ termosSecoes: [] });
+  assert.ok(!r.erro);
+  assert.deepEqual(r.patch.termosSecoes, []);
+});
+check('fidelidadeTexto válido (array de strings) -> normalizado (trim)', () => {
+  const r = validarPatchCompanyInfo({ fidelidadeTexto: ['  Parágrafo 1.  ', 'Parágrafo 2.'] });
+  assert.deepEqual(r.patch.fidelidadeTexto, ['Parágrafo 1.', 'Parágrafo 2.']);
+});
+check('fidelidadeTexto com parágrafo vazio -> erro', () => {
+  assert.ok(validarPatchCompanyInfo({ fidelidadeTexto: ['ok', '   '] }).erro);
+});
+check('termosSecoes/fidelidadeTexto que não são array -> erro (nunca salva formato inesperado)', () => {
+  assert.ok(validarPatchCompanyInfo({ termosSecoes: 'não é array' }).erro);
+  assert.ok(validarPatchCompanyInfo({ fidelidadeTexto: { a: 1 } }).erro);
 });
 
 console.log(fail === 0 ? '\nOK company-info.golden — defaults + formatacao + validacao de patch congelados' : `\nFALHA company-info.golden — ${fail} caso(s)`);

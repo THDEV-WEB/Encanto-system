@@ -10,8 +10,11 @@ import { comprimirImagem } from '../../utils/imageCompression.js';
    - Nunca armazena base64
    - Preserva imagem existente se nenhum novo arquivo for selecionado
    - Fallback visual se image_url for null/inválida
+   REF-SAAS-01 · Onda 6.2: prop `pasta` generaliza o prefixo do objeto dentro do MESMO bucket "products"
+   (default preserva byte-a-byte o path usado hoje pelo upload de produto) — branding usa
+   pasta="branding/logo"/"branding/favicon", sem bucket/policy de Storage nova.
 ────────────────────────────────────────────────────────────────── */
-export function ImageUploader({ currentUrl, onUpload }) {
+export function ImageUploader({ currentUrl, onUpload, pasta = 'products/product' }) {
   const [preview,   setPreview]   = useState(currentUrl || null);
   const [uploading, setUploading] = useState(false);
   const [progress,  setProgress]  = useState(0);
@@ -43,7 +46,7 @@ export function ImageUploader({ currentUrl, onUpload }) {
       if (db) {
         setProgress(55);
         const ext  = arquivoEnvio.name.split('.').pop().toLowerCase() || 'jpg';
-        const name = `products/product_${Date.now()}_${Math.random().toString(36).slice(2,7)}.${ext}`;
+        const name = `${pasta}_${Date.now()}_${Math.random().toString(36).slice(2,7)}.${ext}`;
         const { error: upErr } = await db.storage.from('products').upload(name, arquivoEnvio, {
           cacheControl:'3600', upsert:false, contentType:arquivoEnvio.type,
         });

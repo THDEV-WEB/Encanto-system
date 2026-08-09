@@ -13,15 +13,16 @@ import { LOGO } from '../../lib/supabase.js';
 import { CategoryNav } from './CategoryNav.jsx';
 import { SearchBar } from '../SearchBar.jsx';
 
-export function StickyBar({ cats, activeId, onSelect, search, setSearch, visible, suggestions, onPickCategory, onPickProduct, brandName }) {
+export function StickyBar({ cats, activeId, onSelect, search, setSearch, visible, suggestions, onPickCategory, onPickProduct, brandName, logoUrl }) {
   return (
     <div className={`enc-stickybar ${visible ? 'visible' : ''}`} aria-hidden={!visible}>
       <div className="enc-stickybar-inner">
         {/* REF-UI-CATEGORY-01 Fase 3.1: identidade reduzida = SO a logo (o nome ja esta no header
             principal; repeti-lo so ocupava espaco). REF-COMPANY-02: brandName vem de StoreApp
-            (companyInfo.nomeCurto); fallback local so para o caso raro de render antes da 1a sincronizacao. */}
+            (companyInfo.nomeCurto); fallback local so para o caso raro de render antes da 1a sincronizacao.
+            REF-SAAS-01 · Onda 6.2: logoUrl (companyInfo.logoUrl) vem de StoreApp, mesmo mecanismo. */}
         <div className="enc-stickybar-brand">
-          {LOGO && <img src={LOGO} alt={brandName || 'Encanto'} className="enc-stickybar-logo" loading="lazy" />}
+          {(logoUrl || LOGO) && <img src={logoUrl || LOGO} alt={brandName || 'Encanto'} className="enc-stickybar-logo" loading="lazy" />}
         </div>
 
         {!search && <CategoryNav cats={cats} activeId={activeId} onSelect={onSelect} />}

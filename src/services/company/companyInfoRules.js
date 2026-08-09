@@ -32,7 +32,21 @@
    com essas duas fontes. null = loja ainda não posicionou o pino. Segue o mesmo precedente da REF-COMPANY-03
    (campo novo dentro do MESMO patch/merge raso do servidor, sem tabela/RPC nova); validação NUMÉRICA fica
    só no cliente (o risco de coordenada inválida é baixo impacto — pior caso, o cálculo cai no fallback
-   "sem coordenadas", nunca cobra errado, ver deliveryFeeRules.montarResumoFinanceiro). */
+   "sem coordenadas", nunca cobra errado, ver deliveryFeeRules.montarResumoFinanceiro).
+
+   REF-SAAS-01 · Onda 6.2 (branding por loja — company_info migrou de settings global para
+   store_settings por loja, mesmo padrão da Onda 4.3): 7 campos novos, TODOS aplicados só ao bundle do
+   STOREFRONT (StoreApp.jsx) — o Admin (REF-ADMIN-04) já trata seus próprios ícones como identidade
+   neutra da VALION, não skinada por loja.
+     Identidade  -> logoUrl, faviconUrl (null = usa o asset estático do repo; AdminEmpresa.jsx usa
+                    ImageUploader, mesmo componente já em produção para imagem de produto, bucket
+                    Storage "products", subpasta "branding/")
+     Paleta      -> corPrimaria, corSecundaria, corDestaque (hex #RRGGBB; aplicados em runtime nas
+                    custom properties --magenta/--grape, --roxo/--acai, --amarelo — StoreApp.jsx)
+     Institucional -> termosSecoes (array {titulo,corpo}), fidelidadeTexto (array de parágrafos) —
+                    aposentam TERMOS_SECOES/FIDELIDADE_TEXTO (constants/storeInfo.js), mesmo padrão já
+                    usado por "sobre" desde a REF-COMPANY-03. Defaults abaixo são BYTE-IDÊNTICOS ao que
+                    já está hardcoded hoje — zero mudança visual no dia da migração. */
 import { normalizePhoneBR } from '../notifications/WhatsAppService.js';
 
 export const DEFAULT_COMPANY_INFO = {
@@ -71,6 +85,23 @@ export const DEFAULT_COMPANY_INFO = {
   // Localização operacional da loja (REF-DELIVERY-FEE-01) — ver comentário de cabeçalho.
   lojaLat: null,
   lojaLng: null,
+  // Branding por loja (REF-SAAS-01 · Onda 6.2) — ver comentário de cabeçalho.
+  logoUrl: null,
+  faviconUrl: null,
+  corPrimaria: '#A62786',
+  corSecundaria: '#6B1F5D',
+  corDestaque: '#FFBF00',
+  termosSecoes: [
+    { titulo: 'Uso do serviço', corpo: 'Ao realizar um pedido você concorda com as condições de compra, prazos de entrega e formas de pagamento informadas no checkout.' },
+    { titulo: 'Privacidade', corpo: 'Coletamos apenas os dados necessários para processar o seu pedido (nome, contato e endereço). Não compartilhamos seus dados com terceiros sem necessidade operacional.' },
+    { titulo: 'Cancelamento e trocas', corpo: 'Pedidos em preparo podem ter regras específicas de cancelamento. Em caso de problemas, fale conosco pelo WhatsApp.' },
+    { titulo: 'Contato', corpo: 'Dúvidas sobre estes termos podem ser tratadas pelos nossos canais de contato.' },
+  ],
+  fidelidadeTexto: [
+    'A cada pedido você acumula um selo no seu cartão de fidelidade.',
+    'Ao completar a cartela, você ganha um benefício especial no próximo pedido.',
+    'Entre na sua conta para acompanhar seus selos em qualquer dispositivo (em breve).',
+  ],
 };
 
 const emailValido = (e) => /.+@.+\..+/.test((e || '').trim());
@@ -185,6 +216,50 @@ export function validarPatchCompanyInfo(patch) {
     const lng = p.lojaLng === null || p.lojaLng === '' ? null : Number(p.lojaLng);
     if (lng !== null && (!Number.isFinite(lng) || lng < -180 || lng > 180)) return { erro: 'Longitude da loja inválida.' };
     p.lojaLng = lng;
+  }
+
+  // Branding (REF-SAAS-01 · Onda 6.2) — logo/favicon: vazio/null é válido (remover); preenchido precisa
+  // parecer uma URL http(s) (mesma regra das redes sociais, sem exigir preenchimento).
+  for (const [campo, rotulo] of [['logoUrl', 'Logo'], ['faviconUrl', 'Favicon']]) {
+    if (!(campo in p)) continue;
+    const v = p[campo] === null ? '' : String(p[campo] || '').trim();
+    if (v && !urlValida(v)) return { erro: `${rotulo} inválido — use um link completo (https://...) ou remova a imagem.` };
+    p[campo] = v || null;
+  }
+
+  // Paleta de cores — sempre um hex #RRGGBB (nunca vazio: a loja sempre tem uma cor efetiva).
+  const hexValido = (v) => /^#[0-9A-Fa-f]{6}$/.test(String(v || '').trim());
+  for (const [campo, rotulo] of [['corPrimaria', 'Cor primária'], ['corSecundaria', 'Cor secundária'], ['corDestaque', 'Cor de destaque']]) {
+    if (!(campo in p)) continue;
+    const v = String(p[campo] || '').trim();
+    if (!hexValido(v)) return { erro: `${rotulo} inválida — use o formato #RRGGBB.` };
+    p[campo] = v;
+  }
+
+  // Termos de uso — array de seções {titulo, corpo}, ambos texto não vazio (trim). Array vazio é
+  // válido (admin removeu todas as seções deliberadamente).
+  if ('termosSecoes' in p) {
+    if (!Array.isArray(p.termosSecoes)) return { erro: 'Termos de uso inválido — formato inesperado.' };
+    const secoes = [];
+    for (const s of p.termosSecoes) {
+      const titulo = String(s?.titulo || '').trim();
+      const corpo = String(s?.corpo || '').trim();
+      if (!titulo || !corpo) return { erro: 'Cada seção dos Termos precisa de título e texto.' };
+      secoes.push({ titulo, corpo });
+    }
+    p.termosSecoes = secoes;
+  }
+
+  // Fidelidade — array de parágrafos (texto não vazio, trim). Array vazio é válido.
+  if ('fidelidadeTexto' in p) {
+    if (!Array.isArray(p.fidelidadeTexto)) return { erro: 'Texto da Fidelidade inválido — formato inesperado.' };
+    const paragrafos = [];
+    for (const par of p.fidelidadeTexto) {
+      const texto = String(par || '').trim();
+      if (!texto) return { erro: 'Nenhum parágrafo da Fidelidade pode ficar vazio.' };
+      paragrafos.push(texto);
+    }
+    p.fidelidadeTexto = paragrafos;
   }
 
   return { patch: p };

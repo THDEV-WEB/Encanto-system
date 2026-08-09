@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback, forwardRef, useImperativeHandle, lazy, Suspense } from 'react';
+import { useState, useMemo, useRef, useCallback, useEffect, forwardRef, useImperativeHandle, lazy, Suspense } from 'react';
 import { LOGO } from '../lib/supabase.js';
 import { fmt } from '../utils/format.js';
 import { resolverAdicionais, selecionarFonteAdicionais } from '../utils/addons.js';
@@ -159,6 +159,28 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
      alimenta o checkout (SuccessPage) SEMPRE a partir do cadastro da empresa — nunca mais hardcoded. */
   const companyInfo = useCompanyInfo();
 
+  /* REF-SAAS-01 · Onda 6.2: branding por loja — SÓ neste bundle (storefront); o Admin não é skinado
+     por loja (ver companyInfoRules.js). Não bloqueia o render (mesmo espírito não-bloqueante da Onda
+     6.1) — para a Encanto hoje os defaults do servidor já são idênticos ao CSS estático (zero flash).
+     --magenta/--grape e --roxo/--acai são pares sinônimos de compatibilidade (mesmo hex) — sempre os
+     dois lados juntos, senão dessincroniza. */
+  useEffect(() => {
+    const root = document.documentElement.style;
+    if (companyInfo.corPrimaria) {
+      root.setProperty('--magenta', companyInfo.corPrimaria);
+      root.setProperty('--grape', companyInfo.corPrimaria);
+    }
+    if (companyInfo.corSecundaria) {
+      root.setProperty('--roxo', companyInfo.corSecundaria);
+      root.setProperty('--acai', companyInfo.corSecundaria);
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', companyInfo.corSecundaria);
+    }
+    if (companyInfo.corDestaque) root.setProperty('--amarelo', companyInfo.corDestaque);
+    if (companyInfo.faviconUrl) {
+      document.querySelectorAll('link[rel="icon"]').forEach((link) => link.setAttribute('href', companyInfo.faviconUrl));
+    }
+  }, [companyInfo.corPrimaria, companyInfo.corSecundaria, companyInfo.corDestaque, companyInfo.faviconUrl]);
+
   // REF-CAP-01 · Onda 4: resumo imperativo do que está "aberto" na loja, na ordem em que o botão físico
   // "voltar" do Android deve fechar (o mais recente/por cima primeiro). Nenhum estado novo — só expõe o
   // que já existe acima (page/modal/cartOpen/showLoyalty) + o que o StoreMenu já expõe (menu/telas).
@@ -198,7 +220,7 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
         <div className="header-brand-col">
           {/* REF-ADMIN-04 · Onda 4: acesso oculto de 5 cliques removido — o Admin agora vive em
               app/dominio proprios (admin.encanto.valionsistemas.com.br), sem entrada nenhuma na loja. */}
-          {LOGO && <img loading="lazy" src={LOGO} alt={companyInfo.nomeCurto} className="header-brand-logo" style={{cursor:'default'}} />}
+          {(companyInfo.logoUrl || LOGO) && <img loading="lazy" src={companyInfo.logoUrl || LOGO} alt={companyInfo.nomeCurto} className="header-brand-logo" style={{cursor:'default'}} />}
         </div>
 
         {/* Centro: nome da marca + status */}
@@ -265,6 +287,7 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
         onPickCategory={onPickCategoria}
         onPickProduct={onPickProduto}
         brandName={companyInfo.nomeCurto}
+        logoUrl={companyInfo.logoUrl}
       />
       {/* ── STRIP MOBILE (celular) — REF-UI-CATEGORY-01 Fase 4: abas horizontais + lupa, surge ao rolar.
           Fixed; oculto em >=768px (la e a barra do desktop). ── */}

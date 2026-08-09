@@ -15,9 +15,15 @@
    cobre o modo degradado (db=null / offline) com os mesmos valores hoje reais da loja.
 
    Regras PURAS (defaults/formatacao/validacao) vivem em companyInfoRules.js (sem import de lib/supabase,
-   testavel em Node puro) — este arquivo so acrescenta o IO (db.rpc). */
+   testavel em Node puro) — este arquivo so acrescenta o IO (db.rpc).
+
+   REF-SAAS-01 · Onda 6.2: company_info migrou de settings (global) para store_settings (por loja) —
+   get_company_info/set_company_info ganharam p_store_id. Lido tanto pelo Admin (loja ESCOLHIDA) quanto
+   pelo storefront anonimo (loja RESOLVIDA por dominio), por isso usa buildStoreRpcParam de
+   resolveStoreParam.js (combinador dos dois singletons — Onda 6.1), nao adminStore.js isolado. */
 import { db } from '../../lib/supabase.js';
 import { DEFAULT_COMPANY_INFO, validarPatchCompanyInfo } from './companyInfoRules.js';
+import { buildStoreRpcParam } from '../resolveStoreParam.js';
 
 export { DEFAULT_COMPANY_INFO, formatarTelefoneBR } from './companyInfoRules.js';
 export const COMPANY_INFO_EVENT = 'encanto:company-info';
@@ -41,7 +47,7 @@ export async function sincronizarCompanyInfo() {
   if (!db) return cache;
   const gen = geracao;
   try {
-    const { data, error } = await db.rpc('get_company_info');
+    const { data, error } = await db.rpc('get_company_info', { ...buildStoreRpcParam() });
     if (error || !data || typeof data !== 'object') return cache;
     if (geracao === gen) { cache = { ...DEFAULT_COMPANY_INFO, ...data }; notificar(); }
     return cache;
@@ -58,7 +64,7 @@ export async function salvarCompanyInfo(patch) {
   if (!db) return { ok: false, error: 'Sem conexão. Tente novamente.' };
   const gen = ++geracao;   // marca esta escrita (invalida leituras em voo)
   try {
-    const { data, error } = await db.rpc('set_company_info', { p_patch: v.patch });
+    const { data, error } = await db.rpc('set_company_info', { p_patch: v.patch, ...buildStoreRpcParam() });
     if (error) return { ok: false, error: error.message || 'Não foi possível salvar.' };
     if (!data || typeof data !== 'object') return { ok: false, error: 'Resposta inesperada do servidor.' };
     if (geracao === gen) { cache = { ...DEFAULT_COMPANY_INFO, ...data }; notificar(); }
