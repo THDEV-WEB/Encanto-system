@@ -8,6 +8,7 @@
 import { MODOS } from './businessHours.js';
 import { STORAGE_KEYS } from '../../constants/storage.js';
 import { db } from '../../lib/supabase.js';
+import { buildStoreRpcParam } from '../adminStore.js'; // REF-SAAS-01 · Onda 5: {} no storefront, {p_store_id} no Admin
 
 export { MODOS };
 export const MODE_EVENT = 'encanto:store-mode';
@@ -36,7 +37,7 @@ export function lerModoCache() { return lerCache(); }
 async function lerModoServidor() {
   if (!db) return null;
   try {
-    const { data, error } = await db.rpc('get_store_mode');
+    const { data, error } = await db.rpc('get_store_mode', buildStoreRpcParam());
     if (error || data == null) return null;
     return normalizar(data);
   } catch { return null; }
@@ -69,7 +70,7 @@ export async function definirModo(modo) {
   gravarCache(alvo); notificar();                          // otimista: reflete localmente ja
   if (!db) { gravarCache(anterior); notificar(); return { ok: false, modo: anterior, error: 'offline' }; }
   try {
-    const { data, error } = await db.rpc('set_store_mode', { p_mode: alvo });
+    const { data, error } = await db.rpc('set_store_mode', { p_mode: alvo, ...buildStoreRpcParam() });
     if (error) return reconciliarFalha(alvo, anterior, gen, error.message);
     const salvo = normalizar(data ?? alvo);                // servidor CONFIRMOU (RETURN v_mode)
     if (geracao === gen && salvo !== lerCache()) { gravarCache(salvo); notificar(); } // so aplica se ninguem escreveu depois

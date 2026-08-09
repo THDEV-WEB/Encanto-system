@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useCompanyInfo } from '../../hooks/useCompanyInfo.js';   // REF-COMPANY-02: nome curto na sidebar
+import { useAdminStore } from '../../hooks/useAdminStore.js';     // REF-SAAS-01 · Onda 5: loja ativa multi-loja
 import { AdminDashboard } from './AdminDashboard.jsx';
 import { AdminPedidos } from './AdminPedidos.jsx';
 import { AdminProducts } from './AdminProducts.jsx';
@@ -16,6 +17,7 @@ import { AdminMinhaConta } from './AdminMinhaConta.jsx'; // REF-CUSTOMER-01 · P
 
 export function AdminPanel({ admin, onExit, onLogout }) {
   const companyInfo = useCompanyInfo();
+  const { stores, activeStoreId, isSuperAdmin, switchStore } = useAdminStore();
   const [tab, setTab] = useState('dashboard');
   const tabs = [
     {id:'dashboard', icon:'📊', label:'Dashboard'},
@@ -35,6 +37,27 @@ export function AdminPanel({ admin, onExit, onLogout }) {
     <div className="admin-layout">
       <div className="admin-sidebar">
         <div className="admin-logo">✨ <span>{companyInfo.nomeCurto}</span></div>
+        {/* REF-SAAS-01 · Onda 5: so aparece com MAIS de 1 loja vinculada -- hoje (Cliente Zero, 1
+            loja so) nada e renderizado aqui, zero mudanca visual/estrutural pro Admin atual. Trocar
+            de loja e so contexto operacional: a RLS/RPC no banco continua sendo quem autoriza de
+            verdade, nao esta seleção. */}
+        {stores.length > 1 && (
+          <div style={{padding:'0 16px 12px'}}>
+            <select
+              data-testid="admin-store-selector"
+              value={activeStoreId || ''}
+              onChange={(e) => switchStore(e.target.value)}
+              style={{width:'100%', padding:'6px 8px', borderRadius:8, border:'1px solid rgba(255,255,255,.2)', background:'rgba(255,255,255,.08)', color:'#fff'}}
+            >
+              {stores.map(s => (
+                <option key={s.store_id} value={s.store_id} style={{color:'#000'}}>
+                  {s.nome}{s.status !== 'ativo' ? ` (${s.status})` : ''}
+                </option>
+              ))}
+            </select>
+            {isSuperAdmin && <div style={{fontSize:11, opacity:.6, marginTop:4}}>Super admin — todas as lojas</div>}
+          </div>
+        )}
         <nav className="admin-nav">
           {tabs.map(t=>(
             <div key={t.id} data-testid={`admin-tab-${t.id}`} className={`admin-nav-item ${tab===t.id?'active':''}`} onClick={()=>setTab(t.id)}>
@@ -54,7 +77,10 @@ export function AdminPanel({ admin, onExit, onLogout }) {
           <h1>{titles[tab]}</h1>
           <button className="admin-exit" onClick={onExit}>← Ver loja</button>
         </div>
-        <div className="admin-body">
+        {/* REF-SAAS-01 · Onda 5: key={activeStoreId} forca remontagem completa ao trocar de loja --
+            todo hook das abas ja refaz o fetch inicial no mount, entao a troca de loja atualiza os
+            dados automaticamente sem precisar mudar nenhum hook existente. */}
+        <div className="admin-body" key={activeStoreId}>
           {tab==='dashboard'  && <AdminDashboard/>}
           {tab==='pedidos'    && <AdminPedidos/>}
           {tab==='products'   && <AdminProducts/>}

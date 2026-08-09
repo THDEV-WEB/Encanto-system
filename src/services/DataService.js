@@ -11,6 +11,7 @@ import { PRODUCTS_PAGE_SIZE, PRODUCTS_PAGINATE, PRODUCTS_CACHE_TTL } from '../co
 import { prodInCat } from '../utils/catalog.js';
 import { emitProductsChanged } from './productCacheBus.js';
 import { capturarErroDados } from '../lib/sentry.js';
+import { buildStoreRpcParam, buildStoreColumn, getActiveStoreId } from './adminStore.js'; // REF-SAAS-01 · Onda 5: {} no storefront, {p_store_id}/{store_id} no Admin
 
 /* FIX (achado REF-E2E-03 · Onda 3): `categories.slug` é NOT NULL sem default no banco — usado só
    por upsertCat (criação de categoria nova). Sufixo curto evita colisão sem consultar unicidade. */
@@ -74,8 +75,17 @@ export const DS = {
     if (r.error && r.error.message !== 'offline') console.warn('[DS] getCats error:', r.error.message);
     return r.error ? null : (r.data ?? []);
   },
+  /* REF-SAAS-01 · Onda 5 (mesmo achado de getPedidosRecentes): usado só pelo Admin
+     (AdminCategorias/AdminProducts) -- sem o .eq('store_id',...) explicito, a RLS ("Leitura publica
+     categorias" USING store_id=default_store_id() OR is_admin_of(store_id)) devolve a UNIAO das
+     categorias de TODAS as lojas que o admin administra, nao so a loja ativa. */
   async getAllCats() {
-    const r = await this.run(d=>d.from('categories').select('*').order('ordem'));
+    const activeStoreId = getActiveStoreId();
+    const r = await this.run(d => {
+      let q = d.from('categories').select('*').order('ordem');
+      if (activeStoreId) q = q.eq('store_id', activeStoreId);
+      return q;
+    });
     return r.error ? null : (r.data ?? []);
   },
   async getProds(catId, search) {
@@ -105,16 +115,28 @@ export const DS = {
     /* Filtro de categoria no cliente — suporta categoria_id (legado) e categoria_ids (novo) */
     return catId ? data.filter(p => prodInCat(p, catId)) : data;
   },
+  /* REF-SAAS-01 · Onda 5: mesmo achado de getAllCats -- so o Admin usa (AdminProducts). */
   async getAllProds() {
-    const r = await this.fetchAllProductsSafe(d=>d.from('products').select('*, categories(id, nome, icone, cor)').order('nome').order('id', { ascending: true }));
+    const activeStoreId = getActiveStoreId();
+    const r = await this.fetchAllProductsSafe(d => {
+      let q = d.from('products').select('*, categories(id, nome, icone, cor)').order('nome').order('id', { ascending: true });
+      if (activeStoreId) q = q.eq('store_id', activeStoreId);
+      return q;
+    });
     return r.error ? null : (r.data ?? []);
   },
   async getAds() {
     const r = await this.run(d=>d.from('adicionais').select('*').eq('ativo',true).order('nome'));
     return r.data?.length ? r.data : null;
   },
+  /* REF-SAAS-01 · Onda 5: mesmo achado de getAllCats -- so o Admin usa (AdminAdicionais). */
   async getAllAds() {
-    const r = await this.run(d=>d.from('adicionais').select('*').order('nome'));
+    const activeStoreId = getActiveStoreId();
+    const r = await this.run(d => {
+      let q = d.from('adicionais').select('*').order('nome');
+      if (activeStoreId) q = q.eq('store_id', activeStoreId);
+      return q;
+    });
     return r.data ?? null;
   },
   /* HARDEN-ORDERS-03/04: persistência transacional + idempotente via RPC create_order.
@@ -147,16 +169,24 @@ export const DS = {
      (migrations/REF-ADMIN-03-orders-scale.sql) calculam os agregados em SQL sobre a tabela INTEIRA e
      paginam por cursor (created_at,id) — nunca um limit() truncando o que o app "acha" que existe. */
   async getPedidosStats() {
-    const r = await this.run(d=>d.rpc('admin_orders_stats'));
+    const r = await this.run(d=>d.rpc('admin_orders_stats', buildStoreRpcParam()));
     return r.data ?? null;
   },
   /* Só para o Dashboard ("Últimos pedidos"): não precisa order_items (a tabela só mostra
      cliente/total/status/horário) nem busca/filtro — um limit(N) simples continua correto porque
-     aqui a intenção É "os N mais recentes", nunca "todos". */
+     aqui a intenção É "os N mais recentes", nunca "todos".
+     REF-SAAS-01 · Onda 5 (achado do cenário ao vivo): esta query não passa por RPC nenhuma — sem o
+     .eq('store_id', ...) explícito, a RLS ("Admin all orders" USING is_admin_of(store_id)) devolve a
+     UNIÃO de pedidos de TODAS as lojas que o admin administra, não só a loja ativa no seletor. Não é
+     vazamento de segurança (RLS ainda nega qualquer loja fora do que o admin realmente administra),
+     mas quebra o isolamento FUNCIONAL exigido pela onda — trocar de loja não mudava este widget. */
   async getPedidosRecentes(limite=10) {
-    const r = await this.run(d=>d.from('orders')
-      .select('*, customers(name,phone)')
-      .order('created_at',{ascending:false}).limit(limite));
+    const activeStoreId = getActiveStoreId();
+    const r = await this.run(d => {
+      let q = d.from('orders').select('*, customers(name,phone)').order('created_at',{ascending:false}).limit(limite);
+      if (activeStoreId) q = q.eq('store_id', activeStoreId);
+      return q;
+    });
     return r.data ?? [];
   },
   /* Página do quadro operacional de Pedidos (AdminPedidos.jsx): busca (cliente/telefone/id/ref) +
@@ -170,6 +200,7 @@ export const DS = {
       p_limit: limit,
       p_cursor_created_at: cursor?.created_at ?? null,
       p_cursor_id: cursor?.id ?? null,
+      ...buildStoreRpcParam(),
     }));
     const orders = r.data ?? [];
     const ultimo = orders[orders.length-1];
@@ -201,7 +232,7 @@ export const DS = {
      ou qualquer falha) — comandaModel cai no texto livre nesse caso, sem quebrar nada. */
   async getPedidoEndereco(orderId) {
     if (!orderId) return null;
-    const r = await this.run(d=>d.rpc('admin_order_endereco', { p_order_id: orderId }));
+    const r = await this.run(d=>d.rpc('admin_order_endereco', { p_order_id: orderId, ...buildStoreRpcParam() }));
     return r.data ?? null;
   },
   /* REF-ORDER-01 · Parte 3 — estado das notificacoes de UM pedido (fila notification_outbox, so admin via RLS).
@@ -216,7 +247,7 @@ export const DS = {
   },
   /* HARDEN-06: snapshot de saúde (orders_health) p/ o painel admin. */
   async getHealth() {
-    const r = await this.run(d=>d.rpc('orders_health'));
+    const r = await this.run(d=>d.rpc('orders_health', buildStoreRpcParam()));
     return r.data ?? null;
   },
   /* HARDEN-06: log genérico em application_logs — reutilizável por qualquer módulo (best-effort, sem PII). */
@@ -235,7 +266,7 @@ export const DS = {
        coluna sempre violava a constraint, e o erro (nunca checado aqui) fazia "+ Nova" fechar o
        modal como se tivesse funcionado, sem criar linha nenhuma. Gera um slug a partir do nome +
        sufixo curto (evita colisão sem depender de índice único explícito). */
-    else    await this.run(d=>d.from('categories').insert({...data,ativo:true,slug:slugifyCategoria(data.nome)}));
+    else    await this.run(d=>d.from('categories').insert({...data,ativo:true,slug:slugifyCategoria(data.nome),...buildStoreColumn()}));
   },
   /* FIX (achado REF-ADMIN-01 · Onda 1): antes, o DELETE rodava sem checar vínculo — a FK legada
      `categoria_id` (singular) zera sozinha (ON DELETE SET NULL), mas `categoria_ids` (text[], fonte
@@ -297,7 +328,7 @@ export const DS = {
     } else {
       // CRIAÇÃO: sanitizar sempre
       payload.imagem_url = this._sanitizeImageUrl(payload.imagem_url);
-      await this.run(d => d.from('products').insert(payload), { throwOnError: true });
+      await this.run(d => d.from('products').insert({...payload, ...buildStoreColumn()}), { throwOnError: true });
     }
     this._invalidateProductsCache();
     emitProductsChanged();   /* PRICE-DOMAIN-01: invalida tambem o cache de sessao da loja (hooks/useProducts) */
@@ -306,7 +337,7 @@ export const DS = {
   async delProd(id) { await this.run(d=>d.from('products').delete().eq('id',id)); this._invalidateProductsCache(); emitProductsChanged(); },
   async upsertAd(data,id) {
     if (id) await this.run(d=>d.from('adicionais').update(data).eq('id',id));
-    else    await this.run(d=>d.from('adicionais').insert({...data,ativo:true}));
+    else    await this.run(d=>d.from('adicionais').insert({...data,ativo:true,...buildStoreColumn()}));
   },
   /* FIX (achado REF-REGRESSION-01 · P6, mesmo padrao do delCat/REF-ADMIN-03): antes, ignorava
      r.error e a UI nao tinha como distinguir "excluido" de "falhou" - o item so "voltava" no

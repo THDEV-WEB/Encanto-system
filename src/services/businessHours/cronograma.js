@@ -12,6 +12,7 @@
    (hooks/useBusinessHours.js, hooks/useBusinessHoursSchedule.js). */
 import { db } from '../../lib/supabase.js';
 import { TIMEZONE } from './schedule.js';
+import { buildStoreRpcParam } from '../adminStore.js'; // REF-SAAS-01 · Onda 5: {} no storefront, {p_store_id} no Admin
 
 export const SCHEDULE_EVENT = 'encanto:business-hours-schedule';
 
@@ -52,7 +53,7 @@ export async function sincronizarCronograma() {
   if (!db) return cache;
   const gen = geracao;
   try {
-    const { data, error } = await db.rpc('get_business_hours_schedule');
+    const { data, error } = await db.rpc('get_business_hours_schedule', buildStoreRpcParam());
     if (error || !data || typeof data !== 'object') return cache;
     if (geracao === gen && data !== cache) { cache = data; notificar(); }
     return data;
@@ -69,7 +70,7 @@ export async function definirCronograma(schedule) {
   if (!db) return { ok: false, error: 'Sem conexão. Tente novamente.' };
   const gen = ++geracao;
   try {
-    const { data, error } = await db.rpc('set_business_hours_schedule', { p_schedule: schedule });
+    const { data, error } = await db.rpc('set_business_hours_schedule', { p_schedule: schedule, ...buildStoreRpcParam() });
     if (error) return { ok: false, error: error.message || 'Não foi possível salvar.' };
     if (geracao === gen) { cache = data; notificar(); }
     return { ok: true, cronograma: data };

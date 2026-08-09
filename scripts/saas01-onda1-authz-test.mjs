@@ -187,16 +187,21 @@ try {
   }
   out('');
 
-  out('— A4: zero regressao — RPCs administrativas do dia a dia continuam respondendo (fora de sessao simulada) —');
+  out('— A4: zero regressao — RPCs administrativas do dia a dia continuam respondendo (sessao real de admin) —');
   {
+    // REF-SAAS-01 · Onda 5: admin_orders_search passou a ser SECURITY DEFINER com gate explicito
+    // is_admin_of(p_store_id) -- ja nao responde "fora de sessao" (SECURITY INVOKER + bypass do dono
+    // da conexao); precisa da mesma sessao simulada usada em B1-B4 acima.
     let v = 'FAIL', d = '';
     try {
-      const r1 = await client.query(`SELECT * FROM public.admin_orders_search(null, null, 3, null, null)`);
-      const r2 = await client.query(`SELECT public.get_store_mode() AS mode`);
-      v = 'PASS';
-      d = `admin_orders_search retornou ${r1.rowCount} linha(s) · get_store_mode=${r2.rows[0].mode}`;
+      await tx('authenticated', ADMIN_REAL_USER_ID, [], async () => {
+        const r1 = await client.query(`SELECT * FROM public.admin_orders_search(null, null, 3, null, null)`);
+        const r2 = await client.query(`SELECT public.get_store_mode() AS mode`);
+        v = 'PASS';
+        d = `admin_orders_search retornou ${r1.rowCount} linha(s) · get_store_mode=${r2.rows[0].mode}`;
+      });
     } catch (e) { d = redact(e.message).split('\n')[0]; }
-    record('A4', 'admin_orders_search/get_store_mode sem erro (fora de sessao admin)', v, d);
+    record('A4', 'admin_orders_search/get_store_mode sem erro (sessao real de admin)', v, d);
   }
   out('');
 

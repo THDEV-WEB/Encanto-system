@@ -3,6 +3,7 @@ import AppShell from './AppShell.jsx';
 import './index.css';
 import { AdminLogin } from './components/admin/AdminLogin.jsx';
 import { AdminPanel } from './components/admin/AdminPanel.jsx';
+import { AdminStoreProvider } from './providers/AdminStoreProvider.jsx'; // REF-SAAS-01 · Onda 5: loja ativa multi-loja
 import { useAdminSession } from './hooks/useAdminSession.js'; // REF-ADMIN-01/REF-STABILITY-02: sessao do admin, 100% reaproveitado
 import { usePwaUpdate } from './hooks/usePwaUpdate.js'; // REF-MOBILE-01 Onda 6: mesmo aviso de "nova versao", agora tambem no bundle do admin
 import { Toast } from './components/ui/Toast.jsx';
@@ -25,7 +26,7 @@ function AdminApp() {
   const irParaLoja = useCallback(() => { window.location.href = STORE_URL; }, []);
 
   const content = mode === 'admin'
-    ? <AdminPanel admin={admin} onExit={irParaLoja} onLogout={sair} />
+    ? <AdminStoreProvider><AdminPanel admin={admin} onExit={irParaLoja} onLogout={sair} /></AdminStoreProvider>
     : <AdminLogin onLogin={entrar} />;
 
   return (

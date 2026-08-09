@@ -22,4 +22,8 @@ export const STORAGE_KEYS = {
      verdade. So evita redigitar entre pedidos enquanto NAO ha conta vinculada; some assim que o
      Supabase (customers) vira a fonte oficial (ver utils/guestIdentity.js). */
   GUEST_IDENTITY:           'encanto_guest_identity',
+  /* REF-SAAS-01 · Onda 5: loja ativa na sessao do Admin (multi-loja). So um id (uuid) escolhido entre
+     as lojas que list_my_stores() devolveu — nunca a fonte de autorizacao (isso e sempre RLS/RPC no
+     banco), so o contexto operacional pra qual loja o Admin esta operando. */
+  ADMIN_ACTIVE_STORE:       'encanto_admin_active_store',
 };

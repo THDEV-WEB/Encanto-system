@@ -1,7 +1,7 @@
 // Suite de verificacao da REF-SAAS-01 · Onda 0 (fundacao multi-tenant) — "Testes da fase".
 // Mesmo molde de datetime-schema-test.mjs/address-schema-test.mjs: conecta no banco via db.env,
-// SOMENTE LEITURA (nenhum BEGIN/ROLLBACK necessario — nao ha escrita a proteger aqui, so SELECT
-// contra information_schema/pg_catalog + RPCs de leitura ja existentes).
+// SOMENTE LEITURA (so SELECT contra information_schema/pg_catalog + RPCs de leitura ja existentes;
+// a checagem S7 usa um BEGIN..ROLLBACK local so para simular sessao de admin, sem gravar nada).
 //
 // Confirma exatamente o que migrations/REF-SAAS-01-onda0-schema.sql prometeu (ADR
 // docs/adr/REF-SAAS-01-fundacao-multitenant.md §1.2/§6/§9): tabela `stores` criada com a loja
@@ -181,15 +181,23 @@ try {
 
   out('— S7: zero regressao — RPCs criticas do dia a dia continuam respondendo normalmente —');
   {
+    // REF-SAAS-01 · Onda 5: admin_orders_search passou a ser SECURITY DEFINER com gate explicito
+    // is_admin_of(p_store_id) -- ao contrario da versao anterior (SECURITY INVOKER), a conexao crua
+    // como "postgres" (sem JWT/auth.uid()) ja nao basta; precisa simular uma sessao real de admin.
+    const ADMIN_REAL_USER_ID = 'b9dc7626-af9c-4ab5-95f7-3207e6469129'; // admin real de producao (encanto)
     let v = 'FAIL', d = '';
     try {
+      await client.query('BEGIN');
+      await client.query("SELECT set_config('request.jwt.claims', $1, true)", [JSON.stringify({ sub: ADMIN_REAL_USER_ID, role: 'authenticated' })]);
+      await client.query('SET LOCAL ROLE authenticated');
       const r1 = await client.query(`SELECT public.get_company_info() AS ci`);
       const r2 = await client.query(`SELECT * FROM public.admin_orders_search(null, null, 3, null, null)`);
       const r3 = await client.query(`SELECT public.get_store_mode() AS mode`);
       v = 'PASS';
       d = `get_company_info ok=${!!r1.rows[0].ci} · admin_orders_search retornou ${r2.rowCount} linha(s) · get_store_mode=${r3.rows[0].mode}`;
     } catch (e) { d = redact(e.message).split('\n')[0]; }
-    record('S7', 'get_company_info/admin_orders_search/get_store_mode sem erro', v, d);
+    finally { await client.query('ROLLBACK').catch(() => {}); }
+    record('S7', 'get_company_info/admin_orders_search/get_store_mode sem erro (sessao de admin simulada)', v, d);
   }
   out('');
 

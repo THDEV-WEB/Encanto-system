@@ -283,9 +283,9 @@ try {
     await callRpc('ADMINA-health', 'orders_health da propria loja retorna pedidos_total = real+1 (banco de producao, nao vazio)',
       `SELECT public.orders_health($1) AS r`, [encantoId],
       (row) => ({ ok: row?.r?.pedidos_total === realOrdersTotal + 1, detail: `pedidos_total=${row?.r?.pedidos_total} esperado=${realOrdersTotal + 1}` }));
-    // admin_orders_search nao e SECURITY DEFINER -- herda a RLS do chamador. Com centenas de pedidos
-    // reais de encanto, o teste correto e "o pedido fake aparece" (presenca), nao "e o unico" (banco
-    // de producao nunca esta vazio).
+    // Com centenas de pedidos reais de encanto, o teste correto e "o pedido fake aparece" (presenca),
+    // nao "e o unico" (banco de producao nunca esta vazio). p_store_id omitido == DEFAULT
+    // default_store_id() (encanto) -- correto aqui pois esta sessao administra encanto.
     const searchRows = await client.query(`SELECT id FROM public.admin_orders_search(NULL, NULL, 200, NULL, NULL)`);
     const okSearch = searchRows.rows.some(x => x.id === ORDER_A_ID) && !searchRows.rows.some(x => x.id === ORDER_B_ID);
     record('ADMINA-search', 'admin_orders_search inclui o pedido de encanto e NUNCA inclui o da loja B', okSearch ? 'PASS' : 'FAIL', `total_rows=${searchRows.rowCount}`);
@@ -308,7 +308,11 @@ try {
     await callRpc('ADMINB-health', 'orders_health da loja B retorna pedidos_total correto (so o da loja B, loja ficticia sem historico)',
       `SELECT public.orders_health($1) AS r`, [STORE_B_ID],
       (row) => ({ ok: row?.r?.pedidos_total === 1, detail: JSON.stringify(row?.r) }));
-    const searchRows = await client.query(`SELECT id FROM public.admin_orders_search(NULL, NULL, 200, NULL, NULL)`);
+    // REF-SAAS-01 · Onda 5: admin_orders_search ganhou p_store_id (DEFAULT default_store_id() =
+    // encanto) -- admin B nao administra encanto, entao precisa passar o proprio store_id explicito
+    // (exatamente o que o seletor de loja do Admin faz na pratica; a omissao so funciona pra quem
+    // administra a loja padrao).
+    const searchRows = await client.query(`SELECT id FROM public.admin_orders_search(NULL, NULL, 200, NULL, NULL, $1)`, [STORE_B_ID]);
     const okSearch = searchRows.rows.some(x => x.id === ORDER_B_ID) && !searchRows.rows.some(x => x.id === ORDER_A_ID);
     record('ADMINB-search', 'admin_orders_search (admin B) inclui o pedido da loja B e nunca o de encanto', okSearch ? 'PASS' : 'FAIL', `total_rows=${searchRows.rowCount}`);
   });

@@ -8,6 +8,7 @@
 import { dbCliente } from '../../lib/dbCliente.js';
 import { db } from '../../lib/supabase.js';
 import { STORAGE_KEYS } from '../../constants/storage.js';
+import { buildStoreRpcParam } from '../adminStore.js'; // REF-SAAS-01 · Onda 5: {} no storefront, {p_store_id} no Admin
 import { ESTADO_VAZIO, normalizarEstado } from './loyalty.js';
 
 export { ESTADO_VAZIO } from './loyalty.js';
@@ -58,7 +59,7 @@ export async function resgatar(customerId) {
 export async function adminBuscar(query) {
   if (!db) return { ok: false, error: 'offline' };
   try {
-    const { data, error } = await db.rpc('admin_find_loyalty', { p_query: query });
+    const { data, error } = await db.rpc('admin_find_loyalty', { p_query: query, ...buildStoreRpcParam() });
     if (error) return { ok: false, error: error.message };
     return data || { ok: false, error: 'sem resposta' };
   } catch (e) { return { ok: false, error: e?.message || 'falha' }; }
@@ -74,7 +75,7 @@ export async function adminAjustar(customerId, delta, note) {
 export async function adminResgatar(customerId) {
   if (!db) return { ok: false, error: 'offline' };
   try {
-    const { data, error } = await db.rpc('redeem_reward', { p_customer_id: customerId });
+    const { data, error } = await db.rpc('redeem_reward', { p_customer_id: customerId, ...buildStoreRpcParam() });
     if (error) return { ok: false, error: error.message };
     return data || { ok: false, error: 'sem resposta' };
   } catch (e) { return { ok: false, error: e?.message || 'falha' }; }

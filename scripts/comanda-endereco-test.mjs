@@ -1,18 +1,23 @@
 // Suite da RPC admin_order_endereco (REF-COMANDA-ENDERECO-01) — "Testes da fase".
 // Mesmo molde de address-onda6-orders-test.mjs: BEGIN..ROLLBACK, nenhuma escrita persiste.
 //
-// admin_order_endereco é SECURITY INVOKER (respeita RLS do chamador, mesmo padrão de
-// admin_orders_search/admin_orders_stats) — ao contrário de create_order/save_structured_address
-// (SECURITY DEFINER), não dá pra simular "sou o admin logado" por uma conexão psql crua (auth.uid()/
-// is_admin() dependem do JWT que só existe numa sessão real via PostgREST/GoTrue). Por isso a suíte
-// separa em 2 frentes honestas:
-//  - CO1-CO3 (sem SET LOCAL ROLE, ou seja, como o dono da conexão — bypassa RLS): prova que a LÓGICA
-//    SQL da função está correta — acha o endereço certo quando existe vínculo, devolve NULL quando não
-//    existe vínculo ou o pedido não existe;
+// ATUALIZADA na REF-SAAS-01 · Onda 5: admin_order_endereco deixou de ser SECURITY INVOKER e passou a
+// ser SECURITY DEFINER com gate explícito (`IF NOT is_admin_of(p_store_id) THEN RAISE EXCEPTION`).
+// Achado da Onda 5: por NÃO ser DEFINER, a função herdava TODAS as policies RLS de orders/addresses,
+// inclusive a de "cliente lê os próprios pedidos" — um admin que também fosse cliente real via a mesma
+// conta enxergava pedidos vazados por essa policy, não pela intenção do p_store_id. Corrigido isolando
+// a função de qualquer RLS da tabela. Por isso esta suíte simula uma sessão real (SET LOCAL ROLE +
+// request.jwt.claims, mesmo mecanismo de scripts/saas01-onda5-admin-multiloja-test.mjs) em vez de
+// depender do bypass do dono da conexão:
+//  - CO1-CO3 (sessão do admin real de produção — administra "encanto"): prova que a LÓGICA SQL da
+//    função está correta — acha o endereço certo quando existe vínculo, devolve NULL quando não existe
+//    vínculo ou o pedido não existe;
 //  - CO4 (SET LOCAL ROLE anon, sem JWT): prova que a função NÃO vaza dado para quem não tem sessão —
-//    mesmo um pedido com vínculo real continua invisível para anon (RLS de orders/addresses de sempre).
-//  - CO5: assinatura/tipo de segurança da função (INVOKER, não DEFINER — não pode bypassar RLS em
-//    produção).
+//    is_admin_of() resolve false (auth.uid() nulo) e a função nega ANTES de tocar em orders/addresses.
+//  - CO5: assinatura/tipo de segurança da função (agora DEFINER, isolada de qualquer RLS de tabela —
+//    a fronteira real passou a ser o gate explícito no corpo da função, não mais a RLS herdada).
+// Cobertura do teste negativo "UI nunca é mecanismo de segurança" (admin informando p_store_id de loja
+// que não administra) já está em scripts/saas01-onda5-admin-multiloja-test.mjs — não duplicada aqui.
 // Exit 0 = SUCCESS; exit 1 = FAILED.
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -51,6 +56,7 @@ function record(id, role, desc, verdict, detail) {
 }
 const mkPhone = (n) => '4799910' + String(n).padStart(4, '0');
 const mkReq = (n) => `00000000-0000-4000-8000-0000000007${String(n).padStart(2, '0')}`;
+const ADMIN_REAL_USER_ID = 'b9dc7626-af9c-4ab5-95f7-3207e6469129'; // admin real de producao (encanto)
 
 try {
   out('==================================================================');
@@ -105,13 +111,18 @@ try {
     }
     out('');
 
-    out('— CO1 · lógica SQL (como dono da conexão, bypassa RLS): pedido COM vínculo devolve os campos certos —');
+    out('— Sessão simulada: admin real de produção (administra "encanto") — SET LOCAL ROLE + request.jwt.claims —');
+    await client.query("SELECT set_config('request.jwt.claims', $1, true)", [JSON.stringify({ sub: ADMIN_REAL_USER_ID, role: 'authenticated' })]);
+    await client.query('SET LOCAL ROLE authenticated');
+    out('');
+
+    out('— CO1 · admin real (sessão simulada): pedido COM vínculo devolve os campos certos —');
     {
       const r = await client.query(`SELECT public.admin_order_endereco($1::uuid) AS e`, [orderComVinculo]);
       const e = r.rows[0]?.e;
       const ok = e && e.rua === 'Rua Comanda Teste' && e.numero === '55' && e.complemento === 'Fundos'
         && e.bairro === 'Bairro Teste' && e.referencia === 'Perto da praça' && e.cep === '89120-000';
-      record('CO1', 'postgres(owner)', 'pedido com vínculo -> jsonb com rua/numero/complemento/bairro/referencia/cep corretos', ok ? 'PASS' : 'FAIL', JSON.stringify(e));
+      record('CO1', 'authenticated(admin real)', 'pedido com vínculo -> jsonb com rua/numero/complemento/bairro/referencia/cep corretos', ok ? 'PASS' : 'FAIL', JSON.stringify(e));
     }
     out('');
 
@@ -119,7 +130,7 @@ try {
     {
       const r = await client.query(`SELECT public.admin_order_endereco($1::uuid) AS e`, [orderSemVinculo]);
       const ok = r.rows[0]?.e === null;
-      record('CO2', 'postgres(owner)', 'pedido sem endereco_id -> NULL (nunca lança, nunca fabrica dado)', ok ? 'PASS' : 'FAIL', JSON.stringify(r.rows[0]));
+      record('CO2', 'authenticated(admin real)', 'pedido sem endereco_id -> NULL (nunca lança, nunca fabrica dado)', ok ? 'PASS' : 'FAIL', JSON.stringify(r.rows[0]));
     }
     out('');
 
@@ -127,17 +138,21 @@ try {
     {
       const r = await client.query(`SELECT public.admin_order_endereco($1::uuid) AS e`, ['00000000-0000-4000-8000-000000000000']);
       const ok = r.rows[0]?.e === null;
-      record('CO3', 'postgres(owner)', 'id inexistente -> NULL', ok ? 'PASS' : 'FAIL', JSON.stringify(r.rows[0]));
+      record('CO3', 'authenticated(admin real)', 'id inexistente -> NULL', ok ? 'PASS' : 'FAIL', JSON.stringify(r.rows[0]));
     }
     out('');
 
     out('— CO4 · anon (sem JWT/sessão) NUNCA vê o endereço, nem de um pedido com vínculo real —');
     {
-      // anon nem tem GRANT de tabela em orders (mesmo achado da Onda 6: só acessa via RPC SECURITY
-      // DEFINER) — a função SECURITY INVOKER pode devolver NULL (RLS filtra) OU lançar "permission
-      // denied" (falta o GRANT de base). Os dois resultados provam a MESMA coisa: zero vazamento de
-      // dado. DS.getPedidoEndereco já trata qualquer exceção de rede/RPC como null (DS.run try/catch).
+      // Onda 5: a funcao agora e SECURITY DEFINER com gate explicito is_admin_of(p_store_id) NO TOPO
+      // do corpo -- para anon, auth.uid() e nulo -> is_admin_of() resolve false -> RAISE EXCEPTION
+      // ANTES de qualquer acesso a orders/addresses (nunca chega a herdar RLS de tabela nenhuma, ja
+      // que SECURITY DEFINER + is_admin_of() e a fronteira real agora). DS.getPedidoEndereco ja trata
+      // qualquer exceção de rede/RPC como null (DS.run try/catch).
       let vazou = false, detalhe = '';
+      // limpa o "sub" da sessao anterior (admin real) -- set_config(..., true) e local a TRANSACAO,
+      // nao ao ROLE; sem isto auth.uid() continuaria resolvendo o admin real mesmo com ROLE=anon.
+      await client.query("SELECT set_config('request.jwt.claims', $1, true)", [JSON.stringify({ role: 'anon' })]);
       await client.query('SET LOCAL ROLE anon');
       await client.query('SAVEPOINT co4');
       try {
@@ -148,7 +163,7 @@ try {
       } catch (err) {
         vazou = false;
         await client.query('ROLLBACK TO SAVEPOINT co4');   // "des-aborta" a transação (a exceção deixou-a em erro)
-        detalhe = `lançou como esperado (sem grant de base): ${err.code} ${redact(err.message).split('\n')[0]}`;
+        detalhe = `lançou como esperado (gate is_admin_of() nega antes de tocar na tabela): ${err.code} ${redact(err.message).split('\n')[0]}`;
       } finally {
         await client.query('RESET ROLE');   // volta a ser o dono da conexão p/ o resto da suíte
       }
@@ -159,12 +174,12 @@ try {
     await client.query('ROLLBACK').catch(() => {});
   }
 
-  out('— CO5 · função é SECURITY INVOKER (nunca DEFINER — não pode bypassar RLS em produção) —');
+  out('— CO5 · função é SECURITY DEFINER (Onda 5 — isolada de qualquer RLS herdada de orders/addresses; a fronteira real é o gate is_admin_of() explícito no corpo) —');
   {
     const r = await client.query(`SELECT prosecdef, provolatile FROM pg_proc WHERE proname='admin_order_endereco'`);
-    const ok = r.rows[0]?.prosecdef === false;
+    const ok = r.rows[0]?.prosecdef === true;
     if (ok) passes++; else failures++;
-    out(`  [${ok ? 'PASS' : 'FAIL'}] CO5 prosecdef=${r.rows[0]?.prosecdef} (esperado false/INVOKER) provolatile=${r.rows[0]?.provolatile}`);
+    out(`  [${ok ? 'PASS' : 'FAIL'}] CO5 prosecdef=${r.rows[0]?.prosecdef} (esperado true/DEFINER desde a Onda 5) provolatile=${r.rows[0]?.provolatile}`);
   }
   out('');
 

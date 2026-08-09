@@ -9,6 +9,7 @@
    fonte paralela nova (o Supabase segue sendo a unica fonte de verdade). Quando o admin salva, dispara
    ETA_EVENT e todos os consumidores (hook) re-sincronizam. */
 import { db } from '../../lib/supabase.js';
+import { buildStoreRpcParam } from '../adminStore.js'; // REF-SAAS-01 · Onda 5: {} no storefront, {p_store_id} no Admin
 
 export const ETA_EVENT = 'encanto:delivery-eta';
 export const ETA_MIN = 10;
@@ -34,7 +35,7 @@ export async function sincronizarEta() {
   if (!db) return cache;
   const gen = geracao;
   try {
-    const { data, error } = await db.rpc('get_delivery_eta');
+    const { data, error } = await db.rpc('get_delivery_eta', buildStoreRpcParam());
     if (error) return cache;
     const n = parseInt(data, 10);
     const oficial = valido(n) ? n : cache;
@@ -53,7 +54,7 @@ export async function definirEta(min) {
   if (!db) return { ok: false, error: 'Sem conexão. Tente novamente.' };
   const gen = ++geracao;                                     // marca esta escrita (invalida leituras em voo)
   try {
-    const { data, error } = await db.rpc('set_delivery_eta', { p_min: n });
+    const { data, error } = await db.rpc('set_delivery_eta', { p_min: n, ...buildStoreRpcParam() });
     if (error) return { ok: false, error: error.message || 'Não foi possível salvar.' };
     const salvo = parseInt(data, 10);                        // o servidor RETURN v_min (valor salvo)
     const eta = valido(salvo) ? salvo : n;

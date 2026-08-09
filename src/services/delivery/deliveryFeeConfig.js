@@ -8,6 +8,7 @@
    cronograma.js/companyInfo.js: evita flash entre consumidores sem criar uma fonte paralela). TRUTHFUL: o
    Admin so ve "salvo" quando o SERVIDOR confirma (sem otimismo pre-escrita). */
 import { db } from '../../lib/supabase.js';
+import { buildStoreRpcParam } from '../adminStore.js'; // REF-SAAS-01 · Onda 5: {} no storefront, {p_store_id} no Admin
 
 export const DELIVERY_FEE_EVENT = 'encanto:delivery-fee-config';
 
@@ -49,7 +50,7 @@ export async function sincronizarDeliveryFeeConfig() {
   if (!db) return cache;
   const gen = geracao;
   try {
-    const { data, error } = await db.rpc('get_delivery_fee_config');
+    const { data, error } = await db.rpc('get_delivery_fee_config', buildStoreRpcParam());
     if (error || !data || typeof data !== 'object') return cache;
     if (geracao === gen && data !== cache) { cache = data; notificar(); }
     return data;
@@ -64,7 +65,7 @@ export async function definirDeliveryFeeConfig(config) {
   if (!db) return { ok: false, error: 'Sem conexão. Tente novamente.' };
   const gen = ++geracao;
   try {
-    const { data, error } = await db.rpc('set_delivery_fee_config', { p_config: config });
+    const { data, error } = await db.rpc('set_delivery_fee_config', { p_config: config, ...buildStoreRpcParam() });
     if (error) return { ok: false, error: error.message || 'Não foi possível salvar.' };
     if (geracao === gen) { cache = data; notificar(); }
     return { ok: true, config: data };
