@@ -124,18 +124,21 @@ function tablesConfig(encantoId) {
       updCol: 'nome', updCast: 'text', updVal: 'Produto Editado (teste onda2)',
       insertNoStore: `INSERT INTO public.products (nome) VALUES ('Produto Sem Store (fake onda2)')`,
       insertExplicit: (storeId, label) => `INSERT INTO public.products (nome, store_id) VALUES ('Produto ${label} (fake onda2)', '${storeId}')`,
+      lojaBAtivaEhPublicaDesdeOnda6: true, // REF-SAAS-01 · Onda 6.1: leitura publica passou a permitir QUALQUER loja ATIVA, nao so a padrao
     },
     {
       name: 'categories', rowA: CATEGORY_A_ID, rowB: CATEGORY_B_ID,
       updCol: 'nome', updCast: 'text', updVal: 'Categoria Editada (teste onda2)',
       insertNoStore: `INSERT INTO public.categories (nome, slug) VALUES ('Categoria Sem Store (fake onda2)', 'cat-sem-store-onda2')`,
       insertExplicit: (storeId, label) => `INSERT INTO public.categories (nome, slug, store_id) VALUES ('Categoria ${label} (fake onda2)', 'cat-${label.toLowerCase()}-onda2', '${storeId}')`,
+      lojaBAtivaEhPublicaDesdeOnda6: true,
     },
     {
       name: 'adicionais', rowA: ADICIONAL_A_ID, rowB: ADICIONAL_B_ID,
       updCol: 'nome', updCast: 'text', updVal: 'Adicional Editado (teste onda2)',
       insertNoStore: `INSERT INTO public.adicionais (nome, grupo) VALUES ('Adicional Sem Store (fake onda2)', 'simples')`,
       insertExplicit: (storeId, label) => `INSERT INTO public.adicionais (nome, grupo, store_id) VALUES ('Adicional ${label} (fake onda2)', 'simples', '${storeId}')`,
+      lojaBAtivaEhPublicaDesdeOnda6: true,
     },
     {
       name: 'product_collections', rowA: PCOLL_A_ID, rowB: PCOLL_B_ID,
@@ -153,10 +156,19 @@ async function testTable(t, encantoId) {
   const setup = setupSql(encantoId);
   const P = t.name;
 
+  // REF-SAAS-01 · Onda 6.1: products/categories/adicionais passaram a permitir leitura publica de
+  // QUALQUER loja ATIVA (nao so a padrao) -- loja B (ficticia, status='ativo' por DEFAULT) agora e
+  // visivel de proposito. Isolamento de leitura publica deixou de ser "por loja" e passou a ser "por
+  // status" (so lojas suspensas/canceladas continuam invisiveis) -- ver saas01-onda6-1 pra esse teste.
+  const rowBAgoraVisivel = !!t.lojaBAtivaEhPublicaDesdeOnda6;
+  const descIsolamento = rowBAgoraVisivel
+    ? 've a linha da loja B tambem -- intencional desde a Onda 6.1, loja B esta ATIVA (isolamento agora e por status, nao por loja)'
+    : 'NAO ve linha da loja B (isolamento)';
+
   // 1) anon — sem autenticacao nenhuma.
   await tx('anon', null, setup, async () => {
     await expectRows(`${P}-SEL-P1`, `${P}: anon ve linha da loja padrao/encanto (leitura publica)`, `SELECT 1 FROM public.${P} WHERE id = $1`, [t.rowA], 1);
-    await expectRows(`${P}-SEL-N1`, `${P}: anon NAO ve linha da loja B (isolamento)`, `SELECT 1 FROM public.${P} WHERE id = $1`, [t.rowB], 0);
+    await expectRows(`${P}-SEL-N1`, `${P}: anon ${descIsolamento}`, `SELECT 1 FROM public.${P} WHERE id = $1`, [t.rowB], rowBAgoraVisivel ? 1 : 0);
     await expectWrite(`${P}-INS-N3`, `${P}: anon nao consegue inserir (sem autenticacao)`, t.insertNoStore, [], false);
     await expectWrite(`${P}-UPD-N3`, `${P}: anon nao consegue atualizar linha A (sem autenticacao)`, `UPDATE public.${P} SET ${t.updCol} = $2::${t.updCast} WHERE id = $1`, [t.rowA, t.updVal], false);
     await expectWrite(`${P}-DEL-N-anon`, `${P}: anon nao consegue excluir linha A (sem autenticacao)`, `DELETE FROM public.${P} WHERE id = $1`, [t.rowA], false);
@@ -165,14 +177,14 @@ async function testTable(t, encantoId) {
   // 2) cliente autenticado real, sem nenhum vinculo de admin.
   await tx('authenticated', STRANGER, setup, async () => {
     await expectRows(`${P}-SEL-P2`, `${P}: cliente logado sem vinculo ve linha A (loja padrao e publica pra qualquer role)`, `SELECT 1 FROM public.${P} WHERE id = $1`, [t.rowA], 1);
-    await expectRows(`${P}-SEL-N2`, `${P}: cliente logado sem vinculo NAO ve linha B (isolamento)`, `SELECT 1 FROM public.${P} WHERE id = $1`, [t.rowB], 0);
+    await expectRows(`${P}-SEL-N2`, `${P}: cliente logado sem vinculo ${descIsolamento}`, `SELECT 1 FROM public.${P} WHERE id = $1`, [t.rowB], rowBAgoraVisivel ? 1 : 0);
     await expectWrite(`${P}-UPD-N-stranger`, `${P}: cliente logado sem vinculo nao consegue atualizar linha A`, `UPDATE public.${P} SET ${t.updCol} = $2::${t.updCast} WHERE id = $1`, [t.rowA, t.updVal], false);
   });
 
   // 3) admin real de producao (loja encanto).
   await tx('authenticated', ADMIN_REAL_USER_ID, setup, async () => {
     await expectRows(`${P}-SEL-P3`, `${P}: admin real (encanto) ve linha A (regressao)`, `SELECT 1 FROM public.${P} WHERE id = $1`, [t.rowA], 1);
-    await expectRows(`${P}-SEL-N3`, `${P}: admin real (encanto) NAO ve linha B (isolamento)`, `SELECT 1 FROM public.${P} WHERE id = $1`, [t.rowB], 0);
+    await expectRows(`${P}-SEL-N3`, `${P}: admin real (encanto) ${descIsolamento}`, `SELECT 1 FROM public.${P} WHERE id = $1`, [t.rowB], rowBAgoraVisivel ? 1 : 0);
     await expectWrite(`${P}-INS-P1`, `${P}: admin real insere SEM informar store_id -> DEFAULT cobre (regressao do upsert atual)`, t.insertNoStore, [], true);
     await expectWrite(`${P}-INS-N2`, `${P}: admin real tenta inserir explicitamente na loja B -> negado (isolamento)`, t.insertExplicit(STORE_B_ID, 'InvasaoAB'), [], false);
     await expectWrite(`${P}-UPD-P1`, `${P}: admin real atualiza linha A (propria loja, regressao)`, `UPDATE public.${P} SET ${t.updCol} = $2::${t.updCast} WHERE id = $1`, [t.rowA, t.updVal], true);
@@ -268,15 +280,19 @@ try {
   }
   out('');
 
-  out('— A4: as 4 policies de leitura publica citam default_store_id() e is_admin_of() no texto real da policy —');
+  out('— A4: as 4 policies de leitura publica citam is_admin_of() no texto real da policy — products/categories/adicionais via store_ativo() (Onda 6.1, QUALQUER loja ativa), product_collections ainda via default_store_id() (intocada nesta REF) —');
   {
     const r = await client.query(`
       SELECT polrelid::regclass::text AS tabela, polname, pg_get_expr(polqual, polrelid) AS using_expr
       FROM pg_policy WHERE polrelid IN ('public.products'::regclass,'public.categories'::regclass,'public.adicionais'::regclass,'public.product_collections'::regclass)
         AND polname LIKE 'Leitura pública%'`);
-    const ok = r.rows.length === 4 && r.rows.every(x => x.using_expr.includes('default_store_id') && x.using_expr.includes('is_admin_of'));
+    const storeAtivoTabelas = new Set(['products', 'categories', 'adicionais']);
+    const ok = r.rows.length === 4 && r.rows.every(x => {
+      if (!x.using_expr.includes('is_admin_of')) return false;
+      return storeAtivoTabelas.has(x.tabela) ? x.using_expr.includes('store_ativo') : x.using_expr.includes('default_store_id');
+    });
     if (ok) passes++; else failures++;
-    out(`  [${ok ? 'PASS' : 'FAIL'}] A4 policies de leitura publica com o novo predicado`);
+    out(`  [${ok ? 'PASS' : 'FAIL'}] A4 policies de leitura publica com o predicado certo por tabela`);
     out(`         -> ${JSON.stringify(r.rows)}`);
   }
   out('');

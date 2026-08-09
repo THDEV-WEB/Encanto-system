@@ -26,6 +26,7 @@ import { useScrollToProduct } from '../hooks/useScrollToProduct.js';     // REF-
 import { useDeliveryEta } from '../hooks/useDeliveryEta.js';             // REF-DELIVERY-01: tempo de entrega (config unica Supabase)
 import { useCompanyInfo } from '../hooks/useCompanyInfo.js';             // REF-COMPANY-01: dados institucionais (config unica Supabase)
 import { AddressProvider, useAddress } from '../address/index.js'; // REF-CHECKOUT-ADDRESS-01: fonte unica do endereco (provider)
+import { useStorefrontStore } from '../hooks/useStorefrontStore.js'; // REF-SAAS-01 · Onda 6.1: loja resolvida por dominio
 import { LazySection } from '../components/ui/LazySection.jsx';
 import { DS } from '../services/DataService.js';                       // REF-CLIENTE-02: catalogo atual p/ recompra
 import { montarRecompra } from '../components/pedidos/recompra.js';   // REF-CLIENTE-02 Onda 4 (regras puras)
@@ -45,6 +46,21 @@ const SuccessPage   = lazy(() => import('../components/checkout/SuccessPage.jsx'
 // "voltar" do Android (hooks/useCapacitorBackButton.js via App.jsx), que precisa fechar o que estiver
 // aberto na loja (modal/carrinho/fidelidade/menu) sem StoreApp virar dono de nenhum router novo.
 export const StoreApp = forwardRef(function StoreApp(_props, ref) {
+  /* REF-SAAS-01 · Onda 6.1: loja resolvida por dominio com status != 'ativo' (suspensa/cancelada) —
+     nunca mostra o catalogo (que seria de uma loja errada sob o dominio certo), so uma mensagem clara.
+     `store` continua null ate get_store_by_domain resolver (nao bloqueante) — nesse meio-tempo o
+     catalogo normal renderiza (fallback = loja padrao, mesmo comportamento de sempre). */
+  const { store } = useStorefrontStore();
+  if (store && store.status !== 'ativo') {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 24 }}>
+        <div>
+          <h1 style={{ fontSize: 20, marginBottom: 8 }}>Loja indisponível</h1>
+          <p style={{ color: 'var(--gray-500)' }}>{store.nome} não está disponível no momento.</p>
+        </div>
+      </div>
+    );
+  }
   /* REF-CHECKOUT-ADDRESS-01: a loja inteira (Header + Checkout) vive sob o AddressProvider — FONTE UNICA
      do endereco de entrega. O AddressModal e renderizado uma unica vez pelo provider (overlay sobre o
      Header ou o Checkout). App.jsx nao ganha responsabilidade: o provider e escopo da loja. */

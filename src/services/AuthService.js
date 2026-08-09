@@ -6,6 +6,7 @@ import { dbCliente } from '../lib/dbCliente.js';
 import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
 import { App as CapacitorApp } from '@capacitor/app';
+import { buildStorefrontRpcParam, getResolvedStoreId } from './storefrontStore.js'; // REF-SAAS-01 · Onda 6.1: {}/null ate resolver, {p_store_id}/id da loja resolvida por dominio
 
 const semAuth = () => ({ data: null, error: { message: 'auth indisponivel (offline)' } });
 
@@ -105,10 +106,18 @@ export const AuthService = {
   },
 
   /* Meu customer — SEMPRE filtrado pelo proprio auth_user_id. Nao depende so da RLS: is_admin() enxerga
-     TODOS os customers, entao um .limit(1) sem filtro traria linha alheia (nome bugado apos F5). (fix 02.2) */
+     TODOS os customers, entao um .limit(1) sem filtro traria linha alheia (nome bugado apos F5). (fix 02.2)
+     REF-SAAS-01 · Onda 6.1: a RLS ("Cliente le proprio customer") deixou de ancorar em
+     default_store_id() -- a mesma pessoa pode ter customer em varias lojas (ADR §2), entao SEM o
+     .eq('store_id',...) aqui o resultado voltaria a ser ambiguo (2+ linhas, .limit(1) sem ORDER BY
+     nao e deterministico). Enquanto a loja ainda nao resolveu (id null), nao filtra -- mesmo
+     comportamento de sempre (so existe 1 customer por pessoa hoje, no unico dominio real). */
   async getMeuCustomer(userId) {
     if (!dbCliente || !userId) return null;
-    const { data } = await dbCliente.from('customers').select('id,name,phone,email').eq('auth_user_id', userId).limit(1).maybeSingle();
+    const storefrontId = getResolvedStoreId();
+    let q = dbCliente.from('customers').select('id,name,phone,email').eq('auth_user_id', userId);
+    if (storefrontId) q = q.eq('store_id', storefrontId);
+    const { data } = await q.limit(1).maybeSingle();
     return data ?? null;
   },
 
@@ -122,7 +131,7 @@ export const AuthService = {
   /* Vinculo HIBRIDO: telefone e a identidade; email/nome sao atributos. Idempotente, nunca duplica. */
   async linkCustomer(phone, email, nome) {
     if (!dbCliente) return semAuth();
-    return dbCliente.rpc('link_customer_to_auth', { p_phone: phone, p_email: email ?? null, p_name: nome ?? null });
+    return dbCliente.rpc('link_customer_to_auth', { p_phone: phone, p_email: email ?? null, p_name: nome ?? null, ...buildStorefrontRpcParam() });
   },
 
   /* REF-CLIENTE-03 (Minha Conta): troca de e-mail pelo fluxo OFICIAL do Supabase Auth. Envia link de

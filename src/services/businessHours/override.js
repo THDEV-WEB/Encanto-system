@@ -8,7 +8,7 @@
 import { MODOS } from './businessHours.js';
 import { STORAGE_KEYS } from '../../constants/storage.js';
 import { db } from '../../lib/supabase.js';
-import { buildStoreRpcParam } from '../adminStore.js'; // REF-SAAS-01 · Onda 5: {} no storefront, {p_store_id} no Admin
+import { buildStoreRpcParam } from '../resolveStoreParam.js'; // REF-SAAS-01 · Onda 5/6.1: {p_store_id} do Admin (seletor) ou do storefront (dominio), {} se nenhum resolveu
 
 export { MODOS };
 export const MODE_EVENT = 'encanto:store-mode';

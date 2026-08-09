@@ -8,7 +8,7 @@
    cronograma.js/companyInfo.js: evita flash entre consumidores sem criar uma fonte paralela). TRUTHFUL: o
    Admin so ve "salvo" quando o SERVIDOR confirma (sem otimismo pre-escrita). */
 import { db } from '../../lib/supabase.js';
-import { buildStoreRpcParam } from '../adminStore.js'; // REF-SAAS-01 · Onda 5: {} no storefront, {p_store_id} no Admin
+import { buildStoreRpcParam } from '../resolveStoreParam.js'; // REF-SAAS-01 · Onda 5/6.1: {p_store_id} do Admin (seletor) ou do storefront (dominio), {} se nenhum resolveu
 
 export const DELIVERY_FEE_EVENT = 'encanto:delivery-fee-config';
 

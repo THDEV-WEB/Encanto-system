@@ -194,16 +194,21 @@ try {
   }
   out('');
 
-  out('— A4: policies de customers citam o novo predicado (is_admin_of / ancora da loja padrao) —');
+  out('— A4: policies de customers citam o predicado certo (is_admin_of / auth_user_id) —');
   {
+    // REF-SAAS-01 · Onda 6.1: a ancora "AND store_id = default_store_id()" da policy "Cliente le
+    // proprio customer" (introduzida aqui na Onda 3) foi REMOVIDA de proposito -- agora que o
+    // frontend (AuthService.getMeuCustomer) passa store_id explicito na propria query, a RLS nao
+    // precisa mais restringir a leitura a loja padrao (o que tornava o proprio perfil invisivel pra
+    // quem so existe numa loja nao-padrao). Ver docs/ref/REF-SAAS-01-plano-ondas.md secao "Onda 6".
     const r = await client.query(`SELECT polname, pg_get_expr(polqual, polrelid) AS using_expr FROM pg_policy WHERE polrelid = 'public.customers'::regclass`);
     const adminPol = r.rows.find(x => x.polname === 'Admin all customers');
     const clientePol = r.rows.find(x => x.polname === 'Cliente le proprio customer');
     const okAdmin = adminPol && adminPol.using_expr.includes('is_admin_of');
-    const okCliente = clientePol && clientePol.using_expr.includes('default_store_id');
+    const okCliente = clientePol && clientePol.using_expr.includes('auth_user_id') && !clientePol.using_expr.includes('default_store_id');
     const ok = Boolean(okAdmin && okCliente);
     if (ok) passes++; else failures++;
-    out(`  [${ok ? 'PASS' : 'FAIL'}] A4 policies atualizadas`); out(`         -> ${JSON.stringify(r.rows)}`);
+    out(`  [${ok ? 'PASS' : 'FAIL'}] A4 policies atualizadas (ancora da Onda 3 removida na Onda 6.1)`); out(`         -> ${JSON.stringify(r.rows)}`);
   }
   out('');
 
@@ -233,10 +238,11 @@ try {
   });
   out('');
 
-  out('— Sessao: a mesma pessoa (SAME_PERSON), fluxo real do AuthService.js (sem p_store_id) —');
+  out('— Sessao: a mesma pessoa (SAME_PERSON), fluxo real do AuthService.js (REF-SAAS-01 · Onda 6.1: getMeuCustomer AGORA informa store_id explicito, resolvido por dominio) —');
   await tx('authenticated', SAME_PERSON, setupSql(encantoId), async () => {
-    await expectRows('SEL-P1', 'consulta real (.eq(auth_user_id).limit(1)) ve o customer de ENCANTO', `SELECT 1 FROM public.customers WHERE auth_user_id = $1 AND id = $2`, [SAME_PERSON, CUSTOMER_ENCANTO_ID], 1);
-    await expectRows('SEL-N1', 'a MESMA consulta NAO ve o customer da loja B, mesmo sendo a mesma pessoa (ancora da loja padrao)', `SELECT 1 FROM public.customers WHERE auth_user_id = $1 AND id = $2`, [SAME_PERSON, CUSTOMER_B_ID], 0);
+    await expectRows('SEL-P1', 'consulta real (.eq(auth_user_id).eq(store_id=encanto).limit(1)) ve o customer de ENCANTO', `SELECT 1 FROM public.customers WHERE auth_user_id = $1 AND store_id = $2 AND id = $3`, [SAME_PERSON, encantoId, CUSTOMER_ENCANTO_ID], 1);
+    await expectRows('SEL-N1', 'com store_id=lojaB explicito, a MESMA pessoa ve o customer da loja B (Onda 6.1: ancora removida -- quem escopa agora e a query, nao mais a RLS)', `SELECT 1 FROM public.customers WHERE auth_user_id = $1 AND store_id = $2 AND id = $3`, [SAME_PERSON, STORE_B_ID, CUSTOMER_B_ID], 1);
+    await expectRows('SEL-N1b', 'SEM store_id explicito, a mesma pessoa veria os 2 customers (prova de que a query DEVE filtrar -- exatamente o achado que motivou a Onda 6.1)', `SELECT 1 FROM public.customers WHERE auth_user_id = $1 AND id = ANY($2)`, [SAME_PERSON, [CUSTOMER_ENCANTO_ID, CUSTOMER_B_ID]], 2);
     await callRpc('RPC-P1', 'link_customer_to_auth SEM p_store_id (like AuthService.js real) atualiza o customer de ENCANTO (regressao)',
       `SELECT public.link_customer_to_auth($1, NULL, NULL) AS r`, [PHONE_X2],
       (row) => {

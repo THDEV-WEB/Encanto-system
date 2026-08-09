@@ -9,7 +9,7 @@
    fonte paralela nova (o Supabase segue sendo a unica fonte de verdade). Quando o admin salva, dispara
    ETA_EVENT e todos os consumidores (hook) re-sincronizam. */
 import { db } from '../../lib/supabase.js';
-import { buildStoreRpcParam } from '../adminStore.js'; // REF-SAAS-01 · Onda 5: {} no storefront, {p_store_id} no Admin
+import { buildStoreRpcParam } from '../resolveStoreParam.js'; // REF-SAAS-01 · Onda 5/6.1: {p_store_id} do Admin (seletor) ou do storefront (dominio), {} se nenhum resolveu
 
 export const ETA_EVENT = 'encanto:delivery-eta';
 export const ETA_MIN = 10;

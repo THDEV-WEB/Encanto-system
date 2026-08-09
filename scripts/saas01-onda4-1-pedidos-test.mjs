@@ -240,26 +240,46 @@ try {
   });
   out('');
 
-  out('— ISOLAMENTO: a mesma pessoa (SAME_PERSON) so ve, via RLS, pedidos/itens/eventos/fidelidade da PROPRIA loja —');
+  // REF-SAAS-01 · Onda 6.1 (achado real, nao previsto no plano da subfase): estas 5 policies
+  // ("Cliente le proprios orders/order_items/order_events/loyalty_accounts/loyalty_events") ja
+  // correlacionavam por loja desde a Onda 4.1 (`c.store_id = orders.store_id` etc.) — mas essa
+  // correlacao NUNCA funcionou de verdade pra nenhuma loja alem da padrao, porque a subconsulta em
+  // `customers` ficava presa na RLS PROPRIA de customers (a ancora `AND store_id=default_store_id()`
+  // da Onda 3) — nao importava o que a correlacao pedia, `customers` so devolvia a linha da loja
+  // padrao. Com a ancora removida (Onda 6.1), a correlacao por loja finalmente funciona nos dois
+  // sentidos: a mesma pessoa ve os PROPRIOS pedidos/itens/eventos/fidelidade em CADA loja onde tem
+  // customer legitimo — nunca de uma loja alheia (prova real de isolamento fica com STRANGER, abaixo,
+  // que nao tem NENHUM customer em loja nenhuma).
+  out('— ISOLAMENTO: a mesma pessoa (SAME_PERSON) ve, via RLS, pedidos/itens/eventos/fidelidade das PROPRIAS 2 lojas (Onda 6.1 destravou a correlacao por loja que a ancora da Onda 3 escondia) —');
   await tx('authenticated', SAME_PERSON, setupSql(encantoId), async () => {
-    // Consulta no MESMO formato vulneravel de antes da correcao (sem filtro de loja no WHERE) --
-    // a garantia agora vem inteiramente da RLS, nao da query.
     await expectRows('ISO-orders-P', 've o proprio pedido de encanto', `SELECT 1 FROM public.orders WHERE customer_id IN (SELECT id FROM public.customers WHERE auth_user_id = $1) AND id = $2`, [SAME_PERSON, ORDER_A_ID], 1);
-    await expectRows('ISO-orders-N', 'NAO ve o pedido da loja B, mesmo sendo a mesma pessoa', `SELECT 1 FROM public.orders WHERE customer_id IN (SELECT id FROM public.customers WHERE auth_user_id = $1) AND id = $2`, [SAME_PERSON, ORDER_B_ID], 0);
-    await expectRows('ISO-items-P', 've os itens do proprio pedido', `SELECT 1 FROM public.order_items WHERE id = $1`, [ORDER_ITEM_A_ID], 1);
-    await expectRows('ISO-items-N', 'NAO ve os itens do pedido da loja B', `SELECT 1 FROM public.order_items WHERE id = $1`, [ORDER_ITEM_B_ID], 0);
-    await expectRows('ISO-events-P', 've os eventos do proprio pedido (PEDIDO_CRIADO via trigger real)', `SELECT 1 FROM public.order_events WHERE order_id = $1 AND tipo = 'PEDIDO_CRIADO'`, [ORDER_A_ID], 1);
-    await expectRows('ISO-events-N', 'NAO ve os eventos do pedido da loja B', `SELECT 1 FROM public.order_events WHERE order_id = $1`, [ORDER_B_ID], 0);
+    await expectRows('ISO-orders-P2', 'TAMBEM ve o proprio pedido da loja B (correlacao por loja agora funciona pras 2)', `SELECT 1 FROM public.orders WHERE customer_id IN (SELECT id FROM public.customers WHERE auth_user_id = $1) AND id = $2`, [SAME_PERSON, ORDER_B_ID], 1);
+    await expectRows('ISO-items-P', 've os itens do proprio pedido (encanto)', `SELECT 1 FROM public.order_items WHERE id = $1`, [ORDER_ITEM_A_ID], 1);
+    await expectRows('ISO-items-P2', 've os itens do proprio pedido (loja B)', `SELECT 1 FROM public.order_items WHERE id = $1`, [ORDER_ITEM_B_ID], 1);
+    await expectRows('ISO-events-P', 've os eventos do proprio pedido (PEDIDO_CRIADO via trigger real, encanto)', `SELECT 1 FROM public.order_events WHERE order_id = $1 AND tipo = 'PEDIDO_CRIADO'`, [ORDER_A_ID], 1);
+    await expectRows('ISO-events-P2', 've os eventos do proprio pedido (loja B)', `SELECT 1 FROM public.order_events WHERE order_id = $1`, [ORDER_B_ID], 1);
     await expectRows('ISO-loyacc-P', 've a propria conta de fidelidade (encanto)', `SELECT 1 FROM public.loyalty_accounts WHERE customer_id = $1`, [CUSTOMER_A_ID], 1);
-    await expectRows('ISO-loyacc-N', 'NAO ve a conta de fidelidade da loja B, mesma pessoa', `SELECT 1 FROM public.loyalty_accounts WHERE customer_id = $1`, [CUSTOMER_B_ID], 0);
+    await expectRows('ISO-loyacc-P2', 've a propria conta de fidelidade (loja B)', `SELECT 1 FROM public.loyalty_accounts WHERE customer_id = $1`, [CUSTOMER_B_ID], 1);
     await expectRows('ISO-loyev-P', 've o proprio evento de fidelidade (encanto)', `SELECT 1 FROM public.loyalty_events WHERE customer_id = $1`, [CUSTOMER_A_ID], 1);
-    await expectRows('ISO-loyev-N', 'NAO ve o evento de fidelidade da loja B', `SELECT 1 FROM public.loyalty_events WHERE customer_id = $1`, [CUSTOMER_B_ID], 0);
+    await expectRows('ISO-loyev-P2', 've o proprio evento de fidelidade (loja B)', `SELECT 1 FROM public.loyalty_events WHERE customer_id = $1`, [CUSTOMER_B_ID], 1);
   });
   out('');
 
+  // REF-SAAS-01 · Onda 6.1: com a ancora de customers removida, a prova real de isolamento (a que
+  // de fato importa) passa a ser esta -- alguem SEM NENHUM customer em loja nenhuma nao ve nada, em
+  // nenhuma das 5 tabelas, de nenhuma das 2 lojas fictícias.
   out('— Sessao: stranger (autenticado, zero customer/admin em qualquer loja) —');
   await tx('authenticated', STRANGER, setupSql(encantoId), async () => {
-    await expectRows('STRANGER-orders', 'nao ve pedido alheio', `SELECT 1 FROM public.orders WHERE id = $1`, [ORDER_A_ID], 0);
+    await expectRows('STRANGER-orders', 'nao ve pedido alheio (encanto)', `SELECT 1 FROM public.orders WHERE id = $1`, [ORDER_A_ID], 0);
+    await expectRows('STRANGER-orders-B', 'nao ve pedido alheio (loja B)', `SELECT 1 FROM public.orders WHERE id = $1`, [ORDER_B_ID], 0);
+    await expectRows('STRANGER-items', 'nao ve itens alheios (encanto)', `SELECT 1 FROM public.order_items WHERE id = $1`, [ORDER_ITEM_A_ID], 0);
+    await expectRows('STRANGER-items-B', 'nao ve itens alheios (loja B)', `SELECT 1 FROM public.order_items WHERE id = $1`, [ORDER_ITEM_B_ID], 0);
+    await expectRows('STRANGER-events', 'nao ve eventos alheios (encanto)', `SELECT 1 FROM public.order_events WHERE order_id = $1`, [ORDER_A_ID], 0);
+    await expectRows('STRANGER-events-B', 'nao ve eventos alheios (loja B)', `SELECT 1 FROM public.order_events WHERE order_id = $1`, [ORDER_B_ID], 0);
+    await expectRows('STRANGER-loyacc', 'nao ve conta de fidelidade alheia (encanto)', `SELECT 1 FROM public.loyalty_accounts WHERE customer_id = $1`, [CUSTOMER_A_ID], 0);
+    await expectRows('STRANGER-loyacc-B', 'nao ve conta de fidelidade alheia (loja B)', `SELECT 1 FROM public.loyalty_accounts WHERE customer_id = $1`, [CUSTOMER_B_ID], 0);
+    await expectRows('STRANGER-loyev', 'nao ve evento de fidelidade alheio (encanto)', `SELECT 1 FROM public.loyalty_events WHERE customer_id = $1`, [CUSTOMER_A_ID], 0);
+    await expectRows('STRANGER-loyev-B', 'nao ve evento de fidelidade alheio (loja B)', `SELECT 1 FROM public.loyalty_events WHERE customer_id = $1`, [CUSTOMER_B_ID], 0);
     await attempt('STRANGER-upd', 'nao consegue atualizar pedido alheio', `UPDATE public.orders SET observacoes='x' WHERE id = $1`, [ORDER_A_ID], false);
     await callRpc('STRANGER-health', 'orders_health NEGA pra autenticado que nao e admin (fecha o achado de seguranca pre-existente)',
       `SELECT public.orders_health($1) AS r`, [encantoId],

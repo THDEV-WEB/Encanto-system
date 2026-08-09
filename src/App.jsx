@@ -6,6 +6,7 @@ import { resolverAdicionais } from './utils/addons.js'; /* eslint-disable-line n
 import { DS } from './services/DataService.js'; /* eslint-disable-line no-unused-vars */ // TOKEN guard test:ds-micro R2 (dataservice.micro.mjs §A): App.jsx mantem o residuo de consumo do DS (corpo movido p/ services/DataService.js na Onda 2). NAO remover sem ajustar o guard R2.
 import { StoreApp } from './pages/StoreApp.jsx';
 import { AuthProvider } from './providers/AuthProvider.jsx'; // AUTH-01: sessao do CLIENTE (envolve so a loja)
+import { StorefrontProvider } from './providers/StorefrontProvider.jsx'; // REF-SAAS-01 · Onda 6.1: loja resolvida por dominio
 import { usePwaUpdate } from './hooks/usePwaUpdate.js'; // REF-MOBILE-01 Onda 6: Service Worker (aviso de nova versao, nunca troca sozinho)
 import { useCapacitorBackButton } from './hooks/useCapacitorBackButton.js'; // REF-CAP-01 Onda 4: botao fisico "voltar" do Android
 import { useDownloadPage } from './hooks/useDownloadPage.js'; // REF-CAP-01 Onda 7: /encanto/download (distribuicao do APK)
@@ -115,7 +116,9 @@ function App() {
   if (isDownloadPage) return <AppShell><DownloadScreen/></AppShell>;
 
   // AUTH-01: a loja vive dentro do AuthProvider — sessao de cliente, unica sessao que este bundle conhece.
-  const content = <AuthProvider><StoreApp ref={storeAppRef} /></AuthProvider>;
+  // REF-SAAS-01 · Onda 6.1: StorefrontProvider por fora — resolve a loja por dominio (get_store_by_domain),
+  // nao bloqueia o render (ver StorefrontProvider.jsx).
+  const content = <StorefrontProvider><AuthProvider><StoreApp ref={storeAppRef} /></AuthProvider></StorefrontProvider>;
 
   /* AppShell envolve TUDO: BackgroundLayer (fundo único, loja + admin) + camada de conteúdo. */
   return (

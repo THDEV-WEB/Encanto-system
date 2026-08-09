@@ -12,6 +12,7 @@ import { prodInCat } from '../utils/catalog.js';
 import { emitProductsChanged } from './productCacheBus.js';
 import { capturarErroDados } from '../lib/sentry.js';
 import { buildStoreRpcParam, buildStoreColumn, getActiveStoreId } from './adminStore.js'; // REF-SAAS-01 · Onda 5: {} no storefront, {p_store_id}/{store_id} no Admin
+import { buildStorefrontRpcParam, buildStorefrontColumn, getResolvedStoreId } from './storefrontStore.js'; // REF-SAAS-01 · Onda 6.1: {}/null ate resolver, {p_store_id}/{store_id}/id da loja resolvida por dominio
 
 /* FIX (achado REF-E2E-03 · Onda 3): `categories.slug` é NOT NULL sem default no banco — usado só
    por upsertCat (criação de categoria nova). Sufixo curto evita colisão sem consultar unicidade. */
@@ -69,9 +70,18 @@ export const DS = {
     }
     return { data: acc, error: null };
   },
+  /* REF-SAAS-01 · Onda 6.1: a RLS de leitura pública passou a permitir QUALQUER loja ativa (não só a
+     padrão) -- o .eq('store_id',...) aqui é quem garante que o storefront só vê a PRÓPRIA loja
+     (resolvida por domínio), nunca a união de todas as lojas ativas da plataforma. Enquanto a
+     resolução não terminou (id ainda null), não filtra -- mesmo comportamento de sempre. */
   async getCats() {
     /* Retorna array (vazio ou com dados) quando banco responde; null quando offline/erro */
-    const r = await this.run(d=>d.from('categories').select('*').eq('ativo',true).order('ordem'));
+    const storefrontId = getResolvedStoreId();
+    const r = await this.run(d => {
+      let q = d.from('categories').select('*').eq('ativo',true).order('ordem');
+      if (storefrontId) q = q.eq('store_id', storefrontId);
+      return q;
+    });
     if (r.error && r.error.message !== 'offline') console.warn('[DS] getCats error:', r.error.message);
     return r.error ? null : (r.data ?? []);
   },
@@ -100,10 +110,12 @@ export const DS = {
     if (cacheavel && this._globalProductsCache && (Date.now() - this._globalProductsCacheTime) < PRODUCTS_CACHE_TTL) {
       data = this._globalProductsCache;
     } else {
+      const storefrontId = getResolvedStoreId();
       const r = await this.fetchAllProductsSafe(d=>{
         let q = d.from('products')
           .select('*, categories(id, nome, icone, cor)')
           .eq('disponivel', true);
+        if (storefrontId) q = q.eq('store_id', storefrontId);
         if (search) q = q.ilike('nome', `%${search}%`);
         return q.order('ordem', { ascending: true }).order('id', { ascending: true });
       });
@@ -126,7 +138,12 @@ export const DS = {
     return r.error ? null : (r.data ?? []);
   },
   async getAds() {
-    const r = await this.run(d=>d.from('adicionais').select('*').eq('ativo',true).order('nome'));
+    const storefrontId = getResolvedStoreId();
+    const r = await this.run(d => {
+      let q = d.from('adicionais').select('*').eq('ativo',true).order('nome');
+      if (storefrontId) q = q.eq('store_id', storefrontId);
+      return q;
+    });
     return r.data?.length ? r.data : null;
   },
   /* REF-SAAS-01 · Onda 5: mesmo achado de getAllCats -- so o Admin usa (AdminAdicionais). */
@@ -148,6 +165,7 @@ export const DS = {
   async savePedido(cliente, order, itens, requestId) {
     const call = () => this.run(d=>d.rpc('create_order', {
       p_customer: cliente, p_order: order, p_items: itens, p_request_id: requestId ?? null,
+      ...buildStorefrontRpcParam(),
     }));
     const withTimeout = p => Promise.race([p,
       new Promise(res => setTimeout(() => res({ data:null, error:{ message:'timeout' } }), RPC_TIMEOUT))]);

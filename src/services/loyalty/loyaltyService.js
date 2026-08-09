@@ -9,6 +9,7 @@ import { dbCliente } from '../../lib/dbCliente.js';
 import { db } from '../../lib/supabase.js';
 import { STORAGE_KEYS } from '../../constants/storage.js';
 import { buildStoreRpcParam } from '../adminStore.js'; // REF-SAAS-01 · Onda 5: {} no storefront, {p_store_id} no Admin
+import { buildStorefrontRpcParam } from '../storefrontStore.js'; // REF-SAAS-01 · Onda 6.1: {}/{p_store_id} da loja resolvida por dominio (self-service do cliente)
 import { ESTADO_VAZIO, normalizarEstado } from './loyalty.js';
 
 export { ESTADO_VAZIO } from './loyalty.js';
@@ -35,7 +36,7 @@ export function limparCache() { try { localStorage.removeItem(STORAGE_KEYS.LOYAL
 export async function sincronizar(customerId) {
   if (!dbCliente) return lerCache(customerId);
   try {
-    const { data, error } = await dbCliente.rpc('get_my_loyalty');
+    const { data, error } = await dbCliente.rpc('get_my_loyalty', buildStorefrontRpcParam());
     if (error || data == null) return lerCache(customerId);
     const estado = normalizarEstado(data);
     gravarCache(customerId, data);
@@ -47,7 +48,7 @@ export async function sincronizar(customerId) {
 export async function resgatar(customerId) {
   if (!dbCliente) return { ok: false, error: 'offline' };
   try {
-    const { data, error } = await dbCliente.rpc('redeem_reward');
+    const { data, error } = await dbCliente.rpc('redeem_reward', buildStorefrontRpcParam());
     if (error) return { ok: false, error: error.message || 'falha ao resgatar' };
     if (data && data.ok === false) return { ok: false, error: data.error || 'recompensa indisponivel' };
     const estado = await sincronizar(customerId);   // reconcilia com a verdade do servidor

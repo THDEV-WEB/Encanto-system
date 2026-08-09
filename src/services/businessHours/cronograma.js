@@ -12,7 +12,7 @@
    (hooks/useBusinessHours.js, hooks/useBusinessHoursSchedule.js). */
 import { db } from '../../lib/supabase.js';
 import { TIMEZONE } from './schedule.js';
-import { buildStoreRpcParam } from '../adminStore.js'; // REF-SAAS-01 · Onda 5: {} no storefront, {p_store_id} no Admin
+import { buildStoreRpcParam } from '../resolveStoreParam.js'; // REF-SAAS-01 · Onda 5/6.1: {p_store_id} do Admin (seletor) ou do storefront (dominio), {} se nenhum resolveu
 
 export const SCHEDULE_EVENT = 'encanto:business-hours-schedule';
 
