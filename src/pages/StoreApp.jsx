@@ -228,13 +228,18 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
           <div className="header-logo-text">
             <span className="brand-name" style={{display:'flex',alignItems:'baseline',gap:7}}>
               {companyInfo.nomeCurto}
-              <span style={{
-                /* REF-UI-CATEGORY-01 (refino UX): cidade — secundaria, porem legivel sobre a foto do
-                   banner (saiu de .55 "lavado" p/ .9 + text-shadow). Sem virar destaque. */
-                fontSize:12,fontWeight:600,color:'rgba(255,255,255,.9)',
-                letterSpacing:'.5px',textTransform:'uppercase',
-                textShadow:'0 1px 6px rgba(0,0,0,.6)',
-              }}>Timbó</span>
+              {/* REF-SAAS-01 · Onda 6.3: cidade vem de companyInfo.cidade (endereco institucional, por
+                  loja) — nunca mais um literal fixo. Oculta o span quando a loja ainda nao configurou
+                  (mesmo padrao "nunca link morto" dos campos opcionais de company_info). */}
+              {companyInfo.cidade && (
+                <span style={{
+                  /* REF-UI-CATEGORY-01 (refino UX): cidade — secundaria, porem legivel sobre a foto do
+                     banner (saiu de .55 "lavado" p/ .9 + text-shadow). Sem virar destaque. */
+                  fontSize:12,fontWeight:600,color:'rgba(255,255,255,.9)',
+                  letterSpacing:'.5px',textTransform:'uppercase',
+                  textShadow:'0 1px 6px rgba(0,0,0,.6)',
+                }}>{companyInfo.cidade}</span>
+              )}
             </span>
             <span className="brand-sub">Marmita e Açaí</span>
             <div className="status-actions">

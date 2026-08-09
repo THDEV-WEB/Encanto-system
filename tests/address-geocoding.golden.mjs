@@ -13,6 +13,7 @@ import { provider as nominatimProvider } from '../src/address/services/geocoding
 import { provider as photonProvider } from '../src/address/services/geocoding/providers/photonProvider.js';
 import { provider as mapboxProvider } from '../src/address/services/geocoding/providers/mapboxProvider.js';
 import { corrigir as corrigirComGazetteer } from '../src/address/services/geocoding/gazetteerCorrector.js';
+import { buscarEnderecos, _limparCacheNominatim } from '../src/address/services/nominatimService.js';
 
 let fail = 0;
 const check = async (m, fn) => { try { await fn(); console.error('  ok ' + m); } catch (e) { fail++; console.error('  x  ' + m + ' — ' + (e?.message ?? e)); } };
@@ -123,6 +124,13 @@ await check('waterfall.sugestoes: provedor que devolve vazio -> tenta o próximo
   const r = await criarWaterfall([a, b]).sugestoes('q');
   assert.equal(r[0].address.road, 'Y');
 });
+await check('waterfall.sugestoes (REF-SAAS-01 Onda 6.3): propaga bias {cidade,estado} pra cada provider chamado', async () => {
+  const biasRecebidos = [];
+  const a = fakeProvider('a', { sugestoesFn: async (q, bias) => { biasRecebidos.push(bias); return []; } });
+  const b = fakeProvider('b', { sugestoesFn: async (q, bias) => { biasRecebidos.push(bias); return [{ address: { road: 'Y' } }]; } });
+  await criarWaterfall([a, b]).sugestoes('q', { cidade: 'Blumenau', estado: 'SC' });
+  assert.deepEqual(biasRecebidos, [{ cidade: 'Blumenau', estado: 'SC' }, { cidade: 'Blumenau', estado: 'SC' }]);
+});
 await check('waterfall.sugestoes: todos vazios/indisponíveis -> [] (nunca lança — mesmo contrato de buscarEnderecos)', async () => {
   const a = fakeProvider('a', { sugestoesFn: async () => [] });
   const b = fakeProvider('b', { disponivel: false });
@@ -167,12 +175,77 @@ await check('waterfall.sugestoes: corretor não acha nada melhor (devolve a mesm
   assert.deepEqual(r, []);
   assert.equal(vezes, 1); // não tenta de novo com a MESMA query
 });
+await check('waterfall.sugestoes (REF-SAAS-01 Onda 6.3): propaga bias.cidade pro corretor do gazetteer (parametro que ja existia, nunca antes preenchido)', async () => {
+  let cidadeRecebida = 'NAO CHAMADO';
+  const a = fakeProvider('a', { sugestoesFn: async () => [] });
+  const corrigirFalso = async (q, opts) => { cidadeRecebida = opts?.cidade; return q; };
+  await criarWaterfall([a], corrigirFalso).sugestoes('endereço inexistente', { cidade: 'Blumenau', estado: 'SC' });
+  assert.equal(cidadeRecebida, 'Blumenau');
+});
+await check('waterfall.sugestoes (REF-SAAS-01 Onda 6.3): sem bias -> corretor recebe cidade:null (comportamento anterior preservado)', async () => {
+  let cidadeRecebida = 'NAO CHAMADO';
+  const a = fakeProvider('a', { sugestoesFn: async () => [] });
+  const corrigirFalso = async (q, opts) => { cidadeRecebida = opts?.cidade; return q; };
+  await criarWaterfall([a], corrigirFalso).sugestoes('endereço inexistente');
+  assert.equal(cidadeRecebida, null);
+});
 await check('waterfall real (instância default) usa gazetteerCorrector real como corrigirFn padrão', async () => {
   const a = fakeProvider('a', { sugestoesFn: async () => [] });
   // sem injetar corrigirFn -> usa o default (gazetteerCorrector real); sem db (env de teste), corrigir()
   // devolve a query intacta por design (graceful degradation) -> resultado permanece []
   const r = await criarWaterfall([a]).sugestoes('qualquer coisa');
   assert.deepEqual(r, []);
+});
+
+/* ── nominatimService.buscarEnderecos (REF-SAAS-01 · Onda 6.3) — fetch mockado, zero rede real.
+   Prova que o viés de cidade/estado (antes hardcoded "Timbó"/"SC") agora vem do argumento, e que a
+   Encanto (cidade='Timbó', estado='SC') continua montando a URL byte-idêntica de antes na estratégia 1. ── */
+const fetchOriginal = globalThis.fetch;
+function mockFetch(respostas) {
+  const urls = []; let i = 0;
+  globalThis.fetch = async (url) => { urls.push(url); return { json: async () => (respostas[i++] ?? []) }; };
+  return urls;
+}
+
+await check('buscarEnderecos: com {cidade,estado} da Encanto -> estratégia 1 byte-idêntica ao sufixo hardcoded anterior', async () => {
+  _limparCacheNominatim();
+  const urls = mockFetch([[{ address: { road: 'Rua X' } }]]);
+  try {
+    await buscarEnderecos('Rua X 100', { cidade: 'Timbó', estado: 'SC' });
+    assert.ok(urls[0].includes(encodeURIComponent('Rua X 100, Timbó, SC, Brasil')), 'sufixo de cidade/estado/Brasil ausente ou diferente');
+    assert.equal(urls.length, 1, 'estratégia 1 já achou algo — não deveria tentar as demais');
+  } finally { globalThis.fetch = fetchOriginal; }
+});
+await check('buscarEnderecos: sem bias (loja nova, sem endereço institucional) -> busca nacional pura, sem sufixo de cidade', async () => {
+  _limparCacheNominatim();
+  const urls = mockFetch([[]]);
+  try {
+    await buscarEnderecos('Rua X 100');
+    assert.ok(!urls[0].includes('Timb') && !urls[0].includes('%2C+SC') && !urls[0].includes(', SC'), 'não deveria sobrar nenhum resquício de cidade/estado na URL');
+    assert.equal(urls.length, 1, 'sem cidade, só a estratégia 1 existe (2 e 3 exigem cidade para fazer sentido)');
+  } finally { globalThis.fetch = fetchOriginal; }
+});
+await check('buscarEnderecos: estratégia 2 (estruturada, precisa de número) usa city=/state= com o valor informado — não mais "Santa+Catarina" fixo', async () => {
+  _limparCacheNominatim();
+  const urls = mockFetch([[], [{ address: { road: 'Rua X', house_number: '100' } }]]); // estratégia 1 vazia -> tenta a 2
+  try {
+    await buscarEnderecos('Rua X 100', { cidade: 'Timbó', estado: 'SC' });
+    assert.equal(urls.length, 2);
+    assert.ok(urls[1].includes('city=' + encodeURIComponent('Timbó')), 'city= deveria usar a cidade informada');
+    assert.ok(urls[1].includes('state=SC'), 'state= deveria usar o estado informado (UF, não mais nome completo hardcoded)');
+  } finally { globalThis.fetch = fetchOriginal; }
+});
+await check('buscarEnderecos: cache agora é chaveado por query+cidade+estado (a mesma query com viés diferente não reaproveita o cache da outra loja)', async () => {
+  _limparCacheNominatim();
+  mockFetch([[{ address: { road: 'A' } }]]);
+  const r1 = await buscarEnderecos('Rua X 100', { cidade: 'Timbó', estado: 'SC' });
+  const urls2 = mockFetch([[{ address: { road: 'B' } }]]);
+  const r2 = await buscarEnderecos('Rua X 100', { cidade: 'Blumenau', estado: 'SC' });
+  try {
+    assert.equal(r1[0].address.road, 'A');
+    assert.equal(r2[0].address.road, 'B');   // não veio do cache da 1ª loja
+    assert.equal(urls2.length, 1, 'a 2ª chamada (viés diferente) precisou buscar de novo, não usou o cache');
+  } finally { globalThis.fetch = fetchOriginal; }
 });
 
 /* ── gazetteerCorrector: degradação graciosa sem banco (ambiente de teste = db null) ── */

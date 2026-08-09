@@ -13,8 +13,8 @@ export const provider = {
   nome: 'nominatim',
   /* Sem chave, endpoint público — sempre disponível (mesma premissa de hoje). */
   disponivel: () => true,
-  async sugestoes(query) {
-    const resultados = await buscarEnderecos(query);
+  async sugestoes(query, bias) {
+    const resultados = await buscarEnderecos(query, bias);
     return resultados.map(tag);
   },
   async reverso(lat, lng) {

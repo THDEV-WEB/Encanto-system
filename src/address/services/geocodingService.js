@@ -15,8 +15,9 @@ import { consultarCep } from './viaCepService.js';
 
 export const geocoding = {
   /* Busca por texto (geocoding direto) -> array de resultados (shape Nominatim; primeiro provedor da
-     cadeia que devolver algo não-vazio). */
-  sugestoes: (query) => waterfallGeocoder.sugestoes(query),
+     cadeia que devolver algo não-vazio). `bias` (REF-SAAS-01 · Onda 6.3, opcional): {cidade, estado} da
+     loja resolvida — vies de busca, nunca obrigatorio (sem ele, busca nacional pura). */
+  sugestoes: (query, bias) => waterfallGeocoder.sugestoes(query, bias),
   /* Reverse-geocode (coordenada -> endereço) -> resposta no shape Nominatim com .address, ou null. */
   reverso: (lat, lng) => waterfallGeocoder.reverso(lat, lng),
   /* Consulta de CEP -> resposta bruta do ViaCEP ({logradouro,bairro,localidade,uf,cep} | {erro:true} | null). */

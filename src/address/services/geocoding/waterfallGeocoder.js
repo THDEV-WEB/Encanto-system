@@ -14,7 +14,12 @@
 
    `criarWaterfall(providers, corrigirFn)` aceita dependências injetadas — é o que permite testar a
    ORQUESTRAÇÃO (ordem/pular indisponível/cair em erro/cair em vazio/correção de 2ª rodada) com fakes,
-   sem rede/banco nenhum. */
+   sem rede/banco nenhum.
+
+   REF-SAAS-01 · Onda 6.3: `sugestoes(query, bias)` ganha um 2º parâmetro opcional `{cidade, estado}` —
+   repassado a cada provider (só o Nominatim usa; Mapbox/Photon já fazem busca nacional, nunca hardcodaram
+   cidade) e ao corretor do gazetteer (`bias.cidade`, parâmetro que já existia em gazetteerCorrector.js,
+   nunca antes preenchido). */
 import { provider as mapboxProvider } from './providers/mapboxProvider.js';
 import { provider as nominatimProvider } from './providers/nominatimProvider.js';
 import { provider as photonProvider } from './providers/photonProvider.js';
@@ -23,11 +28,11 @@ import { corrigir as corrigirComGazetteer } from './gazetteerCorrector.js';
 export const ORDEM_PADRAO = [mapboxProvider, nominatimProvider, photonProvider];
 
 export function criarWaterfall(providers = ORDEM_PADRAO, corrigirFn = corrigirComGazetteer) {
-  async function tentarProviders(query) {
+  async function tentarProviders(query, bias) {
     for (const p of providers) {
       if (!p.disponivel()) continue;
       try {
-        const r = await p.sugestoes(query);
+        const r = await p.sugestoes(query, bias);
         if (Array.isArray(r) && r.length > 0) return r;
       } catch (e) {
         console.warn(`[Encanto] geocoding provider "${p.nome}" falhou (sugestoes):`, (e && e.message) || e);
@@ -35,12 +40,12 @@ export function criarWaterfall(providers = ORDEM_PADRAO, corrigirFn = corrigirCo
     }
     return [];
   }
-  async function sugestoes(query) {
-    const primeira = await tentarProviders(query);
+  async function sugestoes(query, bias) {
+    const primeira = await tentarProviders(query, bias);
     if (primeira.length > 0) return primeira;
-    const corrigida = await corrigirFn(query);
+    const corrigida = await corrigirFn(query, { cidade: bias?.cidade || null });
     if (!corrigida || corrigida === query) return [];
-    return tentarProviders(corrigida);
+    return tentarProviders(corrigida, bias);
   }
   async function reverso(lat, lng) {
     /* CONTRATO PRESERVADO de nominatimService.reverso: lança em falha total (nunca devolve null) — 4

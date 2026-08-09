@@ -1,19 +1,16 @@
-/* address/utils/coordinates.js — REF-ADDRESS-01.
-   Lógica pura de coordenadas (lat/lng). Sem React/IO. Centraliza o centro padrão do mapa, a formatação
-   de coordenada e a checagem de área de entrega. */
+/* address/utils/coordinates.js — REF-ADDRESS-01 (+ REF-SAAS-01 · Onda 6.3).
+   Lógica pura de coordenadas (lat/lng). Sem React/IO. Centraliza o centro padrão do mapa e a
+   formatação de coordenada. */
 
-/* Centro padrão do mapa (Timbó/SC) — BYTE-IGUAL ao mapPin inicial do AddressModal original. */
-export const CENTRO_PADRAO = { lat: -26.795, lng: -49.270 };
+/* Centro padrão do mapa — ÚLTIMO fallback, só usado quando a loja ainda não tem `company_info.lojaLat/
+   lojaLng` configurado nem (no cliente) foi possível resolver uma posição melhor. Antes da Onda 6.3 era
+   fixo no centro de Timbó/SC (byte-igual ao mapPin inicial do AddressModal original); agora é o centro
+   geográfico do Brasil (referência neutra, não amarrada a nenhuma loja) — uma loja nova em qualquer
+   cidade nunca mais abre o mapa "chutando" Timbó. Nunca sobrescreve uma coordenada real já salva. */
+export const CENTRO_PADRAO = { lat: -14.235, lng: -51.925 };
 
 /* Formata coordenada para exibição (5 casas) — mesma saída de `n.toFixed(5)` usada no rodapé do mapa. */
 export const formatarCoord = (n) => Number(n).toFixed(5);
-
-/* Área de entrega aproximada por bounding-box em torno de Timbó. PRESERVADA VERBATIM do `inRange` original
-   (AddressModal) para garantir zero mudança de comportamento. NOTA (dívida técnica herdada, NÃO alterada
-   aqui): a expressão original compara `lng` duas vezes com `>=` — provavelmente deveria ser `lng<=-49.0`.
-   Além disso está atualmente DESLIGADA (nunca era chamada no fluxo). Fica isolada e pronta para a evolução
-   futura de "área de entrega"/geofencing; qualquer correção é um marco próprio (mudaria comportamento). */
-export const dentroDaArea = (lat, lng) => lat >= -27.0 && lat <= -26.5 && lng >= -49.5 && lng >= -49.0;
 
 /* REF-DELIVERY-FEE-01 — distância em linha reta (haversine) entre 2 pontos {lat,lng}, em km. Pura, sem
    arredondamento (mesma disciplina de pricing.js: quem exibe/arredonda é a camada de apresentação, nunca o

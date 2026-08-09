@@ -156,7 +156,8 @@ check('(11) waterfall só chama o corretor DEPOIS de todos os providers (D-GAZET
   const wf = strip(read('address/services/geocoding/waterfallGeocoder.js'));
   const idxTentarProviders = wf.indexOf('async function tentarProviders');
   const idxSugestoes = wf.indexOf('async function sugestoes');
-  const idxCorrigirFn = wf.indexOf('corrigirFn(query)');
+  // REF-SAAS-01 · Onda 6.3: corrigirFn ganhou um 2º argumento (bias de cidade) — regex tolera a vírgula.
+  const idxCorrigirFn = wf.search(/corrigirFn\(query\b/);
   assert.ok(idxTentarProviders > -1 && idxSugestoes > idxTentarProviders, 'tentarProviders deve existir antes de sugestoes usá-lo');
   assert.ok(idxCorrigirFn > wf.indexOf('const primeira'), 'correção via gazetteer só pode ser chamada depois da 1ª tentativa (primeira)');
 });

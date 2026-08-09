@@ -7,7 +7,7 @@ import {
   cepValido, queryValida, numeroPreenchido, respostaCepOk, coordenadasValidas,
   confidenceValida, enderecoValidoParaEntrega,
 } from '../src/address/validators/addressValidators.js';
-import { CENTRO_PADRAO, formatarCoord, dentroDaArea } from '../src/address/utils/coordinates.js';
+import { CENTRO_PADRAO, formatarCoord } from '../src/address/utils/coordinates.js';
 import {
   normalizarEndereco, chaveDedupe, sugestaoMain, sugestaoSub, curtaSugestao, curtaGps, curtaCep,
   linhaReversaMapa, linhaConfirmarMapa, inferirConfidence,
@@ -72,17 +72,12 @@ check('enderecoValidoParaEntrega: número sempre obrigatório; coordenadas só q
 });
 
 /* ── Coordinates ── */
-check('CENTRO_PADRAO = mapPin inicial do original', () => {
-  assert.deepEqual(CENTRO_PADRAO, { lat: -26.795, lng: -49.270 });
+check('CENTRO_PADRAO = centro geografico do Brasil (REF-SAAS-01 Onda 6.3 — antes fixo em Timbó/SC, agora referencia neutra, ultimo fallback)', () => {
+  assert.deepEqual(CENTRO_PADRAO, { lat: -14.235, lng: -51.925 });
 });
 check('formatarCoord = toFixed(5)', () => {
   assert.equal(formatarCoord(-26.795), '-26.79500');
   assert.equal(formatarCoord(-49.27), '-49.27000');
-});
-check('dentroDaArea: semântica do inRange original PRESERVADA (inclui o quirk herdado)', () => {
-  assert.equal(dentroDaArea(-26.7, -48.9), true);    // lat ok; lng passa nos dois >= (quirk original)
-  assert.equal(dentroDaArea(-26.7, -49.6), false);   // lng < -49.5
-  assert.equal(dentroDaArea(-26.4, -48.9), false);   // lat > -26.5
 });
 
 /* ── addressFormat (congelam as strings dos call-sites originais) ── */
@@ -92,8 +87,19 @@ const s = { address: a, display_name: 'Rua João Schlay, 77, Centro, Timbó, SC'
 check('normalizarEndereco: variante enxuta (GPS) x completa (pick)', () => {
   assert.deepEqual(normalizarEndereco(a), { rua: 'Rua João Schlay', numero: '77', bairro: 'Centro', cidade: 'Timbó', estado: 'Santa Catarina', cep: '89120-000' });
   const b = { road: 'R', house_number: '1', quarter: 'Q', municipality: 'M', state: 'SC', postcode: '' };
-  assert.deepEqual(normalizarEndereco(b), { rua: 'R', numero: '1', bairro: '', cidade: 'Timbó', estado: 'SC', cep: '' });
+  assert.deepEqual(normalizarEndereco(b), { rua: 'R', numero: '1', bairro: '', cidade: '', estado: 'SC', cep: '' });
   assert.deepEqual(normalizarEndereco(b, { completa: true }), { rua: 'R', numero: '1', bairro: 'Q', cidade: 'M', estado: 'SC', cep: '' });
+});
+check('normalizarEndereco (REF-SAAS-01 Onda 6.3): sem cidadePadrao/estadoPadrao -> "" (nunca mais "Timbó"/"SC" fixos)', () => {
+  const semCidade = { road: 'R', house_number: '1' };
+  assert.deepEqual(normalizarEndereco(semCidade), { rua: 'R', numero: '1', bairro: '', cidade: '', estado: '', cep: '' });
+  assert.deepEqual(normalizarEndereco(semCidade, { completa: true }), { rua: 'R', numero: '1', bairro: '', cidade: '', estado: '', cep: '' });
+});
+check('normalizarEndereco (REF-SAAS-01 Onda 6.3): cidadePadrao/estadoPadrao informados -> usados como fallback (loja resolvida)', () => {
+  const semCidade = { road: 'R', house_number: '1' };
+  assert.deepEqual(normalizarEndereco(semCidade, { cidadePadrao: 'Blumenau', estadoPadrao: 'SC' }), { rua: 'R', numero: '1', bairro: '', cidade: 'Blumenau', estado: 'SC', cep: '' });
+  // resposta REAL do provedor sempre tem prioridade sobre o padrao da loja
+  assert.deepEqual(normalizarEndereco(a, { cidadePadrao: 'Blumenau', estadoPadrao: 'PR' }), { rua: 'Rua João Schlay', numero: '77', bairro: 'Centro', cidade: 'Timbó', estado: 'Santa Catarina', cep: '89120-000' });
 });
 check('chaveDedupe = road,house_number', () => {
   assert.equal(chaveDedupe(s), 'Rua João Schlay,77');

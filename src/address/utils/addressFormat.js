@@ -22,14 +22,19 @@ export function inferirConfidence(item) {
 
 /* Normaliza o `address` do Nominatim para o shape canônico do pedido {rua,numero,bairro,cidade,estado,cep}.
    `completa:true` (usado em pick) inclui os fallbacks extras (quarter/municipality) do original; o GPS
-   usa a variante enxuta. */
-export function normalizarEndereco(a = {}, { completa = false } = {}) {
+   usa a variante enxuta.
+   REF-SAAS-01 · Onda 6.3: `cidadePadrao`/`estadoPadrao` (opcionais, default '') substituem os antigos
+   fallbacks fixos 'Timbó'/'SC' — o chamador informa a cidade/estado da loja resolvida (company_info),
+   nunca mais um valor fixo de código. O fallback do provedor (city/town/state ausentes) é comum, não
+   raro — 2 dos 3 providers do waterfall deixam esses campos vazios com frequência — por isso o valor
+   default sem bias é '' (honesto: "não sabemos"), nunca mais um dado incorreto com aparência de certo. */
+export function normalizarEndereco(a = {}, { completa = false, cidadePadrao = '', estadoPadrao = '' } = {}) {
   return {
     rua: a.road || '',
     numero: a.house_number || '',
     bairro: completa ? (a.suburb || a.neighbourhood || a.quarter || '') : (a.suburb || a.neighbourhood || ''),
-    cidade: completa ? (a.city || a.town || a.municipality || 'Timbó') : (a.city || a.town || 'Timbó'),
-    estado: a.state || 'SC',
+    cidade: completa ? (a.city || a.town || a.municipality || cidadePadrao) : (a.city || a.town || cidadePadrao),
+    estado: a.state || estadoPadrao,
     cep: a.postcode || '',
   };
 }

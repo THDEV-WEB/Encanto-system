@@ -172,7 +172,7 @@ function BlocoLocalizacao() {
       </div>
       {!configurada && (
         <p style={{ fontSize: 11.5, color: 'var(--gray-500)', marginTop: 8 }}>
-          Sem posição salva ainda: o mapa mostra o centro padrão da cidade (Timbó), não a loja de verdade.
+          Sem posição salva ainda: o mapa mostra um centro padrão genérico, não a loja de verdade.
         </p>
       )}
     </Bloco>

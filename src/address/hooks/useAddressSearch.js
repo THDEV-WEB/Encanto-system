@@ -14,7 +14,13 @@
 
    Onda 5b: `erro` substitui os `alert()` de GPS/localização por estado granular (ADR §7) — cada causa
    (GPS ausente, permissão negada, serviço indisponível, sem internet) tem tipo/mensagem próprios em
-   addressErrors.js, prontos pra UI mostrar inline em vez de bloquear com um alert genérico. */
+   addressErrors.js, prontos pra UI mostrar inline em vez de bloquear com um alert genérico.
+
+   REF-SAAS-01 · Onda 6.3: cidade/estado de viés (antes hardcoded "Timbó"/"SC") passam a vir de
+   `company_info.cidade/estado` (loja resolvida, já por loja desde a Onda 6.2) — propagados a
+   `geocoding.sugestoes`/`normalizarEndereco`. `mapPin` inicial passa a preferir
+   `company_info.lojaLat/lojaLng` (posição real da loja, quando já configurada) em vez de cair direto
+   no `CENTRO_PADRAO` genérico — fecha o gap em que o mapa do cliente ignorava a posição real da loja. */
 
 import { useState, useEffect, useCallback } from 'react';
 import { geocoding } from '../services/geocodingService.js';
@@ -24,10 +30,14 @@ import {
 } from '../utils/addressFormat.js';
 import { CENTRO_PADRAO, formatarCoord } from '../utils/coordinates.js';
 import { criarErro, tipoErroGeolocalizacao } from '../utils/addressErrors.js';
+import { useCompanyInfo } from '../../hooks/useCompanyInfo.js';
 
 const online = () => typeof navigator === 'undefined' || navigator.onLine !== false; // SSR-safe: sem navigator = assume online
 
 export function useAddressSearch({ onSelect }) {
+  const companyInfo = useCompanyInfo();
+  const cidadePadrao = companyInfo.cidade || '';
+  const estadoPadrao = companyInfo.estado || '';
   const [tab, setTab] = useState('search');          // search | cep | map
   const [query, setQuery] = useState('');
   const [complemento, setComplemento] = useState('');
@@ -39,7 +49,11 @@ export function useAddressSearch({ onSelect }) {
   const [cepQuery, setCepQuery] = useState('');
   const [cepData, setCepData] = useState(null);
   const [cepNumero, setCepNumero] = useState('');
-  const [mapPin, setMapPin] = useState({ lat: CENTRO_PADRAO.lat, lng: CENTRO_PADRAO.lng });
+  const [mapPin, setMapPin] = useState(() => (
+    Number.isFinite(companyInfo.lojaLat) && Number.isFinite(companyInfo.lojaLng)
+      ? { lat: companyInfo.lojaLat, lng: companyInfo.lojaLng }
+      : { lat: CENTRO_PADRAO.lat, lng: CENTRO_PADRAO.lng }
+  ));
   const [mapAddr, setMapAddr] = useState('');
 
   /* Trocar de aba descarta qualquer erro pendente da aba anterior (evita mensagem "fantasma" ao voltar). */
@@ -75,11 +89,11 @@ export function useAddressSearch({ onSelect }) {
     setErro(null);
     setStatus('loading');
     try {
-      const res = await geocoding.sugestoes(q);
+      const res = await geocoding.sugestoes(q, { cidade: cidadePadrao, estado: estadoPadrao });
       if (res.length > 0) { setSuggestions(res); setStatus('found'); }
       else { setSuggestions([]); setStatus('notfound'); }
     } catch { setSuggestions([]); setStatus('notfound'); }
-  }, []);
+  }, [cidadePadrao, estadoPadrao]);
   useEffect(() => { const t = setTimeout(() => searchAddress(query), 450); return () => clearTimeout(t); }, [query, searchAddress]);
 
   /* Editar o texto de novo depois de ter escolhido uma sugestão descarta a escolha (volta pras sugestões). */
@@ -100,11 +114,11 @@ export function useAddressSearch({ onSelect }) {
         const d = await geocoding.reverso(lat, lng);
         const a = d.address || {};
         const short = curtaGps(a, d);
-        const n = normalizarEndereco(a);   // variante enxuta (GPS)
+        const n = normalizarEndereco(a, { cidadePadrao, estadoPadrao });   // variante enxuta (GPS)
         onSelect(short + (n.bairro ? ' — ' + n.bairro : ''), { lat, lng, rua: n.rua, numero: n.numero, bairro: n.bairro, cidade: n.cidade, estado: n.estado, cep: n.cep });
       } catch { onSelect(formatarCoord(lat) + ', ' + formatarCoord(lng), { lat, lng }); }
     }, (posErro) => { setStatus('idle'); setErro(criarErro(tipoErroGeolocalizacao(posErro && posErro.code))); });
-  }, [onSelect]);
+  }, [onSelect, cidadePadrao, estadoPadrao]);
 
   /* ── Selecionar uma sugestão da busca: guarda e pede número/complemento/referência (Onda 5) — não
      confirma mais direto com o `numero` que o provedor devolveu (era a lacuna do achado §0.2: número
@@ -123,7 +137,7 @@ export function useAddressSearch({ onSelect }) {
     if (!pickedItem) return;
     if (!numeroPreenchido(cepNumero)) { alert('Informe o número da residência.'); return; }
     const a = pickedItem.address || {};
-    const n = normalizarEndereco(a, { completa: true });   // inclui quarter/municipality
+    const n = normalizarEndereco(a, { completa: true, cidadePadrao, estadoPadrao });   // inclui quarter/municipality
     const numero = cepNumero.trim();
     const short = curtaSugestao({ ...n, numero }, pickedItem);
     onSelect(short, {
@@ -132,7 +146,7 @@ export function useAddressSearch({ onSelect }) {
       complemento, referencia, full: pickedItem.display_name,
       provider: pickedItem._provider || '', confidence: pickedItem._confidence || null,
     });
-  }, [pickedItem, cepNumero, complemento, referencia, onSelect]);
+  }, [pickedItem, cepNumero, complemento, referencia, onSelect, cidadePadrao, estadoPadrao]);
 
   /* ── Confirmar endereço por CEP ── */
   const confirmCEP = useCallback(() => {
@@ -151,7 +165,7 @@ export function useAddressSearch({ onSelect }) {
     if (!mapAddr.trim() && !numero) {
       const d = await geocoding.reverso(mapPin.lat, mapPin.lng);
       const a = d.address || {};
-      const n = normalizarEndereco(a);
+      const n = normalizarEndereco(a, { cidadePadrao, estadoPadrao });
       const addr = linhaConfirmarMapa(a);
       onSelect(addr || 'Localização no mapa', {
         lat: mapPin.lat, lng: mapPin.lng, rua: n.rua, bairro: n.bairro, cidade: n.cidade, estado: n.estado,
@@ -160,7 +174,7 @@ export function useAddressSearch({ onSelect }) {
     } else {
       onSelect(mapAddr || ('Lat ' + formatarCoord(mapPin.lat)), { lat: mapPin.lat, lng: mapPin.lng, numero, complemento, referencia });
     }
-  }, [mapAddr, cepNumero, complemento, referencia, mapPin, onSelect]);
+  }, [mapAddr, cepNumero, complemento, referencia, mapPin, onSelect, cidadePadrao, estadoPadrao]);
 
   /* ── Movimento do pino no mapa (dragend / click) — reverse-geocode + formatação ── */
   const aoArrastarPino = useCallback(async (lat, lng) => {

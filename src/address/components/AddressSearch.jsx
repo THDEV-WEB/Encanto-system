@@ -105,7 +105,7 @@ export function AddressSearch({
           <div style={{ fontSize: 12, color: 'var(--gray-500)', lineHeight: 1.8, padding: '4px 0' }}>
             • Ex: <b>Rua das Flores, 123</b><br />
             • Ex: <b>João Schlay 77</b><br />
-            • Ex: <b>Testo Central, Timbó</b>
+            • Ex: <b>Nome do bairro ou ponto de referência</b>
           </div>
         </div>
       )}
