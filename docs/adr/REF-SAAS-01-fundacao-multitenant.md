@@ -167,6 +167,13 @@ Toda tabela de negócio existente ganha `store_id` como coluna **nullable primei
 
 **✅ IMPLEMENTADO (2026-08-10)** — ver `docs/ref/REF-SAAS-01-plano-ondas.md`, seção "Onda 8". Super Admin cria uma linha em `stores` (nome, slug) → RPC `provision_store(p_nome, p_slug, p_admin_email)` cria a loja + tenta o vínculo do admin (se a pessoa já tiver conta) + seeds de `store_settings` (`company_info` com identidade neutra, nunca herdando nome/telefone/whatsapp/paleta da Encanto) → loja fica "ativa" mas sem domínio até o DNS ser configurado manualmente na Vercel (mesmo processo manual já usado hoje para `admin.encanto.valionsistemas.com.br`) → dono da loja configura o mínimo (catálogo, WhatsApp) pelo próprio Admin. Única divergência do desenho original: a criação do vínculo do admin foi desdobrada em sua própria RPC (`link_store_admin(p_store_id, p_admin_email)`), reutilizada por `provision_store` quando um e-mail é informado — permite vincular administradores adicionais depois, sem re-provisionar a loja.
 
+**Addendum (REF-SAAS-02 · Onda 1, 2026-08-10):** a UI do Super Admin deixou de ser uma aba "Plataforma"
+dentro do Admin da Encanto — virou um **Platform Console separado** (`PlatformConsole.jsx`), com
+identidade/navegação próprias, onde o super admin pousa direto após o login; "Abrir Admin da loja" troca
+de contexto para o Admin normal daquela loja, sem duplicar nenhuma tela. Ver
+`docs/ref/REF-SAAS-01-plano-ondas.md`, seção "REF-SAAS-02 · Onda 1", para o detalhe completo (RPCs novas
+de gestão de tenant, checklist de configuração real, resolução automática de domínio por slug).
+
 ## 8. Estratégia de provisionamento
 
 **v1, implementada, é manual/assistida** — Super Admin roda `provision_store(...)` (por uma UI mínima, aba "Plataforma" do Admin, visível só para `is_super_admin()`) e configura DNS à mão, como já acontece hoje. Não é self-service (tela de cadastro público) nesta fundação; isso é trabalho de produto para depois que houver demanda real de mais de ~3 lojas simultâneas. A criação da identidade Auth do admin da loja (o `auth.users` em si) permanece manual (Supabase Dashboard) por decisão explícita — `link_store_admin` só enxerga contas que já existem (leitura por e-mail), nunca cria uma senha nem expõe `service_role` ao frontend.

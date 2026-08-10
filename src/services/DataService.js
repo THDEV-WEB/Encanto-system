@@ -291,6 +291,36 @@ export const DS = {
     }), { throwOnError: true });
     return r.data;
   },
+  /* REF-SAAS-02 · Onda 1: Platform Console -- visao de gestao de tenants, separada do Admin da loja. */
+  async platformListTenants() {
+    const r = await this.run(d=>d.rpc('platform_list_tenants'), { throwOnError: true });
+    return r.data ?? [];
+  },
+  async platformTenantDetail(storeId) {
+    const r = await this.run(d=>d.rpc('platform_tenant_detail', { p_store_id: storeId }), { throwOnError: true });
+    return r.data;
+  },
+  async platformSetStoreStatus(storeId, status) {
+    const r = await this.run(d=>d.rpc('platform_set_store_status', {
+      p_store_id: storeId, p_status: status,
+    }), { throwOnError: true });
+    return r.data;
+  },
+  async platformUnlinkStoreAdmin(storeId, userId) {
+    const r = await this.run(d=>d.rpc('platform_unlink_store_admin', {
+      p_store_id: storeId, p_user_id: userId,
+    }), { throwOnError: true });
+    return r.data;
+  },
+  /* Grava company_info de um store_id EXPLICITO (nao o singleton da loja ativa) -- usado pelo wizard de
+     nova loja do Platform Console, pra semear contato real antes de qualquer admin existir/logar. Reusa
+     o mesmo set_company_info(p_patch, p_store_id) da Onda 6.2, so' sem depender de resolveStoreParam.js. */
+  async platformSetCompanyInfo(storeId, patch) {
+    const r = await this.run(d=>d.rpc('set_company_info', {
+      p_patch: patch, p_store_id: storeId,
+    }), { throwOnError: true });
+    return r.data;
+  },
   /* HARDEN-06: log genérico em application_logs — reutilizável por qualquer módulo (best-effort, sem PII). */
   async logEvent(module, operation, level, message, payload) {
     try {

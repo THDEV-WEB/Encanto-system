@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useCompanyInfo } from '../../hooks/useCompanyInfo.js';   // REF-COMPANY-02: nome curto na sidebar
 import { useAdminStore } from '../../hooks/useAdminStore.js';     // REF-SAAS-01 · Onda 5: loja ativa multi-loja
 import { AdminDashboard } from './AdminDashboard.jsx';
-import { AdminPlataforma } from './AdminPlataforma.jsx'; // REF-SAAS-01 · Onda 8: provisionamento assistido (Super Admin)
 import { AdminRelatorios } from './AdminRelatorios.jsx'; // REF-DASHBOARD-01: BI de negocio por periodo
 import { AdminPedidos } from './AdminPedidos.jsx';
 import { AdminProducts } from './AdminProducts.jsx';
@@ -17,16 +16,12 @@ import { AdminFidelidade } from './AdminFidelidade.jsx';
 import { AdminHealth } from './AdminHealth.jsx';
 import { AdminMinhaConta } from './AdminMinhaConta.jsx'; // REF-CUSTOMER-01 · Parte 3
 
-export function AdminPanel({ admin, onExit, onLogout }) {
+export function AdminPanel({ admin, onExit, onLogout, onVoltarPlataforma }) {
   const companyInfo = useCompanyInfo();
   const { stores, activeStoreId, isSuperAdmin, switchStore } = useAdminStore();
   const [tab, setTab] = useState('dashboard');
   const tabs = [
     {id:'dashboard', icon:'📊', label:'Dashboard'},
-    // REF-SAAS-01 · Onda 8: gate e SO isSuperAdmin, nunca stores.length>1 -- e justamente com 1 loja
-    // so (estado de hoje) que o Super Admin precisa deste ponto de entrada pra criar a 2a. Gatear por
-    // stores.length>1 seria um paradoxo (precisa de 2 lojas pra ver como criar a 2a loja).
-    ...(isSuperAdmin ? [{id:'plataforma', icon:'🏛️', label:'Plataforma'}] : []),
     {id:'relatorios',icon:'📈', label:'Relatórios'},
     {id:'pedidos',   icon:'📋', label:'Pedidos'},
     {id:'products',  icon:'🛍️', label:'Produtos'},
@@ -39,17 +34,23 @@ export function AdminPanel({ admin, onExit, onLogout }) {
     {id:'saude',     icon:'🩺', label:'Saúde'},
     {id:'minhaconta',icon:'👤', label:'Minha Conta'},
   ];
-  const titles = {dashboard:'Dashboard',plataforma:'Plataforma VALION SISTEMAS',relatorios:'Relatórios',pedidos:'Pedidos',products:'Produtos',categorias:'Categorias',adicionais:'Adicionais',status:'Status da Loja',taxaentrega:'Taxa de Entrega',empresa:'Dados da Empresa',fidelidade:'Fidelidade',saude:'Saúde do Sistema',minhaconta:'Minha Conta'};
+  const titles = {dashboard:'Dashboard',relatorios:'Relatórios',pedidos:'Pedidos',products:'Produtos',categorias:'Categorias',adicionais:'Adicionais',status:'Status da Loja',taxaentrega:'Taxa de Entrega',empresa:'Dados da Empresa',fidelidade:'Fidelidade',saude:'Saúde do Sistema',minhaconta:'Minha Conta'};
   return (
     <div className="admin-layout">
       <div className="admin-sidebar">
         <div className="admin-logo">✨ <span>{companyInfo.nomeCurto}</span></div>
-        {/* REF-SAAS-01 · Onda 8: distincao visual "plataforma" (VALION SISTEMAS, quem opera N lojas)
-            vs. "loja" (o logo acima, a loja ativa) -- so aparece pra Super Admin, sempre visivel
-            independente de quantas lojas existem hoje (nao e um contador, e uma identidade). */}
-        {isSuperAdmin && (
-          <div style={{padding:'0 16px 8px', fontSize:10.5, fontWeight:700, letterSpacing:.5, opacity:.55, textTransform:'uppercase'}}>
-            VALION SISTEMAS · Plataforma
+        {/* REF-SAAS-02 · Onda 1: o Admin da loja deixou de mostrar "VALION SISTEMAS · Plataforma" pra
+            qualquer um (Fase 6 da REF) -- essa identidade agora vive so no Platform Console, uma tela
+            separada (ver AdminApp.jsx/PlatformConsole.jsx). Aqui, super admin so ganha um link de volta. */}
+        {onVoltarPlataforma && (
+          <div style={{padding:'0 16px 10px'}}>
+            <button
+              data-testid="admin-voltar-plataforma"
+              onClick={onVoltarPlataforma}
+              style={{fontSize:11.5, fontWeight:700, letterSpacing:.3, color:'rgba(255,255,255,.75)', background:'rgba(255,255,255,.08)', border:'1px solid rgba(255,255,255,.2)', borderRadius:8, padding:'5px 10px', cursor:'pointer'}}
+            >
+              ← Platform Console
+            </button>
           </div>
         )}
         {/* REF-SAAS-01 · Onda 5/8: com 1 loja so, rotulo simples (contexto sempre visivel, nunca so
@@ -103,7 +104,6 @@ export function AdminPanel({ admin, onExit, onLogout }) {
             dados automaticamente sem precisar mudar nenhum hook existente. */}
         <div className="admin-body" key={activeStoreId}>
           {tab==='dashboard'  && <AdminDashboard/>}
-          {tab==='plataforma' && isSuperAdmin && <AdminPlataforma/>}
           {tab==='relatorios' && <AdminRelatorios/>}
           {tab==='pedidos'    && <AdminPedidos/>}
           {tab==='products'   && <AdminProducts/>}

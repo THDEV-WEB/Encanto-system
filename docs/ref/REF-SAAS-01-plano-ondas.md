@@ -881,3 +881,112 @@ Ao tentar usar a Onda 8 na prática, o dono reportou não ver a aba "Plataforma"
 
 ---
 
+## REF-SAAS-02 · Onda 1 — Platform Console (2026-08-10)
+
+**Baseline**: commit `75ce7b3` (Onda 8/8.2/8.3, comprovado em produção). Objetivo: separar
+conceitualmente e visualmente a **Plataforma VALION SISTEMAS** do **Admin de cada loja** — antes da
+Onda 1, "Plataforma" era uma aba dentro do Admin da Encanto (mistura de tenant e plataforma); agora é um
+console próprio (`PlatformConsole.jsx`), onde o Super Admin pousa direto após o login, com "Abrir Admin
+da loja" trocando de contexto sem duplicar nenhuma tela do Admin.
+
+### Backend (migration `REF-SAAS-02-onda1-platform-console.sql`)
+
+Não recria `provision_store`/`link_store_admin`/`list_my_stores`/`is_admin_anywhere`/`is_admin_of` —
+todas continuam exatamente como estavam. 4 RPCs novas, todas `SECURITY DEFINER` com `is_super_admin()`
+como 1ª linha de lógica (`RAISE EXCEPTION` explícito, nunca uma lista vazia silenciosa — achado da própria
+auditoria: a 1ª versão de `platform_list_tenants()` usava `WHERE is_super_admin()`, que devolveria lista
+vazia em vez de negar explicitamente para um admin comum; corrigido para `plpgsql` com `RAISE EXCEPTION`,
+consistente com as outras 4):
+
+- **`platform_list_tenants()`** — lista rica num só round-trip: `admin_count`, `tem_produtos`,
+  `tem_horario_config`, `tem_delivery_config` (existência real de linha em `store_settings`, não um
+  booleano arbitrário) e os 3 campos de contato do `company_info`. Alimenta a tela "Lojas" sem N+1.
+- **`platform_tenant_detail(p_store_id)`** — detalhe de 1 tenant: administradores (e-mail via
+  `auth.users`, só possível por `SECURITY DEFINER`), `company_info` completo, contagens reais
+  (produtos/categorias/pedidos), flags de configuração. Não duplica o Admin da loja — é supervisão.
+- **`platform_set_store_status(p_store_id, p_status)`** — suspender/reativar (nunca `DELETE`
+  destrutivo, conforme instrução explícita do dono; remoção definitiva fica para uma iniciativa futura,
+  separada e auditada).
+- **`platform_unlink_store_admin(p_store_id, p_user_id)`** — desvincula 1 admin de 1 loja; idempotente
+  (`desvinculado:false` na 2ª tentativa, sem erro).
+- **`get_store_by_domain(p_hostname)`** — ganha um **2º ramo** de resolução: se o hostname bater no
+  padrão `{slug}.valionsistemas.com.br` (exatamente 1 label antes do sufixo — nunca confunde com
+  `admin.{slug}.valionsistemas.com.br`, que tem 2 labels), resolve por `slug` **sem exigir `dominio`
+  manual**. O match exato em `dominio` continua vencendo primeiro (Encanto, que já tem `dominio` setado
+  desde a Onda 0, é byte-idêntico a antes — zero regressão); sem nenhum match, cai no
+  `default_store_id()` de sempre.
+
+Aplicada em produção e no projeto Supabase dedicado a E2E.
+
+### Frontend
+
+- **`PlatformConsole.jsx`** (novo) — shell próprio: sidebar "🏛️ VALION SISTEMAS · Platform Console",
+  abas "Dashboard"/"Lojas". Reaproveita as mesmas classes CSS do Admin (`admin-layout`/`admin-card`/
+  `btn-*` — instrução explícita de não fazer redesign geral); a separação é de **conteúdo/navegação/
+  identidade**, não de um novo sistema visual.
+- **`PlatformDashboard.jsx`** (novo) — métricas reais derivadas de `platform_list_tenants()`: total de
+  lojas, operacionais (`status='ativo' AND admin_count>0`), em configuração, suspensas, administradores,
+  pendências. Nenhum número fixo/inventado.
+- **`PlatformTenants.jsx`** (novo, substitui `AdminPlataforma.jsx`, removido) — lista profissional
+  (status operacional real, não um booleano simplista) + detalhe expansível por tenant (Resumo/
+  Administradores/Domínios, com ação de desvincular admin e suspender/reativar) + formulário "Nova loja"
+  ampliado (identidade + administrador + contato opcional: telefone/whatsapp/e-mail, gravados via
+  `set_company_info` explícito por `store_id`, sem tocar a assinatura de `provision_store`) + "Abrir
+  Admin da loja" (troca `activeStoreId` via `switchStore`, existente desde a Onda 5 — contexto
+  operacional; quem autoriza de verdade continua sendo RLS/`is_admin_of` no servidor).
+- **`AdminApp.jsx`** — novo componente `AdminAuthedShell`: super admin pousa no `PlatformConsole` por
+  padrão (`modoPlataforma = isSuperAdmin` no mount); "Abrir Admin" troca para o `AdminPanel` da loja
+  escolhida; admin comum (`isSuperAdmin=false`) nunca vê nada disto — cai direto no `AdminPanel` de
+  sempre, zero mudança de comportamento para ele.
+- **`AdminPanel.jsx`** — perdeu a aba "Plataforma" e o rótulo "VALION SISTEMAS · Plataforma" (Fase 6:
+  não deve mais depender visualmente da Encanto); ganhou um botão "← Platform Console" (só quando
+  `onVoltarPlataforma` é passado, isto é, só para super admin).
+- **`vercel.json`** — 2 regras novas, **genéricas** (regex de host, não uma entrada por loja):
+  `^[a-z0-9-]+\.valionsistemas\.com\.br$` → `/encanto` (mesmo path físico do build compartilhado,
+  `base:'/encanto/'` no Vite — confirmado por auditoria do `vite.config.js`, não é "a Encanto
+  especificamente", é onde o bundle do storefront realmente mora) e
+  `^admin\.[a-z0-9-]+\.valionsistemas\.com\.br$` → `/admin.html`. As 3 regras específicas da Encanto
+  continuam intocadas (zero risco).
+
+### O que continua manual (infraestrutura, fora do alcance de código)
+
+1. **Domínio curinga `*.valionsistemas.com.br` no DNS + registrado no projeto Vercel** — feito **1 vez
+   para a plataforma inteira**, não mais por loja. Até isso existir, o código novo (`vercel.json` +
+   `get_store_by_domain`) fica pronto mas inerte para lojas sem `dominio` explícito — por isso a tela de
+   detalhe do tenant mostra o endereço padrão como "⚠ pendente", nunca "✓", enquanto isso não for feito.
+2. **Identidade Auth do admin de uma loja nova** (`auth.users`) — Supabase Dashboard, decisão explícita
+   mantida desde a Onda 8 (nunca se cria senha por RPC, nunca se expõe `service_role`).
+3. **Domínio personalizado do cliente** (diferente do padrão VALION) — DNS + Vercel, por definição fora
+   do alcance de qualquer código deste projeto.
+
+### Testes
+
+- **Backend** (`scripts/saas02-onda1-platform-console-test.mjs`, Camada B): **25/25 PASS** — autorização
+  das 4 RPCs novas (super admin passa; admin comum/stranger/anon negados, com `RAISE EXCEPTION`
+  explícito, nunca lista vazia silenciosa), integridade (`status` fora do enum rejeitado, loja
+  inexistente rejeitada), idempotência (`platform_unlink_store_admin` 2x), e a derivação de slug em
+  `get_store_by_domain` (resolve sem `dominio` manual; não confunde `admin.*` com o storefront; Encanto
+  continua vencendo pelo match exato).
+- **Regressão completa**: `npm run test:db-guards` (26 scripts, produção) → **100% verde**. `npm run
+  test:domain` (suíte de domínio puro, incluindo `datetime-format.guard` — achado real: os campos de data
+  novos em `PlatformTenants.jsx` inicialmente usavam `.toLocaleDateString` ad hoc, corrigido para
+  `fmtDataHoraLoja` de `utils/format.js`, a fonte única já estabelecida) → **100% verde**. `npm run
+  test:deps` → sem ciclos/dependência invertida. Builds `vite build` e `vite build --mode admin` → OK.
+- **E2E** (`e2e/tests/admin/platform-console.spec.js`, sucessor de `admin-plataforma.spec.js`, removido)
+  — mesma prova de isolamento com **pessoa distinta** (nunca o Super Admin se auto-vinculando) da Onda
+  8.3, adaptada à nova navegação: super admin pousa no Platform Console, cria a loja, abre o detalhe,
+  vincula Pessoa B; Pessoa A confirma "Abrir Admin" troca de contexto e mostra as 2 lojas no seletor;
+  Pessoa B, em sessão de navegador totalmente separada, nunca vê nenhum artefato do Platform Console
+  (checado estruturalmente via `[data-testid^="platform-"]` count 0, não só a ausência de uma aba).
+
+### Produção
+
+`provision_store('Bar da Sogra', 'bar-da-sogra', NULL)` executado de verdade em produção (mutação real,
+mesmo mecanismo de sessão simulada usado para o `INSERT` em `super_admins` da correção pós-Onda-8) —
+`store_id 776a01c8-f836-417a-a957-a0e1109f90a2`, propositalmente **sem admin vinculado** ainda
+(estado "aguardando administrador"), para o dono ver e completar o vínculo pela própria UI quando tiver
+um segundo administrador real — sem fabricar nenhuma identidade humana em produção. `platform_list_tenants()`
+confirmado mostrando as 2 lojas reais (Encanto operacional, Bar da Sogra em configuração) antes do deploy.
+
+---
+

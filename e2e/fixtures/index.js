@@ -15,6 +15,7 @@ import { CheckoutPagePO } from '../pages/CheckoutPage.page.js';
 import { LoginModalPage } from '../pages/LoginModal.page.js';
 import { AdminLoginPage } from '../pages/AdminLoginPage.js';
 import { AdminPanelPage } from '../pages/AdminPanel.page.js';
+import { PlatformConsolePage } from '../pages/PlatformConsole.page.js';
 import { AdminPedidosPage } from '../pages/AdminPedidosPage.page.js';
 import { AdminCategoriasPage } from '../pages/AdminCategoriasPage.page.js';
 import { AdminAdicionaisPage } from '../pages/AdminAdicionaisPage.page.js';
@@ -30,6 +31,7 @@ export const test = base.extend({
   loginModal:     async ({ page }, use) => { await use(new LoginModalPage(page)); },
   adminLoginPage: async ({ page }, use) => { await use(new AdminLoginPage(page)); },
   adminPanel:     async ({ page }, use) => { await use(new AdminPanelPage(page)); },
+  platformConsole: async ({ page }, use) => { await use(new PlatformConsolePage(page)); },
   adminPedidosPage: async ({ page }, use) => { await use(new AdminPedidosPage(page)); },
   adminCategoriasPage: async ({ page }, use) => { await use(new AdminCategoriasPage(page)); },
   adminAdicionaisPage: async ({ page }, use) => { await use(new AdminAdicionaisPage(page)); },
