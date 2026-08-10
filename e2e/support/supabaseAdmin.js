@@ -72,3 +72,17 @@ export async function supabaseComoAdmin() {
   if (error) throw new Error(`[e2e] login do admin fixture (RPC direto) falhou: ${error.message}`);
   return client;
 }
+
+/* REF-SAAS-01 · Onda 8 (E2E): id auth do admin fixture — precisa do Admin API (listUsers + achar por
+   e-mail, mesmo padrao de scripts/e2e-fixture-accounts.mjs) porque nenhuma tabela publica mapeia
+   e-mail -> user_id sem passar por auth.users (trancado, so leitura via service_role/Admin API). Usado
+   por specs que precisam promover/revogar super_admins do fixture em setup/teardown. */
+export async function idDoAdminFixture() {
+  const admin = supabaseAdmin();
+  if (!admin) return null;
+  const { data, error } = await admin.auth.admin.listUsers();
+  if (error) throw new Error(`[e2e] listUsers falhou: ${error.message}`);
+  const user = data.users.find((u) => u.email === ADMIN_FIXTURE.email);
+  if (!user) throw new Error(`[e2e] admin fixture (${ADMIN_FIXTURE.email}) nao encontrado em auth.users`);
+  return user.id;
+}

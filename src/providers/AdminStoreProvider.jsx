@@ -22,22 +22,30 @@ export function AdminStoreProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState(null);
 
+  const buscarLojas = useCallback(async (manterAtiva) => {
+    const { data, error } = await db.rpc('list_my_stores');
+    if (error) { setErro(error.message); setStores([]); return; }
+    const lista = data || [];
+    setStores(lista);
+    const persistida = manterAtiva ?? lerActiveStoreIdPersistido();
+    const resolvida = lista.find(s => s.store_id === persistida)?.store_id ?? lista[0]?.store_id ?? null;
+    setActiveStoreId(resolvida);
+    setActiveStoreIdState(resolvida);
+  }, []);
+
   useEffect(() => {
     let vivo = true;
     (async () => {
-      const { data, error } = await db.rpc('list_my_stores');
-      if (!vivo) return;
-      if (error) { setErro(error.message); setStores([]); setLoading(false); return; }
-      const lista = data || [];
-      setStores(lista);
-      const persistida = lerActiveStoreIdPersistido();
-      const inicial = lista.find(s => s.store_id === persistida)?.store_id ?? lista[0]?.store_id ?? null;
-      setActiveStoreId(inicial); // singleton (services fora da arvore React)
-      setActiveStoreIdState(inicial); // estado React (re-renderiza a UI)
-      setLoading(false);
+      await buscarLojas();
+      if (vivo) setLoading(false);
     })();
     return () => { vivo = false; };
-  }, []);
+  }, [buscarLojas]);
+
+  /* REF-SAAS-01 · Onda 8: usado pela aba "Plataforma" (Super Admin) apos provision_store/
+     link_store_admin -- a lista de lojas precisa refletir a loja recem-criada sem exigir F5.
+     Mantem a loja ativa atual (nunca troca de contexto sozinho so porque a lista mudou). */
+  const reloadStores = useCallback(() => buscarLojas(activeStoreId), [buscarLojas, activeStoreId]);
 
   const switchStore = useCallback((novoId) => {
     setStores((atual) => {
@@ -51,8 +59,8 @@ export function AdminStoreProvider({ children }) {
   const isSuperAdmin = stores.some(s => s.is_super_admin);
 
   const value = useMemo(() => ({
-    stores, activeStoreId, isSuperAdmin, switchStore, loading, erro,
-  }), [stores, activeStoreId, isSuperAdmin, switchStore, loading, erro]);
+    stores, activeStoreId, isSuperAdmin, switchStore, loading, erro, reloadStores,
+  }), [stores, activeStoreId, isSuperAdmin, switchStore, loading, erro, reloadStores]);
 
   if (loading) return null; // AdminApp ja mostra o shell/spinner de login; evita flash de conteudo sem loja resolvida
 

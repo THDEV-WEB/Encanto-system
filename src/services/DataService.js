@@ -277,6 +277,20 @@ export const DS = {
     }));
     return r.data ?? null;
   },
+  /* REF-SAAS-01 · Onda 8: provisionamento assistido (Super Admin da VALION SISTEMAS). throwOnError:true
+     porque a UI precisa da mensagem exata do banco (slug em uso, nome invalido, etc.), nao só null. */
+  async provisionStore(nome, slug, adminEmail) {
+    const r = await this.run(d=>d.rpc('provision_store', {
+      p_nome: nome, p_slug: slug, p_admin_email: adminEmail || null,
+    }), { throwOnError: true });
+    return r.data;
+  },
+  async linkStoreAdmin(storeId, adminEmail) {
+    const r = await this.run(d=>d.rpc('link_store_admin', {
+      p_store_id: storeId, p_admin_email: adminEmail,
+    }), { throwOnError: true });
+    return r.data;
+  },
   /* HARDEN-06: log genérico em application_logs — reutilizável por qualquer módulo (best-effort, sem PII). */
   async logEvent(module, operation, level, message, payload) {
     try {

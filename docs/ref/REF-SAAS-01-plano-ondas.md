@@ -38,7 +38,7 @@ Toma as decisões que a auditoria/revalidação deixaram abertas: modelo de iden
 | **5** | Admin multi-loja: seletor de loja, papel de super admin na UI | Onda 4 | ✅ **Concluída (2026-08-09)** — ver seção própria abaixo |
 | **6** | Frontend multi-loja: `get_store_by_domain`, branding restante (logo/favicon, paleta CSS, Termos/Fidelidade), geocoding fora de Timbó-only | Onda 5 | ✅ **Concluída (2026-08-09) — 6.1, 6.2 e 6.3** — ver seção própria abaixo |
 | **7** | Notificações/WhatsApp por loja — dividida em 7.1 (operacional, `wa.me`, sem Meta/BSP) e 7.2 (decisão Rota A Tech Provider vs. Rota B BSP, integração oficial) | Onda 4 | ✅ **7.1 CONCLUÍDA (2026-08-10)** — ver seção própria abaixo. 7.2 permanece adiada, ver [[encanto-ref-whatsapp-01-coexistence]] |
-| **8** | Infra de provisionamento: RPC `provision_store`, checklist de loja nova | Ondas 0–7 | 📋 Não iniciada |
+| **8** | Infra de provisionamento: RPC `provision_store`, checklist de loja nova | Ondas 0–7 | ✅ **CONCLUÍDA (2026-08-10)** — ver seção própria abaixo |
 | **9** | Mobile/Capacitor — decisão de produto (app por loja vs. shell único), fora do código desta fundação | Avaliar com N≥3 lojas | 📋 Não iniciada |
 
 Cada onda, ao iniciar, ganha sua própria seção neste documento (auditoria específica → plano técnico → implementação → testes → regressão → commit → push → doc → relatório), seguindo o mesmo formato já usado em `REF-ADMIN-04-plano-ondas.md`.
@@ -798,6 +798,73 @@ Commit único cobrindo: migration + rollback (`get_company_info` defaults neutro
 **Risco durante a execução**: nenhum incidente irreversível em produção — as duas sincronizações de schema (SAAS-01 completa + colunas do DELIVERY-FEE-01 + conversão de timestamp) foram feitas exclusivamente no projeto Supabase dedicado a E2E, nunca em produção; produção recebeu apenas o `CREATE OR REPLACE` de `get_company_info()` já revisado e com rollback pronto. Um momento de perda parcial de dados observado no `company_info` do E2E durante a investigação (linha encolheu para só 4 campos entre duas leituras) foi restaurado manualmente e não teve causa raiz confirmada — não bloqueou o fechamento por ser isolado ao ambiente de teste e não ter se repetido.
 
 **Onda 7 (WhatsApp por loja) está PARCIALMENTE concluída**: a parte operacional (7.1) fecha aqui. A Onda 7.2 (decisão Rota A/Tech Provider vs. Rota B/BSP, integração oficial com a Meta) permanece adiada por instrução explícita do dono — ver [[encanto-ref-whatsapp-01-coexistence]]. **Próximo passo do roadmap**: retomar o roadmap paralelo (ver [[encanto-roadmap-paralelo-saas01]]) ou decidir a Onda 7.2 quando o dono priorizar.
+
+---
+
+## Onda 8 — Provisionamento assistido de loja nova
+
+**✅ CONCLUÍDA (2026-08-10).** Aprovada pelo dono imediatamente após uma auditoria read-only dedicada (mesma sessão) que respondeu por que, com as Ondas 0–7.1 concluídas, praticamente nenhuma mudança visual era perceptível: Onda 5/6 entregaram infraestrutura de autorização/resolução de loja genuinamente funcional, mas **zero UI de gestão de lojas** — `super_admins` tinha 0 linhas em produção, o seletor/rótulo de "Super admin" em `AdminPanel.jsx` estava gateado por `stores.length > 1` (paradoxo: precisava de 2 lojas pra ver como criar a 2ª), e não existia nenhum RPC/tela para criar uma loja, vincular um admin, ou saber quantas lojas a plataforma tinha. Objetivo explícito desta onda: fechar exatamente esse gap, mantendo v1 **manual/assistida pelo Super Admin** (nunca self-service), sem tocar billing/planos/Meta/Onda 9/Super Admin completo.
+
+### Auditoria focada (antes de qualquer alteração)
+
+1. **`stores`** (Onda 0): `id, slug UNIQUE, nome, dominio UNIQUE nullable, status CHECK IN ('ativo','suspenso','cancelado'), created_at`. RLS habilitada, **zero policies** — só RPC `SECURITY DEFINER` acessa (mesmo padrão de `settings` desde antes da REF-SAAS-01).
+2. **`admins`** (AUTH-01 + Onda 1): `id, user_id NOT NULL REFERENCES auth.users(id), created_at` + `store_id NOT NULL REFERENCES stores(id)` (Onda 1), `UNIQUE(store_id, user_id)` — 1 `user_id` pode administrar N lojas sem tabela de vínculo separada.
+3. **`super_admins`** (Onda 1): `user_id PK REFERENCES auth.users(id)` — papel global, sem `store_id`. `is_super_admin()` = `EXISTS(... WHERE user_id = auth.uid())`. `is_admin_of(p_store_id)` = `is_super_admin() OR` vínculo em `admins`. Confirmado em produção: **0 linhas** — nem o admin real de hoje é super admin (esperado: bootstrap do 1º super admin é sempre manual, é o "quem vigia os vigilantes" da autorização — nenhuma RPC pode se auto-conceder esse papel).
+4. **Padrão de RPC `SECURITY DEFINER`** já maduro nesta base: `is_admin_of(p_store_id)`/`is_super_admin()` como 1ª linha de lógica em toda escrita administrativa; `REVOKE ALL FROM PUBLIC` + `REVOKE EXECUTE FROM anon` + `GRANT ... TO authenticated` como defesa em profundidade (padrão de `set_company_info`, replicado aqui).
+5. **`store_settings`** (Onda 4.3): `store_id, chave, valor text, UNIQUE(store_id, chave)` — toda RPC leitora (`get_business_hours_schedule`, `get_delivery_fee_config`, `get_delivery_eta`, `get_store_mode`) já tem fallback `COALESCE` para uma loja sem nenhuma linha ainda — **não precisam de seed** no provisionamento.
+6. **`get_company_info(p_store_id)`** (Onda 6.2) é a ÚNICA exceção — seu fallback é **hardcoded com identidade REAL da Encanto** (`nomeCurto:"Encanto"`, `whatsapp:"5547992722920"`, paleta `#A62786`/`#6B1F5D`/`#FFBF00`, termos/fidelidade). Achado crítico desta auditoria: sem seed explícito, uma loja nova mostraria a marca da Encanto (nome, telefone, WhatsApp, cores) até o admin abrir "Empresa" e sobrescrever manualmente — o motivo técnico exato, ainda não documentado antes desta onda, de por que "não dá pra simplesmente criar a loja e ver diferença nenhuma" seria verdade mesmo com o provisionamento pronto.
+7. **`activeStoreId`** resolvido por `AdminStoreProvider.jsx` via `list_my_stores()` (Onda 5) no mount, bloqueando a renderização até resolver; espelhado no singleton `services/adminStore.js`. `isSuperAdmin = stores.some(s => s.is_super_admin)` já vinha pronto de `list_my_stores()` — reaproveitado sem nenhuma mudança de contrato.
+8. **Ponto de encaixe da UI**: nova aba em `AdminPanel.jsx`, gateada **só por `isSuperAdmin`** (nunca por `stores.length > 1` — esse era exatamente o paradoxo a corrigir).
+
+Nenhuma incompatibilidade real encontrada — a arquitetura das Ondas 0–7.1 já continha tudo que a Onda 8 precisava reaproveitar.
+
+### Backend (`migrations/REF-SAAS-01-onda8-provisionamento.sql` + rollback)
+
+Duas RPCs `SECURITY DEFINER`, `is_super_admin()` como 1ª linha de lógica em ambas:
+
+- **`link_store_admin(p_store_id, p_admin_email)`** — busca `auth.users` por e-mail (case-insensitive); se não existir, devolve `{vinculado:false, motivo:"...crie o usuário em Authentication > Users..."}` **sem erro** (estado esperado do fluxo assistido, não uma falha); se já for admin da loja, devolve `{vinculado:false, motivo:"já é administrador"}` (idempotente); senão, insere em `admins` e devolve `{vinculado:true}`. E-mail malformado **é** erro (`22023`) — distinção deliberada entre "input inválido" (aborta) e "pessoa ainda não existe" (estado válido).
+- **`provision_store(p_nome, p_slug, p_admin_email DEFAULT NULL)`** — assinatura exatamente como desenhada no ADR §7. Valida nome (≥2 chars)/slug (`^[a-z0-9]+(-[a-z0-9]+)*$`, 2–40 chars, unicidade); insere a loja (`status='ativo'`, `dominio=NULL` — DNS/Vercel permanecem manuais, ver seção própria abaixo); semeia `store_settings.company_info` com identidade **neutra** (`nomeCurto`/`nomeCompleto` derivados do nome informado, `telefone`/`whatsapp`/`email` vazios, `whatsappFloatEnabled=false`, paleta cinza/âmbar `#6B7280`/`#374151`/`#F59E0B`) — a loja nova **nunca** herda a marca da Encanto, nem por 1 segundo; se `p_admin_email` foi informado, chama `link_store_admin` internamente. Atomicidade real do Postgres (qualquer `RAISE EXCEPTION` desfaz 100% dos efeitos da chamada) — provado no ITEM 13 dos testes: e-mail malformado no vínculo desfaz a loja inteira, zero linha parcial.
+
+**Separação de responsabilidades (regra explícita do dono, não negociável nesta onda)**: criação da loja e vínculo do admin são 100% destas 2 RPCs; a criação da **identidade Auth** (`auth.users`) permanece manual (Supabase Dashboard) — nunca se cria senha nem se expõe `service_role` ao frontend. `link_store_admin` só **enxerga** contas que já existem.
+
+Aplicada em produção e no projeto Supabase dedicado a E2E (rotina já estabelecida desde a Onda 7.1 — toda RPC nova nasce nos dois ambientes).
+
+### Frontend
+
+- **`DataService.js`**: `provisionStore(nome, slug, adminEmail)`/`linkStoreAdmin(storeId, email)` (`throwOnError:true` — a UI precisa da mensagem exata do banco, não só `null`).
+- **`AdminStoreProvider.jsx`**: ganhou `reloadStores()` — refaz `list_my_stores()` sem exigir F5, mantendo a loja ativa atual; usado após provisionar/vincular.
+- **`AdminPlataforma.jsx`** (novo) — UI mínima do Super Admin: lista todas as lojas (nome/slug/status/domínio), formulário "Nova loja" (nome/slug com slugify automático/e-mail opcional do admin) e, por loja, um mini-formulário "Vincular admin" por e-mail. Feedback inline (sucesso/erro), nunca decide autorização no client (a RPC decide; a UI só reflete).
+- **`AdminPanel.jsx`**: nova aba "Plataforma" (🏛️) gateada **só por `isSuperAdmin`** — fix do paradoxo do gate antigo. Identidade visual mínima (Fase 4 do pedido): rótulo discreto "VALION SISTEMAS · Plataforma" na sidebar (só para super admin, distinto do logo/nome da loja acima) e rótulo "🏪 {loja ativa}" sempre visível com 1 loja só (antes, sem `stores.length > 1`, não havia nenhuma indicação); com 2+ lojas, o `<select>` já existente (Onda 5) substitui o rótulo, agora finalmente exercitável.
+
+### Testes
+
+- **Backend** (`scripts/saas01-onda8-provisionamento-test.mjs`, Camada B — `BEGIN...ROLLBACK` direto em produção, zero mutação líquida): **29/29 PASS** — autorização (super admin provisiona; admin comum/admin de outra loja/stranger autenticado/anon **não** conseguem, nos 2 sentidos), integridade (slug duplicado/nome vazio/slug inválido rejeitados sem deixar linha parcial), semente de `company_info` (loja nova nunca herda nome/telefone/whatsapp/paleta da Encanto — provado por valor exato, não só "diferente"), vínculo (e-mail existente vincula e cria a linha real em `admins`; e-mail inexistente devolve motivo sem erro; e-mail já vinculado é idempotente; e-mail malformado é rejeitado; `provision_store` com e-mail embutido faz os 2 passos numa chamada só), regressão (ser admin de uma loja vinculada não promove a super admin), atomicidade (erro no vínculo desfaz a loja inteira).
+- **E2E** (`e2e/tests/admin/admin-plataforma.spec.js`, novo) — a simulação "Bar da Sogra" de ponta a ponta **pela UI real**, não só pelo backend: admin fixture ganha `super_admins` temporário (service_role, só no projeto de E2E, desfeito no `afterEach`), abre a aba "Plataforma" **com 1 loja só** (prova do fix do gate), cria a loja pela UI, vincula o próprio e-mail, e — depois de um reload real (REF-STABILITY-02: reload sempre volta ao login; reaproveita a sessão via "Entrar" + confirmação, nunca login novo) — confirma que **o seletor de loja passa a aparecer de fato** (2 vínculos reais) e que trocar de loja não quebra o contexto. `AdminPanel.page.js` ganhou `plataforma` na allowlist de abas.
+- **Regressão completa**: `npm run test:db-guards` (25 scripts, produção, Camada B) → **100% verde, zero `[FAIL]`**. Suíte **E2E completa — 118/118 PASS** (117 pré-existentes + 1 novo).
+
+### O que fica manual (Fase 6 do pedido — infraestrutura, fora do escopo desta onda)
+
+O provisionamento resolve **loja + config inicial + vínculo de admin** sozinho. Continuam manuais, na ordem em que apareceriam para uma loja nova real:
+
+1. **Identidade Auth do admin da loja** (`auth.users`) — Supabase Dashboard. Decisão explícita desta onda (não um gap esquecido): nenhuma RPC cria usuário/senha nem expõe `service_role`.
+2. **`stores.dominio`** — `provision_store` deixa `NULL` de propósito (ADR §7: "loja fica ativa mas sem domínio até o DNS ser configurado manualmente"). Não existe hoje nenhuma RPC `set_store_domain` — setá-lo depois exige SQL direto. Candidato natural de uma subfase futura (8.1) **se** o dono quiser fechar este ponto especificamente; não implementado agora por instrução explícita ("não fazer mudança de routing sem aprovação específica").
+3. **DNS** — apontar o domínio real da loja nova para a Vercel. 100% manual, fora do código deste projeto.
+4. **`vercel.json`** — confirmado ainda **hardcoded** para as 3 hostnames da Encanto (`encanto.valionsistemas.com.br`, `encanto-system.vercel.app`, `admin.encanto.valionsistemas.com.br`); zero regra genérica. Uma loja nova com domínio próprio precisaria de uma nova entrada em `redirects`/`rewrites` + deploy — **não alterado nesta onda**, por instrução explícita do dono.
+5. **`AdminApp.jsx`'s `VITE_STORE_URL`** — env var de build único, hardcoded para o domínio da Encanto (botão "← Ver loja"). Uma loja nova sem domínio próprio ainda não tem para onde esse botão apontar corretamente; **gap conhecido, não fechado nesta onda** (fora do escopo aprovado — envolveria decidir se o valor passa a vir de `stores.dominio` em runtime, uma mudança de arquitetura de deploy, fora do escopo desta onda).
+
+O Admin em si (login, `is_admin()`, `list_my_stores()`) **já é** domínio-agnóstico — qualquer admin de qualquer loja loga na mesma URL compartilhada hoje; só o *storefront* da loja nova (e o botão "Ver loja") dependem dos itens 2–5.
+
+### Commit / Push
+
+Commit único cobrindo: migration + rollback (`provision_store`/`link_store_admin`) + `DataService.js` + `AdminStoreProvider.jsx` (`reloadStores`) + `AdminPlataforma.jsx` (novo) + `AdminPanel.jsx` (aba + identidade visual) + script de teste dedicado (29/29) + `package.json` + spec E2E novo + `AdminPanel.page.js` (allowlist) + `e2e/support/supabaseAdmin.js` (`idDoAdminFixture`) + ADR (`docs/adr/REF-SAAS-01-fundacao-multitenant.md`, §7/§8 marcados como implementados) + este ledger.
+
+### Relatório técnico
+
+**Pergunta central respondida com teste real, não expectativa**: *"Depois da Onda 8, para colocar uma segunda loja real, dá pra começar pelo próprio produto?"* — **Sim, para os passos que o produto controla**: Super Admin loga no Admin de sempre, abre "Plataforma", cria a loja, e (se a pessoa já tiver conta) vincula o admin — tudo pela UI, provado pela suíte E2E rodando esse fluxo exato contra o backend real. **Continua fora do produto**: criar a conta Auth da pessoa (Dashboard), e — só quando a loja precisar de domínio próprio — DNS + `vercel.json` + deploy. Isso não é uma limitação inesperada: é exatamente o "manual/assistido" que o ADR sempre desenhou para a v1, agora implementado e comprovado, em vez de só desenhado.
+
+**Por que a percepção de "nenhuma mudança visual" era real e não um engano**: com `super_admins` vazio e o gate antigo em `stores.length > 1`, não existia absolutamente nenhum caminho — nem visual nem funcional — para um humano criar a 2ª loja sem abrir o Supabase Dashboard. A Onda 8 fecha esse caminho especificamente; as Ondas 5/6 já estavam corretas para o que entregavam (isolamento/resolução de loja), só não incluíam gestão de lojas — isso sempre foi escopo da Onda 8, nunca um déficit dela.
+
+**Próximo passo**: nenhuma pendência bloqueante na REF-SAAS-01 para operar uma 2ª loja pelo produto. Onda 9 (mobile) permanece não-iniciada e não-bloqueante (avaliar com N≥3 lojas). Onda 7.2 (Meta/BSP) permanece adiada. Recomendação: se o dono quiser fechar 100% do caminho sem NENHUM SQL manual, a subfase natural seguinte é um `set_store_domain(p_store_id, p_dominio)` (item 2 acima) — pequeno, mas ainda assim não resolve `vercel.json`/DNS, que são infraestrutura, não código de produto.
 
 ---
 

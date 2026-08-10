@@ -161,13 +161,13 @@ Toda tabela de negócio existente ganha `store_id` como coluna **nullable primei
 
 ---
 
-## 7. Fluxo futuro de onboarding (desenho, Onda 8 — não implementado agora)
+## 7. Fluxo futuro de onboarding (desenho, Onda 8)
 
-Super Admin cria uma linha em `stores` (nome, slug) → RPC `provision_store(p_nome, p_slug, p_admin_email)` cria a loja + o primeiro `admins` daquela loja + seeds de `store_settings` default (horário padrão, config de entrega vazia, `company_info` vazio) → loja fica "ativa" mas sem domínio até o DNS ser configurado manualmente na Vercel (mesmo processo manual já usado hoje para `admin.encanto.valionsistemas.com.br`) → dono da loja configura o mínimo (catálogo, WhatsApp) pelo próprio Admin.
+**✅ IMPLEMENTADO (2026-08-10)** — ver `docs/ref/REF-SAAS-01-plano-ondas.md`, seção "Onda 8". Super Admin cria uma linha em `stores` (nome, slug) → RPC `provision_store(p_nome, p_slug, p_admin_email)` cria a loja + tenta o vínculo do admin (se a pessoa já tiver conta) + seeds de `store_settings` (`company_info` com identidade neutra, nunca herdando nome/telefone/whatsapp/paleta da Encanto) → loja fica "ativa" mas sem domínio até o DNS ser configurado manualmente na Vercel (mesmo processo manual já usado hoje para `admin.encanto.valionsistemas.com.br`) → dono da loja configura o mínimo (catálogo, WhatsApp) pelo próprio Admin. Única divergência do desenho original: a criação do vínculo do admin foi desdobrada em sua própria RPC (`link_store_admin(p_store_id, p_admin_email)`), reutilizada por `provision_store` quando um e-mail é informado — permite vincular administradores adicionais depois, sem re-provisionar a loja.
 
 ## 8. Estratégia de provisionamento
 
-v1 é **manual/assistido** — Super Admin roda `provision_store(...)` e configura DNS à mão, como já acontece hoje. Não é self-service (tela de cadastro público) nesta fundação; isso é trabalho de produto para depois que houver demanda real de mais de ~3 lojas simultâneas. O RPC nasce pronto para ser chamado por uma futura tela sem precisar ser redesenhado.
+**v1, implementada, é manual/assistida** — Super Admin roda `provision_store(...)` (por uma UI mínima, aba "Plataforma" do Admin, visível só para `is_super_admin()`) e configura DNS à mão, como já acontece hoje. Não é self-service (tela de cadastro público) nesta fundação; isso é trabalho de produto para depois que houver demanda real de mais de ~3 lojas simultâneas. A criação da identidade Auth do admin da loja (o `auth.users` em si) permanece manual (Supabase Dashboard) por decisão explícita — `link_store_admin` só enxerga contas que já existem (leitura por e-mail), nunca cria uma senha nem expõe `service_role` ao frontend.
 
 **WhatsApp por loja (decisão de negócio, não só técnica — ver REF-WHATSAPP-01):** gerenciar números de múltiplos clientes exige a VALION se cadastrar como Tech Provider da Meta (processo de dias, sem custo recorrente) **ou** rotear via BSP já credenciado (sem espera, com custo recorrente por mensagem). Esta fundação não decide qual rota agora — fica registrado como decisão a ser tomada explicitamente no início da Onda 7, com o trade-off já documentado.
 

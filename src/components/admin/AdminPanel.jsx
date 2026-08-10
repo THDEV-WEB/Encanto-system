@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useCompanyInfo } from '../../hooks/useCompanyInfo.js';   // REF-COMPANY-02: nome curto na sidebar
 import { useAdminStore } from '../../hooks/useAdminStore.js';     // REF-SAAS-01 · Onda 5: loja ativa multi-loja
 import { AdminDashboard } from './AdminDashboard.jsx';
+import { AdminPlataforma } from './AdminPlataforma.jsx'; // REF-SAAS-01 · Onda 8: provisionamento assistido (Super Admin)
 import { AdminRelatorios } from './AdminRelatorios.jsx'; // REF-DASHBOARD-01: BI de negocio por periodo
 import { AdminPedidos } from './AdminPedidos.jsx';
 import { AdminProducts } from './AdminProducts.jsx';
@@ -22,6 +23,10 @@ export function AdminPanel({ admin, onExit, onLogout }) {
   const [tab, setTab] = useState('dashboard');
   const tabs = [
     {id:'dashboard', icon:'📊', label:'Dashboard'},
+    // REF-SAAS-01 · Onda 8: gate e SO isSuperAdmin, nunca stores.length>1 -- e justamente com 1 loja
+    // so (estado de hoje) que o Super Admin precisa deste ponto de entrada pra criar a 2a. Gatear por
+    // stores.length>1 seria um paradoxo (precisa de 2 lojas pra ver como criar a 2a loja).
+    ...(isSuperAdmin ? [{id:'plataforma', icon:'🏛️', label:'Plataforma'}] : []),
     {id:'relatorios',icon:'📈', label:'Relatórios'},
     {id:'pedidos',   icon:'📋', label:'Pedidos'},
     {id:'products',  icon:'🛍️', label:'Produtos'},
@@ -34,17 +39,25 @@ export function AdminPanel({ admin, onExit, onLogout }) {
     {id:'saude',     icon:'🩺', label:'Saúde'},
     {id:'minhaconta',icon:'👤', label:'Minha Conta'},
   ];
-  const titles = {dashboard:'Dashboard',relatorios:'Relatórios',pedidos:'Pedidos',products:'Produtos',categorias:'Categorias',adicionais:'Adicionais',status:'Status da Loja',taxaentrega:'Taxa de Entrega',empresa:'Dados da Empresa',fidelidade:'Fidelidade',saude:'Saúde do Sistema',minhaconta:'Minha Conta'};
+  const titles = {dashboard:'Dashboard',plataforma:'Plataforma VALION SISTEMAS',relatorios:'Relatórios',pedidos:'Pedidos',products:'Produtos',categorias:'Categorias',adicionais:'Adicionais',status:'Status da Loja',taxaentrega:'Taxa de Entrega',empresa:'Dados da Empresa',fidelidade:'Fidelidade',saude:'Saúde do Sistema',minhaconta:'Minha Conta'};
   return (
     <div className="admin-layout">
       <div className="admin-sidebar">
         <div className="admin-logo">✨ <span>{companyInfo.nomeCurto}</span></div>
-        {/* REF-SAAS-01 · Onda 5: so aparece com MAIS de 1 loja vinculada -- hoje (Cliente Zero, 1
-            loja so) nada e renderizado aqui, zero mudanca visual/estrutural pro Admin atual. Trocar
-            de loja e so contexto operacional: a RLS/RPC no banco continua sendo quem autoriza de
-            verdade, nao esta seleção. */}
-        {stores.length > 1 && (
-          <div style={{padding:'0 16px 12px'}}>
+        {/* REF-SAAS-01 · Onda 8: distincao visual "plataforma" (VALION SISTEMAS, quem opera N lojas)
+            vs. "loja" (o logo acima, a loja ativa) -- so aparece pra Super Admin, sempre visivel
+            independente de quantas lojas existem hoje (nao e um contador, e uma identidade). */}
+        {isSuperAdmin && (
+          <div style={{padding:'0 16px 8px', fontSize:10.5, fontWeight:700, letterSpacing:.5, opacity:.55, textTransform:'uppercase'}}>
+            VALION SISTEMAS · Plataforma
+          </div>
+        )}
+        {/* REF-SAAS-01 · Onda 5/8: com 1 loja so, rotulo simples (contexto sempre visivel, nunca so
+            implicito); com MAIS de 1 loja vinculada, o <select> substitui o rotulo e passa a trocar de
+            contexto. Trocar de loja e so contexto operacional -- a RLS/RPC no banco continua sendo
+            quem autoriza de verdade, nao esta seleção. */}
+        <div style={{padding:'0 16px 12px'}}>
+          {stores.length > 1 ? (
             <select
               data-testid="admin-store-selector"
               value={activeStoreId || ''}
@@ -57,9 +70,15 @@ export function AdminPanel({ admin, onExit, onLogout }) {
                 </option>
               ))}
             </select>
-            {isSuperAdmin && <div style={{fontSize:11, opacity:.6, marginTop:4}}>Super admin — todas as lojas</div>}
-          </div>
-        )}
+          ) : (
+            stores.length === 1 && (
+              <div data-testid="admin-store-ativa" style={{fontSize:12, opacity:.7}}>
+                🏪 {stores[0].nome}
+              </div>
+            )
+          )}
+          {isSuperAdmin && <div style={{fontSize:11, opacity:.6, marginTop:4}}>Super admin — todas as lojas</div>}
+        </div>
         <nav className="admin-nav">
           {tabs.map(t=>(
             <div key={t.id} data-testid={`admin-tab-${t.id}`} className={`admin-nav-item ${tab===t.id?'active':''}`} onClick={()=>setTab(t.id)}>
@@ -84,6 +103,7 @@ export function AdminPanel({ admin, onExit, onLogout }) {
             dados automaticamente sem precisar mudar nenhum hook existente. */}
         <div className="admin-body" key={activeStoreId}>
           {tab==='dashboard'  && <AdminDashboard/>}
+          {tab==='plataforma' && isSuperAdmin && <AdminPlataforma/>}
           {tab==='relatorios' && <AdminRelatorios/>}
           {tab==='pedidos'    && <AdminPedidos/>}
           {tab==='products'   && <AdminProducts/>}
