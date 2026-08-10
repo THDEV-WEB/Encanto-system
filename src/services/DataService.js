@@ -268,6 +268,15 @@ export const DS = {
     const r = await this.run(d=>d.rpc('orders_health', buildStoreRpcParam()));
     return r.data ?? null;
   },
+  /* REF-DASHBOARD-01: BI de negócio por período (admin_reports_summary) — faturamento/dia, top
+     produtos, forma de pagamento, entrega vs retirada. Pedidos cancelados excluídos no servidor
+     (decisão de escopo desta ref — diferente de getHealth/getPedidosStats, que somam tudo). */
+  async getRelatorios(inicio, fim) {
+    const r = await this.run(d=>d.rpc('admin_reports_summary', {
+      p_period_start: inicio, p_period_end: fim, ...buildStoreRpcParam(),
+    }));
+    return r.data ?? null;
+  },
   /* HARDEN-06: log genérico em application_logs — reutilizável por qualquer módulo (best-effort, sem PII). */
   async logEvent(module, operation, level, message, payload) {
     try {

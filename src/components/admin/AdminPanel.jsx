@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useCompanyInfo } from '../../hooks/useCompanyInfo.js';   // REF-COMPANY-02: nome curto na sidebar
 import { useAdminStore } from '../../hooks/useAdminStore.js';     // REF-SAAS-01 · Onda 5: loja ativa multi-loja
 import { AdminDashboard } from './AdminDashboard.jsx';
+import { AdminRelatorios } from './AdminRelatorios.jsx'; // REF-DASHBOARD-01: BI de negocio por periodo
 import { AdminPedidos } from './AdminPedidos.jsx';
 import { AdminProducts } from './AdminProducts.jsx';
 import { AdminCategorias } from './AdminCategorias.jsx';
@@ -21,6 +22,7 @@ export function AdminPanel({ admin, onExit, onLogout }) {
   const [tab, setTab] = useState('dashboard');
   const tabs = [
     {id:'dashboard', icon:'📊', label:'Dashboard'},
+    {id:'relatorios',icon:'📈', label:'Relatórios'},
     {id:'pedidos',   icon:'📋', label:'Pedidos'},
     {id:'products',  icon:'🛍️', label:'Produtos'},
     {id:'categorias',icon:'🏷️', label:'Categorias'},
@@ -32,7 +34,7 @@ export function AdminPanel({ admin, onExit, onLogout }) {
     {id:'saude',     icon:'🩺', label:'Saúde'},
     {id:'minhaconta',icon:'👤', label:'Minha Conta'},
   ];
-  const titles = {dashboard:'Dashboard',pedidos:'Pedidos',products:'Produtos',categorias:'Categorias',adicionais:'Adicionais',status:'Status da Loja',taxaentrega:'Taxa de Entrega',empresa:'Dados da Empresa',fidelidade:'Fidelidade',saude:'Saúde do Sistema',minhaconta:'Minha Conta'};
+  const titles = {dashboard:'Dashboard',relatorios:'Relatórios',pedidos:'Pedidos',products:'Produtos',categorias:'Categorias',adicionais:'Adicionais',status:'Status da Loja',taxaentrega:'Taxa de Entrega',empresa:'Dados da Empresa',fidelidade:'Fidelidade',saude:'Saúde do Sistema',minhaconta:'Minha Conta'};
   return (
     <div className="admin-layout">
       <div className="admin-sidebar">
@@ -82,6 +84,7 @@ export function AdminPanel({ admin, onExit, onLogout }) {
             dados automaticamente sem precisar mudar nenhum hook existente. */}
         <div className="admin-body" key={activeStoreId}>
           {tab==='dashboard'  && <AdminDashboard/>}
+          {tab==='relatorios' && <AdminRelatorios/>}
           {tab==='pedidos'    && <AdminPedidos/>}
           {tab==='products'   && <AdminProducts/>}
           {tab==='categorias' && <AdminCategorias/>}

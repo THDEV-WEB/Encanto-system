@@ -6,7 +6,7 @@
    chamavam o MESMO handler `onExit` — testar um cobria o outro. A Onda 2 separou os dois: "Ver loja"
    agora só troca de tela (sessão do Supabase permanece válida); "Sair" chama db.auth.signOut() de
    verdade. A sidebar "Sair" ganhou `data-testid="admin-logout"` (era um <div> sem role nenhum). */
-const TABS = ['dashboard', 'pedidos', 'products', 'categorias', 'adicionais', 'status', 'taxaentrega', 'fidelidade', 'saude', 'minhaconta'];
+const TABS = ['dashboard', 'relatorios', 'pedidos', 'products', 'categorias', 'adicionais', 'status', 'taxaentrega', 'fidelidade', 'saude', 'minhaconta'];
 
 export class AdminPanelPage {
   constructor(page) { this.page = page; }
