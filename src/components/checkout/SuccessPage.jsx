@@ -1,5 +1,6 @@
 /* components/checkout/SuccessPage.jsx — REF-APP-01 · Onda 5.1 (move puro do App.jsx L230-292) + REF-CHECKOUT-02
-   + REF-GOLIVE-01 (bloqueador 1 — horario deixou de ser hardcoded, ver prop `horario`).
+   + REF-GOLIVE-01 (bloqueador 1 — horario deixou de ser hardcoded, ver prop `horario`)
+   + REF-SAAS-01 · Onda 7.1 (WhatsApp operacional multi-tenant).
    Tela de confirmacao do pedido (apresentacional): abre o WhatsApp AUTOMATICAMENTE (sem escolha do
    cliente) assim que a tela monta, com a mensagem ja pronta (msg vem do CheckoutPage, montada por
    buildOrderConfirmationMessage). Sem DS, sem carrinho (prop 'cart' preservada mas nao usada).
@@ -8,13 +9,21 @@
    um gesto do usuario — e exatamente o caso aqui (a abertura roda dentro de um efeito, apos os awaits
    de rede do submit). Por isso: tenta abrir, detecta bloqueio (window.open devolve null/janela ja
    fechada) e cai na tela de contingencia com um botao manual — um clique direto NUNCA e bloqueado por
-   popup-blocker, entao sempre da uma saida ao cliente. */
+   popup-blocker, entao sempre da uma saida ao cliente.
+
+   REF-SAAS-01 · Onda 7.1: 2ª contingência, DIFERENTE da de popup bloqueado — a loja ainda não configurou
+   nenhum WhatsApp (`whatsapp` vazio, nunca mais o número real da Encanto como fallback, ver
+   companyInfoRules.js). Nesse caso NEM tenta abrir nada (não existe destino) — mostra uma mensagem clara
+   de que o pedido foi registrado, mas a loja não tem canal de WhatsApp configurado ainda. O pedido já
+   foi persistido antes desta tela em qualquer um dos 2 cenários — nunca bloqueia o checkout. */
 import { useState, useEffect, useRef } from 'react';
 
 export function SuccessPage({ msg, cart, onBack, deliveryEta, deliveryMode, whatsapp, horario }) {
   /* REF-COMPANY-01: numero SEMPRE vindo do cadastro da empresa (prop, unico ponto de consumo em
      StoreApp -> Single Source of Truth), nunca mais hardcoded/env var. */
+  const temWhatsapp = !!whatsapp;
   const abrirWhatsApp = () => {
+    if (!temWhatsapp) return false;
     const win = window.open(`https://wa.me/${whatsapp}?text=${encodeURIComponent(msg)}`, '_blank');
     return !!(win && !win.closed);
   };
@@ -24,10 +33,24 @@ export function SuccessPage({ msg, cart, onBack, deliveryEta, deliveryMode, what
   useEffect(() => {
     if (tentouRef.current) return;   // nunca dispara 2 popups (StrictMode/remount em dev)
     tentouRef.current = true;
-    if (!abrirWhatsApp()) setContingencia(true);
+    if (temWhatsapp && !abrirWhatsApp()) setContingencia(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const reabrir = () => { if (abrirWhatsApp()) setContingencia(false); };
+
+  /* Loja sem WhatsApp configurado (REF-SAAS-01 · Onda 7.1): nem tenta abrir — não existe destino. */
+  if (!temWhatsapp) {
+    return (
+      <div className="success-page" style={{maxWidth:520,padding:'28px 16px 40px'}} role="alert">
+        <div style={{fontSize:56}}>📋</div>
+        <h2 style={{marginBottom:6}}>Pedido registrado!</h2>
+        <p style={{marginBottom:24}}>
+          Esta loja ainda não configurou o WhatsApp de atendimento — seu pedido foi salvo, mas a confirmação automática não pôde ser enviada. Entre em contato pelos canais informados pela loja.
+        </p>
+        <button className="back-home-btn" onClick={onBack}>← Voltar ao cardápio</button>
+      </div>
+    );
+  }
 
   /* REF-DELIVERY-01: tempo estimado vem da CONFIG unica (deliveryEta), nao mais de um valor aleatorio.
      Consciente do modo (igual a DeliveryBar): entrega usa a config; retirada usa o tempo fixo de retirada. */

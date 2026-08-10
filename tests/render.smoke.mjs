@@ -173,6 +173,19 @@ const CASES = [
     }),
     snap: '<div class="success-page" style="max-width:520px;padding:28px 16px 40px"><div class="success-icon" style="font-size:56px">🎉</div><h2 style="margin-bottom:6px">Pedido realizado com sucesso!</h2><p style="margin-bottom:20px">Abrimos o WhatsApp com o seu pedido — é só tocar em Enviar! 💜</p><div style="background:var(--grape-pale);border-radius:12px;padding:12px 20px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between"><div><div style="font-size:12px;color:var(--amarelo);font-weight:600;margin-bottom:2px">🕐 Tempo estimado de entrega</div><div style="font-family:var(--font-head);font-size:24px;font-weight:800;color:var(--amarelo)">45 min</div></div><div style="font-size:11px;color:var(--gray-500);text-align:right;line-height:1.4"><div style="font-weight:700;color:var(--gray-700)">Aberto agora</div><div>Aberto até 22:00</div></div></div><div class="order-status-bar" style="margin-bottom:20px"><div style="font-size:12px;font-weight:700;color:var(--gray-700);margin-bottom:12px">Acompanhe seu pedido</div><div class="order-status-steps"><div class="order-status-step active"><div class="step-dot">📥</div><div class="step-label">Recebido</div></div><div class="order-status-step "><div class="step-dot">👨‍🍳</div><div class="step-label">Em preparo</div></div><div class="order-status-step "><div class="step-dot">✅</div><div class="step-label">Pronto</div></div><div class="order-status-step "><div class="step-dot">🛵</div><div class="step-label">Em entrega</div></div><div class="order-status-step "><div class="step-dot">🏠</div><div class="step-label">Entregue</div></div></div><p style="font-size:11px;color:var(--gray-400);margin-top:12px;text-align:center">Status atualizado após confirmação pela loja via WhatsApp.</p></div><button class="whatsapp-btn" style="width:100%;justify-content:center;margin-bottom:10px"><span style="font-size:22px">💬</span> Abrir WhatsApp novamente</button><button class="back-home-btn">← Voltar ao cardápio</button></div>',
   },
+  {
+    /* REF-SAAS-01 · Onda 7.1: loja sem whatsapp configurado — nunca tenta abrir wa.me (sem destino),
+       mostra mensagem clara em vez do fluxo normal. Prova que a contingência renderiza corretamente
+       (renderToStaticMarkup não roda o useEffect, mas a branch `!temWhatsapp` é síncrona no corpo do
+       componente, então já aparece aqui). */
+    nome: 'SuccessPage(sem whatsapp configurado)',
+    el: () => h(SuccessPage, {
+      msg: 'pedido de teste', cart: { items: [] }, onBack: () => {},
+      deliveryEta: 45, deliveryMode: 'entrega', whatsapp: '',
+      horario: { aberto: true, rotuloCurto: 'Aberto agora', detalhe: 'Aberto até 22:00', mensagemFechado: null },
+    }),
+    snap: '<div class="success-page" style="max-width:520px;padding:28px 16px 40px" role="alert"><div style="font-size:56px">📋</div><h2 style="margin-bottom:6px">Pedido registrado!</h2><p style="margin-bottom:24px">Esta loja ainda não configurou o WhatsApp de atendimento — seu pedido foi salvo, mas a confirmação automática não pôde ser enviada. Entre em contato pelos canais informados pela loja.</p><button class="back-home-btn">← Voltar ao cardápio</button></div>',
+  },
 ];
 
 let fail = 0;

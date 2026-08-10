@@ -247,10 +247,14 @@ export function AdminFidelidade() {
           <div style={{display:'flex',gap:12,padding:'12px 0'}}>
             <div style={{fontSize:12,fontWeight:700,color:'var(--amarelo)',minWidth:110,flexShrink:0}}>Contato</div>
             <div style={{fontSize:13,color:'var(--gray-600)'}}>
-              <a href={`https://wa.me/${whatsapp}`} target="_blank"
-                style={{color:'var(--amarelo)',fontWeight:600}}>
-                WhatsApp: {formatarTelefoneBR(whatsapp)}
-              </a>
+              {whatsapp ? (
+                <a href={`https://wa.me/${whatsapp}`} target="_blank"
+                  style={{color:'var(--amarelo)',fontWeight:600}}>
+                  WhatsApp: {formatarTelefoneBR(whatsapp)}
+                </a>
+              ) : (
+                <span style={{color:'var(--gray-400)'}}>WhatsApp ainda não configurado</span>
+              )}
             </div>
           </div>
         </div>

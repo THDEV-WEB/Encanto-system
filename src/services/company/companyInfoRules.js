@@ -46,18 +46,29 @@
      Institucional -> termosSecoes (array {titulo,corpo}), fidelidadeTexto (array de parágrafos) —
                     aposentam TERMOS_SECOES/FIDELIDADE_TEXTO (constants/storeInfo.js), mesmo padrão já
                     usado por "sobre" desde a REF-COMPANY-03. Defaults abaixo são BYTE-IDÊNTICOS ao que
-                    já está hardcoded hoje — zero mudança visual no dia da migração. */
+                    já está hardcoded hoje — zero mudança visual no dia da migração.
+
+   REF-SAAS-01 · Onda 7.1 (WhatsApp operacional multi-tenant): nomeCurto/nomeCompleto/telefone/whatsapp/
+   email/whatsappFloatEnabled deixam de default para a identidade/número REAIS da Encanto — como o
+   storefront é um bundle ÚNICO multi-tenant (Onda 6.1, ADR §5), esses defaults são compartilhados por
+   TODAS as lojas no instante antes de get_company_info() resolver; manter dados reais da Encanto aqui
+   seria vazar a identidade/WhatsApp de um tenant específico para qualquer outra loja, mesmo que por
+   uma fração de segundo. Passam a ser genéricos ("Loja") ou vazios ("" / false) — o mesmo "estado
+   honesto de não configurado" já usado por lojaLat/lojaLng/redes sociais/endereço institucional, nunca
+   um dado real de outra loja. Mesma mudança espelhada no default SQL de get_company_info() (migration
+   REF-SAAS-01-onda7-1-whatsapp-multi-loja.sql) — a Encanto não é afetada em nenhum dos dois lados: sua
+   linha em store_settings já tem os 6 campos salvos explicitamente. */
 import { normalizePhoneBR } from '../notifications/WhatsAppService.js';
 
 export const DEFAULT_COMPANY_INFO = {
   // Identidade
-  nomeCurto: 'Encanto',
-  nomeCompleto: 'Encanto — Açaí & Marmitas',
+  nomeCurto: 'Loja',
+  nomeCompleto: 'Loja',
   // Contato
-  telefone: '5547992722920',
-  whatsapp: '5547992722920',
-  email: 'contato@encantoacai.com.br',
-  whatsappFloatEnabled: true,
+  telefone: '',
+  whatsapp: '',
+  email: '',
+  whatsappFloatEnabled: false,
   // Sobre
   sobre: 'O Encanto nasceu para levar açaí cremoso, marmitas caseiras e sabores de verdade até a sua casa, em Timbó e região.\n\nTrabalhamos com ingredientes selecionados, montagem na hora e entrega rápida — do jeitinho que você gosta.\n\nNosso compromisso é simples: um Encanto de sabores em cada pedido.',
   // Redes sociais (vazio = "não configurado ainda"; nunca um placeholder fake)

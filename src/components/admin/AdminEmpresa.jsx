@@ -220,6 +220,16 @@ export function AdminEmpresa() {
       </Bloco>
 
       <Bloco icone="📞" titulo="Contato" descricao="Telefone, WhatsApp e e-mail usados pela loja e pelo checkout.">
+        {/* REF-SAAS-01 · Onda 7.1: sem WhatsApp configurado, o pedido do cliente é registrado mas a
+            confirmação automática não tem para onde ir — mesmo padrão de aviso já usado em "Taxa de
+            Entrega" quando falta a posição da loja. */}
+        {!info.whatsapp && (
+          <div style={{ padding: '10px 14px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, marginBottom: 16 }}>
+            <span style={{ fontSize: 12.5, fontWeight: 600, color: '#B91C1C' }}>
+              ⚠️ WhatsApp ainda não configurado — os pedidos serão registrados, mas os clientes não conseguirão enviar a confirmação automática pra loja.
+            </span>
+          </div>
+        )}
         <div className="form-row" style={{ marginBottom: 16 }}>
           <Campo testId="empresa-form-telefone" label="Telefone principal" placeholder="(47) 99999-9999" value={form.telefone} onChange={campo('telefone')} />
           <Campo testId="empresa-form-whatsapp" label="WhatsApp oficial" placeholder="(47) 99999-9999" value={form.whatsapp} onChange={campo('whatsapp')} />

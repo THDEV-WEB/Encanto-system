@@ -1,10 +1,10 @@
 /* e2e/tests/admin/admin-status.spec.js — REF-E2E-03 · Onda 5 (@writes).
    AdminStatus.jsx: 3 modos (Automático/Forçar Aberta/Forçar Fechada) gravados via `set_store_mode`
-   (RPC is_admin()-gated) na MESMA `settings.store_mode` que a loja/checkout leem
-   (REF-BUSINESS-HOURS-03) — efeito GLOBAL, mesmo cuidado de serialização já em vigor desde a
-   E2E-01 Onda 4 (`forcarStoreMode`). Verifica tanto o texto exibido quanto o valor REAL persistido
-   (leitura direta via supabaseAdmin(), não só a UI otimista). Botões já são texto real e estável —
-   sem necessidade de data-testid nesta tela (única do Admin sem nenhum ajuste de produção). */
+   (RPC is_admin_of(store_id)-gated) na MESMA `store_settings.store_mode` (por loja, desde a
+   REF-SAAS-01 Onda 4.3 — antes era `settings.store_mode`, global) que a loja/checkout leem. Verifica
+   tanto o texto exibido quanto o valor REAL persistido (leitura direta via supabaseAdmin(), não só a
+   UI otimista). Botões já são texto real e estável — sem necessidade de data-testid nesta tela (única
+   do Admin sem nenhum ajuste de produção). */
 import { test, expect } from '../../fixtures/index.js';
 import { ADMIN_FIXTURE } from '../../support/fixture-accounts.js';
 import { supabaseAdmin, E2E_ENV_PRONTO } from '../../support/supabaseAdmin.js';
@@ -22,7 +22,8 @@ test.describe('Status da Loja (Admin)', { tag: '@writes' }, () => {
     await adminPanel.abrirAba('status');
 
     const admin = supabaseAdmin();
-    const lerModo = async () => (await admin.from('settings').select('valor').eq('chave', 'store_mode').single()).data.valor;
+    const { data: loja } = await admin.from('stores').select('id').eq('slug', 'encanto').single();
+    const lerModo = async () => (await admin.from('store_settings').select('valor').eq('store_id', loja.id).eq('chave', 'store_mode').single()).data.valor;
 
     await page.getByRole('button', { name: /Forçar Aberta/ }).click();
     await expect(page.getByText('🟢 Aberta')).toBeVisible();

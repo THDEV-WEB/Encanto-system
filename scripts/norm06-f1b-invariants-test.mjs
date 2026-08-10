@@ -156,6 +156,12 @@ try {
 
   await client.connect();
 
+  // REF-SAAS-01 · Onda 7.1 (achado ao rodar test:db-guards inteiro): a RLS de products/categories
+  // passou a exigir is_admin_of(store_id) real desde a Onda 2 — 'SET LOCAL ROLE authenticated' sozinho
+  // (sem JWT) resolve auth.uid()=NULL e nega tudo. Mesma técnica já usada em norm06-1-rls-test.mjs
+  // (AUTH-01: admin = usuário mais antigo, registrado em public.admins).
+  const ADMIN_UID = (await client.query('SELECT id FROM auth.users ORDER BY created_at LIMIT 1')).rows[0]?.id;
+
   const meta = (await client.query("SELECT current_database() AS db, current_schema() AS schema, to_char(now() AT TIME ZONE 'utc','YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS utc")).rows[0];
 
   // Pre-condicao: as 4 triggers + 4 funcoes STI existem.
@@ -244,7 +250,12 @@ try {
   out('— STI sob role authenticated/anon (pos-errata ERRATA-01 — SECURITY DEFINER) —');
   async function roleCase(id, role, desc, fn) {
     let v = 'FAIL', d = '';
-    try { await client.query('BEGIN'); if (role) await client.query(`SET LOCAL ROLE ${role}`); const r = await fn(); v = r.v; d = r.d; }
+    try {
+      await client.query('BEGIN');
+      if (role === 'authenticated' && ADMIN_UID) await client.query("SELECT set_config('request.jwt.claims', $1, true)", [JSON.stringify({ sub: ADMIN_UID, role: 'authenticated' })]);
+      if (role) await client.query(`SET LOCAL ROLE ${role}`);
+      const r = await fn(); v = r.v; d = r.d;
+    }
     catch (e) { v = 'FAIL'; d = 'erro: ' + redact(e.message).split('\n')[0]; }
     finally { await client.query('ROLLBACK').catch(() => {}); }
     if (v === 'PASS') passes++; else failures++;
@@ -262,7 +273,9 @@ try {
   });
   // RA3: authenticated -> collection invalido: STI I2 com tipo=collection (NAO inexistente)
   await roleCase('RA3·I2', null, 'authenticated UPDATE -> collection rejeitado com tipo=collection', async () => {
-    await client.query(mkColl); await client.query('SET LOCAL ROLE authenticated');
+    await client.query(mkColl);
+    if (ADMIN_UID) await client.query("SELECT set_config('request.jwt.claims', $1, true)", [JSON.stringify({ sub: ADMIN_UID, role: 'authenticated' })]);
+    await client.query('SET LOCAL ROLE authenticated');
     try { await client.query(`UPDATE public.products SET categoria_id='${TCOLL}' WHERE id='${pid}'`); return { v: 'FAIL', d: 'NAO rejeitou' }; }
     catch (e) { const m = redact(e.message); return (/STI I2:/.test(m) && /tipo=collection/.test(m)) ? { v: 'PASS', d: m.split('\n')[0] } : { v: 'FAIL', d: 'inesperado: ' + m.split('\n')[0] }; }
   });

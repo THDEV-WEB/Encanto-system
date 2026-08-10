@@ -1,12 +1,9 @@
 /* e2e/tests/admin/admin-taxa-entrega.spec.js — REF-DELIVERY-FEE-01.
    AdminTaxaEntrega.jsx: liga/desliga a cobrança automática por distância, tabela de faixas De/Até/Valor
-   (editável) e acréscimo de retorno da maquininha. Cobre o que é determinístico INDEPENDENTE da migration
-   estar aplicada no Supabase de E2E (get_delivery_fee_config ainda pode não existir lá — o hook cai no
-   MESMO fallback local DELIVERY_FEE_CONFIG_PADRAO, byte-igual à semente da migration, então a tela
-   renderiza igual em ambos os casos): render inicial, validação inline (sobreposição/intervalo inválido),
-   adicionar/remover faixa. O round-trip de escrita real (set_delivery_fee_config) exige a migration
-   REF-DELIVERY-FEE-01-step1 aplicada no projeto de E2E — mesma disciplina de REF-ADDRESS-02 (Mapbox sem
-   integração real testada até haver token): documentado como gap conhecido, não escondido. */
+   (editável) e acréscimo de retorno da maquininha. Cobre o que é determinístico independente do hook
+   cair no RPC real (get_delivery_fee_config, por loja desde a REF-SAAS-01 Onda 4.3) ou no fallback local
+   DELIVERY_FEE_CONFIG_PADRAO (byte-igual à semente da migration, então a tela renderiza igual nos dois
+   casos): render inicial, validação inline (sobreposição/intervalo inválido), adicionar/remover faixa. */
 import { test, expect } from '../../fixtures/index.js';
 import { ADMIN_FIXTURE } from '../../support/fixture-accounts.js';
 import { supabaseAdmin, E2E_ENV_PRONTO } from '../../support/supabaseAdmin.js';
@@ -62,46 +59,46 @@ test.describe('Taxa de Entrega (Admin)', { tag: '@writes' }, () => {
    de forma destacada. Cobre o round-trip REAL que a suíte acima nunca exercitava (só tocava BlocoFaixas):
    banner ❌ quando ausente, clique no mapa move o pino e habilita "Salvar localização", "Centralizar"
    descarta o arrasto pendente SEM gravar nada, e (quando o ambiente permitir) salvar grava de verdade +
-   o ✅ sobrevive a um reload real da página. company_info é GLOBAL — mesma disciplina de serialização +
-   captura/restauração de baseline via supabaseAdmin() já usada em admin-status.spec.js/
-   admin-delivery-eta.spec.js/admin-minha-conta.spec.js.
+   o ✅ sobrevive a um reload real da página. company_info é POR LOJA desde a REF-SAAS-01 Onda 6.2 (antes
+   era GLOBAL) — mesma disciplina de serialização + captura/restauração de baseline via supabaseAdmin()
+   já usada em admin-status.spec.js/admin-delivery-eta.spec.js/admin-minha-conta.spec.js.
 
-   GAP AMBIENTAL PRÉ-EXISTENTE achado nesta auditoria (não introduzido por esta ref, confirmado via REST
-   direto — PGRST202): get_company_info/set_company_info NÃO existem no projeto Supabase dedicado a E2E —
-   as migrations REF-COMPANY-01/02 nunca foram aplicadas lá (só em produção). Não há hoje NENHUM spec de
-   AdminEmpresa.jsx cobrindo escrita real por esse mesmo motivo. O teste abaixo cobre os DOIS desfechos: se
-   a RPC responder, valida o round-trip completo; se não existir ainda, prova que o erro aparece de forma
-   honesta (TRUTHFUL, nunca finge sucesso) e a tela não quebra — documentado, não escondido (mesmo espírito
-   do gap do token Mapbox em REF-ADDRESS-02). */
+   GAP AMBIENTAL HISTÓRICO (achado numa auditoria anterior, FECHADO na sincronização de schema da
+   REF-SAAS-01 Onda 7.1): get_company_info/set_company_info não existiam no projeto Supabase dedicado a
+   E2E (as migrations da REF-SAAS-01 nunca tinham sido aplicadas lá). O teste abaixo ainda cobre os DOIS
+   desfechos possíveis (RPC ausente vs. presente) por robustez, mas o caminho normal agora é o RPC
+   responder e o round-trip completo ser exercitado de verdade. */
 test.describe('Taxa de Entrega (Admin) — localização da loja', { tag: '@writes' }, () => {
-  test.describe.configure({ mode: 'serial' }); // company_info é GLOBAL — evita corrida com outro describe mexendo na mesma linha
+  test.describe.configure({ mode: 'serial' }); // company_info é POR LOJA — evita corrida com outro describe mexendo na mesma linha
 
   let baseline = null; // { lojaLat, lojaLng } capturado ANTES deste teste mexer — restaurado no afterAll
 
   test.afterAll(async () => {
     if (!E2E_ENV_PRONTO || !baseline) return; // nunca escreve se o teste nem chegou a capturar o baseline
     const admin = supabaseAdmin();
-    const { data } = await admin.from('settings').select('valor').eq('chave', 'company_info').single();
+    const { data: loja } = await admin.from('stores').select('id').eq('slug', 'encanto').single();
+    const { data } = await admin.from('store_settings').select('valor').eq('store_id', loja.id).eq('chave', 'company_info').single();
     const atual = data?.valor ? JSON.parse(data.valor) : {};
-    await admin.from('settings').upsert(
-      { chave: 'company_info', valor: JSON.stringify({ ...atual, lojaLat: baseline.lojaLat, lojaLng: baseline.lojaLng }) },
-      { onConflict: 'chave' },
+    await admin.from('store_settings').upsert(
+      { store_id: loja.id, chave: 'company_info', valor: JSON.stringify({ ...atual, lojaLat: baseline.lojaLat, lojaLng: baseline.lojaLng }) },
+      { onConflict: 'store_id,chave' },
     );
   });
 
   test('sem coordenadas mostra ❌ destacado; clique no mapa + salvar grava de verdade; "Centralizar" descarta arrasto sem gravar; reload mantém ✅', async ({ adminLoginPage, adminPanel, page }) => {
     test.skip(!E2E_ENV_PRONTO, 'ambiente de E2E não configurado (.env.e2e)');
     const admin = supabaseAdmin();
+    const { data: loja } = await admin.from('stores').select('id').eq('slug', 'encanto').single();
 
     // Captura o baseline ANTES de mexer (restaurado no afterAll) e força "sem coordenadas" DIRETO no
     // banco — setup de estado, não a ação testada (mesma técnica de forcarStoreMode/admin-status.spec.js:
     // escrever direto via service_role evita forjar uma 2ª sessão de admin só pra isto).
-    const { data: linhaInicial } = await admin.from('settings').select('valor').eq('chave', 'company_info').single();
+    const { data: linhaInicial } = await admin.from('store_settings').select('valor').eq('store_id', loja.id).eq('chave', 'company_info').single();
     const infoInicial = linhaInicial?.valor ? JSON.parse(linhaInicial.valor) : {};
     baseline = { lojaLat: infoInicial.lojaLat ?? null, lojaLng: infoInicial.lojaLng ?? null };
-    await admin.from('settings').upsert(
-      { chave: 'company_info', valor: JSON.stringify({ ...infoInicial, lojaLat: null, lojaLng: null }) },
-      { onConflict: 'chave' },
+    await admin.from('store_settings').upsert(
+      { store_id: loja.id, chave: 'company_info', valor: JSON.stringify({ ...infoInicial, lojaLat: null, lojaLng: null }) },
+      { onConflict: 'store_id,chave' },
     );
 
     await adminLoginPage.goto();
@@ -145,14 +142,8 @@ test.describe('Taxa de Entrega (Admin) — localização da loja', { tag: '@writ
     await expect(salvarLocalizacao).toBeEnabled();
     await salvarLocalizacao.click();
 
-    // GAP AMBIENTAL PRÉ-EXISTENTE (achado real desta auditoria, não introduzido pela REF-DELIVERY-FEE-02):
-    // confirmado via REST direto (PGRST202) que get_company_info/set_company_info NÃO existem no projeto
-    // Supabase dedicado a E2E — REF-COMPANY-01/02 nunca foram aplicadas lá (só na produção). O client já é
-    // TRUTHFUL para esse caso: salvarCompanyInfo nunca finge sucesso, devolve {ok:false, error} e a tela
-    // mostra o erro real em vez de quebrar. Testamos os DOIS desfechos possíveis: se a RPC responder,
-    // seguimos para o round-trip completo (grava-de-verdade + reload); se a RPC ainda não existir neste
-    // ambiente, provamos que o erro aparece de forma honesta (nunca uma tela em branco/crash) e encerramos
-    // aqui — documentado, não escondido (mesmo padrão de REF-ADDRESS-02 com o token do Mapbox pendente).
+    // Gap ambiental histórico (ver comentário de cabeçalho) — mantém a checagem dupla por robustez, mas
+    // o caminho normal agora é a RPC responder e seguir para o round-trip completo.
     const sucesso = page.getByText('Localização da loja salva com sucesso.');
     const erroRpcAusente = page.getByText(/Could not find the function|schema cache/i);
     await expect(sucesso.or(erroRpcAusente)).toBeVisible();
@@ -160,10 +151,9 @@ test.describe('Taxa de Entrega (Admin) — localização da loja', { tag: '@writ
     if (await erroRpcAusente.isVisible()) {
       test.info().annotations.push({
         type: 'gap-ambiente',
-        description: 'set_company_info ausente no Supabase de E2E (migrations REF-COMPANY-01/02 nunca '
-          + 'aplicadas lá) — round-trip real (gravação + reload) não pôde ser exercitado nesta rodada. '
-          + 'Erro apareceu de forma honesta, tela não quebrou. Aplicar as migrations no projeto de E2E '
-          + 'para fechar esta lacuna.',
+        description: 'set_company_info respondeu com erro inesperado no Supabase de E2E — round-trip '
+          + 'real (gravação + reload) não pôde ser exercitado nesta rodada. Erro apareceu de forma '
+          + 'honesta, tela não quebrou.',
       });
       return;
     }
@@ -174,7 +164,7 @@ test.describe('Taxa de Entrega (Admin) — localização da loja', { tag: '@writ
     // Valor REAL persistido no banco (não só o estado otimista do React) — mesma disciplina de
     // admin-status.spec.js (lê direto via supabaseAdmin(), não confia só na tela).
     await expect.poll(async () => {
-      const { data: linha } = await admin.from('settings').select('valor').eq('chave', 'company_info').single();
+      const { data: linha } = await admin.from('store_settings').select('valor').eq('store_id', loja.id).eq('chave', 'company_info').single();
       const info = JSON.parse(linha.valor);
       return Number.isFinite(info.lojaLat) && Number.isFinite(info.lojaLng);
     }).toBe(true);

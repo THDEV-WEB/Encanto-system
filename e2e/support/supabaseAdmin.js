@@ -10,6 +10,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createClient } from '@supabase/supabase-js';
+import { ADMIN_FIXTURE } from './fixture-accounts.js';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 
@@ -56,4 +57,18 @@ export function supabaseAnon() {
   if (!(E2E_ENV.url && E2E_ENV.anonKey)) { avisarAmbientePendente('cliente anon'); return null; }
   if (!_anon) _anon = createClient(E2E_ENV.url, E2E_ENV.anonKey, { auth: { persistSession: false, autoRefreshToken: false } });
   return _anon;
+}
+
+/* REF-SAAS-01 · Onda 7.1 (sincronização do E2E): admin_orders_search/admin_orders_stats/orders_health
+   ganharam checagem explícita de is_admin_of(p_store_id) no CORPO da função (não é RLS — service_role
+   não basta, pois auth.uid() vem nulo sem uma sessão real). Specs que provam essas RPCs direto contra
+   o backend (sem passar pela UI) precisam de um JWT real de admin, não do client service_role. Instância
+   NOVA a cada chamada (não é singleton do módulo): evita misturar essa sessão com o _anon compartilhado
+   usado para outros fins (ex.: criarPedidoAvulso). */
+export async function supabaseComoAdmin() {
+  if (!(E2E_ENV.url && E2E_ENV.anonKey)) { avisarAmbientePendente('cliente autenticado como admin'); return null; }
+  const client = createClient(E2E_ENV.url, E2E_ENV.anonKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  const { error } = await client.auth.signInWithPassword({ email: ADMIN_FIXTURE.email, password: ADMIN_FIXTURE.senha });
+  if (error) throw new Error(`[e2e] login do admin fixture (RPC direto) falhou: ${error.message}`);
+  return client;
 }

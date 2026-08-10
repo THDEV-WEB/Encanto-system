@@ -129,7 +129,29 @@ check('(9) TERMOS_SECOES/FIDELIDADE_TEXTO nao existem mais (migrados p/ company_
   assert.ok(/fidelidadeTexto/.test(fidelidade), 'FidelidadeScreen deveria ler companyInfo.fidelidadeTexto (nao FIDELIDADE_TEXTO)');
 });
 
+/* (10) REF-SAAS-01 Onda 7.1: nenhum wa.me/ renderiza sem antes checar que ha um whatsapp configurado
+   (nunca um link/botao pra loja sem numero — nunca mais um fallback silencioso pro numero da Encanto).
+   Usa o conteudo BRUTO (nao strip()) — "https://" contem "//", e strip() trata isso como comentario de
+   linha e apaga o resto da linha (inclusive o proprio "wa.me/..."), mascarando qualquer regex depois. */
+check('(10) os pontos com wa.me/ so renderizam com whatsapp truthy checado antes (StoreApp x2, ContatoScreen, AdminFidelidade)', () => {
+  const storeApp = read('pages/StoreApp.jsx');
+  const ocorrenciasStoreApp = storeApp.match(/wa\.me\/\$\{companyInfo\.whatsapp\}/g) || [];
+  assert.equal(ocorrenciasStoreApp.length, 2, `esperava 2 usos de wa.me em StoreApp.jsx, achei ${ocorrenciasStoreApp.length}`);
+  assert.ok(/\{companyInfo\.whatsapp\s*&&/.test(storeApp), 'StoreApp.jsx deveria checar companyInfo.whatsapp antes do link do rodapé');
+  assert.ok(/companyInfo\.whatsappFloatEnabled\s*&&\s*companyInfo\.whatsapp\s*&&/.test(storeApp),
+    'StoreApp.jsx deveria checar companyInfo.whatsappFloatEnabled && companyInfo.whatsapp antes do botão flutuante');
+
+  const contato = read('components/menu/ContatoScreen.jsx');
+  assert.ok(/\{whatsapp\s*&&/.test(contato), 'ContatoScreen.jsx deveria checar whatsapp antes de renderizar o link wa.me/');
+
+  const fidelidade = read('components/admin/AdminFidelidade.jsx');
+  assert.ok(/whatsapp\s*\?/.test(fidelidade), 'AdminFidelidade.jsx deveria checar whatsapp antes de renderizar o link wa.me/');
+
+  const success = read('components/checkout/SuccessPage.jsx');
+  assert.ok(/temWhatsapp/.test(success), 'SuccessPage.jsx deveria ter uma guarda explicita (temWhatsapp) antes de tentar abrir o WhatsApp');
+});
+
 console.log(fail === 0
-  ? '\nOK company-info.guard — fonte unica preservada (sem WHATSAPP/STORE_INFO/SOBRE_TEXTO/TERMOS_SECOES/FIDELIDADE_TEXTO/social hardcoded, hook unico, botao condicional)'
+  ? '\nOK company-info.guard — fonte unica preservada (sem WHATSAPP/STORE_INFO/SOBRE_TEXTO/TERMOS_SECOES/FIDELIDADE_TEXTO/social hardcoded, hook unico, botao condicional, wa.me sempre guardado)'
   : `\nFALHA company-info.guard — ${fail} invariante(s)`);
 process.exit(fail ? 1 : 0);

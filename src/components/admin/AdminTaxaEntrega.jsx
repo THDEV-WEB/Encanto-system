@@ -128,7 +128,11 @@ function BlocoLocalizacao() {
   // pendente sem precisar de acesso imperativo ao marker do Leaflet (que mapService.js não expõe).
   const [resetTick, setResetTick] = useState(0);
 
-  useEffect(() => { setNovaPin(null); setMsg(null); }, [coordKey]);
+  // Só reseta o pino pendente (não a mensagem) — salvarCompanyInfo já notifica useCompanyInfo() ANTES
+  // de retornar, então este efeito dispara no mesmo ciclo em que `salvar()` acabou de chamar setMsg
+  // com sucesso; limpar `msg` aqui apagava a confirmação antes de qualquer render pintá-la (achado real
+  // na validação da REF-SAAS-01 · Onda 7.1, 1ª vez que este round-trip roda de ponta a ponta no E2E).
+  useEffect(() => { setNovaPin(null); }, [coordKey]);
 
   const salvar = async () => {
     if (!novaPin || salvando) return;
@@ -144,7 +148,7 @@ function BlocoLocalizacao() {
   return (
     <Bloco icone="📍" titulo="Localização da loja"
       descricao="Arraste (ou clique n) o pino até o endereço da loja. Essa coordenada é usada para calcular a distância até o cliente e definir a taxa de entrega automaticamente — sem ela, nenhum pedido tem taxa calculada.">
-      <MapaLocalizacaoLoja key={`${coordKey}-${resetTick}`} lat={latOficial} lng={lngOficial} onMudar={(lat, lng) => setNovaPin({ lat, lng })} />
+      <MapaLocalizacaoLoja key={`${coordKey}-${resetTick}`} lat={latOficial} lng={lngOficial} onMudar={(lat, lng) => { setNovaPin({ lat, lng }); setMsg(null); }} />
       <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <button type="button" onClick={salvar} disabled={!novaPin || salvando}
           style={{

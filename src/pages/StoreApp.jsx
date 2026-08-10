@@ -640,15 +640,19 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
 
             {/* Rodapé */}
             <div style={{padding:'16px 24px 24px',textAlign:'center'}}>
-              <p style={{fontSize:12,color:'var(--gray-400)',marginBottom:12}}>
-                Ainda precisa de ajuda?{' '}
-                <a
-                  href={`https://wa.me/${companyInfo.whatsapp}`}
-                  target="_blank"
-                  style={{color:'var(--amarelo)',fontWeight:600,textDecoration:'underline'}}>
-                  Entre em contato com a gente
-                </a>
-              </p>
+              {/* REF-SAAS-01 · Onda 7.1: link só aparece com whatsapp configurado — nunca um wa.me/
+                  sem destino (mesmo padrão "nunca link morto" já usado pros campos opcionais). */}
+              {companyInfo.whatsapp && (
+                <p style={{fontSize:12,color:'var(--gray-400)',marginBottom:12}}>
+                  Ainda precisa de ajuda?{' '}
+                  <a
+                    href={`https://wa.me/${companyInfo.whatsapp}`}
+                    target="_blank"
+                    style={{color:'var(--amarelo)',fontWeight:600,textDecoration:'underline'}}>
+                    Entre em contato com a gente
+                  </a>
+                </p>
+              )}
               <button
                 onClick={()=>setShowLoyalty(false)}
                 style={{
@@ -722,8 +726,10 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
       )}
 
       {/* ── ALT 7: Botão WhatsApp flutuante ── REF-COMPANY-01: some por completo (sem quebrar layout)
-          quando o admin desativa companyInfo.whatsappFloatEnabled. */}
-      {companyInfo.whatsappFloatEnabled && (
+          quando o admin desativa companyInfo.whatsappFloatEnabled. REF-SAAS-01 · Onda 7.1: também
+          exige companyInfo.whatsapp preenchido — nunca um wa.me/ sem destino (loja sem WhatsApp
+          configurado não tem mais o número real da Encanto como fallback). */}
+      {companyInfo.whatsappFloatEnabled && companyInfo.whatsapp && (
       <a
         href={`https://wa.me/${companyInfo.whatsapp}`}
         target="_blank"

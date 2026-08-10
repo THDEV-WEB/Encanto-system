@@ -1,5 +1,5 @@
 /* e2e/tests/admin/admin-pedidos-escala.spec.js — REF-ADMIN-03 · Onda 3 (@writes).
-   Prova DIRETO contra o backend (RPC admin_orders_search/admin_orders_stats via supabaseAdmin(),
+   Prova DIRETO contra o backend (RPC admin_orders_search/admin_orders_stats via supabaseComoAdmin(),
    mesmo padrão de admin-categorias.spec.js para o trigger da Onda 1) as 2 garantias centrais desta
    onda — mais baratas e determinísticas de provar aqui do que criando dezenas de pedidos só para
    forçar "Carregar mais" pela UI:
@@ -7,19 +7,25 @@
         raiz que isto substitui (DS.getPedidos antigo, limit(100) fixo, filtro client-side) só
         enxergava o que já tinha sido buscado; aqui o WHERE roda ANTES do LIMIT, sempre na tabela
         inteira.
-     2) paginação por cursor não pula nem repete linhas entre páginas (keyset, não OFFSET). */
+     2) paginação por cursor não pula nem repete linhas entre páginas (keyset, não OFFSET).
+
+   REF-SAAS-01 · Onda 7.1 (sincronização do E2E): admin_orders_search/admin_orders_stats passaram a
+   checar is_admin_of(p_store_id) EXPLICITAMENTE no corpo (Onda 5) — service_role não basta mais
+   (auth.uid() vem nulo sem sessão real), por isso as chamadas de RPC usam supabaseComoAdmin() (JWT
+   real do admin fixture). O insert/delete diretos na tabela orders (fora do alcance de create_order)
+   continuam via supabaseAdmin() (service_role, ignora RLS de propósito). */
 import { randomUUID } from 'node:crypto';
 import { test, expect } from '../../fixtures/index.js';
 import { criarPedidoAvulso } from '../../support/fixture-order.js';
 import { limparDadosDeTeste } from '../../support/cleanup.js';
-import { supabaseAdmin, E2E_ENV_PRONTO } from '../../support/supabaseAdmin.js';
+import { supabaseAdmin, supabaseComoAdmin, E2E_ENV_PRONTO } from '../../support/supabaseAdmin.js';
 
 test.describe('escalabilidade de Pedidos (fix REF-ADMIN-03 · Onda 3)', { tag: '@writes' }, () => {
   test.afterEach(async () => { await limparDadosDeTeste(); });
 
   test('busca encontra um pedido mesmo com p_limit menor que a posição dele (não é limitado pela página)', async () => {
     test.skip(!E2E_ENV_PRONTO, 'ambiente de E2E não configurado (.env.e2e)');
-    const admin = supabaseAdmin();
+    const admin = await supabaseComoAdmin();
     const antigo = await criarPedidoAvulso();
     test.skip(antigo.skipped, 'ambiente de E2E não configurado (.env.e2e)');
     await new Promise((r) => setTimeout(r, 1100)); // garante created_at distinto (coluna sem sub-segundo em alguns coletores)
@@ -35,7 +41,7 @@ test.describe('escalabilidade de Pedidos (fix REF-ADMIN-03 · Onda 3)', { tag: '
 
   test('paginação por cursor não pula nem repete pedidos entre páginas', async () => {
     test.skip(!E2E_ENV_PRONTO, 'ambiente de E2E não configurado (.env.e2e)');
-    const admin = supabaseAdmin();
+    const admin = await supabaseComoAdmin();
     const p1 = await criarPedidoAvulso();
     test.skip(p1.skipped, 'ambiente de E2E não configurado (.env.e2e)');
     await new Promise((r) => setTimeout(r, 1100));
@@ -61,19 +67,20 @@ test.describe('escalabilidade de Pedidos (fix REF-ADMIN-03 · Onda 3)', { tag: '
 
   test('admin_orders_stats reflete o total geral sem depender de nenhum limit() do app', async () => {
     test.skip(!E2E_ENV_PRONTO, 'ambiente de E2E não configurado (.env.e2e)');
-    const admin = supabaseAdmin();
+    const service = supabaseAdmin();
+    const admin = await supabaseComoAdmin();
     await criarPedidoAvulso();
     const p2 = await criarPedidoAvulso();
     test.skip(p2.skipped, 'ambiente de E2E não configurado (.env.e2e)');
 
     const { data: antes } = await admin.rpc('admin_orders_stats');
     const extraId = randomUUID();
-    await admin.from('orders').insert({ id: extraId, total: 1, status: 'recebido', payment_method: 'dinheiro', address: 'Retirada na loja — E2E' });
+    await service.from('orders').insert({ id: extraId, total: 1, status: 'recebido', payment_method: 'dinheiro', address: 'Retirada na loja — E2E' }); // store_id: DEFAULT default_store_id()
 
     const { data: depois } = await admin.rpc('admin_orders_stats');
     expect(depois.total_geral).toBe(antes.total_geral + 1); // contagem real, nunca capada
     expect(depois.breakdown.recebido).toBeGreaterThanOrEqual(1);
 
-    await admin.from('orders').delete().eq('id', extraId); // pedido sem customer_id — fora do alcance de limparDadosDeTeste
+    await service.from('orders').delete().eq('id', extraId); // pedido sem customer_id — fora do alcance de limparDadosDeTeste
   });
 });
