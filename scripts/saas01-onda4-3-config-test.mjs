@@ -91,6 +91,9 @@ try {
   const meta = (await client.query("SELECT current_user AS who, to_char(now() AT TIME ZONE 'utc','YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS utc")).rows[0];
   out('— Fingerprint — Project ' + projectRef(host, user) + ' · sessao ' + meta.who + ' · ' + meta.utc + ' UTC');
   out('');
+  // Baseline: desde a correcao operacional pos-Onda-8 (2026-08-10), ADMIN_REAL_USER_ID e' super admin
+  // real/permanente (pedido explicito do dono) -- REGRESSAO-02 abaixo compara CONTAGEM, nao mais 0.
+  const baselineSuperAdmin = (await client.query(`SELECT count(*)::int AS n FROM public.super_admins WHERE user_id = '${ADMIN_REAL_USER_ID}'`)).rows[0].n;
 
   const encantoId = (await client.query(`SELECT id FROM public.stores WHERE slug = 'encanto'`)).rows[0].id;
   out('— Loja encanto resolvida (fora de qualquer sessao simulada, como superuser): ' + encantoId + ' —');
@@ -184,15 +187,19 @@ try {
   });
   out('');
 
+  // Admin REGULAR de encanto (nunca super admin). Desde a correcao operacional pos-Onda-8
+  // (2026-08-10), ADMIN_REAL_USER_ID passou a ser TAMBEM super admin real/permanente -- deixaria de
+  // provar isolamento. Reaproveita STRANGER aqui (isolado nesta transacao propria, rolled-back --
+  // nao interfere no seu papel de "sem vinculo" na tx separada mais abaixo).
   out('— ESCRITA ADMINISTRATIVA: admin so altera a config da PROPRIA loja —');
-  await tx('authenticated', ADMIN_REAL_USER_ID, setupSql(), async () => {
-    await callRpc('SET-eta-P', 'admin real altera o ETA de encanto (regressao)', `SELECT public.set_delivery_eta($1) AS r`, [99],
+  await tx('authenticated', STRANGER, [...setupSql(), `INSERT INTO public.admins (user_id, store_id) VALUES ('${STRANGER}', '${encantoId}') ON CONFLICT DO NOTHING`], async () => {
+    await callRpc('SET-eta-P', 'admin regular altera o ETA de encanto (regressao)', `SELECT public.set_delivery_eta($1) AS r`, [99],
       (row, err) => ({ ok: err === null && row?.r === 99, detail: err || JSON.stringify(row?.r) }));
-    await callRpc('SET-eta-N', 'admin real NAO consegue alterar o ETA da loja B (isolamento)', `SELECT public.set_delivery_eta($1, $2) AS r`, [88, STORE_B_ID],
+    await callRpc('SET-eta-N', 'admin regular NAO consegue alterar o ETA da loja B (isolamento)', `SELECT public.set_delivery_eta($1, $2) AS r`, [88, STORE_B_ID],
       (row, err) => ({ ok: err !== null && err.includes('apenas administradores'), detail: err || JSON.stringify(row?.r) }));
-    await callRpc('SET-mode-P', 'admin real altera o store_mode de encanto (regressao)', `SELECT public.set_store_mode($1) AS r`, ['CLOSED'],
+    await callRpc('SET-mode-P', 'admin regular altera o store_mode de encanto (regressao)', `SELECT public.set_store_mode($1) AS r`, ['CLOSED'],
       (row, err) => ({ ok: err === null && row?.r === 'CLOSED', detail: err || JSON.stringify(row?.r) }));
-    await callRpc('SET-mode-N', 'admin real NAO consegue alterar o store_mode da loja B', `SELECT public.set_store_mode($1, $2) AS r`, ['OPEN', STORE_B_ID],
+    await callRpc('SET-mode-N', 'admin regular NAO consegue alterar o store_mode da loja B', `SELECT public.set_store_mode($1, $2) AS r`, ['OPEN', STORE_B_ID],
       (row, err) => ({ ok: err !== null, detail: err || JSON.stringify(row?.r) }));
   });
   await tx('authenticated', ADMIN_B, setupSql(), async () => {
@@ -219,7 +226,7 @@ try {
   out('');
 
   out('— Sessao: super admin ficticio acessa/altera a config de qualquer loja —');
-  await tx('authenticated', ADMIN_REAL_USER_ID, [...setupSql(), `INSERT INTO public.super_admins (user_id) VALUES ('${ADMIN_REAL_USER_ID}')`], async () => {
+  await tx('authenticated', ADMIN_REAL_USER_ID, [...setupSql(), `INSERT INTO public.super_admins (user_id) VALUES ('${ADMIN_REAL_USER_ID}') ON CONFLICT DO NOTHING`], async () => {
     await callRpc('SUPER-eta', 'super admin altera o ETA da loja B mesmo sem linha em admins', `SELECT public.set_delivery_eta($1, $2) AS r`, [66, STORE_B_ID],
       (row, err) => ({ ok: err === null && row?.r === 66, detail: err || JSON.stringify(row?.r) }));
   });
@@ -268,9 +275,9 @@ try {
         (SELECT count(*)::int FROM public.store_settings WHERE store_id IN ('${STORE_B_ID}','${STORE_C_ID}')) AS config_fake,
         (SELECT count(*)::int FROM public.customers WHERE phone = '47955550001') AS cliente_fake`);
     const row = r.rows[0];
-    const ok = Object.values(row).every(n => n === 0);
+    const ok = Object.entries(row).every(([k, n]) => (k === 'super_admin' ? n === baselineSuperAdmin : n === 0));
     if (ok) passes++; else failures++;
-    out(`  [${ok ? 'PASS' : 'FAIL'}] REGRESSAO-02 zero mutacao liquida`); out(`         -> ${JSON.stringify(row)}`);
+    out(`  [${ok ? 'PASS' : 'FAIL'}] REGRESSAO-02 zero mutacao liquida`); out(`         -> ${JSON.stringify({ ...row, super_admin_baseline: baselineSuperAdmin })}`);
   }
   out('');
 

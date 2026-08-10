@@ -81,7 +81,17 @@ function LinhaLoja({ loja, onVinculado }) {
             /{loja.slug} {loja.dominio ? `· ${loja.dominio}` : '· sem domínio ainda (DNS/Vercel pendentes)'}
           </div>
         </div>
-        {badgeStatus(loja.status)}
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {/* admin_count===0: loja criada mas NAO operacional -- nenhuma pessoa consegue logar e
+              administra-la ainda. Precisa ficar visivel sempre que a lista for revisitada, nao so no
+              instante da criacao (REF-SAAS-01 · Onda 8.2). */}
+          {loja.admin_count === 0 && (
+            <span style={{ fontSize: 11.5, fontWeight: 700, color: '#B91C1C', background: '#FEF2F2', padding: '3px 10px', borderRadius: 20 }}>
+              ⚠️ aguardando administrador
+            </span>
+          )}
+          {badgeStatus(loja.status)}
+        </div>
       </div>
       <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
         <input className="form-input" placeholder="e-mail do administrador desta loja" value={email}
@@ -115,8 +125,8 @@ export function AdminPlataforma() {
     try {
       const r = await DS.provisionStore(nome.trim(), slug.trim(), emailAdmin.trim() || null);
       const detalheAdmin = r.admin?.vinculado
-        ? ` Admin ${r.admin.email} ja vinculado.`
-        : emailAdmin.trim() ? ` ${r.admin.motivo}.` : '';
+        ? ` Admin ${r.admin.email} já vinculado.`
+        : emailAdmin.trim() ? ` ${r.admin.motivo}.` : ' Aguardando administrador — vincule um e-mail abaixo para deixá-la operacional.';
       setMsg({ tipo: 'ok', texto: `Loja "${r.nome}" criada.${detalheAdmin}` });
       setNome(''); setSlug(''); setSlugTocado(false); setEmailAdmin('');
       reloadStores();

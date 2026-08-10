@@ -167,8 +167,13 @@ try {
   out('');
 
   out('— ITEM 6: AUTORIZACAO — admin de A nao ve relatorio de B; stranger/anon nao veem relatorio de nenhuma loja —');
-  await tx('authenticated', ADMIN_REAL_USER_ID, setupSql(), async () => {
-    await callRpc('ITEM6-A-nao-ve-B', 'admin de A NAO consegue pedir o relatorio da loja B', `SELECT public.admin_reports_summary($1,$2,$3) AS r`, [PERIODO_INICIO, PERIODO_FIM, STORE_B_ID],
+  // ADMIN_REAL_USER_ID deixou de servir pra este check especifico desde a correcao operacional
+  // pos-Onda-8 (2026-08-10): passou a ser TAMBEM super admin real/permanente, e por isso passaria
+  // (corretamente) em is_admin_of(STORE_B_ID). Reaproveita STRANGER, isolado nesta tx propria (rolled-
+  // back), com um vinculo de admin so' pra loja A -- nunca afeta seu papel de "zero vinculo" no ITEM6-
+  // STRANGER-N abaixo (transacao separada).
+  await tx('authenticated', STRANGER, [...setupSql(), `INSERT INTO public.admins (user_id, store_id) VALUES ('${STRANGER}', '${STORE_A_ID}') ON CONFLICT DO NOTHING`], async () => {
+    await callRpc('ITEM6-A-nao-ve-B', 'admin regular de A NAO consegue pedir o relatorio da loja B', `SELECT public.admin_reports_summary($1,$2,$3) AS r`, [PERIODO_INICIO, PERIODO_FIM, STORE_B_ID],
       (row, err) => ({ ok: err !== null && err.includes('apenas administradores'), detail: err || JSON.stringify(row?.r) }));
   });
   await tx('authenticated', STRANGER, setupSql(), async () => {

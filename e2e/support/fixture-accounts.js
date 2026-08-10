@@ -13,3 +13,12 @@ export const ADMIN_FIXTURE = Object.freeze({
   email: 'e2e-admin@teste.encanto.local',
   senha: 'e2e-fixture-admin-nao-usar-em-prod-4c7d',
 });
+
+/* REF-SAAS-01 · Onda 8 (correcao pos-onda): pessoa DISTINTA de ADMIN_FIXTURE -- usada para provar
+   isolamento entre 2 admins REAIS e diferentes (nao o Super Admin se auto-vinculando a uma 2a loja,
+   que e um teste mais fraco). Persistente como os demais fixtures (nunca apagada, so seus vinculos
+   transacionais). */
+export const ADMIN_B_FIXTURE = Object.freeze({
+  email: 'e2e-admin-b@teste.encanto.local',
+  senha: 'e2e-fixture-admin-b-nao-usar-em-prod-7f1a',
+});

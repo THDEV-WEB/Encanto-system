@@ -138,7 +138,7 @@ function setupSql(encantoId) {
     `INSERT INTO public.customers (id, name, phone, store_id) VALUES ('${CUSTOMER_B_UNLINKED_ID}', 'Convidado Sem Vinculo (loja B)', '47999990005', '${STORE_B_ID}')`,
   ];
 }
-const SUPER_ADMIN_SETUP = `INSERT INTO public.super_admins (user_id) VALUES ('${ADMIN_REAL_USER_ID}')`;
+const SUPER_ADMIN_SETUP = `INSERT INTO public.super_admins (user_id) VALUES ('${ADMIN_REAL_USER_ID}') ON CONFLICT DO NOTHING`; // pos-Onda-8: ele ja e' super admin real/permanente
 
 try {
   out('==================================================================');
@@ -151,6 +151,9 @@ try {
   const meta = (await client.query("SELECT current_user AS who, to_char(now() AT TIME ZONE 'utc','YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS utc")).rows[0];
   out('— Fingerprint — Project ' + projectRef(host, user) + ' · sessao ' + meta.who + ' · ' + meta.utc + ' UTC');
   out('');
+  // Baseline: desde a correcao operacional pos-Onda-8 (2026-08-10), ADMIN_REAL_USER_ID e' super admin
+  // real/permanente (pedido explicito do dono) -- REGRESSAO-03 abaixo compara CONTAGEM, nao mais 0.
+  const baselineSuperAdmin = (await client.query(`SELECT count(*)::int AS n FROM public.super_admins WHERE user_id = '${ADMIN_REAL_USER_ID}'`)).rows[0].n;
 
   const encantoId = (await client.query(`SELECT id FROM public.stores WHERE slug = 'encanto'`)).rows[0].id;
   out('— Loja encanto resolvida (fora de qualquer sessao simulada, como superuser): ' + encantoId + ' —');
@@ -285,12 +288,18 @@ try {
   });
   out('');
 
-  out('— Sessao: admin real (encanto) —');
-  await tx('authenticated', ADMIN_REAL_USER_ID, setupSql(encantoId), async () => {
-    await expectRows('SEL-adminA-P', 'admin real ve customer de encanto (regressao)', `SELECT 1 FROM public.customers WHERE id = $1`, [CUSTOMER_ENCANTO_ID], 1);
-    await expectRows('SEL-adminA-N', 'admin real NAO ve customer da loja B (isolamento)', `SELECT 1 FROM public.customers WHERE id = $1`, [CUSTOMER_B_ID], 0);
-    await attempt('UPD-adminA-P', 'admin real atualiza customer de encanto (regressao)', `UPDATE public.customers SET name = 'Pessoa X Editada' WHERE id = $1`, [CUSTOMER_ENCANTO_ID], true);
-    await attempt('UPD-adminA-N', 'admin real NAO consegue atualizar customer da loja B (isolamento)', `UPDATE public.customers SET name = 'Invasao' WHERE id = $1`, [CUSTOMER_B_ID], false);
+  // Admin REGULAR de encanto (nunca super admin). Desde a correcao operacional pos-Onda-8
+  // (2026-08-10), ADMIN_REAL_USER_ID passou a ser TAMBEM super admin real/permanente -- deixaria de
+  // provar isolamento (ele agora passa em qualquer loja, por design). NAO reaproveita SAME_PERSON
+  // (e' cliente de VERDADE em encanto E na loja B nesta mesma suite -- veria CUSTOMER_B_ID por causa
+  // da policy "cliente le proprio customer", nao por falha de isolamento admin -- falso-negativo real,
+  // achado ao rodar). STRANGER e' zero-customer em qualquer loja, sem essa ambiguidade.
+  out('— Sessao: admin regular (encanto) —');
+  await tx('authenticated', STRANGER, [...setupSql(encantoId), `INSERT INTO public.admins (user_id, store_id) VALUES ('${STRANGER}', '${encantoId}') ON CONFLICT DO NOTHING`], async () => {
+    await expectRows('SEL-adminA-P', 'admin regular ve customer de encanto (regressao)', `SELECT 1 FROM public.customers WHERE id = $1`, [CUSTOMER_ENCANTO_ID], 1);
+    await expectRows('SEL-adminA-N', 'admin regular NAO ve customer da loja B (isolamento)', `SELECT 1 FROM public.customers WHERE id = $1`, [CUSTOMER_B_ID], 0);
+    await attempt('UPD-adminA-P', 'admin regular atualiza customer de encanto (regressao)', `UPDATE public.customers SET name = 'Pessoa X Editada' WHERE id = $1`, [CUSTOMER_ENCANTO_ID], true);
+    await attempt('UPD-adminA-N', 'admin regular NAO consegue atualizar customer da loja B (isolamento)', `UPDATE public.customers SET name = 'Invasao' WHERE id = $1`, [CUSTOMER_B_ID], false);
     await callRpc('ADMLINK-P', 'admin_link_customer_to_auth permite vincular customer SEM VINCULO da PROPRIA loja (encanto)',
       `SELECT public.admin_link_customer_to_auth($1, $2) AS r`, [CUSTOMER_ENCANTO_UNLINKED_ID, STRANGER],
       (row) => { const r = row?.r; return { ok: r?.ok === true, detail: JSON.stringify(r) }; });
@@ -387,9 +396,9 @@ try {
         (SELECT count(*)::int FROM public.customers WHERE id IN ('${CUSTOMER_ENCANTO_ID}','${CUSTOMER_B_ID}')) AS customers_fake,
         (SELECT count(*)::int FROM public.customers WHERE phone IN ('47988887777','47977776666','${PHONE_NEW}')) AS customers_regressao`);
     const row = r.rows[0];
-    const ok = Object.values(row).every(n => n === 0);
+    const ok = Object.entries(row).every(([k, n]) => (k === 'super_admin' ? n === baselineSuperAdmin : n === 0));
     if (ok) passes++; else failures++;
-    out(`  [${ok ? 'PASS' : 'FAIL'}] REGRESSAO-03 zero mutacao liquida em producao`); out(`         -> ${JSON.stringify(row)}`);
+    out(`  [${ok ? 'PASS' : 'FAIL'}] REGRESSAO-03 zero mutacao liquida em producao`); out(`         -> ${JSON.stringify({ ...row, super_admin_baseline: baselineSuperAdmin })}`);
   }
   out('');
 

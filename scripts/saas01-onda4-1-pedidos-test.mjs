@@ -118,7 +118,7 @@ function setupSql(encantoId) {
     `INSERT INTO public.loyalty_events (customer_id, order_id, tipo, delta, stamps_after, origem, store_id) VALUES ('${CUSTOMER_B_ID}', '${ORDER_B_ID}', 'earned', 1, 2, 'create_order', '${STORE_B_ID}')`,
   ];
 }
-const SUPER_ADMIN_SETUP = `INSERT INTO public.super_admins (user_id) VALUES ('${ADMIN_REAL_USER_ID}')`;
+const SUPER_ADMIN_SETUP = `INSERT INTO public.super_admins (user_id) VALUES ('${ADMIN_REAL_USER_ID}') ON CONFLICT DO NOTHING`; // pos-Onda-8: ele ja e' super admin real/permanente
 
 try {
   out('===================================================================');
@@ -130,6 +130,9 @@ try {
   const meta = (await client.query("SELECT current_user AS who, to_char(now() AT TIME ZONE 'utc','YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS utc")).rows[0];
   out('— Fingerprint — Project ' + projectRef(host, user) + ' · sessao ' + meta.who + ' · ' + meta.utc + ' UTC');
   out('');
+  // Baseline: desde a correcao operacional pos-Onda-8 (2026-08-10), ADMIN_REAL_USER_ID e' super admin
+  // real/permanente (pedido explicito do dono) -- REGRESSAO-01 abaixo compara CONTAGEM, nao mais 0.
+  const baselineSuperAdmin = (await client.query(`SELECT count(*)::int AS n FROM public.super_admins WHERE user_id = '${ADMIN_REAL_USER_ID}'`)).rows[0].n;
 
   const encantoId = (await client.query(`SELECT id FROM public.stores WHERE slug = 'encanto'`)).rows[0].id;
   out('— Loja encanto resolvida (fora de qualquer sessao simulada, como superuser): ' + encantoId + ' —');
@@ -294,12 +297,16 @@ try {
   });
   out('');
 
-  out('— Sessao: admin real (encanto) —');
-  await tx('authenticated', ADMIN_REAL_USER_ID, setupSql(encantoId), async () => {
-    await expectRows('ADMINA-orders-P', 'admin real ve pedido de encanto (regressao)', `SELECT 1 FROM public.orders WHERE id = $1`, [ORDER_A_ID], 1);
-    await expectRows('ADMINA-orders-N', 'admin real NAO ve pedido da loja B (isolamento)', `SELECT 1 FROM public.orders WHERE id = $1`, [ORDER_B_ID], 0);
-    await attempt('ADMINA-upd-P', 'admin real atualiza pedido de encanto (regressao)', `UPDATE public.orders SET observacoes='editado' WHERE id = $1`, [ORDER_A_ID], true);
-    await attempt('ADMINA-upd-N', 'admin real NAO consegue atualizar pedido da loja B', `UPDATE public.orders SET observacoes='invasao' WHERE id = $1`, [ORDER_B_ID], false);
+  // Admin REGULAR de encanto (nunca super admin). Desde a correcao operacional pos-Onda-8
+  // (2026-08-10), ADMIN_REAL_USER_ID passou a ser TAMBEM super admin real/permanente -- deixaria de
+  // provar isolamento. Reaproveita STRANGER aqui (isolado nesta transacao propria, rolled-back --
+  // nao interfere no seu papel de "sem vinculo" em OUTRAS transacoes deste arquivo).
+  out('— Sessao: admin regular (encanto) —');
+  await tx('authenticated', STRANGER, [...setupSql(encantoId), `INSERT INTO public.admins (user_id, store_id) VALUES ('${STRANGER}', '${encantoId}') ON CONFLICT DO NOTHING`], async () => {
+    await expectRows('ADMINA-orders-P', 'admin regular ve pedido de encanto (regressao)', `SELECT 1 FROM public.orders WHERE id = $1`, [ORDER_A_ID], 1);
+    await expectRows('ADMINA-orders-N', 'admin regular NAO ve pedido da loja B (isolamento)', `SELECT 1 FROM public.orders WHERE id = $1`, [ORDER_B_ID], 0);
+    await attempt('ADMINA-upd-P', 'admin regular atualiza pedido de encanto (regressao)', `UPDATE public.orders SET observacoes='editado' WHERE id = $1`, [ORDER_A_ID], true);
+    await attempt('ADMINA-upd-N', 'admin regular NAO consegue atualizar pedido da loja B', `UPDATE public.orders SET observacoes='invasao' WHERE id = $1`, [ORDER_B_ID], false);
     await callRpc('ADMINA-health', 'orders_health da propria loja retorna pedidos_total = real+1 (banco de producao, nao vazio)',
       `SELECT public.orders_health($1) AS r`, [encantoId],
       (row) => ({ ok: row?.r?.pedidos_total === realOrdersTotal + 1, detail: `pedidos_total=${row?.r?.pedidos_total} esperado=${realOrdersTotal + 1}` }));
@@ -364,11 +371,11 @@ try {
   });
   out('');
 
-  out('— admin_adjust_loyalty: admin real ajusta encanto (permitido), NEGA ajustar loja B (isolamento) —');
-  await tx('authenticated', ADMIN_REAL_USER_ID, setupSql(encantoId), async () => {
-    await callRpc('ADJ-P', 'admin real ajusta fidelidade de cliente de encanto', `SELECT public.admin_adjust_loyalty($1, 1, 'teste') AS r`, [CUSTOMER_A_ID],
+  out('— admin_adjust_loyalty: admin regular ajusta encanto (permitido), NEGA ajustar loja B (isolamento) —');
+  await tx('authenticated', STRANGER, [...setupSql(encantoId), `INSERT INTO public.admins (user_id, store_id) VALUES ('${STRANGER}', '${encantoId}') ON CONFLICT DO NOTHING`], async () => {
+    await callRpc('ADJ-P', 'admin regular ajusta fidelidade de cliente de encanto', `SELECT public.admin_adjust_loyalty($1, 1, 'teste') AS r`, [CUSTOMER_A_ID],
       (row) => ({ ok: row?.r?.ok === true, detail: JSON.stringify(row?.r) }));
-    await callRpc('ADJ-N', 'admin real NAO consegue ajustar fidelidade de cliente da loja B', `SELECT public.admin_adjust_loyalty($1, 1, 'invasao') AS r`, [CUSTOMER_B_ID],
+    await callRpc('ADJ-N', 'admin regular NAO consegue ajustar fidelidade de cliente da loja B', `SELECT public.admin_adjust_loyalty($1, 1, 'invasao') AS r`, [CUSTOMER_B_ID],
       (row) => ({ ok: row?.r?.ok === false && row?.r?.error === 'sem permissao', detail: JSON.stringify(row?.r) }));
   });
   out('');
@@ -396,7 +403,7 @@ try {
         (SELECT count(*)::int FROM public.customers WHERE id IN ('${CUSTOMER_A_ID}','${CUSTOMER_B_ID}')) AS clientes_fake,
         (SELECT count(*)::int FROM public.customers WHERE phone IN ('47977770001','47977770002')) AS clientes_checkout`);
     const row = r.rows[0];
-    const ok = Object.values(row).every(n => n === 0);
+    const ok = Object.entries(row).every(([k, n]) => (k === 'super_admin' ? n === baselineSuperAdmin : n === 0));
     if (ok) passes++; else failures++;
     out(`  [${ok ? 'PASS' : 'FAIL'}] REGRESSAO-01 zero mutacao liquida`); out(`         -> ${JSON.stringify(row)}`);
   }

@@ -34,8 +34,13 @@ const redact = s => { let r = String(s); if (secret) r = r.split(secret).join('[
 const client = new pg.Client({ ...cfg, ssl: { rejectUnauthorized: false }, statement_timeout: 30000, connectionTimeoutMillis: 15000 });
 
 const ADMIN_REAL_USER_ID = 'b9dc7626-af9c-4ab5-95f7-3207e6469129'; // admin real de producao (loja encanto)
+  // -- desde a correcao operacional pos-Onda-8 (2026-08-10), TAMBEM super admin real/permanente. So
+  // usado abaixo pra checagens de REGRESSAO real, nunca mais pra isolamento negativo.
 const ADMIN_B            = 'ce7ece01-266c-42b1-a9db-8051da24d7f5'; // vira admin da loja B FICTICIA
 const SAME_PERSON        = '27bd5049-60e5-4980-abe9-3bd7942a6c31'; // fidelidade em 2 lojas, mesma pessoa
+const ADMIN_ENCANTO_REGULAR = '4fa5541f-989f-4b8d-89b4-7b45a59d8f4e'; // admin REGULAR de encanto (nunca
+  // super admin, nunca customer aqui) -- persona dedicada pras checagens de isolamento negativo que
+  // ADMIN_REAL_USER_ID deixou de servir. Ganha o vinculo com Encanto so' DENTRO da transacao de teste.
 
 const STORE_B_ID    = 'eeeeeeee-bbbb-4000-8000-000000000001';
 const CUSTOMER_A_ID = 'eeeeeeee-1111-4000-8000-00000000000a'; // SAME_PERSON, encanto, 10 selos
@@ -155,11 +160,11 @@ try {
   out('');
 
   out('— ISOLAMENTO COMPLETO DO HISTORICO: admin_find_loyalty so encontra cliente da PROPRIA loja, mesmo com telefone exato —');
-  await tx('authenticated', ADMIN_REAL_USER_ID, setupSql(encantoId), async () => {
-    await callRpc('ISOLAMENTO-P1', 'admin real (encanto) ENCONTRA cliente de encanto (regressao)',
+  await tx('authenticated', ADMIN_ENCANTO_REGULAR, [...setupSql(encantoId), `INSERT INTO public.admins (user_id, store_id) VALUES ('${ADMIN_ENCANTO_REGULAR}', '${encantoId}') ON CONFLICT DO NOTHING`], async () => {
+    await callRpc('ISOLAMENTO-P1', 'admin regular (encanto) ENCONTRA cliente de encanto (regressao)',
       `SELECT public.admin_find_loyalty($1) AS r`, ['47966660001'],
       (row) => ({ ok: row?.r?.ok === true && row?.r?.customer_id === CUSTOMER_A_ID && row?.r?.stamps === 10, detail: JSON.stringify(row?.r) }));
-    await callRpc('ISOLAMENTO-N1', 'admin real (encanto) NAO encontra cliente da loja B, mesmo com telefone EXATO',
+    await callRpc('ISOLAMENTO-N1', 'admin regular (encanto) NAO encontra cliente da loja B, mesmo com telefone EXATO',
       `SELECT public.admin_find_loyalty($1) AS r`, ['47966660002'],
       (row) => ({ ok: row?.r?.ok === false && row?.r?.error === 'cliente nao encontrado', detail: JSON.stringify(row?.r) }));
   });
@@ -182,8 +187,8 @@ try {
       `SELECT public.redeem_reward($1) AS r`, [CUSTOMER_A_ID],
       (row) => ({ ok: row?.r?.ok === false, detail: JSON.stringify(row?.r) }));
   });
-  await tx('authenticated', ADMIN_REAL_USER_ID, setupSql(encantoId), async () => {
-    await callRpc('ADMRESGATE-N2', 'admin real NAO consegue resgatar pro convidado da loja B (isolamento, nao e "sem permissao" por acaso -- checa store do alvo)',
+  await tx('authenticated', ADMIN_ENCANTO_REGULAR, [...setupSql(encantoId), `INSERT INTO public.admins (user_id, store_id) VALUES ('${ADMIN_ENCANTO_REGULAR}', '${encantoId}') ON CONFLICT DO NOTHING`], async () => {
+    await callRpc('ADMRESGATE-N2', 'admin regular NAO consegue resgatar pro convidado da loja B (isolamento, nao e "sem permissao" por acaso -- checa store do alvo)',
       `SELECT public.redeem_reward($1) AS r`, [CUSTOMER_C_ID],
       (row) => ({ ok: row?.r?.ok === false, detail: JSON.stringify(row?.r) }));
   });

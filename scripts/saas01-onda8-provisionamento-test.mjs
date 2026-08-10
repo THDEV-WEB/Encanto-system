@@ -102,6 +102,12 @@ try {
   out('— Fingerprint — Project ' + projectRef(host, user) + ' · sessao ' + meta.who + ' · ' + meta.utc + ' UTC');
   out('');
 
+  // Baseline ANTES de qualquer tx() -- desde a correcao operacional pos-Onda-8 (2026-08-10),
+  // SUPER_ADMIN_TESTE E' o super admin real/permanente de producao (pedido explicito do dono). setupSuperAdmin()
+  // usa ON CONFLICT DO NOTHING (idempotente com essa linha real) e cada tx() faz ROLLBACK -- nao leaka nada
+  // novo. A REGRESSAO no fim compara CONTAGEM antes/depois, nao mais assume que a linha deveria ser 0.
+  const baselineSuperAdmins = (await client.query(`SELECT count(*)::int AS n FROM public.super_admins`)).rows[0].n;
+
   out('— ITEM 1: super admin provisiona uma loja nova (status ativo, sem dominio) —');
   let novaLojaId = null;
   await tx('authenticated', SUPER_ADMIN_TESTE, setupSuperAdmin(), async () => {
@@ -111,6 +117,10 @@ try {
     const checaDominio = await superScalar(`SELECT dominio FROM public.stores WHERE id = $1`, [novaLojaId]);
     const ok = checaDominio?.dominio === null;
     record('ITEM1-sem-dominio', 'loja nasce sem dominio (DNS/Vercel permanecem manuais, fora do escopo desta onda)', ok ? 'PASS' : 'FAIL', JSON.stringify(checaDominio));
+    // REF-SAAS-01 · Onda 8.2 (correcao pos-onda): loja sem e-mail nasce com admin_count=0 -- e a UI
+    // (AdminPlataforma.jsx) precisa desse numero pra nunca deixar uma loja "orfa" invisivel na lista.
+    await callRpc('ITEM1-admin-count-zero', 'list_my_stores() mostra admin_count=0 pra loja recem-criada sem vinculo', `SELECT admin_count FROM public.list_my_stores() WHERE store_id = $1`, [novaLojaId],
+      (row, err) => ({ ok: err === null && row?.admin_count === 0, detail: err || JSON.stringify(row) }));
   });
   out('');
 
@@ -175,6 +185,8 @@ try {
       (row, err) => ({ ok: err === null && row?.r?.vinculado === true, detail: err || JSON.stringify(row?.r) }));
     const ehAdmin = await superScalar(`SELECT EXISTS(SELECT 1 FROM public.admins WHERE store_id=$1 AND user_id=$2) AS ok`, [id, ADMIN_B]);
     record('ITEM7-linha-criada', 'linha real em admins(store_id, user_id) apos o vinculo', ehAdmin?.ok ? 'PASS' : 'FAIL', JSON.stringify(ehAdmin));
+    await callRpc('ITEM7-admin-count-um', 'admin_count passa de 0 pra 1 depois do vinculo (loja deixa de estar "aguardando administrador")', `SELECT admin_count FROM public.list_my_stores() WHERE store_id = $1`, [id],
+      (row, err) => ({ ok: err === null && row?.admin_count === 1, detail: err || JSON.stringify(row) }));
   });
   out('');
 
@@ -242,16 +254,42 @@ try {
   });
   out('');
 
-  out('— REGRESSAO: zero mutacao liquida (lojas/vinculos/super_admins ficticios) em producao —');
+  out('— ITEM 14: is_admin_anywhere() (Onda 8.3) — corrige o gate de LOGIN pra multi-loja, sem tocar is_admin() —');
+  await tx('authenticated', SUPER_ADMIN_TESTE, setupSuperAdmin(), async () => {
+    const { result: r1 } = await callRpc('ITEM14-setup', 'provisiona a loja base + vincula ADMIN_B (que NAO e admin da Encanto)', `SELECT public.provision_store($1,$2,NULL) AS r`, ['Bar da Sogra (teste)', SLUG_1], (row, err) => ({ ok: err === null, detail: err || 'ok' }));
+    const id = r1?.r?.store_id;
+    const emailB = await superScalar(`SELECT email FROM auth.users WHERE id = $1`, [ADMIN_B]);
+    await client.query(`SELECT public.link_store_admin($1,$2)`, [id, emailB.email]);
+
+    // Troca a IDENTIDADE simulada pra ADMIN_B DENTRO da mesma transacao (nunca um tx() novo -- perderia
+    // o vinculo acabado de criar, que so existe at' o ROLLBACK deste bloco). role continua 'authenticated'
+    // pros 2 (so troca o `sub`), por isso nao precisa de outro SET LOCAL ROLE.
+    await client.query("SELECT set_config('request.jwt.claims', $1, true)", [JSON.stringify({ sub: ADMIN_B, role: 'authenticated' })]);
+    await callRpc('ITEM14-admin-de-outra-loja-passa', 'admin SO de outra loja (nunca da Encanto) passa em is_admin_anywhere()', `SELECT public.is_admin_anywhere() AS r`, [],
+      (row, err) => ({ ok: err === null && row?.r === true, detail: err || JSON.stringify(row) }));
+    await callRpc('ITEM14-is-admin-legado-nega', 'ACHADO da correcao: is_admin() (legado, checa so Encanto) nega o MESMO usuario -- prova exata do bug que motivou a Onda 8.3', `SELECT public.is_admin() AS r`, [],
+      (row, err) => ({ ok: err === null && row?.r === false, detail: err || JSON.stringify(row) }));
+  });
+  await tx('authenticated', STRANGER, [], async () => {
+    await callRpc('ITEM14-stranger-nega', 'usuario sem NENHUM vinculo administrativo continua negado em is_admin_anywhere()', `SELECT public.is_admin_anywhere() AS r`, [],
+      (row, err) => ({ ok: err === null && row?.r === false, detail: err || JSON.stringify(row) }));
+  });
+  await tx('anon', null, [], async () => {
+    await callRpc('ITEM14-anon-nega', 'anon negado em is_admin_anywhere()', `SELECT public.is_admin_anywhere() AS r`, [],
+      (row, err) => ({ ok: err === null && row?.r === false, detail: err || JSON.stringify(row) }));
+  });
+  out('');
+
+  out('— REGRESSAO: zero mutacao liquida (lojas ficticias) + super_admins sem crescimento liquido —');
   {
     const r = await client.query(`
       SELECT
         (SELECT count(*)::int FROM public.stores WHERE slug IN ('${SLUG_1}','${SLUG_C}','${SLUG_ATOMICIDADE}','loja-x-teste-onda8','loja-nao-autorizada-onda8','loja-stranger-onda8','loja-anon-onda8','loja-indevida-onda8')) AS lojas_fake,
-        (SELECT count(*)::int FROM public.super_admins WHERE user_id = '${SUPER_ADMIN_TESTE}') AS super_admin_fake`);
+        (SELECT count(*)::int FROM public.super_admins) AS super_admins_agora`);
     const row = r.rows[0];
-    const ok = Object.values(row).every(n => n === 0);
+    const ok = row.lojas_fake === 0 && row.super_admins_agora === baselineSuperAdmins;
     if (ok) passes++; else failures++;
-    out(`  [${ok ? 'PASS' : 'FAIL'}] REGRESSAO zero mutacao liquida`); out(`         -> ${JSON.stringify(row)}`);
+    out(`  [${ok ? 'PASS' : 'FAIL'}] REGRESSAO zero mutacao liquida`); out(`         -> ${JSON.stringify({ ...row, super_admins_baseline: baselineSuperAdmins })}`);
   }
   out('');
 

@@ -135,6 +135,8 @@ $$;
 
 Isso é o que permite migrar RPC por RPC (Ondas 2/4) sem quebrar as ~30 que ainda não foram tocadas — elas continuam chamando `is_admin()`, que continua funcionando, só que agora por composição em vez de consulta direta.
 
+**Addendum (Onda 8.3, 2026-08-10):** `is_admin()` tem semântica **fixa** ("é admin da Encanto especificamente") — correto para as ~30 RPCs legadas, mas **errado** como gate de login agora que outras lojas existem: um admin vinculado só a outra loja é rejeitado. Nova função `is_admin_anywhere()` (`is_super_admin() OR` qualquer vínculo em `admins`, sem `store_id`) criada exclusivamente para esse gate (`AdminLogin.jsx`) — `is_admin()` não foi alterada, zero risco às RPCs legadas.
+
 ---
 
 ## 5. Fluxo de resolução da loja

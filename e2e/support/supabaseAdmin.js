@@ -86,3 +86,20 @@ export async function idDoAdminFixture() {
   if (!user) throw new Error(`[e2e] admin fixture (${ADMIN_FIXTURE.email}) nao encontrado em auth.users`);
   return user.id;
 }
+
+/* REF-SAAS-01 · Onda 8 (correcao pos-onda): garante (idempotente, Admin API) que um e-mail/senha
+   conhecidos existam como auth.users no projeto de E2E -- mesmo padrao de scripts/e2e-fixture-
+   accounts.mjs, generalizado pra qualquer fixture nova (ex.: ADMIN_B_FIXTURE) sem duplicar a logica de
+   "cria, e se already-registered, acha o id por e-mail". Devolve o user_id. */
+export async function garantirUsuarioAuth({ email, senha }) {
+  const admin = supabaseAdmin();
+  if (!admin) return null;
+  const { data, error } = await admin.auth.admin.createUser({ email, password: senha, email_confirm: true });
+  if (!error) return data.user.id;
+  if (!/already.*registered/i.test(error.message || '')) throw new Error(`[e2e] criar ${email} falhou: ${error.message}`);
+  const { data: lista, error: e2 } = await admin.auth.admin.listUsers();
+  if (e2) throw new Error(`[e2e] listUsers falhou: ${e2.message}`);
+  const existente = lista.users.find((u) => u.email === email);
+  if (!existente) throw new Error(`[e2e] usuario ${email} deveria existir mas nao foi encontrado`);
+  return existente.id;
+}

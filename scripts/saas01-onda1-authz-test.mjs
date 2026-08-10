@@ -33,7 +33,13 @@ const { cfg, secret, host, user } = loadConn();
 const redact = s => { let r = String(s); if (secret) r = r.split(secret).join('[REDACTED]'); return r; };
 const client = new pg.Client({ ...cfg, ssl: { rejectUnauthorized: false }, statement_timeout: 30000, connectionTimeoutMillis: 15000 });
 
-const ADMIN_REAL_USER_ID = 'b9dc7626-af9c-4ab5-95f7-3207e6469129'; // ver docs/adr/AUTH-01 (unico admin hoje)
+const ADMIN_REAL_USER_ID = 'b9dc7626-af9c-4ab5-95f7-3207e6469129'; // admin da Encanto (e, desde a
+  // correcao operacional pos-Onda-8 de 2026-08-10, TAMBEM super admin real e permanente da VALION --
+  // pedido explicito do dono. B2/B4/B5 abaixo pararam de poder assumir "este usuario nunca e super
+  // admin" e foram ajustados para nao depender mais disso.
+const ADMIN_REGULAR_TESTE = 'ce7ece01-266c-42b1-a9db-8051da24d7f5'; // auth.users real, NUNCA super admin
+  // hoje -- usado so em B2 pra simular um admin REGULAR (escopado a 1 loja), sem contaminar a
+  // identidade do admin real (que agora tambem e super admin).
 const USER_ALEATORIO = '00000000-0000-0000-0000-000000000001'; // nao existe em admins/super_admins
 
 const R = []; const out = (s = '') => R.push(s);
@@ -64,6 +70,11 @@ try {
   const meta = (await client.query("SELECT current_user AS who, to_char(now() AT TIME ZONE 'utc','YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS utc")).rows[0];
   out('— Fingerprint — Project ' + projectRef(host, user) + ' · sessao ' + meta.who + ' · ' + meta.utc + ' UTC');
   out('');
+
+  // Baseline ANTES de qualquer tx() -- desde a correcao operacional pos-Onda-8 (2026-08-10),
+  // ADMIN_REAL_USER_ID e' super admin real/permanente (pedido explicito do dono). B5 compara CONTAGEM
+  // antes/depois, nao mais assume 0.
+  const baselineSuperAdmins = (await client.query(`SELECT count(*)::int AS n FROM public.super_admins`)).rows[0].n;
 
   out('— A1: super_admins existe (global, sem store_id), RLS habilitado com self-read —');
   {
@@ -133,16 +144,21 @@ try {
   // engano, nao is_admin_of(<loja real>)).
   const encantoId = (await client.query(`SELECT id FROM public.stores WHERE slug = 'encanto'`)).rows[0].id;
 
-  out('— B2: is_admin_of(<id encanto>) do admin real == true; de um id de loja aleatoria == false —');
+  out('— B2: is_admin_of() de um admin REGULAR (nao super) e escopado -- true pra loja vinculada, false pra loja aleatoria —');
   {
+    // ADMIN_REGULAR_TESTE ganha um vinculo TEMPORARIO com a Encanto so' dentro desta transacao
+    // (ROLLBACK desfaz) -- desde que o admin real tambem passou a ser super admin (correcao pos-
+    // Onda-8), ele nao serve mais pra provar o caso "admin regular, escopado a 1 loja so".
     let v = 'FAIL', d = '';
-    await tx('authenticated', ADMIN_REAL_USER_ID, [], async () => {
+    await tx('authenticated', ADMIN_REGULAR_TESTE, [
+      `INSERT INTO public.admins (user_id, store_id) VALUES ('${ADMIN_REGULAR_TESTE}', '${encantoId}') ON CONFLICT DO NOTHING`,
+    ], async () => {
       const r1 = await client.query(`SELECT public.is_admin_of($1) AS ok`, [encantoId]);
       const r2 = await client.query(`SELECT public.is_admin_of(gen_random_uuid()) AS ok`);
       v = (r1.rows[0].ok === true && r2.rows[0].ok === false) ? 'PASS' : 'FAIL';
       d = `is_admin_of(encanto)=${r1.rows[0].ok} · is_admin_of(loja_aleatoria)=${r2.rows[0].ok}`;
     });
-    record('B2', 'is_admin_of() escopado corretamente por loja', v, d);
+    record('B2', 'is_admin_of() escopado corretamente por loja (admin regular, nunca super admin)', v, d);
   }
   out('');
 
@@ -159,15 +175,15 @@ try {
   }
   out('');
 
-  out('— B4: super admin (simulado, NUNCA persiste — ROLLBACK) passa em QUALQUER loja, mesmo sem linha em admins PARA aquela loja —');
+  out('— B4: super admin (simulado, NUNCA persiste alem do que ja era real — ROLLBACK) passa em QUALQUER loja, mesmo sem linha em admins PARA aquela loja —');
   {
     let v = 'FAIL', d = '';
-    // Reaproveita o user_id do admin real (ja existe em auth.users, satisfaz a FK de super_admins)
-    // — o ponto do teste e provar que is_super_admin() sozinho already basta pra qualquer loja NOVA,
-    // nao que esse usuario especifico deixa de ser admin de "encanto" (ele continua sendo, por outro
-    // caminho — o que importa aqui e o store_id ALEATORIO, onde ele NAO tem linha em admins).
+    // Reaproveita o user_id do admin real (ja existe em auth.users, satisfaz a FK de super_admins) --
+    // desde a correcao operacional pos-Onda-8 (2026-08-10), ele JA E' super admin de verdade em
+    // producao, permanentemente (pedido explicito do dono) -- por isso ON CONFLICT DO NOTHING (a
+    // linha real ja existe fora desta transacao; o INSERT so e' redundante aqui, nunca falha).
     await tx('authenticated', ADMIN_REAL_USER_ID, [
-      `INSERT INTO public.super_admins (user_id) VALUES ('${ADMIN_REAL_USER_ID}')`,
+      `INSERT INTO public.super_admins (user_id) VALUES ('${ADMIN_REAL_USER_ID}') ON CONFLICT DO NOTHING`,
     ], async () => {
       const r = await client.query(`SELECT public.is_admin_of(gen_random_uuid()) AS ok, public.is_super_admin() AS super`);
       v = (r.rows[0].ok === true && r.rows[0].super === true) ? 'PASS' : 'FAIL';
@@ -177,13 +193,13 @@ try {
   }
   out('');
 
-  out('— B5: apos o teste B4, super_admins NAO tem nenhuma linha persistida (prova que o ROLLBACK funcionou) —');
+  out('— B5: apos o teste B4, super_admins nao cresceu em relacao ao baseline (prova que o ROLLBACK nao deixou lixo NOVO) —');
   {
     const r = await client.query('SELECT count(*)::int AS n FROM public.super_admins');
-    const ok = r.rows[0].n === 0;
+    const ok = r.rows[0].n === baselineSuperAdmins;
     if (ok) passes++; else failures++;
-    out(`  [${ok ? 'PASS' : 'FAIL'}] B5 super_admins permanece vazia em producao (0 linhas reais)`);
-    out(`         -> n=${r.rows[0].n}`);
+    out(`  [${ok ? 'PASS' : 'FAIL'}] B5 super_admins sem crescimento liquido em producao`);
+    out(`         -> n=${r.rows[0].n} · baseline=${baselineSuperAdmins}`);
   }
   out('');
 

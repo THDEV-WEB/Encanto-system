@@ -166,11 +166,14 @@ try {
   });
   out('');
 
+  // ADMIN_REAL_USER_ID deixou de servir pra isolamento negativo desde a correcao operacional
+  // pos-Onda-8 (2026-08-10): passou a ser TAMBEM super admin real/permanente. Reaproveita STRANGER,
+  // isolado nesta tx propria, com um vinculo de admin so' pra Encanto.
   out('— ESCRITA ADMINISTRATIVA: admin so altera o company_info da PROPRIA loja —');
-  await tx('authenticated', ADMIN_REAL_USER_ID, setupSql(), async () => {
-    await callRpc('SET-info-P', 'admin real altera o corDestaque de encanto (regressao)', `SELECT public.set_company_info($1) AS r`, [JSON.stringify({ corDestaque: '#00FF00' })],
+  await tx('authenticated', STRANGER, [...setupSql(), `INSERT INTO public.admins (user_id, store_id) VALUES ('${STRANGER}', (SELECT id FROM public.stores WHERE slug='encanto')) ON CONFLICT DO NOTHING`], async () => {
+    await callRpc('SET-info-P', 'admin regular altera o corDestaque de encanto (regressao)', `SELECT public.set_company_info($1) AS r`, [JSON.stringify({ corDestaque: '#00FF00' })],
       (row, err) => ({ ok: err === null && row?.r?.corDestaque === '#00FF00', detail: err || JSON.stringify(row?.r?.corDestaque) }));
-    await callRpc('SET-info-N', 'admin real NAO consegue alterar o company_info da loja B (isolamento)', `SELECT public.set_company_info($1, $2) AS r`, [JSON.stringify({ nomeCurto: 'Hackeado' }), STORE_B_ID],
+    await callRpc('SET-info-N', 'admin regular NAO consegue alterar o company_info da loja B (isolamento)', `SELECT public.set_company_info($1, $2) AS r`, [JSON.stringify({ nomeCurto: 'Hackeado' }), STORE_B_ID],
       (row, err) => ({ ok: err !== null && err.includes('apenas administradores'), detail: err || JSON.stringify(row?.r) }));
   });
   await tx('authenticated', ADMIN_B, setupSql(), async () => {

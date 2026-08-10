@@ -25,7 +25,7 @@ export function AdminLogin({ onLogin }) {
        por credencial (abaixo), sem erro nenhum exibido por essa tentativa silenciosa. */
     const { data: sessaoAtual } = await db.auth.getSession();
     if (sessaoAtual?.session?.access_token) {
-      const { data: souAdminSessaoAtual, error: erroSessaoAtual } = await db.rpc('is_admin');
+      const { data: souAdminSessaoAtual, error: erroSessaoAtual } = await db.rpc('is_admin_anywhere');
       if (!erroSessaoAtual && souAdminSessaoAtual === true) {
         registrarBreadcrumb('admin: sessao existente encontrada, aguardando confirmacao (Entrar)');
         setSessaoEncontrada({ email: sessaoAtual.session.user?.email ?? email, session: sessaoAtual.session });
@@ -51,10 +51,12 @@ export function AdminLogin({ onLogin }) {
       return;
     }
     // REF-REGRESSION-01 · P1: signInWithPassword só prova credencial válida no projeto Supabase
-    // (autenticação) — nunca que quem logou é o admin (autorização real, tabela public.admins,
-    // via is_admin() — a mesma fonte que já protege toda a RLS do projeto). Sem este check, qualquer
-    // conta com senha válida no mesmo projeto veria o painel inteiro renderizado no client.
-    const { data: souAdmin, error: erroIsAdmin } = await db.rpc('is_admin');
+    // (autenticação) — nunca que quem logou é o admin (autorização real, tabela public.admins).
+    // REF-SAAS-01 · Onda 8.3: is_admin_anywhere() (não is_admin(), que é "admin da Encanto especificamente"
+    // — wrapper legado da Onda 1, ainda correto pras ~30 RPCs que o chamam sem p_store_id) — sem essa
+    // troca, um admin vinculado só a outra loja era rejeitado aqui, mesmo sendo legítimo. Sem este check
+    // nenhum, qualquer conta com senha válida no mesmo projeto veria o painel inteiro renderizado no client.
+    const { data: souAdmin, error: erroIsAdmin } = await db.rpc('is_admin_anywhere');
     if (erroIsAdmin || souAdmin !== true) {
       await db.auth.signOut().catch(() => {});
       setErr('Acesso restrito ao administrador.');

@@ -38,8 +38,14 @@ const client = new pg.Client({ ...cfg, ssl: { rejectUnauthorized: false }, state
 
 // Personas reais (auth.users existentes — satisfazem as FKs de admins/super_admins sem inventar id).
 const ADMIN_REAL_USER_ID = 'b9dc7626-af9c-4ab5-95f7-3207e6469129'; // admin real de producao (loja encanto)
+  // -- desde a correcao operacional pos-Onda-8 (2026-08-10), TAMBEM super admin real/permanente
+  // (pedido explicito do dono). So usado abaixo pra checagens de REGRESSAO (o que ele ve/faz de
+  // verdade), nunca mais pra isolamento negativo (ele agora passa em qualquer loja, por design).
 const ADMIN_B = 'ce7ece01-266c-42b1-a9db-8051da24d7f5';            // vira admin da loja B FICTICIA (so dentro da tx)
 const STRANGER = '27bd5049-60e5-4980-abe9-3bd7942a6c31';           // cliente autenticado real, zero vinculo de admin
+const ADMIN_ENCANTO_REGULAR = '4fa5541f-989f-4b8d-89b4-7b45a59d8f4e'; // admin REGULAR de encanto (nunca
+  // super admin) -- persona dedicada pras checagens de isolamento que precisam de alguem escopado a
+  // 1 loja so; ganha o vinculo com Encanto so' DENTRO da transacao de teste (nunca persiste).
 
 // Loja B e catalogo ficticios — inseridos no inicio de cada transacao, desfeitos pelo ROLLBACK.
 const STORE_B_ID     = 'aaaaaaaa-bbbb-4000-8000-000000000001';
@@ -115,7 +121,7 @@ function setupSql(encantoId) {
     `INSERT INTO public.product_collections (id, product_id, collection_id, store_id) VALUES ('${PCOLL_B_ID}', '${PRODUCT_B_ID}', '${CATEGORY_B_ID}', '${STORE_B_ID}')`,
   ];
 }
-const SUPER_ADMIN_SETUP = `INSERT INTO public.super_admins (user_id) VALUES ('${ADMIN_REAL_USER_ID}')`;
+const SUPER_ADMIN_SETUP = `INSERT INTO public.super_admins (user_id) VALUES ('${ADMIN_REAL_USER_ID}') ON CONFLICT DO NOTHING`; // pos-Onda-8: ele ja e' super admin real/permanente
 
 function tablesConfig(encantoId) {
   return [
@@ -181,17 +187,19 @@ async function testTable(t, encantoId) {
     await expectWrite(`${P}-UPD-N-stranger`, `${P}: cliente logado sem vinculo nao consegue atualizar linha A`, `UPDATE public.${P} SET ${t.updCol} = $2::${t.updCast} WHERE id = $1`, [t.rowA, t.updVal], false);
   });
 
-  // 3) admin real de producao (loja encanto).
-  await tx('authenticated', ADMIN_REAL_USER_ID, setup, async () => {
-    await expectRows(`${P}-SEL-P3`, `${P}: admin real (encanto) ve linha A (regressao)`, `SELECT 1 FROM public.${P} WHERE id = $1`, [t.rowA], 1);
-    await expectRows(`${P}-SEL-N3`, `${P}: admin real (encanto) ${descIsolamento}`, `SELECT 1 FROM public.${P} WHERE id = $1`, [t.rowB], rowBAgoraVisivel ? 1 : 0);
-    await expectWrite(`${P}-INS-P1`, `${P}: admin real insere SEM informar store_id -> DEFAULT cobre (regressao do upsert atual)`, t.insertNoStore, [], true);
-    await expectWrite(`${P}-INS-N2`, `${P}: admin real tenta inserir explicitamente na loja B -> negado (isolamento)`, t.insertExplicit(STORE_B_ID, 'InvasaoAB'), [], false);
-    await expectWrite(`${P}-UPD-P1`, `${P}: admin real atualiza linha A (propria loja, regressao)`, `UPDATE public.${P} SET ${t.updCol} = $2::${t.updCast} WHERE id = $1`, [t.rowA, t.updVal], true);
-    await expectWrite(`${P}-UPD-N1`, `${P}: admin real tenta atualizar linha B -> negado (isolamento)`, `UPDATE public.${P} SET ${t.updCol} = $2::${t.updCast} WHERE id = $1`, [t.rowB, t.updVal], false);
-    await expectWrite(`${P}-UPD-N-move`, `${P}: admin real tenta MOVER linha A pra loja B (mudar store_id) -> negado pelo WITH CHECK`, `UPDATE public.${P} SET store_id = '${STORE_B_ID}' WHERE id = $1`, [t.rowA], false);
-    await expectWrite(`${P}-DEL-N1`, `${P}: admin real tenta excluir linha B -> negado (isolamento)`, `DELETE FROM public.${P} WHERE id = $1`, [t.rowB], false);
-    await expectWrite(`${P}-DEL-P1`, `${P}: admin real exclui linha A (propria loja, regressao)`, `DELETE FROM public.${P} WHERE id = $1`, [t.rowA], true);
+  // 3) admin REGULAR de encanto (nunca super admin -- ver ADMIN_ENCANTO_REGULAR acima). Prova
+  // isolamento de escrita/leitura escopado a 1 loja. Nenhuma linha aqui e' dado real: t.rowA/rowB sao
+  // FICTICIOS desta transacao, mesmo rowA usando store_id=encantoId (simula "a propria loja").
+  await tx('authenticated', ADMIN_ENCANTO_REGULAR, [...setup, `INSERT INTO public.admins (user_id, store_id) VALUES ('${ADMIN_ENCANTO_REGULAR}', '${encantoId}') ON CONFLICT DO NOTHING`], async () => {
+    await expectRows(`${P}-SEL-P3`, `${P}: admin regular (encanto) ve linha A (regressao)`, `SELECT 1 FROM public.${P} WHERE id = $1`, [t.rowA], 1);
+    await expectRows(`${P}-SEL-N3`, `${P}: admin regular (encanto) ${descIsolamento}`, `SELECT 1 FROM public.${P} WHERE id = $1`, [t.rowB], rowBAgoraVisivel ? 1 : 0);
+    await expectWrite(`${P}-INS-P1`, `${P}: admin regular insere SEM informar store_id -> DEFAULT cobre (regressao do upsert atual)`, t.insertNoStore, [], true);
+    await expectWrite(`${P}-INS-N2`, `${P}: admin regular tenta inserir explicitamente na loja B -> negado (isolamento)`, t.insertExplicit(STORE_B_ID, 'InvasaoAB'), [], false);
+    await expectWrite(`${P}-UPD-P1`, `${P}: admin regular atualiza linha A (propria loja, regressao)`, `UPDATE public.${P} SET ${t.updCol} = $2::${t.updCast} WHERE id = $1`, [t.rowA, t.updVal], true);
+    await expectWrite(`${P}-UPD-N1`, `${P}: admin regular tenta atualizar linha B -> negado (isolamento)`, `UPDATE public.${P} SET ${t.updCol} = $2::${t.updCast} WHERE id = $1`, [t.rowB, t.updVal], false);
+    await expectWrite(`${P}-UPD-N-move`, `${P}: admin regular tenta MOVER linha A pra loja B (mudar store_id) -> negado pelo WITH CHECK`, `UPDATE public.${P} SET store_id = '${STORE_B_ID}' WHERE id = $1`, [t.rowA], false);
+    await expectWrite(`${P}-DEL-N1`, `${P}: admin regular tenta excluir linha B -> negado (isolamento)`, `DELETE FROM public.${P} WHERE id = $1`, [t.rowB], false);
+    await expectWrite(`${P}-DEL-P1`, `${P}: admin regular exclui linha A (propria loja, regressao)`, `DELETE FROM public.${P} WHERE id = $1`, [t.rowA], true);
   });
 
   // 4) admin ficticio da loja B (prova que is_admin_of funciona p/ uma 2a loja, nao so a legada).
@@ -226,6 +234,9 @@ try {
   const meta = (await client.query("SELECT current_user AS who, to_char(now() AT TIME ZONE 'utc','YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS utc")).rows[0];
   out('— Fingerprint — Project ' + projectRef(host, user) + ' · sessao ' + meta.who + ' · ' + meta.utc + ' UTC');
   out('');
+  // Baseline: desde a correcao operacional pos-Onda-8 (2026-08-10), ADMIN_REAL_USER_ID e' super admin
+  // real/permanente (pedido explicito do dono) -- REGRESSAO-03 abaixo compara CONTAGEM, nao mais 0.
+  const baselineSuperAdmin = (await client.query(`SELECT count(*)::int AS n FROM public.super_admins WHERE user_id = '${ADMIN_REAL_USER_ID}'`)).rows[0].n;
 
   const encantoId = (await client.query(`SELECT id FROM public.stores WHERE slug = 'encanto'`)).rows[0].id;
   out('— Loja encanto resolvida (fora de qualquer sessao simulada, como superuser): ' + encantoId + ' —');
@@ -372,10 +383,10 @@ try {
         (SELECT count(*)::int FROM public.adicionais WHERE store_id = '${STORE_B_ID}') AS adicionais_b,
         (SELECT count(*)::int FROM public.product_collections WHERE store_id = '${STORE_B_ID}') AS pcoll_b`);
     const row = r.rows[0];
-    const ok = Object.values(row).every(n => n === 0);
+    const ok = Object.entries(row).every(([k, n]) => (k === 'super_admin' ? n === baselineSuperAdmin : n === 0));
     if (ok) passes++; else failures++;
     out(`  [${ok ? 'PASS' : 'FAIL'}] REGRESSAO-03 zero mutacao liquida em producao`);
-    out(`         -> ${JSON.stringify(row)}`);
+    out(`         -> ${JSON.stringify({ ...row, super_admin_baseline: baselineSuperAdmin })}`);
   }
   out('');
 

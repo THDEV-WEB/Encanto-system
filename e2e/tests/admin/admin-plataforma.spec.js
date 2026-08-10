@@ -7,8 +7,10 @@
    exatamente os itens de frontend da Fase 5 que o teste de backend (Camada B, scripts/saas01-onda8-
    provisionamento-test.mjs) nao cobre por rodar direto no Postgres, sem passar pela UI. */
 import { test, expect } from '../../fixtures/index.js';
-import { ADMIN_FIXTURE } from '../../support/fixture-accounts.js';
-import { supabaseAdmin, idDoAdminFixture, E2E_ENV_PRONTO } from '../../support/supabaseAdmin.js';
+import { ADMIN_FIXTURE, ADMIN_B_FIXTURE } from '../../support/fixture-accounts.js';
+import { supabaseAdmin, idDoAdminFixture, garantirUsuarioAuth, E2E_ENV_PRONTO } from '../../support/supabaseAdmin.js';
+import { AdminLoginPage } from '../../pages/AdminLoginPage.js';
+import { AdminPanelPage } from '../../pages/AdminPanel.page.js';
 
 const SLUG = 'bar-da-sogra-e2e-onda8';
 const NOME = 'Bar da Sogra E2E';
@@ -80,5 +82,70 @@ test.describe('Plataforma / provisionamento (Admin)', { tag: '@writes' }, () => 
     // Trocar de loja no seletor atualiza o contexto (remonta o corpo do Admin, key=activeStoreId) sem erro.
     await seletor.selectOption({ label: opcoes.find((t) => t.includes(NOME)) });
     await expect(page.locator('.admin-body')).toBeVisible();
+  });
+
+  /* Correcao pos-Onda-8: o teste acima vincula o PROPRIO Super Admin como admin da loja nova -- prova a
+     mecanica de UI, mas nao prova isolamento entre 2 PESSOAS DIFERENTES. Este teste usa ADMIN_B_FIXTURE,
+     uma conta DISTINTA (nunca reaproveitada de outro teste), pra provar o cenario real: Pessoa A (Super
+     Admin) cria a loja e vincula Pessoa B; so Pessoa B loga como admin da loja nova, numa sessao/contexto
+     de navegador SEPARADO (nunca reaproveita a sessao de Pessoa A). A prova de autorizacao no BANCO
+     (RLS/RPC, is_admin_of) ja e' exaustiva em scripts/saas01-onda8-provisionamento-test.mjs (Camada B) --
+     aqui a prova e' visual/UI: o que Pessoa B literalmente consegue ENXERGAR e clicar. */
+  test('super admin vincula um ADMIN DISTINTO (pessoa B) — pessoa B ve só a loja dela, nunca a Plataforma nem a Encanto', async ({ adminLoginPage, adminPanel, page, browser }) => {
+    await garantirUsuarioAuth(ADMIN_B_FIXTURE);
+
+    await adminLoginPage.goto();
+    await adminLoginPage.login(ADMIN_FIXTURE.email, ADMIN_FIXTURE.senha);
+    await adminPanel.abrirAba('plataforma');
+
+    await page.getByTestId('plataforma-nova-nome').fill(NOME);
+    await page.getByTestId('plataforma-nova-slug').fill(SLUG);
+    await page.getByTestId('plataforma-nova-criar').click();
+    await expect(page.getByText(`Loja "${NOME}" criada.`)).toBeVisible();
+
+    // Vincula PESSOA B (distinta de Pessoa A/Super Admin) -- nunca o proprio e-mail desta vez.
+    await page.getByTestId(`plataforma-vincular-email-${SLUG}`).fill(ADMIN_B_FIXTURE.email);
+    await page.getByTestId(`plataforma-vincular-btn-${SLUG}`).click();
+    await expect(page.getByText(`${ADMIN_B_FIXTURE.email} agora e admin desta loja.`)).toBeVisible();
+    // O badge "aguardando administrador" some da lista assim que o vinculo e feito (REF-SAAS-01 · Onda
+    // 8.2). Emoji no texto de busca de proposito: getByText e case-insensitive por padrao no Playwright,
+    // e a mensagem de sucesso da criacao ("Aguardando administrador — vincule...") colidiria com uma
+    // busca so pela frase, sem o emoji do badge.
+    await expect(page.getByText('⚠️ aguardando administrador')).toHaveCount(0);
+
+    // Pessoa A (Super Admin) continua vendo TODAS as lojas permitidas -- Encanto (vinculo pessoal em
+    // `admins`) E Bar da Sogra (so por ser super admin, sem NENHUM vinculo pessoal na loja de Pessoa B).
+    await page.reload();
+    await adminLoginPage.entrarReaproveitandoSessao();
+    const seletorA = page.getByTestId('admin-store-selector');
+    await expect(seletorA).toBeVisible();
+    const opcoesA = await seletorA.locator('option').allTextContents();
+    expect(opcoesA.some((t) => t.includes('Encanto'))).toBe(true);
+    expect(opcoesA.some((t) => t.includes(NOME))).toBe(true);
+
+    // Sessao NOVA e ISOLADA para Pessoa B -- nunca reaproveita cookies/localStorage de Pessoa A.
+    const contextB = await browser.newContext();
+    const pageB = await contextB.newPage();
+    const loginB = new AdminLoginPage(pageB);
+    const panelB = new AdminPanelPage(pageB);
+    try {
+      await loginB.goto();
+      await loginB.login(ADMIN_B_FIXTURE.email, ADMIN_B_FIXTURE.senha);
+
+      // Pessoa B tem 1 vinculo so (Bar da Sogra) -- rotulo fixo, seletor nem aparece (stores.length===1).
+      await expect(pageB.getByTestId('admin-store-ativa')).toContainText(NOME);
+      await expect(pageB.getByTestId('admin-store-selector')).toHaveCount(0);
+      await expect(pageB.getByText('Encanto', { exact: false })).toHaveCount(0);
+
+      // Pessoa B NUNCA ve a aba/rotulo de Plataforma -- nao e super admin, o gate e is_super_admin() real.
+      await expect(panelB.tab('plataforma')).toHaveCount(0);
+      await expect(pageB.getByText('VALION SISTEMAS', { exact: false })).toHaveCount(0);
+
+      // O Dashboard da PROPRIA loja carrega normalmente (is_admin_of resolve certo pra loja dela).
+      await panelB.abrirAba('dashboard');
+      await expect(pageB.getByTestId('admin-tab-dashboard')).toBeVisible();
+    } finally {
+      await contextB.close();
+    }
   });
 });

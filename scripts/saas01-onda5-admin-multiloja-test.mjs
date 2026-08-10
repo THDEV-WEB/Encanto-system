@@ -86,7 +86,10 @@ function setupSql(encantoId) {
     `INSERT INTO public.orders (id, customer_id, total, payment_method, address, store_id) VALUES ('${ORDER_C_ID}', '${CUSTOMER_C_ID}', 50.00, 'pix', 'Rua C, 1', '${STORE_C_ID}')`,
   ];
 }
-const SUPER_ADMIN_SETUP = `INSERT INTO public.super_admins (user_id) VALUES ('${ADMIN_REAL_USER_ID}')`;
+// ON CONFLICT DO NOTHING: desde a correcao operacional pos-Onda-8 (2026-08-10), ADMIN_REAL_USER_ID
+// JA E' super admin real/permanente em producao (pedido explicito do dono) -- este INSERT ficticio
+// agora e' sempre redundante (nunca falha, nunca precisa "criar" nada de fato).
+const SUPER_ADMIN_SETUP = `INSERT INTO public.super_admins (user_id) VALUES ('${ADMIN_REAL_USER_ID}') ON CONFLICT DO NOTHING`;
 
 try {
   out('===================================================================');
@@ -101,6 +104,9 @@ try {
 
   const encantoId = (await client.query(`SELECT id FROM public.stores WHERE slug = 'encanto'`)).rows[0].id;
   const realOrdersTotal = (await client.query(`SELECT count(*)::int AS n FROM public.orders`)).rows[0].n;
+  // Baseline ANTES de qualquer tx() -- desde a correcao operacional pos-Onda-8 (2026-08-10),
+  // ADMIN_REAL_USER_ID e' super admin real/permanente. A REGRESSAO FINAL compara CONTAGEM, nao mais 0.
+  const baselineSuperAdmin = (await client.query(`SELECT count(*)::int AS n FROM public.super_admins WHERE user_id = '${ADMIN_REAL_USER_ID}'`)).rows[0].n;
   out('— Loja encanto: ' + encantoId + ' · pedidos reais em producao: ' + realOrdersTotal + ' —');
   out('');
 
@@ -125,8 +131,15 @@ try {
 
   // ---------------- Camada B: list_my_stores() ----------------
   out('— list_my_stores(): cada persona ve exatamente as lojas certas —');
-  await tx('authenticated', ADMIN_REAL_USER_ID, setupSql(encantoId), async () => {
-    await callRpc('B1', 'admin real (encanto) ve SO a propria loja', `SELECT * FROM public.list_my_stores()`, [],
+  // B1 precisa de um admin REGULAR vinculado a 1 loja so (nunca super admin). Desde a correcao
+  // operacional pos-Onda-8, ADMIN_REAL_USER_ID deixou de servir pra isso (e' super admin real
+  // permanente agora) -- reaproveita MULTI_STORE_ADMIN aqui com um setup PROPRIO (so' o vinculo com
+  // Encanto, SEM as lojas B/C do setupSql() compartilhado) -- isolado numa transacao rolled-back
+  // separada da B3 abaixo (que usa o setupSql completo pra ele), sem colisao nenhuma.
+  await tx('authenticated', MULTI_STORE_ADMIN, [
+    `INSERT INTO public.admins (user_id, store_id) VALUES ('${MULTI_STORE_ADMIN}', '${encantoId}')`,
+  ], async () => {
+    await callRpc('B1', 'admin regular de 1 loja so (encanto) ve SO ela, nao e super admin', `SELECT * FROM public.list_my_stores()`, [],
       (r, err, rows) => ({ ok: rows?.length === 1 && rows[0].slug === 'encanto' && rows[0].is_super_admin === false, detail: JSON.stringify(rows) }));
   });
   await tx('authenticated', ADMIN_B, setupSql(encantoId), async () => {
@@ -212,9 +225,9 @@ try {
         (SELECT count(*)::int FROM public.orders WHERE id IN ('${ORDER_B_ID}','${ORDER_C_ID}')) AS pedidos_fake,
         (SELECT count(*)::int FROM public.customers WHERE id IN ('${CUSTOMER_B_ID}','${CUSTOMER_C_ID}')) AS clientes_fake`);
     const row = r.rows[0];
-    const ok = Object.values(row).every(n => n === 0);
+    const ok = row.lojas_fake === 0 && row.admins_fake === 0 && row.super_admin === baselineSuperAdmin && row.pedidos_fake === 0 && row.clientes_fake === 0;
     if (ok) passes++; else failures++;
-    out(`  [${ok ? 'PASS' : 'FAIL'}] zero mutacao liquida`); out(`         -> ${JSON.stringify(row)}`);
+    out(`  [${ok ? 'PASS' : 'FAIL'}] zero mutacao liquida`); out(`         -> ${JSON.stringify({ ...row, super_admin_baseline: baselineSuperAdmin })}`);
   }
   out('');
 
