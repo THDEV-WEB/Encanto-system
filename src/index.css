@@ -288,6 +288,19 @@ img{display:block;max-width:100%}
 @media(max-width:768px){.header-brand-logo{height:92px!important;width:92px!important;max-width:92px!important}}
 @media(max-width:480px){.header-brand-logo{height:80px!important;width:80px!important;max-width:80px!important}}
 
+/* REF-SAAS-02 · Onda 2: preset "retangular" (company_info.logoPreset) — pra logos horizontais/quadradas
+   de novos tenants que nao devem ser forcadas na moldura organica pensada pra logo redonda da Encanto.
+   Mesma classe base (.header-brand-logo) + este modificador -- sem !important pra vencer por ordem no
+   arquivo (depois das regras acima) sem precisar duplicar especificidade. Encanto nunca aplica esta
+   classe (logoPreset='organico', o default), zero mudanca visual pra ela. */
+.header-brand-logo.header-brand-logo--retangular{
+  height:auto!important;width:auto!important;max-width:200px!important;max-height:96px;
+  border-radius:8px;box-shadow:none;background:transparent;filter:none;
+}
+.header-brand-logo.header-brand-logo--retangular:hover{border-radius:8px;box-shadow:none}
+@media(max-width:768px){.header-brand-logo.header-brand-logo--retangular{max-width:150px!important;max-height:76px}}
+@media(max-width:480px){.header-brand-logo.header-brand-logo--retangular{max-width:120px!important;max-height:64px}}
+
 /* Pílula de status */
 .header-status-pill{
   display:inline-flex;align-items:center;gap:5px;

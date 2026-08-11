@@ -37,13 +37,16 @@ const CAMPOS_TEXTO = [
   'cnpj', 'razaoSocial', 'nomeFantasia',
   'timezone', 'idioma', 'moeda',
   'logoUrl', 'faviconUrl', 'corPrimaria', 'corSecundaria', 'corDestaque',
+  'bannerUrl', // REF-SAAS-02 · Onda 2: imagem de fundo do cabecalho, por loja
 ];
+const LOGO_PRESET_DEFAULT = 'organico'; // REF-SAAS-02 · Onda 2: ausente = comportamento de hoje (Encanto)
 
 function paraForm(info) {
   const f = { telefone: formatarTelefoneBR(info.telefone), whatsapp: formatarTelefoneBR(info.whatsapp) };
   for (const k of CAMPOS_TEXTO) f[k] = info[k] ?? '';
   f.termosSecoes = (info.termosSecoes || []).map((s) => ({ ...s }));
   f.fidelidadeTexto = [...(info.fidelidadeTexto || [])];
+  f.logoPreset = info.logoPreset || LOGO_PRESET_DEFAULT;
   return f;
 }
 
@@ -53,6 +56,7 @@ function paraPatch(form) {
   for (const k of CAMPOS_TEXTO) p[k] = k === 'email' ? form[k].trim().toLowerCase() : form[k];
   p.termosSecoes = form.termosSecoes;
   p.fidelidadeTexto = form.fidelidadeTexto;
+  p.logoPreset = form.logoPreset || LOGO_PRESET_DEFAULT;
   return p;
 }
 
@@ -98,8 +102,16 @@ export function AdminEmpresa() {
 
   // quando o oficial muda de CONTEÚDO (mount/sync/outro save), o form reflete o novo oficial — comparado
   // por conteúdo (não por referência), para não descartar edição em andamento a cada poll de 60s.
+  //
+  // REF-SAAS-02 · Onda 2 (bug real achado em teste E2E): este efeito NÃO limpa `msg`. Limpava antes —
+  // mas o PRÓPRIO salvar() bem-sucedido já muda `info` (companyInfo.js dispara COMPANY_INFO_EVENT antes
+  // de devolver o resultado pra salvar()), o que recalcula infoKey e reagenda este efeito na MESMA
+  // leva de commits — sempre chegando a tempo de apagar a mensagem de sucesso que salvar() estava
+  // prestes a mostrar (a gravação em si sempre funcionou; só a mensagem nunca ficava visível).
+  // salvar()/campo() já limpam `msg` explicitamente nos momentos certos (início de um novo save, início
+  // de uma nova edição) — este efeito não precisa fazer isso de novo.
   const infoKey = useMemo(() => JSON.stringify(paraPatch(paraForm(info))), [info]);
-  useEffect(() => { setForm(paraForm(info)); setMsg(null); }, [infoKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setForm(paraForm(info)); }, [infoKey]);
 
   const campo = (k) => (e) => { setForm((f) => ({ ...f, [k]: e.target.value })); setMsg(null); };
   const mudou = infoKey !== JSON.stringify(paraPatch(form));
@@ -144,14 +156,34 @@ export function AdminEmpresa() {
         <div className="form-row">
           <div>
             <Rotulo hint="Substitui a logo padrão no cabeçalho da loja. Deixe em branco para usar a logo padrão.">🖼️ Logo da empresa</Rotulo>
-            <ImageUploader currentUrl={form.logoUrl || null} pasta="branding/logo"
+            <ImageUploader currentUrl={form.logoUrl || null} pasta="branding/logo" testIdSuffix="-logo"
               onUpload={(url) => { setForm((f) => ({ ...f, logoUrl: url || '' })); setMsg(null); }} />
           </div>
           <div>
             <Rotulo hint="Ícone exibido na aba do navegador. Deixe em branco para usar o favicon padrão.">🔖 Favicon</Rotulo>
-            <ImageUploader currentUrl={form.faviconUrl || null} pasta="branding/favicon"
+            <ImageUploader currentUrl={form.faviconUrl || null} pasta="branding/favicon" testIdSuffix="-favicon"
               onUpload={(url) => { setForm((f) => ({ ...f, faviconUrl: url || '' })); setMsg(null); }} />
           </div>
+        </div>
+        <div style={{ marginTop: 16 }}>
+          <Rotulo hint="Como a logo é encaixada no cabeçalho. Escolha 'Retangular' para logos horizontais/quadradas sem recorte.">🖼️ Apresentação da logo</Rotulo>
+          <div style={{ display: 'flex', gap: 16 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+              <input type="radio" name="logoPreset" data-testid="empresa-form-logo-preset-organico" value="organico"
+                checked={form.logoPreset === 'organico'} onChange={() => { setForm((f) => ({ ...f, logoPreset: 'organico' })); setMsg(null); }} />
+              Orgânica (padrão atual)
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+              <input type="radio" name="logoPreset" data-testid="empresa-form-logo-preset-retangular" value="retangular"
+                checked={form.logoPreset === 'retangular'} onChange={() => { setForm((f) => ({ ...f, logoPreset: 'retangular' })); setMsg(null); }} />
+              Retangular (sem recorte)
+            </label>
+          </div>
+        </div>
+        <div style={{ marginTop: 16 }}>
+          <Rotulo hint="Imagem de fundo do cabeçalho da loja. Deixe em branco para usar um fundo neutro com as cores da loja.">🎇 Banner do cabeçalho</Rotulo>
+          <ImageUploader currentUrl={form.bannerUrl || null} pasta="branding/banner" testIdSuffix="-banner"
+            onUpload={(url) => { setForm((f) => ({ ...f, bannerUrl: url || '' })); setMsg(null); }} />
         </div>
       </Bloco>
 

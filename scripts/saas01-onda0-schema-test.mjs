@@ -77,12 +77,17 @@ try {
   {
     let v = 'FAIL', d = '';
     try {
-      const r = await client.query(`SELECT id, slug, nome, dominio, status FROM public.stores`);
-      const ok = r.rowCount === 1 && r.rows[0].slug === 'encanto' && r.rows[0].status === 'ativo' && r.rows[0].dominio === 'encanto.valionsistemas.com.br';
+      // REF-SAAS-02 · Onda 1/2: desde o provisionamento real da "Bar da Sogra" em producao, `stores`
+      // legitimamente tem MAIS de 1 linha -- o invariante da Onda 0 nunca foi "so existe 1 loja para
+      // sempre", foi "a loja Encanto (fundacao/Cliente Zero) continua intacta". Mesmo padrao de
+      // baseline-comparison ja usado pra super_admins na correcao pos-Onda-8 (nunca assumir contagem
+      // fixa que o proprio sucesso da REF muda de proposito).
+      const r = await client.query(`SELECT id, slug, nome, dominio, status FROM public.stores WHERE slug = 'encanto'`);
+      const ok = r.rowCount === 1 && r.rows[0].status === 'ativo' && r.rows[0].dominio === 'encanto.valionsistemas.com.br';
       v = ok ? 'PASS' : 'FAIL';
-      d = `${r.rowCount} linha(s): ${JSON.stringify(r.rows)}`;
+      d = `${r.rowCount} linha(s) 'encanto': ${JSON.stringify(r.rows)}`;
     } catch (e) { d = redact(e.message).split('\n')[0]; }
-    record('S1', 'stores tem exatamente 1 linha (encanto/ativo)', v, d);
+    record('S1', 'stores contem a Encanto intacta (slug/ativo/dominio) -- outras lojas reais sao esperadas desde a Onda 1', v, d);
   }
   out('');
 

@@ -15,21 +15,28 @@ const CAMPOS_OBRIGATORIOS = ['nomeCurto', 'nomeCompleto', 'sobre', 'timezone', '
 const CAMPOS_IDENTIDADE_CONTATO = ['telefone', 'whatsapp', 'email']; // REF-SAAS-01 Onda 7.1 — vazios por padrão (nunca dado real de outra loja)
 const CAMPOS_OPCIONAIS = ['instagram', 'facebook', 'tiktok', 'site', 'cardapio', 'googleMaps', 'cep', 'rua', 'numero', 'bairro', 'cidade', 'estado', 'cnpj', 'razaoSocial', 'nomeFantasia'];
 const CAMPOS_COORDENADAS = ['lojaLat', 'lojaLng']; // REF-DELIVERY-FEE-01 — localização operacional da loja (null até o pino ser posicionado)
-const CAMPOS_BRANDING_URL = ['logoUrl', 'faviconUrl']; // REF-SAAS-01 Onda 6.2 — null até o admin subir uma imagem
+const CAMPOS_BRANDING_URL = ['logoUrl', 'faviconUrl', 'bannerUrl']; // REF-SAAS-01 Onda 6.2 (+REF-SAAS-02 Onda 2: bannerUrl) — null até o admin subir uma imagem
 const CAMPOS_BRANDING_COR = ['corPrimaria', 'corSecundaria', 'corDestaque']; // REF-SAAS-01 Onda 6.2 — hex #RRGGBB, nunca vazio
 const CAMPOS_BRANDING_CONTEUDO = ['termosSecoes', 'fidelidadeTexto']; // REF-SAAS-01 Onda 6.2 — arrays, aposentam constants/storeInfo.js
+const CAMPOS_BRANDING_LAYOUT = ['logoPreset']; // REF-SAAS-02 Onda 2 — como a logo é apresentada ('organico' default/Encanto, ou 'retangular')
 
-check('DEFAULT_COMPANY_INFO tem os 34 campos da Central de Configuração (REF-COMPANY-03 + REF-DELIVERY-FEE-01 + REF-SAAS-01 Onda 6.2) e os obrigatórios (identidade genérica/conteúdo institucional) nunca vazios', () => {
-  for (const k of [...CAMPOS_OBRIGATORIOS, ...CAMPOS_IDENTIDADE_CONTATO, ...CAMPOS_OPCIONAIS, ...CAMPOS_COORDENADAS, ...CAMPOS_BRANDING_URL, ...CAMPOS_BRANDING_COR, ...CAMPOS_BRANDING_CONTEUDO]) {
+check('DEFAULT_COMPANY_INFO tem os 36 campos da Central de Configuração (REF-COMPANY-03 + REF-DELIVERY-FEE-01 + REF-SAAS-01 Onda 6.2 + REF-SAAS-02 Onda 2) e os obrigatórios (identidade genérica/conteúdo institucional) nunca vazios', () => {
+  for (const k of [...CAMPOS_OBRIGATORIOS, ...CAMPOS_IDENTIDADE_CONTATO, ...CAMPOS_OPCIONAIS, ...CAMPOS_COORDENADAS, ...CAMPOS_BRANDING_URL, ...CAMPOS_BRANDING_COR, ...CAMPOS_BRANDING_CONTEUDO, ...CAMPOS_BRANDING_LAYOUT]) {
     assert.ok(k in DEFAULT_COMPANY_INFO, `campo ausente: ${k}`);
   }
-  assert.equal(Object.keys(DEFAULT_COMPANY_INFO).length, 34);
+  assert.equal(Object.keys(DEFAULT_COMPANY_INFO).length, 36);
   assert.ok(DEFAULT_COMPANY_INFO.sobre.length > 10);
   assert.equal(DEFAULT_COMPANY_INFO.timezone, 'America/Sao_Paulo');
   // REF-SAAS-01 Onda 7.1: nomeCurto/nomeCompleto são um placeholder GENÉRICO ("Loja"), nunca a
   // identidade real de nenhuma loja específica (bundle único multi-tenant — ver cabeçalho do arquivo).
   assert.equal(DEFAULT_COMPANY_INFO.nomeCurto, 'Loja');
   assert.equal(DEFAULT_COMPANY_INFO.nomeCompleto, 'Loja');
+  // REF-SAAS-02 · Onda 2 (bug real achado em teste E2E): a Encanto nunca teve `sobre` persistido em
+  // store_settings — este texto ERA sempre o "Sobre nós" real dela, vazando pra qualquer loja nova sem
+  // sobre próprio. A Encanto ganhou o mesmo texto explícito no banco (dado operacional); este default
+  // precisa ser genérico igual nomeCurto/telefone/whatsapp/email — nunca a marca/copy real de nenhuma
+  // loja específica.
+  assert.doesNotMatch(DEFAULT_COMPANY_INFO.sobre.toLowerCase(), /encanto|açaí|acai|marmita|timbó|timbo/);
 });
 check('DEFAULT_COMPANY_INFO (REF-SAAS-01 Onda 7.1): telefone/whatsapp/email começam vazios e whatsappFloatEnabled começa false — nunca o contato real de outra loja', () => {
   for (const k of CAMPOS_IDENTIDADE_CONTATO) assert.equal(DEFAULT_COMPANY_INFO[k], '', `${k} deveria ser '' por padrão`);
@@ -41,8 +48,11 @@ check('DEFAULT_COMPANY_INFO: campos opcionais (redes sociais/endereço/instituci
 check('DEFAULT_COMPANY_INFO: coordenadas da loja começam null — nunca um pino falso no mapa', () => {
   for (const k of CAMPOS_COORDENADAS) assert.equal(DEFAULT_COMPANY_INFO[k], null, `${k} deveria ser null por padrão`);
 });
-check('DEFAULT_COMPANY_INFO (REF-SAAS-01 Onda 6.2): logoUrl/faviconUrl começam null (asset estático é o fallback)', () => {
+check('DEFAULT_COMPANY_INFO (REF-SAAS-01 Onda 6.2 + REF-SAAS-02 Onda 2): logoUrl/faviconUrl/bannerUrl começam null (asset estático/fundo neutro são o fallback)', () => {
   for (const k of CAMPOS_BRANDING_URL) assert.equal(DEFAULT_COMPANY_INFO[k], null, `${k} deveria ser null por padrão`);
+});
+check("DEFAULT_COMPANY_INFO (REF-SAAS-02 Onda 2): logoPreset começa 'organico' (comportamento visual de hoje, byte-idêntico pra Encanto)", () => {
+  assert.equal(DEFAULT_COMPANY_INFO.logoPreset, 'organico');
 });
 check('DEFAULT_COMPANY_INFO (REF-SAAS-01 Onda 6.2): paleta de cores começa com hex válido #RRGGBB (nunca vazia)', () => {
   for (const k of CAMPOS_BRANDING_COR) assert.match(DEFAULT_COMPANY_INFO[k], /^#[0-9A-Fa-f]{6}$/, `${k} deveria ser um hex #RRGGBB`);
@@ -104,6 +114,12 @@ check('telefone curto demais -> erro', () => {
   const r = validarPatchCompanyInfo({ telefone: '123' });
   assert.ok(r.erro);
 });
+check('REF-SAAS-02 Onda 2 (bug real corrigido): telefone/whatsapp vazio -> aceito (estado "ainda não configurado", nunca erro)', () => {
+  const r = validarPatchCompanyInfo({ telefone: '', whatsapp: '' });
+  assert.ok(!r.erro);
+  assert.equal(r.patch.telefone, '');
+  assert.equal(r.patch.whatsapp, '');
+});
 check('email valido (lowercase, trim) -> normalizado', () => {
   const r = validarPatchCompanyInfo({ email: '  Contato@Encanto.COM.br ' });
   assert.equal(r.patch.email, 'contato@encanto.com.br');
@@ -111,6 +127,11 @@ check('email valido (lowercase, trim) -> normalizado', () => {
 check('email invalido -> erro', () => {
   const r = validarPatchCompanyInfo({ email: 'nao-e-email' });
   assert.ok(r.erro);
+});
+check('REF-SAAS-02 Onda 2 (bug real corrigido): email vazio -> aceito (estado "ainda não configurado", não mais erro)', () => {
+  const r = validarPatchCompanyInfo({ email: '' });
+  assert.ok(!r.erro);
+  assert.equal(r.patch.email, '');
 });
 check('whatsappFloatEnabled -> sempre vira booleano estrito', () => {
   assert.equal(validarPatchCompanyInfo({ whatsappFloatEnabled: 1 }).patch.whatsappFloatEnabled, true);
@@ -272,6 +293,22 @@ check('logoUrl/faviconUrl vazio/null -> normalizado para null (usa o asset está
 check('logoUrl sem http(s) -> erro (nunca salva link quebrado)', () => {
   const r = validarPatchCompanyInfo({ logoUrl: 'ftp://exemplo.com/logo.png' });
   assert.ok(r.erro);
+});
+check('REF-SAAS-02 Onda 2: bannerUrl válido (URL http(s)) -> aceito; vazio/null -> normalizado para null', () => {
+  const r1 = validarPatchCompanyInfo({ bannerUrl: 'https://cdn.exemplo.com/banner.jpg' });
+  assert.ok(!r1.erro);
+  assert.equal(r1.patch.bannerUrl, 'https://cdn.exemplo.com/banner.jpg');
+  const r2 = validarPatchCompanyInfo({ bannerUrl: '' });
+  assert.ok(!r2.erro);
+  assert.equal(r2.patch.bannerUrl, null);
+});
+check('REF-SAAS-02 Onda 2: bannerUrl sem http(s) -> erro (nunca salva link quebrado)', () => {
+  assert.ok(validarPatchCompanyInfo({ bannerUrl: 'ftp://exemplo.com/banner.jpg' }).erro);
+});
+check("REF-SAAS-02 Onda 2: logoPreset aceita só 'organico'/'retangular'", () => {
+  assert.ok(!validarPatchCompanyInfo({ logoPreset: 'organico' }).erro);
+  assert.ok(!validarPatchCompanyInfo({ logoPreset: 'retangular' }).erro);
+  assert.ok(validarPatchCompanyInfo({ logoPreset: 'quadrado' }).erro);
 });
 check('corPrimaria/corSecundaria/corDestaque em hex válido -> aceitos', () => {
   const r = validarPatchCompanyInfo({ corPrimaria: '#112233', corSecundaria: '#AABBCC', corDestaque: '#ffbf00' });

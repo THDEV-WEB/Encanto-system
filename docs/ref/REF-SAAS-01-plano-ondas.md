@@ -990,3 +990,106 @@ confirmado mostrando as 2 lojas reais (Encanto operacional, Bar da Sogra em conf
 
 ---
 
+## REF-SAAS-02 · Onda 2 — Identidade visual por tenant + infraestrutura de domínio (2026-08-11)
+
+**Baseline**: commits `42ab1d9`/`76360da` (Onda 1). Objetivo: fechar o ciclo real de configuração de
+um tenant novo — banner/logo por loja (até aqui, o "banner" do cabeçalho era um ARQUIVO ESTÁTICO
+compartilhado por todo o bundle, `header-bg.webp`, sem nenhum campo por loja), isolamento real de
+Storage (achado crítico: qualquer conta autenticada podia sobrescrever/apagar QUALQUER imagem do bucket,
+inclusive da Encanto), e infraestrutura Vercel/DNS para os hostnames padrão da plataforma.
+
+### Achados da auditoria (Fase 0-3)
+
+1. **Tela Empresa já era muito mais completa do que a Onda 1 assumiu**: nome/contato/endereço
+   institucional/redes sociais/CNPJ/razão social/sobre/timezone/idioma/moeda já existiam, já eram
+   `store_id`-scoped (via `store_settings`) e já persistiam corretamente — obra das REF-COMPANY-01/02/03,
+   não desta REF. O gap real era só banner + apresentação da logo.
+2. **Logo já era `store_id`-scoped** (`company_info.logoUrl`, Onda 6.2) — só faltava uma forma de
+   escolher COMO ela é apresentada (até aqui, 100% fixo em CSS: moldura orgânica/blob, pensada
+   especificamente pra logo redonda da Encanto — inadequada pra logos horizontais/quadradas).
+3. **Banner do cabeçalho NÃO existia como conceito de dado** — `--header-bg-url` era montada no
+   `StoreApp.jsx` a partir de um arquivo físico do build (`header-bg.webp`), igual pra qualquer tenant.
+4. **Achado de segurança real (Fase 10)**: as policies de escrita do bucket Storage `products`
+   (`INSERT`/`UPDATE`/`DELETE`) exigiam só `bucket_id='products'` — **nenhuma checagem de
+   `is_admin_of`, nenhum conceito de `store_id` no path**. Qualquer conta autenticada (nem precisava
+   ser admin de loja nenhuma) podia sobrescrever/apagar qualquer imagem do bucket, inclusive da Encanto.
+   Fix: novas policies exigem `is_admin_of(store_id do path)` — paths novos usam `stores/{id}/...`;
+   paths legados (100% do histórico da Encanto, sem esse prefixo) continuam funcionando exatamente como
+   sempre, mas agora exigem explicitamente `is_admin_of(default_store_id())`.
+
+### Backend (migration `REF-SAAS-02-onda2-identidade-visual-storage.sql`)
+
+- **`set_company_info`**: +`bannerUrl` (URL http(s) ou null, mesma regra de `logoUrl`/`faviconUrl`) e
+  +`logoPreset` (`'organico'` ou `'retangular'`, enum). `get_company_info` não precisou mudar (merge
+  genérico já propaga qualquer chave nova de `store_settings`).
+- **`storage_path_store_id(name)`**: extrai o `store_id` de um path `stores/{uuid}/...` de forma segura
+  (regex valida o formato antes do cast — nunca lança exceção pra path malformado, devolve `NULL`, que
+  cai no ramo legado da policy).
+- **Storage `products`**: 3 policies de escrita recriadas com
+  `is_admin_of(COALESCE(storage_path_store_id(name), default_store_id()))`. Leitura pública intocada.
+
+### Frontend
+
+- **`ImageUploader.jsx`**: path de upload passa a incluir `stores/{activeStoreId}/...` (lido de
+  `services/adminStore.js`, singleton já existente desde a Onda 5); ganhou prop opcional `testIdSuffix`
+  (aditiva — sem ela, testids idênticos a antes, zero risco pro uso em `AdminProducts.jsx`).
+- **`AdminEmpresa.jsx`**: novo bloco "Apresentação da logo" (2 rádios) + novo `ImageUploader` para
+  "Banner do cabeçalho", ambos com `testIdSuffix` dedicado.
+- **`StoreApp.jsx`**: `--header-bg-url` prioriza `companyInfo.bannerUrl`; sem ele, cai num gradiente
+  **neutro com as cores da própria loja** (nunca a foto da Encanto como fallback). Logo aplica a classe
+  `header-brand-logo--retangular` quando `logoPreset==='retangular'`.
+- **`companyInfoRules.js`**: `DEFAULT_COMPANY_INFO` ganha `bannerUrl:null`/`logoPreset:'organico'`;
+  validação client-side espelha a do servidor.
+
+### Dado operacional (não migration): Encanto ganha `bannerUrl`/`logoPreset` explícitos
+
+`set_company_info({bannerUrl:'https://encanto.valionsistemas.com.br/encanto/header-bg.webp', logoPreset:'organico'}, encantoId)`
+— a MESMA imagem, resolvida por URL absoluta em vez de hardcoded no bundle. Zero mudança de bytes
+renderizados; só migra a fonte de verdade pra onde já deveria estar (por loja, não por build).
+
+### Infraestrutura Vercel/DNS (Fase 16-17)
+
+Token de Management API da Vercel fornecido pelo dono em texto puro no chat — usado exclusivamente
+via variável de ambiente de processo (nunca escrito em arquivo/commit/log), só para as 2 operações
+abaixo, nunca reimpresso. **Recomendação permanente: revogar o token, mesmo mecanismo de cuidado já
+registrado pra tokens anteriores desta REF.**
+
+- `*.valionsistemas.com.br` (wildcard) adicionado ao projeto `encanto-system` (storefront) — cobre
+  `{slug}.valionsistemas.com.br` de QUALQUER loja futura automaticamente, sem nova entrada de
+  `vercel.json` nem novo deploy por tenant.
+- `admin.valionsistemas.com.br` (exato) adicionado ao projeto `encanto-admin` — URL "limpa" do Platform
+  Console, sem nome de tenant (objetivo da Fase 5).
+- **Achado real, não hipotético**: `admin.{slug}.valionsistemas.com.br` (2 labels) **não é um padrão de
+  wildcard DNS válido** — wildcards DNS só cobrem exatamente 1 label na posição do `*`. Recomendação
+  arquitetural: usar `admin.valionsistemas.com.br` como URL ÚNICA e compartilhada de login para
+  QUALQUER admin de QUALQUER loja (já funciona assim hoje — o Admin resolve por identidade +
+  `list_my_stores()`, nunca por hostname, achado da própria Onda 1) — elimina a necessidade de um
+  subdomínio de admin por tenant, não é uma limitação, é uma simplificação real.
+- Ambos os domínios testados ao vivo (curl real): Encanto **zero regressão** confirmada (200 OK antes e
+  depois); o domínio curinga ainda **não resolve de verdade** (`misconfigured`/DNS ainda pendente) —
+  falta exatamente 1 registro DNS na zona (`a.sec.dns.br`/`b.sec.dns.br`, fora do alcance de qualquer
+  token da Vercel): `*` (A → `216.198.79.1`/`64.29.17.1` ou CNAME → `cname.vercel-dns.com.`) e
+  `admin` (mesmo alvo, registro próprio) — **1 vez para toda a plataforma**, não por loja.
+
+### Testes
+
+- **Backend** (`scripts/saas02-onda2-identidade-visual-test.mjs`, Camada B): **18/18 PASS** —
+  validação de `bannerUrl`/`logoPreset`, autorização (stranger negado), isolamento REAL de Storage
+  (Encanto grava em path legado E novo; ADMIN_B negado em ambos; ADMIN_B grava normalmente na PRÓPRIA
+  loja recém-provisionada; anon negado; leitura pública preservada), `storage_path_store_id` nunca
+  lança exceção em path malformado.
+- **Achado incidental corrigido**: `scripts/saas01-onda0-schema-test.mjs` (fundação da REF-SAAS-01)
+  assumia "`stores` tem exatamente 1 linha" — invariante que o PRÓPRIO SUCESSO da Onda 1 (Bar da Sogra
+  real em produção) tornou obsoleto. Corrigido para "a Encanto continua intacta" (mesmo padrão de
+  baseline-comparison já usado pra `super_admins`).
+- **Regressão completa**: `test:db-guards` (28 scripts) **100% verde**; `test:domain` **100% verde**
+  (achado: `company-info.golden.mjs` tinha uma contagem fixa de campos, 34→36, atualizada + 5 casos
+  novos de teste para `bannerUrl`/`logoPreset`); builds `vite build`/`vite build --mode admin` OK.
+- **E2E** (`e2e/tests/admin/admin-empresa-identidade-visual.spec.js`, novo) — admin **distinto** do
+  Super Admin configura nome/banner/logo/apresentação da PRÓPRIA loja nova pela UI (via o input "cole
+  uma URL" do `ImageUploader`, evita dependência de rede externa); confirma persistência real
+  (sobrevive a reload+relogin); confirma que a Encanto (nomeCurto/banner capturados ANTES de qualquer
+  mudança) permanece **byte-idêntica** depois.
+
+---
+

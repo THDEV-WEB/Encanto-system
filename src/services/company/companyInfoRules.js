@@ -69,8 +69,13 @@ export const DEFAULT_COMPANY_INFO = {
   whatsapp: '',
   email: '',
   whatsappFloatEnabled: false,
-  // Sobre
-  sobre: 'O Encanto nasceu para levar açaí cremoso, marmitas caseiras e sabores de verdade até a sua casa, em Timbó e região.\n\nTrabalhamos com ingredientes selecionados, montagem na hora e entrega rápida — do jeitinho que você gosta.\n\nNosso compromisso é simples: um Encanto de sabores em cada pedido.',
+  // Sobre — REF-SAAS-02 · Onda 2 (achado real da auditoria: a Encanto nunca teve `sobre` persistido
+  // em `store_settings`; este texto SEMPRE foi o real "Sobre nós" dela, só vivia hardcoded aqui — um
+  // fallback silencioso que vazaria a identidade da Encanto pra qualquer loja nova sem `sobre` próprio,
+  // o mesmo problema que a Onda 7.1 já corrigiu pra nomeCurto/telefone/whatsapp/email. Fix: a Encanto
+  // ganhou o mesmo texto gravado explicitamente (set_company_info, dado operacional, zero mudança
+  // visual pra ela); este default passa a ser genérico, igual ao resto dos campos desta lista.
+  sobre: 'Conte a história da sua loja aqui — edite este texto na tela Empresa.',
   // Redes sociais (vazio = "não configurado ainda"; nunca um placeholder fake)
   instagram: '',
   facebook: '',
@@ -99,6 +104,8 @@ export const DEFAULT_COMPANY_INFO = {
   // Branding por loja (REF-SAAS-01 · Onda 6.2) — ver comentário de cabeçalho.
   logoUrl: null,
   faviconUrl: null,
+  bannerUrl: null,
+  logoPreset: 'organico',
   corPrimaria: '#A62786',
   corSecundaria: '#6B1F5D',
   corDestaque: '#FFBF00',
@@ -158,19 +165,25 @@ export function validarPatchCompanyInfo(patch) {
     if (n.length < 2) return { erro: 'Informe o nome completo da empresa (mínimo 2 caracteres).' };
     p.nomeCompleto = n;
   }
+  // REF-SAAS-02 · Onda 2 (bug real achado em teste E2E): vazio é um estado VÁLIDO ("ainda não
+  // configurado" — a própria UI mostra um aviso amarelo pra esse caso). paraPatch() do AdminEmpresa.jsx
+  // inclui telefone/whatsapp em TODO save (mesmo quando o admin só mudou outro campo) — sem este ajuste,
+  // uma loja nova (telefone/whatsapp vazios por padrão) nunca conseguia salvar NADA nesta tela.
   if ('telefone' in p) {
     const t = normalizePhoneBR(p.telefone);
-    if (t.length < 12 || t.length > 13) return { erro: 'Telefone inválido. Informe DDD + número.' };
+    if (t && (t.length < 12 || t.length > 13)) return { erro: 'Telefone inválido. Informe DDD + número, ou deixe em branco.' };
     p.telefone = t;
   }
   if ('whatsapp' in p) {
     const w = normalizePhoneBR(p.whatsapp);
-    if (w.length < 12 || w.length > 13) return { erro: 'WhatsApp inválido. Informe DDD + número.' };
+    if (w && (w.length < 12 || w.length > 13)) return { erro: 'WhatsApp inválido. Informe DDD + número, ou deixe em branco.' };
     p.whatsapp = w;
   }
+  // REF-SAAS-02 · Onda 2 (mesma classe de bug do telefone/whatsapp): e-mail vazio também é um estado
+  // válido ("ainda não configurado"), e paraPatch() sempre inclui email no save.
   if ('email' in p) {
     const e = String(p.email || '').trim().toLowerCase();
-    if (!emailValido(e)) return { erro: 'Digite um e-mail válido.' };
+    if (e && !emailValido(e)) return { erro: 'Digite um e-mail válido, ou deixe em branco.' };
     p.email = e;
   }
   if ('whatsappFloatEnabled' in p) p.whatsappFloatEnabled = !!p.whatsappFloatEnabled;
@@ -229,13 +242,20 @@ export function validarPatchCompanyInfo(patch) {
     p.lojaLng = lng;
   }
 
-  // Branding (REF-SAAS-01 · Onda 6.2) — logo/favicon: vazio/null é válido (remover); preenchido precisa
-  // parecer uma URL http(s) (mesma regra das redes sociais, sem exigir preenchimento).
-  for (const [campo, rotulo] of [['logoUrl', 'Logo'], ['faviconUrl', 'Favicon']]) {
+  // Branding (REF-SAAS-01 · Onda 6.2 + REF-SAAS-02 · Onda 2) — logo/favicon/banner: vazio/null é válido
+  // (remover); preenchido precisa parecer uma URL http(s) (mesma regra das redes sociais).
+  for (const [campo, rotulo] of [['logoUrl', 'Logo'], ['faviconUrl', 'Favicon'], ['bannerUrl', 'Banner do cabeçalho']]) {
     if (!(campo in p)) continue;
     const v = p[campo] === null ? '' : String(p[campo] || '').trim();
     if (v && !urlValida(v)) return { erro: `${rotulo} inválido — use um link completo (https://...) ou remova a imagem.` };
     p[campo] = v || null;
+  }
+
+  // REF-SAAS-02 · Onda 2: apresentação da logo — só os 2 formatos suportados pelo CSS atual.
+  if ('logoPreset' in p) {
+    const v = String(p.logoPreset || '').trim();
+    if (!['organico', 'retangular'].includes(v)) return { erro: 'Apresentação da logo inválida — escolha uma das opções.' };
+    p.logoPreset = v;
   }
 
   // Paleta de cores — sempre um hex #RRGGBB (nunca vazio: a loja sempre tem uma cor efetiva).

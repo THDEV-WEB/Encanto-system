@@ -174,6 +174,13 @@ de contexto para o Admin normal daquela loja, sem duplicar nenhuma tela. Ver
 `docs/ref/REF-SAAS-01-plano-ondas.md`, seção "REF-SAAS-02 · Onda 1", para o detalhe completo (RPCs novas
 de gestão de tenant, checklist de configuração real, resolução automática de domínio por slug).
 
+**Addendum (REF-SAAS-02 · Onda 2, 2026-08-11):** achado de segurança real na auditoria — as policies de
+escrita do bucket Storage `products` (herdadas de antes desta fundação multi-tenant) checavam só
+`bucket_id='products'`, sem nenhum conceito de `store_id`/`is_admin_of`. Corrigido: paths novos
+(`stores/{id}/...`) exigem `is_admin_of` daquele `store_id` especificamente; paths legados (histórico da
+Encanto) exigem `is_admin_of(default_store_id())`. Ver `docs/ref/REF-SAAS-01-plano-ondas.md`, seção
+"REF-SAAS-02 · Onda 2", para o detalhe completo (também: banner/logo por tenant, infraestrutura Vercel).
+
 ## 8. Estratégia de provisionamento
 
 **v1, implementada, é manual/assistida** — Super Admin roda `provision_store(...)` (por uma UI mínima, aba "Plataforma" do Admin, visível só para `is_super_admin()`) e configura DNS à mão, como já acontece hoje. Não é self-service (tela de cadastro público) nesta fundação; isso é trabalho de produto para depois que houver demanda real de mais de ~3 lojas simultâneas. A criação da identidade Auth do admin da loja (o `auth.users` em si) permanece manual (Supabase Dashboard) por decisão explícita — `link_store_admin` só enxerga contas que já existem (leitura por e-mail), nunca cria uma senha nem expõe `service_role` ao frontend.

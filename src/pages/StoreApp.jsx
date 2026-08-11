@@ -213,14 +213,26 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
           absoluto nao e reescrito pelo Vite quando base != '/' (app agora servido sob /encanto/).
           REF-PERF-01: .webp (gerado por scripts/optimize-static-images.mjs) — 352,7KB -> 79KB, mesma
           imagem/qualidade visual, so' resolucao/formato adequados ao tamanho real exibido (96-128px
-          de altura). Original .jpg preservado em public/ (nao usado em runtime). */}
-      <header className="header" style={{ '--header-bg-url': `url(${import.meta.env.BASE_URL}header-bg.webp)` }}>
+          de altura). Original .jpg preservado em public/ (nao usado em runtime).
+          REF-SAAS-02 · Onda 2: companyInfo.bannerUrl (por loja, Storage) tem prioridade -- Encanto tem
+          esse campo semeado com a URL absoluta do proprio header-bg.webp (mesma imagem, byte-identica,
+          so' passou a vir do banco em vez de hardcoded). Sem bannerUrl (loja nova), cai num gradiente
+          NEUTRO com as cores da PROPRIA loja -- nunca a foto da Encanto como fallback silencioso. */}
+      <header className="header" style={{ '--header-bg-url': companyInfo.bannerUrl
+        ? `url(${companyInfo.bannerUrl})`
+        : `linear-gradient(135deg, ${companyInfo.corPrimaria || '#6B7280'}, ${companyInfo.corSecundaria || '#374151'})` }}>
 
         {/* Coluna esquerda: logo */}
         <div className="header-brand-col">
           {/* REF-ADMIN-04 · Onda 4: acesso oculto de 5 cliques removido — o Admin agora vive em
-              app/dominio proprios (admin.encanto.valionsistemas.com.br), sem entrada nenhuma na loja. */}
-          {(companyInfo.logoUrl || LOGO) && <img loading="lazy" src={companyInfo.logoUrl || LOGO} alt={companyInfo.nomeCurto} className="header-brand-logo" style={{cursor:'default'}} />}
+              app/dominio proprios (admin.encanto.valionsistemas.com.br), sem entrada nenhuma na loja.
+              REF-SAAS-02 · Onda 2: logoPreset ('organico', padrao/Encanto, ou 'retangular', sem recorte
+              -- pra logos horizontais/quadradas de novos tenants) escolhe a classe CSS de apresentacao. */}
+          {(companyInfo.logoUrl || LOGO) && (
+            <img loading="lazy" src={companyInfo.logoUrl || LOGO} alt={companyInfo.nomeCurto}
+              className={`header-brand-logo${companyInfo.logoPreset === 'retangular' ? ' header-brand-logo--retangular' : ''}`}
+              style={{cursor:'default'}} />
+          )}
         </div>
 
         {/* Centro: nome da marca + status */}
