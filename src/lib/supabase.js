@@ -1,5 +1,7 @@
 /* lib/supabase.js — singleton de I/O + configuração de ambiente (REF-APP-01 · Onda 1)
-   Move puro do topo de App.jsx: SUPA_URL/KEY, RPC_TIMEOUT, LOGO e o cliente Supabase `db`.
+   Move puro do topo de App.jsx: SUPA_URL/KEY, RPC_TIMEOUT e o cliente Supabase `db`.
+   REF-SAAS-02 · Onda 3: LOGO (fallback fisico local pra logo.webp) removido daqui — vazava a marca da
+   Encanto pra qualquer tenant sem logoUrl proprio (mesmo bundle fisico compartilhado por todos).
    REF-COMPANY-01: WHATSAPP (env var + fallback hardcoded) foi RETIRADO daqui — o numero oficial da loja
    agora vem exclusivamente de settings.company_info via useCompanyInfo()/get_company_info() (fonte unica
    administravel pelo Admin, sem depender de variavel de ambiente nem de redeploy).
@@ -29,14 +31,6 @@ const TEM_VITE_ENV = typeof import.meta.env !== 'undefined';
 export const SUPA_URL = TEM_VITE_ENV ? import.meta.env.VITE_SUPABASE_URL : undefined;
 export const SUPA_KEY = TEM_VITE_ENV ? import.meta.env.VITE_SUPABASE_KEY : undefined;
 export const RPC_TIMEOUT = Number(TEM_VITE_ENV ? import.meta.env.VITE_RPC_TIMEOUT : undefined) || 12000; /* ms; configurável, fallback seguro */
-/* REF-AUDIT-01: era base64 em logo.js (inflava o bundle JS ~46KB) -> arquivo em /public, cacheavel.
-   REF-BRAND-01: prefixado com BASE_URL (não mais '/logo.jpg' fixo) -> continua correto agora que o
-   app é servido sob /encanto/ (Vite injeta BASE_URL no build; TEM_VITE_ENV cobre os scripts Node que
-   importam este módulo fora do Vite, mesmo padrão das constantes acima).
-   REF-PERF-01: .webp (scripts/optimize-static-images.mjs) — 45,9KB -> 11,3KB, mesma imagem/qualidade,
-   redimensionada pro tamanho real exibido (≤147px). Original .jpg preservado em public/. */
-export const LOGO     = `${TEM_VITE_ENV ? import.meta.env.BASE_URL : '/'}logo.webp`;
-
 /* Migração 1x: uma sessão de Admin salva ANTES desta onda vive sob a chave default do supabase-js
    (sb-<ref>-auth-token) — nunca reconstruída via URL aqui (dependência implícita é exatamente o que
    estamos eliminando); em vez disso varre as chaves do localStorage por QUALQUER uma nesse formato

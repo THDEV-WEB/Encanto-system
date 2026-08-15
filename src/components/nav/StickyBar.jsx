@@ -9,7 +9,6 @@
 
    position:fixed -> nao empurra o layout; o desconto dessa altura no scroll-to fica no navTopOffset. */
 import React from 'react';
-import { LOGO } from '../../lib/supabase.js';
 import { CategoryNav } from './CategoryNav.jsx';
 import { SearchBar } from '../SearchBar.jsx';
 
@@ -20,9 +19,11 @@ export function StickyBar({ cats, activeId, onSelect, search, setSearch, visible
         {/* REF-UI-CATEGORY-01 Fase 3.1: identidade reduzida = SO a logo (o nome ja esta no header
             principal; repeti-lo so ocupava espaco). REF-COMPANY-02: brandName vem de StoreApp
             (companyInfo.nomeCurto); fallback local so para o caso raro de render antes da 1a sincronizacao.
-            REF-SAAS-01 · Onda 6.2: logoUrl (companyInfo.logoUrl) vem de StoreApp, mesmo mecanismo. */}
+            REF-SAAS-01 · Onda 6.2: logoUrl (companyInfo.logoUrl) vem de StoreApp, mesmo mecanismo.
+            REF-SAAS-02 · Onda 3: fallback pro asset fisico local (LOGO) removido -- mesmo motivo de
+            StoreApp.jsx (vazamento da marca da Encanto pra tenant sem logo propria). */}
         <div className="enc-stickybar-brand">
-          {(logoUrl || LOGO) && <img src={logoUrl || LOGO} alt={brandName || 'Encanto'} className="enc-stickybar-logo" loading="lazy" />}
+          {logoUrl && <img src={logoUrl} alt={brandName || 'Encanto'} className="enc-stickybar-logo" loading="lazy" />}
         </div>
 
         {!search && <CategoryNav cats={cats} activeId={activeId} onSelect={onSelect} />}

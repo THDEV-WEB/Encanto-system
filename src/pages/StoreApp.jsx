@@ -1,5 +1,4 @@
 import { useState, useMemo, useRef, useCallback, useEffect, forwardRef, useImperativeHandle, lazy, Suspense } from 'react';
-import { LOGO } from '../lib/supabase.js';
 import { fmt } from '../utils/format.js';
 import { resolverAdicionais, selecionarFonteAdicionais } from '../utils/addons.js';
 import { prodInCat } from '../utils/catalog.js';
@@ -227,9 +226,15 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
           {/* REF-ADMIN-04 · Onda 4: acesso oculto de 5 cliques removido — o Admin agora vive em
               app/dominio proprios (admin.encanto.valionsistemas.com.br), sem entrada nenhuma na loja.
               REF-SAAS-02 · Onda 2: logoPreset ('organico', padrao/Encanto, ou 'retangular', sem recorte
-              -- pra logos horizontais/quadradas de novos tenants) escolhe a classe CSS de apresentacao. */}
-          {(companyInfo.logoUrl || LOGO) && (
-            <img loading="lazy" src={companyInfo.logoUrl || LOGO} alt={companyInfo.nomeCurto}
+              -- pra logos horizontais/quadradas de novos tenants) escolhe a classe CSS de apresentacao.
+              REF-SAAS-02 · Onda 3: fallback pro asset fisico local (LOGO, `/encanto/logo.webp`) removido —
+              era a logo REAL da Encanto compartilhada pelo bundle unico de todos os tenants; um tenant
+              novo sem logoUrl configurado herdaria silenciosamente a marca da Encanto (achado real, mesma
+              classe do leak ja fechado pra bannerUrl/sobre). Encanto ganhou logoUrl explicito (Storage,
+              mesmo arquivo/bytes, seed operacional) -- sem logoUrl, nenhuma loja mostra logo nenhuma
+              (cai no nome em texto, ja renderizado ao lado). */}
+          {companyInfo.logoUrl && (
+            <img loading="lazy" src={companyInfo.logoUrl} alt={companyInfo.nomeCurto}
               className={`header-brand-logo${companyInfo.logoPreset === 'retangular' ? ' header-brand-logo--retangular' : ''}`}
               style={{cursor:'default'}} />
           )}
