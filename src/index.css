@@ -1243,6 +1243,8 @@ img{display:block;max-width:100%}
   padding:8px 16px;font-size:13px;font-weight:600;transition:background .15s;font-family:var(--font-body);
 }
 .admin-exit:hover{background:#FEE2E2}
+.admin-exit:disabled{opacity:.5;cursor:not-allowed}
+.admin-exit:disabled:hover{background:var(--red-pale)}
 
 /* ---- ADMIN TABLES & CARDS ---- */
 .stat-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px;margin-bottom:24px}

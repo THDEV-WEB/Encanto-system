@@ -15,8 +15,14 @@ import { Toast } from './components/ui/Toast.jsx';
    do fluxo (login, is_admin(), sessao, logout) e' o MESMO codigo de sempre.
    REF-ADMIN-04 · Onda 5: URL configuravel via VITE_STORE_URL (default = producao) — sem isso, o E2E
    (que serve loja+admin do MESMO dev server, sob /encanto/) navegaria pra producao de verdade ao clicar
-   "Ver loja", violando o principio do projeto de nunca testar contra producao via automacao. */
-const STORE_URL = import.meta.env.VITE_STORE_URL || 'https://encanto.valionsistemas.com.br/encanto/';
+   "Ver loja", violando o principio do projeto de nunca testar contra producao via automacao.
+   REF-SAAS-02 · Onda 3: o "default = producao" deixou de ser um dominio FIXO (sempre Encanto, mesmo com
+   outra loja ativa no seletor multi-loja da Onda 5 — bug real, achado ao ligar a Bar da Sogra: o botao
+   levava o operador pro site de PRODUCAO REAL da Encanto, nunca da propria loja). Fora do E2E/dev
+   (override abaixo), o destino agora vem do `dominio` da loja ATIVA (list_my_stores(), server-truth,
+   Onda 3) — cada loja so' pode ir pro proprio site. Loja sem `dominio` ainda nao tem link pra oferecer —
+   o botao fica desabilitado em vez de adivinhar/cair em outro tenant. */
+const STORE_URL_OVERRIDE = import.meta.env.VITE_STORE_URL || null;
 
 /* REF-SAAS-02 · Onda 1: super admin pousa no Platform Console (identidade/contexto VALION, separado
    visualmente de qualquer loja -- Fase 5/6 da REF) em vez de cair direto no Admin da Encanto com uma
@@ -24,8 +30,8 @@ const STORE_URL = import.meta.env.VITE_STORE_URL || 'https://encanto.valionsiste
    contexto operacional -- quem autoriza de verdade continua sendo RLS/is_admin_of no servidor) e entra
    no AdminPanel normal daquela loja, com um link "<- Platform Console" pra voltar. Admin comum
    (isSuperAdmin=false) nunca ve nada disto -- cai direto no AdminPanel de sempre, zero mudanca. */
-function AdminAuthedShell({ admin, onExit, onLogout }) {
-  const { isSuperAdmin, switchStore } = useAdminStore();
+function AdminAuthedShell({ admin, onLogout }) {
+  const { isSuperAdmin, switchStore, stores, activeStoreId } = useAdminStore();
   const [modoPlataforma, setModoPlataforma] = useState(isSuperAdmin);
 
   const abrirAdminDaLoja = useCallback((storeId) => {
@@ -36,6 +42,11 @@ function AdminAuthedShell({ admin, onExit, onLogout }) {
   if (modoPlataforma) {
     return <PlatformConsole onAbrirAdmin={abrirAdminDaLoja} onLogout={onLogout} />;
   }
+
+  const dominioLojaAtiva = stores.find(s => s.store_id === activeStoreId)?.dominio || null;
+  const lojaUrl = STORE_URL_OVERRIDE || (dominioLojaAtiva ? `https://${dominioLojaAtiva}/encanto/` : null);
+  const onExit = lojaUrl ? () => { window.location.href = lojaUrl; } : undefined;
+
   return (
     <AdminPanel
       admin={admin}
@@ -53,10 +64,9 @@ function AdminAuthedShell({ admin, onExit, onLogout }) {
 function AdminApp() {
   const { mode, admin, entrar, sair } = useAdminSession();
   const { novaVersaoDisponivel, atualizar, dispensar } = usePwaUpdate();
-  const irParaLoja = useCallback(() => { window.location.href = STORE_URL; }, []);
 
   const content = mode === 'admin'
-    ? <AdminStoreProvider><AdminAuthedShell admin={admin} onExit={irParaLoja} onLogout={sair} /></AdminStoreProvider>
+    ? <AdminStoreProvider><AdminAuthedShell admin={admin} onLogout={sair} /></AdminStoreProvider>
     : <AdminLogin onLogin={entrar} />;
 
   return (

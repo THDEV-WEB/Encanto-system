@@ -97,7 +97,16 @@ export function AdminPanel({ admin, onExit, onLogout, onVoltarPlataforma }) {
       <div className="admin-content">
         <div className="admin-top">
           <h1>{titles[tab]}</h1>
-          <button className="admin-exit" onClick={onExit}>← Ver loja</button>
+          {/* REF-SAAS-02 · Onda 3: sem `onExit` = a loja ativa ainda nao tem dominio configurado --
+              desabilitado em vez de navegar pra outro tenant (era o bug real da Bar da Sogra). */}
+          <button
+            className="admin-exit"
+            onClick={onExit}
+            disabled={!onExit}
+            title={onExit ? undefined : 'Esta loja ainda não tem domínio configurado'}
+          >
+            ← Ver loja
+          </button>
         </div>
         {/* REF-SAAS-01 · Onda 5: key={activeStoreId} forca remontagem completa ao trocar de loja --
             todo hook das abas ja refaz o fetch inicial no mount, entao a troca de loja atualiza os
