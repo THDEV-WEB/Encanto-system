@@ -22,7 +22,7 @@
    companyInfoRules.js). ImageUploader é o MESMO componente já em produção para imagem de produto
    (Storage bucket "products"), só com uma subpasta diferente ("branding/"). */
 import { useState, useEffect, useMemo } from 'react';
-import { useCompanyInfo } from '../../hooks/useCompanyInfo.js';
+import { useCompanyInfoComEstado } from '../../hooks/useCompanyInfo.js';
 import { salvarCompanyInfo, formatarTelefoneBR } from '../../services/company/companyInfo.js';
 import { normalizePhoneBR } from '../../services/notifications/WhatsAppService.js';
 import { ImageUploader } from './ImageUploader.jsx';
@@ -95,7 +95,7 @@ function Rotulo({ children, hint }) {
 }
 
 export function AdminEmpresa() {
-  const info = useCompanyInfo();              // valor OFICIAL salvo (fonte única)
+  const { info, carregado } = useCompanyInfoComEstado();  // valor OFICIAL salvo (fonte única) + se a 1a sincronizacao ja assentou
   const [form, setForm] = useState(() => paraForm(info));
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState(null);        // { tipo:'ok'|'erro', texto }
@@ -136,6 +136,14 @@ export function AdminEmpresa() {
     setAlternando(false);
     if (!r.ok) setMsg({ tipo: 'erro', texto: r.error || 'Não foi possível alterar o botão flutuante.' });
   };
+
+  // REF-SAAS-02 · Onda 3: antes da 1a sincronizacao assentar, `info` ainda e' o cache default (nomes/
+  // imagens vazios) -- indistinguivel de "loja sem nada configurado". Espera aqui evita mostrar campos
+  // (em especial os previews de imagem: "Sem imagem" tem so esse 1 estado visual, sem "carregando")
+  // com um vazio que ainda nao foi confirmado pelo servidor.
+  if (!carregado) {
+    return <p style={{ fontSize: 13, color: 'var(--gray-400)', padding: '24px 4px' }}>Carregando dados da empresa…</p>;
+  }
 
   return (
     <div>

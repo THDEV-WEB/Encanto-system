@@ -1,9 +1,10 @@
-/* e2e/tests/admin/admin-empresa-identidade-visual.spec.js — REF-SAAS-02 · Onda 2 (@writes).
+/* e2e/tests/admin/admin-empresa-identidade-visual.spec.js — REF-SAAS-02 · Onda 2 (@writes)
+   (+ Onda 3: favicon entra na mesma prova — deixou de ser so' logo/banner).
    Prova, pela UI real, o ciclo de identidade visual por tenant (Fases 3-9/13/18 da REF): um admin
    DISTINTO do Super Admin (nunca a mesma pessoa se auto-vinculando — mesmo cuidado da correção pós-
-   Onda-8) configura nome/banner/logo/apresentação da PRÓPRIA loja nova, os valores persistem de
-   verdade (sobrevivem a reload+relogin, não só "até recarregar"), e a Encanto continua com os MESMOS
-   dados de sempre — capturados ANTES da mudança e comparados byte-a-byte DEPOIS.
+   Onda-8) configura nome/banner/logo/favicon/apresentação da PRÓPRIA loja nova, os valores persistem
+   de verdade (sobrevivem a reload+relogin, não só "até recarregar"), e a Encanto continua com os
+   MESMOS dados de sempre — capturados ANTES da mudança e comparados byte-a-byte DEPOIS.
 
    Autorização/isolamento de banco (RLS de storage.objects, is_admin_of em set_company_info) já é
    exaustiva em scripts/saas02-onda2-identidade-visual-test.mjs (Camada B) — aqui a prova é visual/UI:
@@ -21,6 +22,8 @@ const SLUG = 'bar-da-sogra-e2e-onda2-visual';
 const NOME = 'Bar da Sogra Visual E2E';
 const BANNER_URL = 'https://cdn.exemplo-e2e-onda2.invalid/banner-barsogra.jpg';
 const LOGO_URL = 'https://cdn.exemplo-e2e-onda2.invalid/logo-barsogra.png';
+// REF-SAAS-02 · Onda 3: favicon passa a seguir o MESMO principio (tenant-scoped, sem herdar da Encanto).
+const FAVICON_URL = 'https://cdn.exemplo-e2e-onda2.invalid/favicon-barsogra.png';
 
 /* useCompanyInfo() pinta pelo cache em memória na hora (DEFAULT_COMPANY_INFO) e só busca o oficial
    (sincronizarCompanyInfo/get_company_info) depois, assíncrono — AdminEmpresa ressincroniza `form`
@@ -73,6 +76,7 @@ test.describe('Empresa / identidade visual por tenant (Admin)', { tag: '@writes'
     await abrirEmpresaEsperandoSync(page, adminPanel);
     const nomeEncantoAntes = await page.getByTestId('empresa-form-nome-curto').inputValue();
     const bannerEncantoAntes = await page.getByTestId('img-uploader-url-banner').inputValue();
+    const faviconEncantoAntes = await page.getByTestId('img-uploader-url-favicon').inputValue();
     await adminPanel.voltarPlataforma();
 
     // Cria a loja nova e vincula PESSOA B (distinta do Super Admin).
@@ -95,16 +99,20 @@ test.describe('Empresa / identidade visual por tenant (Admin)', { tag: '@writes'
       await abrirEmpresaEsperandoSync(pageB, panelB);
 
       // Antes de configurar: a loja nova NUNCA herda a marca da Encanto (Onda 8) — confirma aqui
-      // tambem pela UI (nomeCurto == split(NOME)[0], nunca "Encanto"; banner vazio, nunca a foto real).
+      // tambem pela UI (nomeCurto == split(NOME)[0], nunca "Encanto"; banner/favicon vazios, nunca o
+      // asset real da Encanto — REF-SAAS-02 Onda 3 fechou exatamente esse gap pro favicon).
       await expect(pageB.getByTestId('empresa-form-nome-curto')).not.toHaveValue('Encanto');
       await expect(pageB.getByTestId('img-uploader-url-banner')).toHaveValue('');
+      await expect(pageB.getByTestId('img-uploader-url-favicon')).toHaveValue('');
 
       await pageB.getByTestId('empresa-form-nome-curto').fill('Bar da Sogra');
       await pageB.getByTestId('img-uploader-url-banner').fill(BANNER_URL);
       await pageB.getByTestId('img-uploader-url-logo').fill(LOGO_URL);
+      await pageB.getByTestId('img-uploader-url-favicon').fill(FAVICON_URL);
       await pageB.getByTestId('empresa-form-logo-preset-retangular').check();
       await expect(pageB.getByTestId('empresa-form-nome-curto')).toHaveValue('Bar da Sogra');
       await expect(pageB.getByTestId('img-uploader-url-banner')).toHaveValue(BANNER_URL);
+      await expect(pageB.getByTestId('img-uploader-url-favicon')).toHaveValue(FAVICON_URL);
       await pageB.locator('button:has-text("Salvar Alterações")').click();
       await expect(pageB.getByText('Dados da empresa salvos com sucesso.')).toBeVisible();
 
@@ -116,6 +124,7 @@ test.describe('Empresa / identidade visual por tenant (Admin)', { tag: '@writes'
       await expect(pageB.getByTestId('empresa-form-nome-curto')).toHaveValue('Bar da Sogra');
       await expect(pageB.getByTestId('img-uploader-url-banner')).toHaveValue(BANNER_URL);
       await expect(pageB.getByTestId('img-uploader-url-logo')).toHaveValue(LOGO_URL);
+      await expect(pageB.getByTestId('img-uploader-url-favicon')).toHaveValue(FAVICON_URL);
       await expect(pageB.getByTestId('empresa-form-logo-preset-retangular')).toBeChecked();
 
       // Isolamento: Pessoa B nunca vê nenhum dado da Encanto nesta tela.
@@ -133,6 +142,7 @@ test.describe('Empresa / identidade visual por tenant (Admin)', { tag: '@writes'
     await abrirEmpresaEsperandoSync(page, adminPanel);
     await expect(page.getByTestId('empresa-form-nome-curto')).toHaveValue(nomeEncantoAntes);
     await expect(page.getByTestId('img-uploader-url-banner')).toHaveValue(bannerEncantoAntes);
+    await expect(page.getByTestId('img-uploader-url-favicon')).toHaveValue(faviconEncantoAntes);
     await expect(page.getByTestId('empresa-form-nome-curto')).not.toHaveValue('Bar da Sogra');
   });
 });

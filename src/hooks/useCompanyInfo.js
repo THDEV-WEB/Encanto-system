@@ -6,11 +6,22 @@
 import { useState, useEffect } from 'react';
 import { lerCompanyInfoCache, sincronizarCompanyInfo, COMPANY_INFO_EVENT } from '../services/company/companyInfo.js';
 
-export function useCompanyInfo() {
+/* REF-SAAS-02 · Onda 3 (investigacao banner "Sem imagem"): DEFAULT_COMPANY_INFO comeca com
+   logoUrl/bannerUrl/faviconUrl = null -- ate a 1a sincronizacao com o servidor assentar (medido: ~700ms
+   numa chamada fria), qualquer consumidor que so olhe `info.bannerUrl` nao consegue distinguir "ainda
+   nao sei" de "confirmado vazio". Pra a maioria dos consumidores (texto, storefront) essa ambiguidade e'
+   inofensiva -- mas o preview de imagem do Admin (ImageUploader) so tem 2 estados visuais (imagem OU
+   "Sem imagem"), entao o mesmo gap aparece como um falso "Sem imagem" por uma fracao de segundo (ou mais,
+   se a 1a chamada falhar em silencio -- sincronizarCompanyInfo cai pro cache sem re-tentar ate o proximo
+   foco/60s). `carregado` deixa quem precisa (AdminEmpresa) esperar a 1a sincronizacao assentar antes de
+   confiar no "vazio". useCompanyInfo() continua com o MESMO contrato de sempre (so `info`) -- nenhum dos
+   18 chamadores existentes muda de comportamento. */
+export function useCompanyInfoComEstado() {
   const [info, setInfo] = useState(lerCompanyInfoCache);
+  const [carregado, setCarregado] = useState(false);
   useEffect(() => {
     let vivo = true;
-    const puxar = () => { sincronizarCompanyInfo().then((v) => { if (vivo) setInfo(v); }); };  // RE-LE do servidor
+    const puxar = () => { sincronizarCompanyInfo().then((v) => { if (vivo) { setInfo(v); setCarregado(true); } }); };  // RE-LE do servidor
     puxar();                                             // mount: puxa o oficial
     const onCache = () => setInfo(lerCompanyInfoCache());  // COMPANY_INFO_EVENT: o cache ja foi atualizado localmente
     const onFoco  = () => puxar();                        // focar a aba / voltar visivel: re-sincroniza do banco
@@ -27,5 +38,9 @@ export function useCompanyInfo() {
       document.removeEventListener('visibilitychange', onFoco);
     };
   }, []);
-  return info;
+  return { info, carregado };
+}
+
+export function useCompanyInfo() {
+  return useCompanyInfoComEstado().info;
 }

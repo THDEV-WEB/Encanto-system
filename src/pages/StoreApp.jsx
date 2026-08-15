@@ -175,9 +175,13 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
       document.querySelector('meta[name="theme-color"]')?.setAttribute('content', companyInfo.corSecundaria);
     }
     if (companyInfo.corDestaque) root.setProperty('--amarelo', companyInfo.corDestaque);
-    if (companyInfo.faviconUrl) {
-      document.querySelectorAll('link[rel="icon"]').forEach((link) => link.setAttribute('href', companyInfo.faviconUrl));
-    }
+    // REF-SAAS-02 · Onda 3: SEMPRE define um href (nunca condicional a existir faviconUrl) -- sem tenant
+    // configurado, cai no valion-mark (marca neutra, mesmo default ja usado no index.html estatico antes
+    // do JS montar); se o admin REMOVE um favicon proprio depois de ja ter tido um nesta MESMA sessao
+    // (tab aberta), o <link> precisa voltar pro neutro, nao ficar preso no ultimo valor setado.
+    document.querySelectorAll('link[rel="icon"]').forEach((link) => {
+      link.setAttribute('href', companyInfo.faviconUrl || `${import.meta.env.BASE_URL}valion-mark.png`);
+    });
   }, [companyInfo.corPrimaria, companyInfo.corSecundaria, companyInfo.corDestaque, companyInfo.faviconUrl]);
 
   // REF-CAP-01 · Onda 4: resumo imperativo do que está "aberto" na loja, na ordem em que o botão físico

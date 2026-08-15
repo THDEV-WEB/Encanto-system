@@ -14,9 +14,16 @@
      URL de forma persistente, ignorando Cache-Control/Etag (achado real: apos o ajuste de recorte do icone,
      o favicon antigo continuou aparecendo mesmo em janela anonima, com o servidor ja confirmadamente
      servindo o arquivo novo). Renomear o arquivo forca o navegador a tratar como recurso nunca visto. -->
-<link rel="icon" href="/encanto/favicon-valion-v2.ico" sizes="any"/>
-<link rel="icon" type="image/png" sizes="32x32" href="/encanto/favicon-valion-32-v2.png"/>
-<link rel="icon" type="image/png" sizes="16x16" href="/encanto/favicon-valion-16-v2.png"/>
+<!-- REF-SAAS-02 · Onda 3 (fecha gap do favicon multi-tenant): o rel="icon" da aba do navegador e' o
+     UNICO favicon "fisico" deste bundle compartilhado por TODOS os tenants (StoreApp.jsx so' consegue
+     sobrescrever via JS, depois do boot -- ate' la', e' este link que aparece, e e' o que aparece pra
+     sempre se o tenant nao tiver faviconUrl proprio). Antes desta onda apontava pro icone da PROPRIA
+     Encanto (icon-encanto.png) -- uma loja nova sem favicon configurado herdaria silenciosamente a
+     marca da Encanto, mesma classe de vazamento ja fechada pra logo/sobre/whatsapp. Agora aponta pro
+     valion-mark (marca neutra da VALION, ja usada no rodape via ValionCredit.jsx, fornecida pelo dono
+     -- nenhum ativo novo criado) -- a Encanto preserva o icone dela via faviconUrl PROPRIO persistido
+     (mesma convencao Storage da logo), StoreApp.jsx sobrescreve em runtime assim que o dado chega. -->
+<link rel="icon" href="/encanto/valion-mark.png" sizes="any"/>
 <link rel="apple-touch-icon" href="/encanto/apple-touch-icon-valion-v2.png"/>
 <!-- REF-MOBILE-01 Onda 3: theme-color (chrome do navegador/status bar) + tags Apple para o app rodar em standalone (sem barra de endereço) quando adicionado a tela inicial do iOS -->
 <meta name="theme-color" content="#6B1F5D"/>
