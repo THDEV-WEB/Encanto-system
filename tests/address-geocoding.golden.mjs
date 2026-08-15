@@ -1,19 +1,25 @@
-/* tests/address-geocoding.golden.mjs — REF-ADDRESS-02 · Onda 3. Roda: node tests/address-geocoding.golden.mjs
-   (npm run test:address-geocoding). Testa, sem rede nenhuma:
+/* tests/address-geocoding.golden.mjs — REF-ADDRESS-02 · Onda 3 (+ REF-DELIVERY-FEE-02 · auditoria
+   forense). Roda: node tests/address-geocoding.golden.mjs (npm run test:address-geocoding). Testa, sem
+   rede nenhuma:
      (1) os normalizadores puros de Photon/Mapbox (feature bruta -> shape Nominatim canônico), com
          fixtures representativos dos formatos documentados/observados dos dois provedores;
      (2) a ORQUESTRAÇÃO do waterfall (ordem, pular indisponível, cair em erro, cair em vazio, contrato
          de reverso lançar em falha total) com providers FALSOS injetados via criarWaterfall(providers) —
-         mesmo padrão de injeção de dependência já usado em whatsapp-service.golden.mjs (fetch injetado). */
+         mesmo padrão de injeção de dependência já usado em whatsapp-service.golden.mjs (fetch injetado);
+     (3) REF-DELIVERY-FEE-02 — o filtro de plausibilidade (enderecoPlausivel.js) e sua integração no
+         waterfall: um resultado que não é rua/endereço (rio, POI, obra, área geográfica pura) nunca vira
+         coordenada — o waterfall trata como se o provedor tivesse devolvido vazio e cai pro próximo.
+         Caso de regressão obrigatório: "Rio Itajaí-Açu" (achado real do pedido deff985b, 2026-08-06) não
+         pode ser aceito; a rua real (Rua Itajaí) pode. Genérico — nenhum caso depende de Timbó/Indaial/
+         Encanto especificamente (ver também address.guard.mjs invariante (12)). */
 import assert from 'node:assert/strict';
-import { normalizarFeaturePhoton } from '../src/address/services/geocoding/providers/photonProvider.js';
-import { normalizarFeatureMapbox } from '../src/address/services/geocoding/providers/mapboxProvider.js';
+import { normalizarFeaturePhoton, provider as photonProvider } from '../src/address/services/geocoding/providers/photonProvider.js';
+import { normalizarFeatureMapbox, provider as mapboxProvider } from '../src/address/services/geocoding/providers/mapboxProvider.js';
 import { criarWaterfall, ORDEM_PADRAO } from '../src/address/services/geocoding/waterfallGeocoder.js';
 import { provider as nominatimProvider } from '../src/address/services/geocoding/providers/nominatimProvider.js';
-import { provider as photonProvider } from '../src/address/services/geocoding/providers/photonProvider.js';
-import { provider as mapboxProvider } from '../src/address/services/geocoding/providers/mapboxProvider.js';
 import { corrigir as corrigirComGazetteer } from '../src/address/services/geocoding/gazetteerCorrector.js';
 import { buscarEnderecos, _limparCacheNominatim } from '../src/address/services/nominatimService.js';
+import { resultadoEhEnderecoPlausivel } from '../src/address/services/geocoding/enderecoPlausivel.js';
 
 let fail = 0;
 const check = async (m, fn) => { try { await fn(); console.error('  ok ' + m); } catch (e) { fail++; console.error('  x  ' + m + ' — ' + (e?.message ?? e)); } };
@@ -255,7 +261,139 @@ await check('gazetteerCorrector.corrigir: sem banco (env de teste) devolve a que
   assert.equal(await corrigirComGazetteer('ab'), 'ab'); // curta demais, nem tentaria a RPC
 });
 
+/* ── REF-DELIVERY-FEE-02 (auditoria forense) — normalizadores propagam a classificação REAL da feature,
+   necessária pro filtro de plausibilidade. Campos extra (código existente já ignora extra). ── */
+await check('normalizarFeaturePhoton: propaga _osmKey/_osmValue reais da feature (osm_key/osm_value)', () => {
+  const rio = { properties: { name: 'Rio Itajaí-Açu', osm_key: 'waterway', osm_value: 'river', district: 'Rio Morto', city: 'Indaial', state: 'Santa Catarina' }, geometry: { coordinates: [-49.2513215, -26.9008877] } };
+  const r = normalizarFeaturePhoton(rio);
+  assert.equal(r._osmKey, 'waterway');
+  assert.equal(r._osmValue, 'river');
+});
+await check('normalizarFeaturePhoton: feature sem osm_key/osm_value -> campos extra ficam vazios (nunca undefined)', () => {
+  const r = normalizarFeaturePhoton({ properties: { name: 'Rua X' }, geometry: { coordinates: [0, 0] } });
+  assert.equal(r._osmKey, '');
+  assert.equal(r._osmValue, '');
+});
+await check('normalizarFeatureMapbox: propaga _placeType real (feature.place_type)', () => {
+  const feature = { place_type: ['address'], text: 'Rua X', center: [0, 0] };
+  const r = normalizarFeatureMapbox(feature);
+  assert.deepEqual(r._placeType, ['address']);
+});
+await check('normalizarFeatureMapbox: sem place_type -> _placeType = [] (nunca undefined)', () => {
+  const r = normalizarFeatureMapbox({ text: 'Rua X', center: [0, 0] });
+  assert.deepEqual(r._placeType, []);
+});
+
+/* ── REF-DELIVERY-FEE-02 — resultadoEhEnderecoPlausivel: unidade, provider-agnóstico, sem depender de
+   nenhuma cidade/loja específica (fixtures usam nomes fictícios de propósito). ── */
+await check('(A) rua plausível (Nominatim: class=highway/type=residential/addresstype=road) -> aceita', () => {
+  assert.equal(resultadoEhEnderecoPlausivel({ address: { road: 'Rua das Acácias' }, class: 'highway', type: 'residential', addresstype: 'road' }), true);
+});
+await check('(B) endereço com casa plausível (class=building) -> aceita', () => {
+  assert.equal(resultadoEhEnderecoPlausivel({ address: { road: 'Rua das Acácias', house_number: '42' }, class: 'building', type: 'house' }), true);
+});
+await check('(C) rio (Nominatim class=waterway OU Photon _osmKey=waterway) -> rejeita', () => {
+  assert.equal(resultadoEhEnderecoPlausivel({ address: { road: 'Rio Fictício' }, class: 'waterway', type: 'river' }), false);
+  assert.equal(resultadoEhEnderecoPlausivel({ address: { road: 'Rio Fictício' }, _provider: 'photon', _osmKey: 'waterway', _osmValue: 'river' }), false);
+});
+await check('(D) ponto turístico (class=tourism) -> rejeita', () => {
+  assert.equal(resultadoEhEnderecoPlausivel({ address: { road: 'Mirante Fictício' }, class: 'tourism', type: 'viewpoint' }), false);
+});
+await check('(E) POI sem contexto de rua (class=amenity, address.road vazio) -> rejeita', () => {
+  assert.equal(resultadoEhEnderecoPlausivel({ address: { road: '' }, class: 'amenity', type: 'restaurant' }), false);
+});
+await check('(E2) estabelecimento COM endereço apropriado (class=shop + address.road preenchido) -> aceita', () => {
+  assert.equal(resultadoEhEnderecoPlausivel({ address: { road: 'Rua Comercial Fictícia' }, class: 'shop', type: 'supermarket' }), true);
+});
+await check('(F) resultado sem tipo útil (sem class/type nenhum) -> decide só pelo contexto de rua', () => {
+  assert.equal(resultadoEhEnderecoPlausivel({ address: { road: 'Rua Sem Classificação' } }), true);
+  assert.equal(resultadoEhEnderecoPlausivel({ address: { road: '' } }), false);
+  assert.equal(resultadoEhEnderecoPlausivel({ address: {} }), false);
+});
+await check('(G) entradas degeneradas (null/undefined/objeto vazio) nunca lançam -> rejeita', () => {
+  assert.equal(resultadoEhEnderecoPlausivel(null), false);
+  assert.equal(resultadoEhEnderecoPlausivel(undefined), false);
+  assert.equal(resultadoEhEnderecoPlausivel({}), false);
+});
+await check('lago/montanha/obra/lazer/fronteira administrativa (classes OSM adicionais da auditoria) -> rejeita', () => {
+  assert.equal(resultadoEhEnderecoPlausivel({ address: { road: 'X' }, class: 'natural', type: 'water' }), false);       // lago
+  assert.equal(resultadoEhEnderecoPlausivel({ address: { road: 'X' }, class: 'natural', type: 'peak' }), false);        // montanha
+  assert.equal(resultadoEhEnderecoPlausivel({ address: { road: 'X' }, class: 'man_made', type: 'works' }), false);      // obra
+  assert.equal(resultadoEhEnderecoPlausivel({ address: { road: 'X' }, class: 'leisure', type: 'park' }), false);        // lazer
+  assert.equal(resultadoEhEnderecoPlausivel({ address: { road: 'X' }, class: 'boundary', type: 'administrative' }), false); // fronteira
+});
+await check('área geográfica pura (class=place, type=city/suburb) -> rejeita; class=place/type=house -> aceita', () => {
+  assert.equal(resultadoEhEnderecoPlausivel({ address: { road: '' }, class: 'place', type: 'city' }), false);
+  assert.equal(resultadoEhEnderecoPlausivel({ address: { road: '' }, class: 'place', type: 'suburb' }), false);
+  assert.equal(resultadoEhEnderecoPlausivel({ address: { road: 'Rua X' }, class: 'place', type: 'house' }), true);
+});
+await check('Mapbox: place_type=["address"] sempre aceita; ["neighborhood"]/["place"]/["region"] sozinhos rejeitam', () => {
+  assert.equal(resultadoEhEnderecoPlausivel({ _provider: 'mapbox', address: { road: '' }, _placeType: ['address'] }), true);
+  assert.equal(resultadoEhEnderecoPlausivel({ _provider: 'mapbox', address: { road: 'Bairro Fictício' }, _placeType: ['neighborhood'] }), false);
+  assert.equal(resultadoEhEnderecoPlausivel({ _provider: 'mapbox', address: { road: '' }, _placeType: ['place'] }), false);
+});
+await check('Mapbox: place_type=["poi"] só aceita com contexto de rua', () => {
+  assert.equal(resultadoEhEnderecoPlausivel({ _provider: 'mapbox', address: { road: '' }, _placeType: ['poi'] }), false);
+  assert.equal(resultadoEhEnderecoPlausivel({ _provider: 'mapbox', address: { road: 'Rua Comercial Fictícia' }, _placeType: ['poi'] }), true);
+});
+
+/* ── REF-DELIVERY-FEE-02 — CASO DE REGRESSÃO OBRIGATÓRIO: fixture real do pedido deff985b (2026-08-06).
+   "Rio Itajaí-Açu" (1º resultado real do Photon pra "Rua Itajaí, 157, Rio Morto, Indaial - SC" no
+   cenário histórico) NUNCA pode ser aceito; a Rua Itajaí real (2º resultado real do Photon, mesma
+   query) pode. Fixtures = payload REAL capturado no replay ao vivo da auditoria, não inventado. ── */
+await check('REGRESSÃO deff985b: "Rio Itajaí-Açu" (Photon) é rejeitado', () => {
+  const rio = normalizarFeaturePhoton({
+    properties: { name: 'Rio Itajaí-Açu', osm_key: 'waterway', osm_value: 'river', district: 'Rio Morto', city: 'Indaial', state: 'Santa Catarina' },
+    geometry: { coordinates: [-49.2513215, -26.9008877] },
+  });
+  assert.equal(resultadoEhEnderecoPlausivel(rio), false, 'o rio homônimo NUNCA pode virar coordenada de entrega');
+});
+await check('REGRESSÃO deff985b: "Rua Itajaí" real (Photon, mesma query) é aceita', () => {
+  const rua = normalizarFeaturePhoton({
+    properties: { name: 'Rua Itajaí', street: 'Rua Itajaí', osm_key: 'highway', osm_value: 'residential', district: 'Rio Morto', city: 'Indaial', state: 'Santa Catarina', postcode: '89082-415' },
+    geometry: { coordinates: [-49.2570131, -26.8959635] },
+  });
+  assert.equal(resultadoEhEnderecoPlausivel(rua), true, 'a rua real deve continuar aceitável mesmo sem o número 157');
+});
+await check('REGRESSÃO deff985b (integração no waterfall): Photon devolve [rio, rua] -> waterfall filtra o rio, sobra só a rua real', async () => {
+  const rio = normalizarFeaturePhoton({
+    properties: { name: 'Rio Itajaí-Açu', osm_key: 'waterway', osm_value: 'river', city: 'Indaial', state: 'Santa Catarina' },
+    geometry: { coordinates: [-49.2513215, -26.9008877] },
+  });
+  const rua = normalizarFeaturePhoton({
+    properties: { name: 'Rua Itajaí', street: 'Rua Itajaí', osm_key: 'highway', osm_value: 'residential', city: 'Indaial', state: 'Santa Catarina' },
+    geometry: { coordinates: [-49.2570131, -26.8959635] },
+  });
+  const fotonFalso = { nome: 'photon', disponivel: () => true, sugestoes: async () => [rio, rua], reverso: async () => null };
+  const r = await criarWaterfall([fotonFalso]).sugestoes('Rua Itajaí, 157, Rio Morto, Indaial - SC');
+  assert.equal(r.length, 1, 'o rio deve ser filtrado, só a rua real sobra');
+  assert.equal(r[0].address.road, 'Rua Itajaí');
+  assert.equal(r[0].lat, '-26.8959635');
+});
+
+/* ── REF-DELIVERY-FEE-02 — (H)/(I)/(J)/(K) integração no waterfall, genérico (sem Timbó/Indaial/Encanto) ── */
+await check('(H) provedor A só devolve resultado implausível -> waterfall cai pro provedor B (fallback)', async () => {
+  let chamouB = false;
+  const a = { nome: 'a', disponivel: () => true, sugestoes: async () => [{ address: { road: 'Rio Genérico' }, class: 'waterway', type: 'river' }], reverso: async () => null };
+  const b = { nome: 'b', disponivel: () => true, sugestoes: async () => { chamouB = true; return [{ address: { road: 'Rua Genérica' }, class: 'highway', type: 'residential' }]; }, reverso: async () => null };
+  const r = await criarWaterfall([a, b]).sugestoes('q');
+  assert.equal(chamouB, true, 'provedor A só com resultado implausível deve contar como vazio e acionar o fallback');
+  assert.equal(r[0].address.road, 'Rua Genérica');
+});
+await check('(I) NENHUM provedor encontra resultado plausível -> [] final (nunca lança, nunca aceita o implausível)', async () => {
+  const a = { nome: 'a', disponivel: () => true, sugestoes: async () => [{ address: { road: 'X' }, class: 'tourism', type: 'attraction' }], reverso: async () => null };
+  const b = { nome: 'b', disponivel: () => true, sugestoes: async () => [{ address: { road: 'Y' }, class: 'natural', type: 'peak' }], reverso: async () => null };
+  const r = await criarWaterfall([a, b]).sugestoes('q');
+  assert.deepEqual(r, []);
+});
+await check('(J) endereço em outra cidade (fixture genérica, cidade fictícia) -> rua plausível é aceita normalmente', () => {
+  assert.equal(resultadoEhEnderecoPlausivel({ address: { road: 'Rua da Cidade Fictícia', city: 'Cidade Qualquer' }, class: 'highway', type: 'residential' }), true);
+});
+await check('(K) endereço em outro estado (fixture genérica, UF fictícia) -> rua plausível é aceita normalmente', () => {
+  assert.equal(resultadoEhEnderecoPlausivel({ address: { road: 'Rua do Estado Fictício', state: 'Estado Qualquer' }, class: 'highway', type: 'residential' }), true);
+});
+
 console.log(fail === 0
-  ? '\nOK address-geocoding.golden — normalizadores Photon/Mapbox + orquestração do waterfall (sem rede)'
+  ? '\nOK address-geocoding.golden — normalizadores Photon/Mapbox + orquestração do waterfall + filtro de plausibilidade (sem rede)'
   : `\nFALHA address-geocoding.golden — ${fail} caso(s)`);
 process.exit(fail ? 1 : 0);

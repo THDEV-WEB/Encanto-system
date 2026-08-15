@@ -24,6 +24,7 @@ import { provider as mapboxProvider } from './providers/mapboxProvider.js';
 import { provider as nominatimProvider } from './providers/nominatimProvider.js';
 import { provider as photonProvider } from './providers/photonProvider.js';
 import { corrigir as corrigirComGazetteer } from './gazetteerCorrector.js';
+import { resultadoEhEnderecoPlausivel } from './enderecoPlausivel.js';
 
 export const ORDEM_PADRAO = [mapboxProvider, nominatimProvider, photonProvider];
 
@@ -33,7 +34,14 @@ export function criarWaterfall(providers = ORDEM_PADRAO, corrigirFn = corrigirCo
       if (!p.disponivel()) continue;
       try {
         const r = await p.sugestoes(query, bias);
-        if (Array.isArray(r) && r.length > 0) return r;
+        if (!Array.isArray(r)) continue;
+        /* REF-DELIVERY-FEE-02 (auditoria forense): um resultado que não representa rua/endereço
+           plausível (rio, POI, obra, área geográfica pura — ver enderecoPlausivel.js) NUNCA vira
+           coordenada. Filtra ANTES de decidir se o provedor "achou algo" — se sobrar 0 plausíveis, o
+           waterfall trata como se este provedor tivesse devolvido vazio e cai pro próximo da cadeia,
+           exatamente como já fazia pra provedor indisponível/erro/vazio. */
+        const plausiveis = r.filter(resultadoEhEnderecoPlausivel);
+        if (plausiveis.length > 0) return plausiveis;
       } catch (e) {
         console.warn(`[Encanto] geocoding provider "${p.nome}" falhou (sugestoes):`, (e && e.message) || e);
       }

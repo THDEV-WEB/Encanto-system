@@ -39,7 +39,12 @@ export function normalizarFeaturePhoton(feature) {
     lat: coords[1] != null ? String(coords[1]) : '',
     lon: coords[0] != null ? String(coords[0]) : '',
   };
-  return { ...item, _provider: 'photon', _confidence: inferirConfidence(item) };
+  /* REF-DELIVERY-FEE-02 (auditoria forense): osm_key/osm_value são a classificação REAL da feature no
+     OSM (ex.: "waterway"/"river", "highway"/"residential") — mesmo vocabulário do class/type que o
+     Nominatim já expõe nativamente. Propagados como campos extra (o código existente já ignora extra —
+     ver geocodingService.js) para que enderecoPlausivel.js consiga rejeitar rio/lago/POI/obra sem
+     precisar adivinhar a partir do texto do endereço. */
+  return { ...item, _provider: 'photon', _confidence: inferirConfidence(item), _osmKey: p.osm_key || '', _osmValue: p.osm_value || '' };
 }
 function ruaComNumero(a) { return [a.road, a.house_number].filter(Boolean).join(', '); }
 

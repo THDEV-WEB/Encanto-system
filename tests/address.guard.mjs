@@ -17,7 +17,12 @@
           fica indisponível sem VITE_MAPBOX_TOKEN (modo degradado, nunca quebra sem a chave).
      (11) REF-ADDRESS-02 · Onda 4 — gazetteerCorrector.js é o ÚNICO lugar que fala com a RPC
           buscar_gazetteer; nunca lança (degrada pra query original); waterfallGeocoder só o chama
-          depois de TODOS os providers voltarem vazios (D-GAZETTEER-ORDER). */
+          depois de TODOS os providers voltarem vazios (D-GAZETTEER-ORDER).
+     (12) REF-DELIVERY-FEE-02 (auditoria forense) — enderecoPlausivel.js (filtro que rejeita rio/lago/
+          POI/obra/área geográfica como coordenada de entrega) é PURO e GENÉRICO: sem React/fetch/
+          localStorage/window, e sem nenhuma referência a loja/cidade específica (Encanto/Timbó/Indaial)
+          nem a default_store_id() — a regra vale igual pra qualquer tenant/endereço; e o waterfall é
+          quem a aplica (import único), nunca os providers individuais. */
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
@@ -160,6 +165,27 @@ check('(11) waterfall só chama o corretor DEPOIS de todos os providers (D-GAZET
   const idxCorrigirFn = wf.search(/corrigirFn\(query\b/);
   assert.ok(idxTentarProviders > -1 && idxSugestoes > idxTentarProviders, 'tentarProviders deve existir antes de sugestoes usá-lo');
   assert.ok(idxCorrigirFn > wf.indexOf('const primeira'), 'correção via gazetteer só pode ser chamada depois da 1ª tentativa (primeira)');
+});
+
+/* (12) REF-DELIVERY-FEE-02 — filtro de plausibilidade puro, genérico e usado só pelo waterfall */
+check('(12) enderecoPlausivel.js é puro (sem React/fetch/localStorage/window)', () => {
+  const code = strip(read('address/services/geocoding/enderecoPlausivel.js'));
+  assert.ok(!/from ['"]react['"]/.test(code), 'não pode importar React');
+  assert.ok(!/\bfetch\s*\(|localStorage|window\./.test(code), 'não pode tocar IO/browser');
+});
+check('(12) enderecoPlausivel.js não referencia nenhum tenant/cidade específico nem default_store_id()', () => {
+  const raw = read('address/services/geocoding/enderecoPlausivel.js'); // RAW: nem em comentário pode aparecer
+  for (const proibido of ['Encanto', 'Timbó', 'Timbo', 'Indaial', 'default_store_id']) {
+    assert.ok(!raw.includes(proibido), `referência proibida encontrada: "${proibido}"`);
+  }
+});
+check('(12) waterfallGeocoder é o único ponto que aplica o filtro (providers individuais não filtram)', () => {
+  const wf = strip(read('address/services/geocoding/waterfallGeocoder.js'));
+  assert.ok(/from\s+['"]\.\/enderecoPlausivel\.js['"]/.test(wf), 'waterfall deve importar enderecoPlausivel.js');
+  assert.ok(/resultadoEhEnderecoPlausivel/.test(wf), 'waterfall deve aplicar resultadoEhEnderecoPlausivel');
+  for (const f of ['address/services/geocoding/providers/nominatimProvider.js', 'address/services/geocoding/providers/photonProvider.js', 'address/services/geocoding/providers/mapboxProvider.js']) {
+    assert.ok(!/enderecoPlausivel/.test(strip(read(f))), `${f} não deve filtrar por conta própria (responsabilidade é só do waterfall)`);
+  }
 });
 
 console.log(fail === 0

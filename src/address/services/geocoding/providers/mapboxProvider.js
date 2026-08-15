@@ -43,7 +43,11 @@ export function normalizarFeatureMapbox(feature) {
     lat: coords[1] != null ? String(coords[1]) : '',
     lon: coords[0] != null ? String(coords[0]) : '',
   };
-  return { ...item, _provider: 'mapbox', _confidence: inferirConfidence(item) };
+  /* REF-DELIVERY-FEE-02 (auditoria forense): place_type (array, ex.: ["address"], ["poi"],
+     ["neighborhood"]) é a classificação REAL de feature do Geocoding API v5 — documentação pública, ver
+     header do provider. Propagado como campo extra (mesmo princípio de _osmKey/_osmValue do Photon) pra
+     enderecoPlausivel.js distinguir endereço de área geográfica pura (bairro/cidade/região sozinhos). */
+  return { ...item, _provider: 'mapbox', _confidence: inferirConfidence(item), _placeType: Array.isArray(feature && feature.place_type) ? feature.place_type : [] };
 }
 
 export const provider = {
