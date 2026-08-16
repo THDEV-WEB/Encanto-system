@@ -14,8 +14,9 @@ import { buildOrderArgs, buildOrderConfirmationMessage, buildCheckoutView } from
 import { DS } from '../../services/DataService.js';
 import { LOYALTY_EVENT } from '../../services/loyalty/index.js';   // REF-LOYALTY-01: avisa a loja p/ re-buscar o estado oficial
 import { STORE_INFO } from '../../constants/storeInfo.js';
-import { useAddress, AddressSummary, addressRepository, geocoding, distanciaKm } from '../../address/index.js';   // REF-CHECKOUT-ADDRESS-01: FONTE UNICA do endereco
+import { useAddress, AddressSummary, addressRepository, geocoding } from '../../address/index.js';   // REF-CHECKOUT-ADDRESS-01: FONTE UNICA do endereco
 import { montarResumoFinanceiro } from '../../services/delivery/deliveryFeeRules.js';   // REF-DELIVERY-FEE-01: fonte unica da regra de negocio
+import { calcularDistanciaEntrega } from '../../services/delivery/routing/routeDistanceService.js';   // REF-DELIVERY-FEE-03: rota viaria (HeiGIT) com fallback automatico p/ Haversine
 import { localizacaoLojaConfigurada } from '../../services/company/companyInfoRules.js';   // REF-DELIVERY-FEE-02: mesma checagem do Admin, nunca diverge
 import { lerGuestIdentity, salvarGuestIdentity } from '../../utils/guestIdentity.js'; // REF-CUSTOMER-01: cache local so p/ visitante
 import { registrarBreadcrumb, marcarPedido } from '../../lib/sentry.js'; // REF-OBS-01/REF-SENTRY-01: no-op sem VITE_SENTRY_DSN
@@ -77,10 +78,30 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
      recalculam sozinhos a cada mudança relevante, sem precisar finalizar o pedido (tempo real). */
   const coordLoja = localizacaoLojaConfigurada(companyInfo)
     ? { lat: companyInfo.lojaLat, lng: companyInfo.lojaLng } : null;
-  const distancia = (coordLoja && coordCliente) ? distanciaKm(coordLoja, coordCliente) : null;
+  /* REF-DELIVERY-FEE-03: distância de ROTA VIÁRIA real (routeDistanceService -> Edge Function ->
+     HeiGIT), com fallback automático e transparente para Haversine quando a rota real não pode ser
+     calculada (offline, timeout, rate limit, sem rota) — NUNCA bloqueia o checkout, mesmo princípio
+     de sempre. null enquanto não há as duas coordenadas (equivalente ao "sem_coordenadas" de antes;
+     montarResumoFinanceiro já trata distanciaKm:null). method/provider viram breadcrumb no Sentry —
+     observabilidade de "por que essa distância", sem precisar de migration/persistência nova. */
+  const [distanciaInfo, setDistanciaInfo] = useState(null);
+  useEffect(() => {
+    let vivo = true;
+    if (!coordLoja || !coordCliente) { setDistanciaInfo(null); return; }
+    calcularDistanciaEntrega(coordLoja, coordCliente).then((info) => {
+      if (!vivo) return;
+      setDistanciaInfo(info);
+      if (info.method) {
+        registrarBreadcrumb('checkout: distância de entrega calculada', {
+          method: info.method, provider: info.provider, distanceKm: info.distanceKm,
+        });
+      }
+    });
+    return () => { vivo = false; };
+  }, [companyInfo.lojaLat, companyInfo.lojaLng, coordCliente?.lat, coordCliente?.lng]);
   const resumo = useMemo(() => montarResumoFinanceiro({
-    subtotal: cart.total, retirada, distanciaKm: distancia, config: feeConfig, paymentMethod: form.pagamento,
-  }), [cart.total, retirada, distancia, feeConfig, form.pagamento]);
+    subtotal: cart.total, retirada, distanciaKm: distanciaInfo?.distanceKm ?? null, config: feeConfig, paymentMethod: form.pagamento,
+  }), [cart.total, retirada, distanciaInfo, feeConfig, form.pagamento]);
   const [loading, setLoading] = useState(false);
   const [err,     setErr]     = useState('');   // feedback inline (mesmo padrão do AdminLogin)
   const submittingRef = useRef(false);   // trava reentrância (duplo clique / envio simultâneo)
