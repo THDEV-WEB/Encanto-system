@@ -22,7 +22,7 @@
    `company_info.lojaLat/lojaLng` (posição real da loja, quando já configurada) em vez de cair direto
    no `CENTRO_PADRAO` genérico — fecha o gap em que o mapa do cliente ignorava a posição real da loja. */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { geocoding } from '../services/geocodingService.js';
 import { cepValido, queryValida, numeroPreenchido, respostaCepOk } from '../validators/addressValidators.js';
 import {
@@ -30,6 +30,7 @@ import {
 } from '../utils/addressFormat.js';
 import { CENTRO_PADRAO, formatarCoord } from '../utils/coordinates.js';
 import { criarErro, tipoErroGeolocalizacao } from '../utils/addressErrors.js';
+import { criarGuardiaoSequencia } from '../utils/searchGuard.js';
 import { useCompanyInfo } from '../../hooks/useCompanyInfo.js';
 
 const online = () => typeof navigator === 'undefined' || navigator.onLine !== false; // SSR-safe: sem navigator = assume online
@@ -80,20 +81,29 @@ export function useAddressSearch({ onSelect }) {
     setCepQuery(v); setStatus('idle'); setCepData(null);
   }, []);
 
-  /* ── Busca por texto (waterfall Mapbox->Nominatim->Photon->gazetteer, debounce 450ms) ──
+  /* ── Busca por texto (waterfall Mapbox->Photon->Nominatim->gazetteer, debounce 450ms) ──
      Onda 5b: checa navigator.onLine ANTES de tentar — sem internet é distinguível de "zero resultados"
-     (o waterfall nunca lança, então sem esse check as duas causas ficariam indistinguíveis; ver ADR §7). */
+     (o waterfall nunca lança, então sem esse check as duas causas ficariam indistinguíveis; ver ADR §7).
+     REF-ADDRESS-AUTOCOMPLETE-01: guardiaoBusca (searchGuard.js) descarta a resposta de uma chamada que
+     não é mais a mais recente — corrige a race condition em que a rede entrega a resposta de uma busca
+     ANTIGA depois de uma busca mais NOVA já ter mostrado sugestões atuais. */
+  const guardiaoBusca = useRef(criarGuardiaoSequencia()).current;
   const searchAddress = useCallback(async (q) => {
+    const seq = guardiaoBusca.iniciar();
     if (!queryValida(q)) { setSuggestions([]); setStatus('idle'); setErro(null); return; }
     if (!online()) { setSuggestions([]); setStatus('idle'); setErro(criarErro('sem_internet')); return; }
     setErro(null);
     setStatus('loading');
     try {
       const res = await geocoding.sugestoes(q, { cidade: cidadePadrao, estado: estadoPadrao });
+      if (!guardiaoBusca.aindaValido(seq)) return;
       if (res.length > 0) { setSuggestions(res); setStatus('found'); }
       else { setSuggestions([]); setStatus('notfound'); }
-    } catch { setSuggestions([]); setStatus('notfound'); }
-  }, [cidadePadrao, estadoPadrao]);
+    } catch {
+      if (!guardiaoBusca.aindaValido(seq)) return;
+      setSuggestions([]); setStatus('notfound');
+    }
+  }, [cidadePadrao, estadoPadrao, guardiaoBusca]);
   useEffect(() => { const t = setTimeout(() => searchAddress(query), 450); return () => clearTimeout(t); }, [query, searchAddress]);
 
   /* Editar o texto de novo depois de ter escolhido uma sugestão descarta a escolha (volta pras sugestões). */

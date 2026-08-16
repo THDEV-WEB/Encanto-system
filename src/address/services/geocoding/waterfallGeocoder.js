@@ -3,10 +3,14 @@
    indisponíveis (ex.: Mapbox sem token), tenta o próximo em erro OU resultado vazio, e para no primeiro
    que devolver algo. Nenhum provedor concreto é importado direto pelos consumidores — só por aqui.
 
-   Ordem padrão: Mapbox (principal, escolhido pelo dono; inerte sem VITE_MAPBOX_TOKEN) -> Nominatim
-   (sempre disponível, comportamento de hoje) -> Photon (fallback fuzzy — é quem resolveu "Schlay"->
-   "Schlei" no diagnóstico ao vivo da Onda 0). GPS/reverse a partir do pino do mapa continuam sendo o
-   último recurso, mas isso é UX (Onda 5), não faz parte desta cadeia.
+   Ordem padrão: Mapbox (principal, escolhido pelo dono; inerte sem VITE_MAPBOX_TOKEN) -> Photon ->
+   Nominatim. Photon ganha prioridade sobre Nominatim (REF-ADDRESS-AUTOCOMPLETE-01, auditoria de
+   2026-08-17): a política oficial de uso do Nominatim proíbe explicitamente autocomplete client-side,
+   enquanto o Photon foi desenhado para busca "type-ahead" — mesma base de dados (OSM), sem esse
+   problema de política. Nominatim continua na cadeia como fallback estrutural (multi-estratégia própria,
+   inclusive busca por rua+número via city=/state=, mais precisa que o Photon nalguns casos), só não
+   mais como primeira tentativa gratuita. GPS/reverse a partir do pino do mapa continuam sendo o último
+   recurso, mas isso é UX (Onda 5), não faz parte desta cadeia.
 
    Onda 4 — D-GAZETTEER-ORDER: se a query original voltar vazia de TODOS os providers, tenta corrigir via
    gazetteerCorrector (tabela curada local, fuzzy pg_trgm) e roda a cadeia de novo com o nome corrigido.
@@ -26,7 +30,7 @@ import { provider as photonProvider } from './providers/photonProvider.js';
 import { corrigir as corrigirComGazetteer } from './gazetteerCorrector.js';
 import { resultadoEhEnderecoPlausivel } from './enderecoPlausivel.js';
 
-export const ORDEM_PADRAO = [mapboxProvider, nominatimProvider, photonProvider];
+export const ORDEM_PADRAO = [mapboxProvider, photonProvider, nominatimProvider];
 
 export function criarWaterfall(providers = ORDEM_PADRAO, corrigirFn = corrigirComGazetteer) {
   async function tentarProviders(query, bias) {

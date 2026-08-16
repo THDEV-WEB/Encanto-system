@@ -92,8 +92,8 @@ await check('providers reais: nome + disponibilidade correta (nominatim/photon s
   assert.equal(mapboxProvider.nome, 'mapbox');
   assert.equal(mapboxProvider.disponivel(), false); // sem VITE_MAPBOX_TOKEN neste ambiente de teste
 });
-await check('ORDEM_PADRAO = [mapbox, nominatim, photon] (decisão do dono: Mapbox principal, fallback gratuito)', () => {
-  assert.deepEqual(ORDEM_PADRAO.map((p) => p.nome), ['mapbox', 'nominatim', 'photon']);
+await check('ORDEM_PADRAO = [mapbox, photon, nominatim] (REF-ADDRESS-AUTOCOMPLETE-01: Photon prioritário sobre Nominatim — politica de uso do Nominatim proibe autocomplete client-side)', () => {
+  assert.deepEqual(ORDEM_PADRAO.map((p) => p.nome), ['mapbox', 'photon', 'nominatim']);
 });
 
 /* ── Orquestração do waterfall (providers FALSOS injetados — zero rede) ── */
