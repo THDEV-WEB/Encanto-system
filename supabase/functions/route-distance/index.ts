@@ -137,7 +137,10 @@ Deno.serve(async (req) => {
 
   const resultado = await chamarHeigit(apiKey, origem, destino);
   if (!resultado.ok) {
-    return jsonResponse({ error: true, reason: resultado.reason }, resultado.status && resultado.status >= 400 && resultado.status < 500 ? 502 : 502);
+    // Status sempre 502 (Bad Gateway) independente do motivo — o cliente (routeDistanceService.js)
+    // nao inspeciona o codigo, so a presenca de erro, entao um unico status uniforme e suficiente;
+    // o motivo legivel vai no corpo (reason).
+    return jsonResponse({ error: true, reason: resultado.reason }, 502);
   }
 
   const distanceKm = resultado.distM / 1000;
