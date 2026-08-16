@@ -217,10 +217,13 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
           REF-PERF-01: .webp (gerado por scripts/optimize-static-images.mjs) — 352,7KB -> 79KB, mesma
           imagem/qualidade visual, so' resolucao/formato adequados ao tamanho real exibido (96-128px
           de altura). Original .jpg preservado em public/ (nao usado em runtime).
-          REF-SAAS-02 · Onda 2: companyInfo.bannerUrl (por loja, Storage) tem prioridade -- Encanto tem
-          esse campo semeado com a URL absoluta do proprio header-bg.webp (mesma imagem, byte-identica,
-          so' passou a vir do banco em vez de hardcoded). Sem bannerUrl (loja nova), cai num gradiente
-          NEUTRO com as cores da PROPRIA loja -- nunca a foto da Encanto como fallback silencioso. */}
+          REF-SAAS-02 · Onda 2: companyInfo.bannerUrl (por loja, Storage) tem prioridade -- Sem bannerUrl
+          (loja nova), cai num gradiente NEUTRO com as cores da PROPRIA loja -- nunca a foto da Encanto
+          como fallback silencioso.
+          REF-SAAS-02 · Onda 3: bannerUrl da Encanto migrou do path fisico do bundle (/encanto/header-
+          bg.webp, um "atalho" que sobrava da Onda 2) pro Storage (stores/{id}/branding/..., mesma
+          convencao de logoUrl/faviconUrl) -- bytes byte-identicos, zero mudanca visual, só deixou de
+          depender de um arquivo do bundle fisico compartilhado por todo tenant. */}
       <header className="header" style={{ '--header-bg-url': companyInfo.bannerUrl
         ? `url(${companyInfo.bannerUrl})`
         : `linear-gradient(135deg, ${companyInfo.corPrimaria || '#6B7280'}, ${companyInfo.corSecundaria || '#374151'})` }}>

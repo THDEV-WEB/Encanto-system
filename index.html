@@ -52,9 +52,13 @@
 <!-- REF-PERF-01: preload do banner do header (--header-bg-url em StoreApp.jsx) — sem isto, o navegador
      so' descobre essa imagem depois do JS montar e aplicar o style inline (a URL vem de uma custom
      property, invisivel ao HTML parser). fetchpriority=high pois e' o maior candidato a LCP da loja.
-     Caminho fixo em /encanto/ (mesmo padrao ja usado pelo manifest/favicons acima — so' a build web
-     serve este HTML por esse caminho; Admin/Capacitor nao usam .header, preload vira no-op ali). -->
-<link rel="preload" as="image" href="/encanto/header-bg.webp" fetchpriority="high"/>
+     REF-SAAS-02 · Onda 3 (banner->Storage): este bundle e' compartilhado por TODOS os tenants -- o preload
+     so' pode apontar pra 1 URL fixa, entao so' ajuda quem tiver EXATAMENTE essa bannerUrl (hoje, so' a
+     Encanto -- mesma imagem, agora no Storage em vez do path fisico do bundle). Tenant novo (bannerUrl
+     null, cai no gradiente) ou com banner proprio diferente nao ganha nem perde nada com esta linha --
+     e' so' um preload que nunca casa com a URL real dele, sem efeito (nem positivo nem negativo). Ajustar
+     isso pra ser dinamico por tenant e' escopo maior (mesma familia do gap do manifest PWA), nao feito aqui. -->
+<link rel="preload" as="image" href="https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/stores/8604324d-0529-443d-aa79-4337057bfa01/branding/banner_1786889477851_migrado.webp" fetchpriority="high"/>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
 </head>
 <body>
