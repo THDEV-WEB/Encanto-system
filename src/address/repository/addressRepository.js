@@ -9,7 +9,10 @@
    por estrutura (tests/address.guard.mjs), sem mudar nenhum comportamento hoje. */
 import { db, RPC_TIMEOUT } from '../../lib/supabase.js';
 
-function paraPayloadRpc(endereco) {
+/* Exportada só para teste (REF-ADDRESS-AUTOCOMPLETE-01): prova o shape exato que salvar() manda pra
+   RPC, incluindo o achado da auditoria de que store_id nunca é incluído — ver
+   tests/address-multitenant.golden.mjs. Nenhuma mudança de comportamento aqui. */
+export function paraPayloadRpc(endereco) {
   const e = endereco || {};
   return {
     customer_id: e.customerId ?? null,

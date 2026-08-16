@@ -188,6 +188,17 @@ check('(12) waterfallGeocoder é o único ponto que aplica o filtro (providers i
   }
 });
 
+/* (13) REF-ADDRESS-AUTOCOMPLETE-01 — multi-tenant: nenhum arquivo do domínio Address referencia
+   default_store_id() no client-side. Esse fallback é uma RPC SECURITY DEFINER (server-side, resolve pra
+   'encanto' por slug — ver migrations/REF-SAAS-01-onda2-catalogo.sql) que só deve entrar em jogo quando
+   NENHUM store_id é passado numa chamada — decisão do banco, nunca do cliente. O client sempre resolve
+   contexto via buildStoreRpcParam()/useCompanyInfo(); nenhum arquivo de address/ pode citar o nome dessa
+   função (nem em comentário), senão vira um caminho pra um tenant "herdar" dado da Encanto por engano. */
+check('(13) nenhum arquivo de address/ referencia default_store_id() (o fallback é decisão do banco, nunca do cliente)', () => {
+  const comReferencia = files.filter((f) => f.startsWith('address/') && read(f).includes('default_store_id'));
+  assert.deepEqual(comReferencia, [], `arquivo(s) com referência proibida: ${comReferencia.join(', ')}`);
+});
+
 console.log(fail === 0
   ? '\nOK address.guard — domínio isolado (I/O nos services; interface sem fetch; StoreApp desacoplado)'
   : `\nFALHA address.guard — ${fail} invariante(s)`);
