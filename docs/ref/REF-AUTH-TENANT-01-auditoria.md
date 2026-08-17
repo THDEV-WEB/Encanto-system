@@ -88,3 +88,74 @@ parâmetro manipulado, RPC manipulada, curl, e finalmente ativação legítima s
 passo a passo, todas resolvendo como especificado.
 
 Zero implementação nesta rodada também. Aguardando aprovação final do dono.
+
+## Implementação aprovada — plano de 7 ondas confirmado
+
+Dono aprovou a implementação completa em 17 ago 2026, confirmando a decisão de `active_tenant`
+chaveada por `session_id` (não `auth_user_id`) e a regra de que `activate_tenant(store_id)` é
+autorização verificada server-side, nunca confiança no parâmetro. Ordem de ondas confirmada:
+(1) `active_tenant` → (2) `activate_tenant()` → (3) Custom Access Token Hook →
+(4) integração de sessão/storefront → (5) RLS/RPC → (6) `customers`/`link_customer_to_auth` →
+(7) ataque + regressão. Cada onda com gate próprio — implementação → testes → auditoria do diff →
+commit → relatório → próxima onda. Push/deploy só ao final, com autorização própria.
+
+### Onda 1 — tabela `active_tenant`
+
+**Implementado**: `migrations/REF-AUTH-TENANT-01-onda1-active-tenant.sql` (+ rollback).
+
+```sql
+CREATE TABLE public.active_tenant (
+  session_id   uuid PRIMARY KEY REFERENCES auth.sessions(id) ON DELETE CASCADE,
+  auth_user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  store_id     uuid NOT NULL REFERENCES public.stores(id),
+  updated_at   timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX active_tenant_auth_user_id_idx ON public.active_tenant (auth_user_id);
+ALTER TABLE public.active_tenant ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.active_tenant FROM authenticated;
+REVOKE ALL ON public.active_tenant FROM anon;
+```
+
+Decisões de nomenclatura: a coluna chama-se `store_id` (não `tenant_id`) para ficar consistente com
+`customers`/`addresses`/`admins`, que já usam esse nome — o claim assinado no JWT (Onda 3) é que vai
+se chamar `tenant_id`, é só o nome externo. Um único timestamp (`updated_at`) — cobre tanto a
+1ª ativação quanto trocas de loja, sem duplicar `auth.sessions.created_at`.
+
+**Zero policy criada de propósito**: RLS ligada + zero policies = deny-all para qualquer role sujeita
+a RLS (`authenticated`/`anon`). Só `postgres` (usado pelas funções `SECURITY DEFINER` das próximas
+ondas, `rolbypassrls=true`) e `service_role` continuam acessando. `supabase_auth_admin` (role que vai
+executar o Hook na Onda 3) ainda não recebeu nenhum grant — só quando o Hook existir.
+
+**Testado** (todos em transações `BEGIN...ROLLBACK`, fixture real de `auth.sessions`/`customers`,
+zero PII exposta — só UUIDs):
+- Migration aplicada via dry-run (`COMMIT`→`ROLLBACK` temporário) antes da aplicação real — zero
+  resíduo confirmado por `to_regclass`.
+- Após aplicação real: colunas/tipos/nullability conferem exatamente com o desenho; PK em
+  `session_id`; FK `session_id→auth.sessions.id` e `auth_user_id→auth.users.id` ambas
+  `ON DELETE CASCADE`; FK `store_id→stores.id` sem cascade (padrão `NO ACTION`, correto — não há
+  hard-delete de lojas no app); `relrowsecurity=true`; grants finais só para `postgres`/`service_role`
+  (authenticated e anon sem nenhum privilégio); zero policies; 2 índices (PK + `auth_user_id`).
+- `SET LOCAL ROLE authenticated` + `SELECT` real → `permission denied for table active_tenant`.
+- `SET LOCAL ROLE authenticated` + `INSERT` real → `permission denied for table active_tenant`.
+- `postgres` INSERT com fixture real (`session_id`/`user_id`/`store_id` reais de uma sessão
+  existente) → sucede, linha correta, depois `ROLLBACK` — zero resíduo.
+- `postgres` INSERT com `session_id` inexistente (`gen_random_uuid()`) → `violates foreign key
+  constraint active_tenant_session_id_fkey` — confirma que FK é enforced independente de
+  `bypassrls` (FK não é RLS).
+- Tabela confirmada vazia (`count=0`) após todos os testes.
+
+**Regressão**: `test:domain` verde (exit 0). `test:db-guards` — 19 PASS / 1 FAIL, o FAIL é
+`S4:addresses backfill completo` (8 linhas históricas com `store_id` NULL) — **pré-existente, sem
+relação com esta onda** (a migration desta onda não toca `addresses`; é o gap já registrado como
+follow-up `REF-ADDRESS-STOREID-01` desde a autorização de push da UX-01). `build` e `build:admin`
+verdes.
+
+**Diff**: 2 arquivos novos (`migrations/REF-AUTH-TENANT-01-onda1-active-tenant.sql` +
+`-rollback.sql`). Nenhum arquivo de código/frontend tocado nesta onda.
+
+**Riscos**: nenhum — tabela nova, sem FK de saída de nenhuma tabela existente apontando para ela
+ainda (nada além desta migration referencia `active_tenant`), zero acesso possível fora de
+`postgres`/`service_role`. Reversível via rollback a qualquer momento sem efeito colateral (nada
+depende dela ainda).
+
+**Resultado**: Onda 1 fechada. Aguardando aprovação para Onda 2 (`activate_tenant()`).
