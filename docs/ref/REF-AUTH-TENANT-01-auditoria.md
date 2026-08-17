@@ -159,3 +159,71 @@ ainda (nada além desta migration referencia `active_tenant`), zero acesso poss�
 depende dela ainda).
 
 **Resultado**: Onda 1 fechada. Aguardando aprovação para Onda 2 (`activate_tenant()`).
+
+### Onda 2 — RPC `activate_tenant(p_store_id)`
+
+**Implementado**: `migrations/REF-AUTH-TENANT-01-onda2-activate-tenant.sql` (+ rollback).
+
+```sql
+CREATE OR REPLACE FUNCTION public.activate_tenant(p_store_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'pg_catalog', 'public'
+AS $function$
+DECLARE
+  v_session_id uuid;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'sessao invalida';
+  END IF;
+
+  v_session_id := NULLIF(auth.jwt()->>'session_id', '')::uuid;
+  IF v_session_id IS NULL OR NOT EXISTS (SELECT 1 FROM auth.sessions WHERE id = v_session_id) THEN
+    RAISE EXCEPTION 'sessao invalida';
+  END IF;
+
+  IF p_store_id IS NULL OR NOT EXISTS (
+    SELECT 1 FROM public.customers c JOIN public.stores s ON s.id = c.store_id
+    WHERE c.auth_user_id = auth.uid() AND c.store_id = p_store_id AND s.status = 'ativo'
+  ) THEN
+    RAISE EXCEPTION 'tenant indisponivel';
+  END IF;
+
+  INSERT INTO public.active_tenant (session_id, auth_user_id, store_id, updated_at)
+  VALUES (v_session_id, auth.uid(), p_store_id, now())
+  ON CONFLICT (session_id) DO UPDATE SET store_id = EXCLUDED.store_id, updated_at = now();
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.activate_tenant(uuid) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.activate_tenant(uuid) FROM anon;
+GRANT EXECUTE ON FUNCTION public.activate_tenant(uuid) TO authenticated;
+```
+
+**Ownership em cada camada**: `auth.uid()` (identidade, nunca parâmetro) → `customers.auth_user_id = auth.uid() AND customers.store_id = p_store_id` (vínculo real com a loja pedida) → `stores.status = 'ativo'` (loja disponível) → `session_id` lido de `auth.jwt()->>'session_id'` (nunca parâmetro) e confirmado como sessão real em `auth.sessions` antes de gravar. `p_store_id` é só o seletor — a autorização inteira vem de fontes assinadas/servidor, nunca de um argumento que o client controla. Assinatura final tem **um único parâmetro** (`p_store_id uuid`) — não existe forma sintática de o caller passar `session_id` ou `auth_user_id`.
+
+**Mensagens sem enumeração**: "loja não existe", "loja inativa" e "sem vínculo" retornam exatamente a mesma exceção (`tenant indisponivel`) — confirmado nos testes que as 3 strings de erro são idênticas byte a byte. `sessao invalida` é uma categoria à parte (estado da sessão, não do tenant) — não vaza informação sobre lojas.
+
+**Testado** (`scripts/auth-tenant-onda2-activate-tenant-test.mjs`, novo, 24 verificações, todas em `BEGIN...ROLLBACK`, fixtures reais — inclusive duas sessões reais e simultâneas da mesma pessoa usadas no teste de concorrência):
+- Vínculo válido (Encanto e Bar, este com customer sintético) → ALLOW, linha gravada com `session_id`/`auth_user_id`/`store_id` corretos.
+- Sem vínculo, loja inexistente, loja inativa (fixture sintética, `status='suspenso'` — `stores_status_check` só aceita `ativo`/`suspenso`/`cancelado`, não existe `'inativo'` na constraint) → DENY, as 3 mensagens **idênticas**.
+- `p_store_id NULL` → DENY.
+- Prova estrutural: `pg_get_function_identity_arguments` = `p_store_id uuid`, único parâmetro possível.
+- Troca legítima: mesma sessão ativa Encanto e depois Bar → ambas ALLOW, UPSERT atualiza a mesma linha (`session_id` é PK).
+- **Concorrência real**: usuário com 2 sessões reais simultâneas (`SESSION_DUAL_A`/`SESSION_DUAL_B`, mesma pessoa) ativa Encanto na sessão A e Bar na sessão B — ambas as linhas coexistem em `active_tenant`, nenhuma sobrescreveu a outra. Confirma na prática a correção de desenho decidida no gate final (chave por `session_id`, não `auth_user_id`).
+- `STRANGER` (zero vínculo com qualquer customer) → DENY.
+- `session_id` ausente do claim → DENY (`sessao invalida`).
+- `session_id` sintaticamente válido mas sem linha real em `auth.sessions` → DENY limpo (`sessao invalida`), não erro cru de FK.
+- `anon` → `permission denied for function activate_tenant` (sem grant de EXECUTE). Grants finais confirmados via `information_schema.routine_privileges`: só `authenticated`/`postgres`/`service_role`.
+- `SECURITY DEFINER=true`, `search_path=pg_catalog, public` confirmados via `pg_proc` — mesmo padrão de `save_structured_address`/`is_admin_of`/`link_customer_to_auth`, protegido contra search_path injection.
+- Logout (estrutural, sem mecanismo paralelo): FK `active_tenant.session_id → auth.sessions.id` continua `ON DELETE CASCADE` (reconfirmado, não alterado nesta onda) — teste de logout real (encerrar uma sessão de verdade) fica pra quando houver integração de sessão de fato (Onda 4); aqui só se confirma que o mecanismo de limpeza continua correto estruturalmente.
+- `active_tenant` confirmada vazia ao final (nenhum teste persistiu linha real).
+
+**Regressão**: `test:domain` verde. `test:db-guards` (cadeia `&&`) para no mesmo FAIL pré-existente de sempre (`S4:addresses backfill`, 8 linhas históricas — `REF-ADDRESS-STOREID-01`, sem relação com esta onda) antes de chegar na suite nova no fim da cadeia — por isso a suite desta onda também foi rodada isoladamente (`npm run test:auth-tenant-onda2-activate-tenant`), 24/24 verde, duas vezes. `build` e `build:admin` verdes.
+
+**Diff**: `migrations/REF-AUTH-TENANT-01-onda2-activate-tenant.sql` (+rollback), `scripts/auth-tenant-onda2-activate-tenant-test.mjs` (novo), `package.json` (1 script novo, referenciado em `test:db-guards`), este doc. Nenhum arquivo de frontend/Admin tocado.
+
+**Riscos/limitações**: a suposição de que `auth.jwt()->>'session_id'` está presente no token real emitido pelo GoTrue deste projeto foi pesquisada via documentação oficial na fase de desenho (não nesta onda) — a confirmação end-to-end contra um token REAL emitido por login de verdade só acontece na Onda 4 (integração de sessão/storefront), quando `activate_tenant()` passa a ser chamada de fato pelo app. Até lá, `activate_tenant()` existe e está correta, mas nada no app a chama ainda — zero risco de regressão em produção.
+
+**Resultado**: Onda 2 fechada. Aguardando aprovação para Onda 3 (Custom Access Token Hook).
