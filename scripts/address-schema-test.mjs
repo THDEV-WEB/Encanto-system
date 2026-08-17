@@ -2,9 +2,10 @@
 // Mesmo molde de harden-orders-rls-test.mjs: SET LOCAL ROLE anon/authenticated em BEGIN..ROLLBACK
 // (net-zero, nenhuma escrita persiste). Prova:
 //  - anon NÃO acessa a tabela addresses direto (sem grants — 42501), só via RPC save_structured_address;
-//  - authenticated (admin) acessa addresses via a policy nova (FOR ALL);
+//  - authenticated SEM identidade (auth.uid() nulo) insere um endereço órfão mas não consegue lê-lo de
+//    volta (REF-ADDRESS-SEC-01 · policies addresses_select/insert/update/delete_own, fail closed);
 //  - save_structured_address (SECURITY DEFINER) grava endereço estruturado completo e devolve uuid;
-//  - CHECK de confidence rejeita valor fora de {exact, street_level, approximate};
+//  - CHECK de confidence rejeita valor fora de {exact, street_level, unknown} (REF-ADDRESS-AUTOCOMPLETE-01);
 //  - orders.endereco_id + FK + índice existem e continuam vazios (nenhum pedido religado ainda — isso é Onda 6);
 //  - create_order permanece BYTE-A-BYTE intacta (nenhuma mudança no checkout nesta onda).
 // Exit 0 = SUCCESS; exit 1 = FAILED.
@@ -127,15 +128,24 @@ try {
   }
   out('');
 
-  out('— AUTHENTICATED (admin) · acessa addresses via a policy nova —');
+  out('— AUTHENTICATED sem identidade · NAO enxerga endereco alheio (REF-ADDRESS-SEC-01) —');
+  // Ate a REF-ADDRESS-SEC-01 (2026-08-17), a policy "Auth all addresses" (USING(true)/WITH CHECK(true))
+  // deixava QUALQUER authenticated ler/escrever QUALQUER linha — era exatamente o vazamento que aquela
+  // REF corrigiu. Este teste validava o comportamento ANTIGO (inseguro) como se fosse o esperado; agora
+  // valida o oposto: sem auth.uid() (sessao authenticated generica, sem JWT de cliente), o INSERT sem
+  // RETURNING ainda funciona (mesmo shape que um convidado gravando via RPC produziria: customer_id NULL),
+  // mas a linha fica INVISIVEL por SELECT — nem para quem acabou de criá-la. Fail closed por desenho.
   {
     let v = 'FAIL', d = '';
     await tx('authenticated', async () => {
-      const ins = await client.query(`INSERT INTO public.addresses(rua, confidence) VALUES ('__test_admin_seed', 'approximate') RETURNING id`);
-      const sel = await client.query(`SELECT * FROM public.addresses WHERE id = $1`, [ins.rows[0].id]);
-      v = sel.rowCount === 1 ? 'PASS' : 'FAIL'; d = `INSERT+SELECT via policy authenticated (${sel.rowCount} linha)`;
+      await client.query(`INSERT INTO public.addresses(rua, confidence) VALUES ('__test_no_identity_seed', 'exact')`);
+      const sel = await client.query(`SELECT * FROM public.addresses WHERE rua = '__test_no_identity_seed'`);
+      v = sel.rowCount === 0 ? 'PASS' : 'FAIL';
+      d = sel.rowCount === 0
+        ? 'INSERT sem RETURNING funcionou (customer_id NULL), SELECT devolveu 0 linhas — fail closed confirmado'
+        : `esperava 0 linhas visiveis, veio ${sel.rowCount} — policy addresses_select_own pode ter regredido`;
     });
-    record('BA1', 'authenticated', 'INSERT/SELECT addresses (policy "Auth all addresses")', v, d);
+    record('BA1', 'authenticated', 'sem identidade: insere orfao (customer_id NULL), mas nao consegue le-lo de volta', v, d);
   }
   out('');
 

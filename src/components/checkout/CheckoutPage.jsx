@@ -137,8 +137,13 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
     /* REF-ADDRESS-02 · Onda 6: persiste o endereço estruturado (só entrega — retirada usa o endereço da
        loja, sem endereço do cliente) para linkar orders.endereco_id. NUNCA bloqueia o checkout: falha
        (offline/timeout) devolve null (mesmo contrato de savePedido) e o pedido segue exatamente como
-       hoje — só o texto em order.address, endereco_id fica null (idêntico aos 80 pedidos existentes). */
-    const enderecoId = (!retirada && endereco) ? await addressRepository.salvar(endereco) : null;
+       hoje — só o texto em order.address, endereco_id fica null (idêntico aos 80 pedidos existentes).
+       REF-ADDRESS-SEC-01: cliente LOGADO passa o próprio customer_id (a RPC agora só aceita gravar um
+       customer_id que pertença de fato à sessão autenticada — ver save_structured_address; qualquer
+       outro valor é gravado como NULL pelo próprio RPC). Convidado (não logado) nunca envia customerId
+       — endereço continua salvo com customer_id=NULL, exatamente como antes, sem associação nenhuma. */
+    const enderecoParaSalvar = (isLogged && customer?.id) ? { ...endereco, customerId: customer.id } : endereco;
+    const enderecoId = (!retirada && endereco) ? await addressRepository.salvar(enderecoParaSalvar) : null;
     /* Montagem do pedido no order-domain (Onda 5.2 · Trilha B): buildOrderArgs concentra a
        lógica pura que antes vivia inline aqui (precoUnitario por item, product_id uuid/null,
        contratos null). Σ(price*quantity) reconcilia com orders.total. */
