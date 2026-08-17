@@ -1,8 +1,74 @@
 # REF-ADDRESS-AUTOCOMPLETE-01 — Auditoria e pesquisa técnica
 
 Status: auditoria + decisão de provider + Fase 11 (testes de comportamento e multi-tenant) **concluídas**.
-Gate de schema de confidence: **proposta pronta, aguardando aprovação explícita** — nada aplicado.
-Nenhuma migration, UPDATE, deploy ou push realizados.
+Proposta técnica final (rua/cidade homônima, UF nas sugestões, confidence) **entregue, aguardando
+aprovação explícita** — nada aplicado. Nenhuma migration, UPDATE, deploy ou push realizados.
+
+## Parte 2 — proposta final (não implementada)
+
+### 1. Rua/cidade homônima — evidência real, não suposição
+
+Testei ao vivo (3 chamadas reais, API pública do Photon, sem custo/chave):
+- "Rua Itajaí" sem viés → Itajaí, Rio do Sul, Rio de Janeiro, Fortaleza, Fortaleza, Manaus (espalhado).
+- "Rua Itajaí" com `lat/lon` = posição da Encanto (Timbó) → **Timbó**, Indaial, Pomerode, Apiúna,
+  Blumenau, Blumenau (loja sobe pro topo sozinha).
+- "Rua Itajaí, Indaial" com texto explícito + `lat/lon` ainda em Timbó → **Indaial** domina (3x),
+  Itajaí depois — confirma que a correspondência textual vence o viés geográfico quando o usuário digita
+  outra cidade.
+
+**Proposta**: passar `companyInfo.lojaLat/lojaLng` como `bias.lat/bias.lng` pela mesma cadeia que já
+carrega `bias.cidade/estado` (`useAddressSearch.js → geocodingService.js → waterfallGeocoder.js →
+photonProvider.js`) — só `photonProvider.js` muda de fato (adiciona `&lat=&lon=` na URL quando
+disponível). Sem viés (Bar da Sogra, hoje NULL) → comportamento nacional puro, idêntico ao atual. Nenhuma
+camada de re-ranking própria é necessária — o Photon já resolve os 2 critérios de aceite nativamente.
+Nominatim/Mapbox não precisam mudar agora.
+
+### 2. UF nas sugestões — confirmado seguro
+
+`sugestaoSub()` é pura, usada em 1 único lugar (`AddressSearch.jsx`). 2 dependências de teste
+identificadas (`address.unit.mjs:111`, string exata; `address-autocomplete-scenarios.golden.mjs`, teste
+que hoje documenta o gap) — nenhuma dependência arquitetural inesperada. Confirmado seguro para incluir.
+
+### 3-4. Confidence — proposta exata (A–J) e modelo completo
+
+Resumo (detalhe completo com tabelas no artifact publicado):
+- CHECK atual: `CHECK (confidence IS NULL OR confidence = ANY (ARRAY['exact','street_level','approximate']))`.
+- Novo proposto: `CHECK (confidence IS NULL OR confidence IN ('exact','street_level','neighborhood_level','city_level','unknown'))`.
+- 0 das 19 linhas reais usa `'approximate'` — zero UPDATE necessário.
+- **Achado novo, importante**: `confidenceValida()`/`enderecoValidoParaEntrega()` são validadores
+  DORMENTES (nenhum fluxo real os chama, confirmado por busca) — risco de runtime da mudança é zero, só
+  consistência de teste.
+- **Achado arquitetural que muda o escopo recomendado**: `enderecoPlausivel.js` já exige `address.road`
+  preenchido para QUALQUER resultado de busca sobreviver ao filtro de plausibilidade (Nominatim/Photon) —
+  a mesma condição que já produz `street_level`/`exact`. Ou seja, **`neighborhood_level`/`city_level`
+  nunca seriam produzidos pelo fluxo de sugestões de busca como está hoje** — só ficariam "vivos" se o
+  filtro de plausibilidade (proteção da REF-DELIVERY-FEE-02 contra aceitar rio/POI como endereço) fosse
+  deliberadamente relaxado, o que merece gate próprio, não deveria entrar nesta migration.
+  `unknown` sozinho já resolve um problema real (GPS/mapa hoje deixam `confidence: null` sem classificar).
+
+**Recomendação**: escopo enxuto (`exact, street_level, unknown`) agora; `neighborhood_level`/`city_level`
+como decisão futura separada, condicionada a relaxar `enderecoPlausivel.js` de propósito. Escopo completo
+(5 níveis) é a alternativa, aceitando que 2 deles ficam inertes por ora — decisão seu.
+
+### 5. Drift store_id — registro formal
+
+5 linhas (`addresses.store_id IS NULL`, de 19 totais) — todas rastreadas via `orders.endereco_id →
+orders.store_id` a pedidos legítimos da Encanto, zero vazamento pra Bar da Sogra. Origem: RPC
+`save_structured_address` nunca ganhou parâmetro `store_id`. Fora desta REF (é sobre busca, não sobre a
+RPC de persistência multi-tenant) e exigiria UPDATE em produção, não autorizado. REF adequada proposta:
+`REF-ADDRESS-STOREID-01` (adiciona `p_store_id` à RPC + `addressRepository.salvar()`; UPDATE único e
+auditável nas linhas históricas usando o mesmo cruzamento já comprovado aqui). Nenhum UPDATE realizado.
+
+### 6. Proposta final — 10 itens (detalhe completo no artifact)
+
+1 (rua/cidade homônima) + 2 (UF) + 3 (modelo de confidence, decisão de escopo pendente) + 4 (migration
+exata, só o CHECK) + 5 (impacto no código: ~6 arquivos) + 6 (impacto no banco: zero UPDATE) + 7 (testes:
+4 arquivos a atualizar + casos novos) + 8 (riscos: baixos, plausibilidade intacta) + 9 (arquivos: 2
+migrations + 6 código + 4 teste) + 10 (commits: 3 subfases — bias+UF primeiro, migration só após
+aprovação, inferirConfidence+GPS/mapa por último).
+
+**Nada implementado, testado ou commitado nesta etapa.** Processo: auditoria → decisão → **aprovação
+(aguardando)** → implementação → testes → push → deploy → validação.
 
 Relatório completo (com tabelas/formatação) publicado como artifact nesta sessão. Este arquivo é o
 espelho textual no repositório, seguindo o mesmo padrão de `REF-DELIVERY-FEE-03-progress.md`.
