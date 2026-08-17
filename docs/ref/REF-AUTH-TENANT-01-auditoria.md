@@ -332,15 +332,11 @@ arquivo de frontend/Admin tocado. Nada além da função em si — `active_tenan
 também aplicadas ao projeto E2E (só lá, ainda não existiam), reaproveitando exatamente as migrations
 já testadas nas Ondas 1/2.
 
-**LIMITAÇÃO CENTRAL — ação manual pendente, PARO aqui conforme pedido**: a função existe e sua lógica
-está 100% provada (isolada e com dados reais), mas o Supabase **não vai chamá-la** até o Auth Hook ser
-ligado explicitamente — isso é uma configuração do projeto (não SQL), e só existem 2 jeitos de fazer
-isso: Dashboard, ou Management API. Testei a Management API de novo (mesmo token salvo) — **ainda
-401/expirado**, mesmo resultado da Onda 1 (não contornei, mesma disciplina de sempre). Confirmei via
-documentação oficial que não há alternativa via SQL/config.toml neste projeto (não é CLI-linked — sem
-`supabase/config.toml` no repo). **Preciso que você habilite manualmente**, e recomendo fazer isso
-primeiro **no projeto E2E** (não produção), pra eu completar a prova end-to-end (novo refresh → JWT
-real com `tenant_id`) num ambiente sem nenhum risco, antes de sequer cogitar produção:
+**LIMITAÇÃO ENCONTRADA (histórico desta onda, já resolvida)**: a função existia e sua lógica estava
+100% provada (isolada e com dados reais), mas o Supabase não chamava — o Auth Hook precisa ser ligado
+explicitamente, configuração do projeto, não SQL. Management API testada de novo com o token salvo até
+então — ainda 401/expirado, mesmo resultado da Onda 1 (não contornado). Sem alternativa via
+SQL/config.toml (projeto não é CLI-linked). Reportei o bloqueio e o passo manual exato necessário:
 
 1. Dashboard do projeto **E2E** (`bgzcrovskjbktdxkhemd`) → **Authentication → Hooks**.
 2. Hook **"Custom Access Token"** → tipo **Postgres (SQL)**.
@@ -351,10 +347,34 @@ Os grants que a própria Supabase pede como pré-requisito (`GRANT EXECUTE ... T
 `REVOKE ... FROM anon, authenticated`) **já estão aplicados** em ambos os projetos — não falta nada do
 lado do banco.
 
-Depois de habilitado no E2E, retomo e completo: novo `refreshSession()` real → decodificar o JWT novo
-→ confirmar `tenant_id` presente de verdade → testar troca de tenant com refresh de verdade → só então
-considerar habilitar em produção (autorização própria, separada).
+**Desbloqueio (token de Management API novo, fornecido só pra esta finalidade)**: token armazenado
+exclusivamente em `C:\Users\00thi\.encanto\supabase-management.env` (fora do repo, mecanismo já
+existente pra essa credencial) — nunca em código/migration/arquivo versionado. Confirmado aceito
+(HTTP 200, lista os 2 projetos). Configurado via Management API **somente no projeto E2E**
+(`bgzcrovskjbktdxkhemd`) — `PATCH /v1/projects/{ref}/config/auth` com
+`hook_custom_access_token_enabled=true` e
+`hook_custom_access_token_uri=pg-functions://postgres/public/custom_access_token_hook`. Confirmado via
+GET fresco (não só o eco do PATCH) e, tão importante quanto, **confirmado que produção continua com o
+Hook desligado** (`hook_custom_access_token_enabled=false`, `uri=null`) — não toquei produção nesta
+etapa, exatamente como instruído.
 
-**Resultado**: Onda 3 **parcialmente fechada** — função implementada, testada exaustivamente (isolada
-e com fixtures reais) e aplicada em ambos os projetos; a prova final (JWT real pós-Hook) está bloqueada
-numa ação manual de Dashboard que só você pode fazer. Não avancei pra Onda 4.
+**PROVA FINAL COMPLETA — pipeline real de ponta a ponta** (login real → `activate_tenant()` real →
+`refreshSession()` real → Hook → JWT com `tenant_id`), contra o projeto E2E:
+1. Login (antes de qualquer `activate_tenant` nesta sessão) → `tenant_id` **ausente** no token — correto,
+   fail-closed.
+2. `activate_tenant(Encanto)` via RPC autenticado real → sucesso.
+3. `refreshSession()` real → **novo token contém `tenant_id` = id real da loja Encanto**, exatamente
+   como devia. `session_id` preservado (mesma sessão, só o token renovado).
+4. Conjunto de chaves do token pós-refresh: `aal, amr, app_metadata, aud, email, exp, iat,
+   is_anonymous, iss, phone, role, session_id, sub, tenant_id, user_metadata` — só `tenant_id` foi
+   adicionado, nenhuma PII a mais.
+
+Verificação de higiene do token de Management API (pedida explicitamente): `git log --all -p` e
+`git grep` no repo inteiro — **zero ocorrências** do token (novo ou do antigo, já expirado) em
+qualquer commit ou arquivo rastreado. `.env.e2e` confirmado gitignored (`.gitignore:14` e
+`.gitignore:22`); `supabase-management.env` nunca esteve dentro do repositório.
+
+**Resultado**: Onda 3 **fechada** — função implementada, testada exaustivamente (isolada, com fixtures
+reais, e agora também com prova end-to-end contra um JWT real emitido depois do Hook ligado no
+projeto E2E). Produção continua com o Hook desligado de propósito — habilitar lá é uma decisão
+separada, não tomada nesta onda. Não avancei pra Onda 4.
