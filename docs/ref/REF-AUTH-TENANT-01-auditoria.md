@@ -227,3 +227,134 @@ GRANT EXECUTE ON FUNCTION public.activate_tenant(uuid) TO authenticated;
 **Riscos/limitações**: a suposição de que `auth.jwt()->>'session_id'` está presente no token real emitido pelo GoTrue deste projeto foi pesquisada via documentação oficial na fase de desenho (não nesta onda) — a confirmação end-to-end contra um token REAL emitido por login de verdade só acontece na Onda 4 (integração de sessão/storefront), quando `activate_tenant()` passa a ser chamada de fato pelo app. Até lá, `activate_tenant()` existe e está correta, mas nada no app a chama ainda — zero risco de regressão em produção.
 
 **Resultado**: Onda 2 fechada. Aguardando aprovação para Onda 3 (Custom Access Token Hook).
+
+### Onda 3 — Custom Access Token Hook
+
+**Implementado**: `migrations/REF-AUTH-TENANT-01-onda3-custom-access-token-hook.sql` (+ rollback),
+aplicada em produção **e** no projeto E2E dedicado (`bgzcrovskjbktdxkhemd`).
+
+```sql
+CREATE OR REPLACE FUNCTION public.custom_access_token_hook(event jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'pg_catalog', 'public'
+AS $function$
+DECLARE
+  v_session_id uuid; v_store_id uuid; v_claims jsonb;
+BEGIN
+  v_claims := coalesce(event->'claims', '{}'::jsonb);
+  v_session_id := NULLIF(v_claims->>'session_id', '')::uuid;
+  IF v_session_id IS NOT NULL THEN
+    SELECT at.store_id INTO v_store_id
+    FROM public.active_tenant at JOIN public.stores s ON s.id = at.store_id
+    WHERE at.session_id = v_session_id AND s.status = 'ativo';
+  END IF;
+  IF v_store_id IS NOT NULL THEN
+    v_claims := jsonb_set(v_claims, '{tenant_id}', to_jsonb(v_store_id::text));
+  END IF;
+  RETURN jsonb_set(event, '{claims}', v_claims);
+EXCEPTION WHEN OTHERS THEN
+  RETURN event;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.custom_access_token_hook(jsonb) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.custom_access_token_hook(jsonb) FROM anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.custom_access_token_hook(jsonb) TO supabase_auth_admin;
+```
+
+**Fail-closed em 2 níveis, de propósito**: (1) sem `session_id`, sem linha em `active_tenant` ou loja
+não `ativo` → `tenant_id` simplesmente não entra nas claims — login continua normal (é o caso de
+Admin/Super Admin, que nunca tem linha em `active_tenant`, e do primeiro login antes de qualquer
+`activate_tenant()`). (2) `EXCEPTION WHEN OTHERS THEN RETURN event` — qualquer erro inesperado devolve
+o evento original sem `tenant_id`, **nunca propaga exceção**. Isso é deliberado e crítico: documentação
+oficial confirma que uma exceção dentro de um Auth Hook de emissão de token derruba a autenticação de
+**todo mundo**, não só de quem usa tenant — preferimos "faltou `tenant_id`" a "ninguém consegue logar".
+
+**Claim final**: só `tenant_id` (uuid da loja, como texto). Nada de `customer_id`, telefone, e-mail,
+endereço — confirmado no teste ITEM8 que o conjunto de chaves da claim resultante nunca ganha nenhuma
+dessas.
+
+**Configuração realizada (SQL)**: função criada + grants (`REVOKE ALL FROM PUBLIC`,
+`REVOKE EXECUTE FROM anon, authenticated`, `GRANT EXECUTE TO supabase_auth_admin`) — confirmados via
+`information_schema.routine_privileges` em ambos os projetos. `supabase_auth_admin` já tinha `USAGE`
+no schema `public` por padrão (herdado do grant a `PUBLIC` no schema, confirmado via
+`has_schema_privilege`) — não precisou de grant adicional.
+
+**JWT REAL — confirmação empírica, não só documentação** (login de verdade contra o projeto E2E
+dedicado, conta fixture `e2e-cliente@teste.encanto.local`, nunca produção):
+- Decodifiquei um `access_token` real emitido pelo GoTrue deste projeto: `session_id` **está presente**
+  nas claims, formato UUID válido. Claims completas do token real (chaves): `aal, amr, app_metadata,
+  aud, email, exp, iat, is_anonymous, iss, phone, role, session_id, sub, user_metadata`.
+- Cruzei o `session_id` da claim contra `auth.sessions` no mesmo projeto — **linha real correspondente
+  confirmada** (mesma sessão, não uma claim solta).
+- Achado incidental registrado: minha primeira tentativa chamou `signOut()` logo após o login, e o
+  `session_id` sumiu de `auth.sessions` — ou seja, `signOut()` (scope padrão) **revoga a sessão no
+  servidor**, não só limpa o `localStorage`. Refeito sem `signOut()` pra manter a sessão viva pro resto
+  da validação. Relevante para a Onda 4 (staleness / comportamento de logout).
+- Chamei `activate_tenant(Encanto)` via **RPC autenticado real** (não simulado — `Authorization` header
+  genuíno de uma sessão de verdade) contra o projeto E2E → sucesso. Linha certa confirmada em
+  `active_tenant` via consulta direta.
+- Chamei `refreshSession()` real → **`session_id` permanece idêntico** entre o token antigo e o novo
+  (confirma que refresh não gira a sessão, só o token — suposição de desenho da Onda 1/2 agora
+  confirmada empiricamente, não só assumida). `tenant_id` **ausente** no novo token — esperado, ver
+  Limitações abaixo.
+
+**Testado** (`scripts/auth-tenant-onda3-hook-test.mjs`, novo, 11 verificações, `BEGIN...ROLLBACK` em
+produção, fixtures reais — 2 sessões reais e simultâneas da mesma pessoa — e sintéticas — loja
+inativa):
+1. Tenant ativo (Encanto) → `claims.tenant_id` correto.
+2. Sessão sem nenhuma linha em `active_tenant` → `tenant_id` ausente.
+3. Claims sem `session_id` → `tenant_id` ausente, sem erro.
+4. `active_tenant` aponta pra loja **inativa** → `tenant_id` ausente mesmo assim (fail-closed
+   reconfirmado a cada emissão, não só na ativação).
+5. Evento malformado (`{}`) → não explode.
+6. **Duas sessões reais e simultâneas da mesma pessoa** → sessão A vira `tenant_id=Encanto`, sessão B
+   vira `tenant_id=Bar`, nenhuma disputa — mesma prova de concorrência da Onda 2, agora também na
+   camada do Hook.
+7. **Segurança contra manipulação**: claims de entrada com `tenant_id`/`customer_id`/`store_id`
+   forjados (simulando um evento adulterado) são **completamente ignorados** — o resultado vem só de
+   `active_tenant`, nunca do que já vinha nas claims de entrada.
+8. PII: conjunto de chaves resultante nunca inclui `customer_id`/telefone/e-mail/endereço/nome.
+9. Grants finais: só `supabase_auth_admin`/`postgres`/`service_role`.
+10. `SECURITY DEFINER=true`, `search_path` fixo.
+Regressão do próprio script: zero resíduo (`active_tenant`/loja sintética confirmados removidos após
+`ROLLBACK`).
+
+**Regressão geral**: `test:domain` verde. `build`/`build:admin` verdes. `test:db-guards` (cadeia `&&`)
+continua parando no mesmo FAIL pré-existente de sempre (`addresses.store_id` histórico); as 2 suites
+novas desta REF (Onda 2 e Onda 3) foram confirmadas isoladas, verdes.
+
+**Diff**: `migrations/REF-AUTH-TENANT-01-onda3-custom-access-token-hook.sql` (+rollback),
+`scripts/auth-tenant-onda3-hook-test.mjs` (novo), `package.json` (1 script novo), este doc. Nenhum
+arquivo de frontend/Admin tocado. Nada além da função em si — `active_tenant`/`activate_tenant()`
+também aplicadas ao projeto E2E (só lá, ainda não existiam), reaproveitando exatamente as migrations
+já testadas nas Ondas 1/2.
+
+**LIMITAÇÃO CENTRAL — ação manual pendente, PARO aqui conforme pedido**: a função existe e sua lógica
+está 100% provada (isolada e com dados reais), mas o Supabase **não vai chamá-la** até o Auth Hook ser
+ligado explicitamente — isso é uma configuração do projeto (não SQL), e só existem 2 jeitos de fazer
+isso: Dashboard, ou Management API. Testei a Management API de novo (mesmo token salvo) — **ainda
+401/expirado**, mesmo resultado da Onda 1 (não contornei, mesma disciplina de sempre). Confirmei via
+documentação oficial que não há alternativa via SQL/config.toml neste projeto (não é CLI-linked — sem
+`supabase/config.toml` no repo). **Preciso que você habilite manualmente**, e recomendo fazer isso
+primeiro **no projeto E2E** (não produção), pra eu completar a prova end-to-end (novo refresh → JWT
+real com `tenant_id`) num ambiente sem nenhum risco, antes de sequer cogitar produção:
+
+1. Dashboard do projeto **E2E** (`bgzcrovskjbktdxkhemd`) → **Authentication → Hooks**.
+2. Hook **"Custom Access Token"** → tipo **Postgres (SQL)**.
+3. URI/função: `pg-functions://postgres/public/custom_access_token_hook`.
+4. Salvar/ativar.
+
+Os grants que a própria Supabase pede como pré-requisito (`GRANT EXECUTE ... TO supabase_auth_admin`,
+`REVOKE ... FROM anon, authenticated`) **já estão aplicados** em ambos os projetos — não falta nada do
+lado do banco.
+
+Depois de habilitado no E2E, retomo e completo: novo `refreshSession()` real → decodificar o JWT novo
+→ confirmar `tenant_id` presente de verdade → testar troca de tenant com refresh de verdade → só então
+considerar habilitar em produção (autorização própria, separada).
+
+**Resultado**: Onda 3 **parcialmente fechada** — função implementada, testada exaustivamente (isolada
+e com fixtures reais) e aplicada em ambos os projetos; a prova final (JWT real pós-Hook) está bloqueada
+numa ação manual de Dashboard que só você pode fazer. Não avancei pra Onda 4.
