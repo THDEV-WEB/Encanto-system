@@ -219,3 +219,51 @@ renomear), e só depois criar de fato o arquivo de migration + aplicar.
 
 Drift de `store_id` em `addresses` (documentado, não corrigido) e `deliveryFeeRules.js`/`route-distance`/
 taxa de entrega (REF-DELIVERY-FEE-03 fechada, domínios separados) — nenhum dos dois foi tocado.
+
+## Fechamento (2026-08-17) — implementado, publicado e validado em produção
+
+**Escopo enxuto aprovado** (`exact`/`street_level`/`unknown`) implementado no commit `59968be`. Migration
+aplicada em produção (`hvbcdxsagkjtfjwvnslo`) após pré-checagem: CHECK antigo
+`IN ('exact','street_level','approximate')` → novo `IN ('exact','street_level','unknown')`; revalidação
+das 22 linhas reais (21 `street_level` + 1 `exact`) sem nenhum `UPDATE`, confirmada antes e depois. 6
+commits pushados (`dbd6447`→`59968be`), `origin/main` = `59968be7e989ceb3840a6cc3a6b9271f1bc520ba`. Deploy
+Vercel `dpl_3oLdyikeaYw7o4xBM2UPFe5SDtGH` READY, alias de produção confirmado.
+
+**Validação real pós-deploy** (bundle publicado + APIs reais, sem alterar dado nenhum):
+- Bundle (`index-ClHTPlqy.js`) inspecionado: `inferirConfidence` minificado mostra literalmente
+  `t.house_number?"exact":t.road?"street_level":"unknown"`; `sugestaoSub` mostra o `.join("/")`
+  cidade/estado antes do separador `" · "`; guarda de sequência (`iniciar`/`aindaValido`) presente e
+  ligada nos dois caminhos (sucesso e catch) de `searchAddress`; `approximate` = 0 ocorrências no bundle.
+- Photon ao vivo com bias real da Encanto (`lat:-26.8506517576`, `lng:-49.2872026361`): "Rua João Schley"
+  → 3 ruas de Timbó/SC; "Rua Itajaí" (rua homônima, sem cidade no texto) → Timbó no topo; "Rua Itajaí,
+  Indaial" (cidade homônima, override textual) → Indaial domina o topo; sem bias (simulando loja nova
+  tipo Bar da Sogra) → mesma URL de antes, degradação graciosa confirmada; query inexistente → 0
+  features.
+- Nominatim (3º da ordem) confirmado no ar (1 única requisição, respeitando a política de uso).
+- Multi-tenant: `store_settings` de produção lido direto — Encanto tem `cidade/estado/lojaLat/lojaLng`
+  preenchidos, Bar da Sogra não tem NENHUM desses campos (ausência real, não herança/NULL).
+- Routing (REF-DELIVERY-FEE-03, não tocado por esta REF): `route-distance` re-testado contra a função
+  publicada com as mesmas coordenadas do fechamento daquela REF (Timbó→Indaial) →
+  `distanceKm:10.4338, durationMin:17.13, provider:heigit`, idêntico ao registrado; faixa de produção
+  `10.1–11km → R$22` confirmada lida direto do `delivery_fee_config` real — sem regressão.
+- Teste interestadual SC→MG (só leitura, nada alterado): geocoding real de "Praça Sete de Setembro, Belo
+  Horizonte" (mesmo com bias em Timbó, o texto explícito da cidade venceu) → coordenadas reais
+  `-19.919117,-43.9386465`; `route-distance` respondeu HTTP 200 com `distanceKm:1180.1781,
+  durationMin:971.05` — nem o HeiGIT nem a Edge Function têm limite técnico de distância. O único
+  "limite" é de negócio: `deliveryFeeRules.localizarFaixa` devolve `null` acima da maior faixa cadastrada
+  (21km pra Encanto hoje) e `montarResumoFinanceiro` cai em `status:'fora_de_alcance'` — nunca bloqueia o
+  pedido, taxa fica R$0 e a UI avisa "confirmamos o valor pelo WhatsApp" (comportamento pré-existente,
+  não desta REF).
+
+**Não testado ao vivo nesta rodada (limitação honesta)**: clique-a-clique real da UI no navegador
+(AddressModal/Checkout) contra produção — evitado de propósito, pois um checkout real em produção criaria
+pedido real. A cobertura equivalente vem de (a) inspeção do bundle publicado mostrando a lógica exata
+implantada, (b) chamadas diretas às mesmas APIs que o código de produção chama, com os mesmos parâmetros,
+e (c) as suítes automatizadas (`test:domain`, verdes antes do commit).
+
+**Follow-ups registrados, fora desta REF**: `REF-ADDRESS-STOREID-01` (RPC `save_structured_address` sem
+`p_store_id`, 5 linhas históricas com `store_id` NULL); `neighborhood_level`/`city_level` de confidence
+(exigiriam relaxar `enderecoPlausivel.js` de propósito, gate próprio); cache de sugestões Photon/Nominatim;
+`cached:true` do `route-distance` nunca observado em isolate novo (já registrado na REF-DELIVERY-FEE-03).
+
+**STATUS FINAL: REF-ADDRESS-AUTOCOMPLETE-01 = FECHADA (2026-08-17).**
