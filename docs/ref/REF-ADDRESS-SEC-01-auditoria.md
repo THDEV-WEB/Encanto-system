@@ -61,3 +61,55 @@ alheia (negada), isolamento Encanto × Bar da Sogra nos 2 sentidos, `customer_id
 guest inalterado. Script completo no artifact — pronto para rodar após aprovação, não executado ainda.
 
 Artifact completo (design, tabelas, SQL formatado): link publicado na sessão.
+
+## Fechamento (2026-08-17) — implementado, testado, aplicado, publicado e validado
+
+**Aprovado pelo dono**: núcleo + hardening juntos. Migration aplicada em produção
+(`hvbcdxsagkjtfjwvnslo`) exatamente como proposta. Estado final confirmado por leitura direta:
+4 policies (`addresses_select/insert/update/delete_own`, todas ancoradas em `customer_id ->
+customers.auth_user_id = auth.uid()`); grants de `authenticated` reduzidos a
+`DELETE,INSERT,SELECT,UPDATE` (TRUNCATE/REFERENCES/TRIGGER confirmados revogados); `anon` com zero
+grants (inalterado). `save_structured_address` hardened (só grava `customer_id` que pertence à
+sessão autenticada atual; senão grava `NULL`) e continua `SECURITY DEFINER`.
+
+**Testado** (BEGIN/ROLLBACK, zero mutação líquida, fixtures fictícias/sintéticas presas a UUIDs
+reais, nunca lendo PII): 14 cenários de RLS — todos confirmados, incluindo os 2 que exigiram
+correção do próprio desenho do teste (cenário 6 estava confundido por uma condição que dependia de
+um UPDATE já negado; cenário 11 dependia de `RAISE NOTICE`, não capturado pela ferramenta usada —
+ambos refeitos isoladamente e reconfirmados). Cenários 12/13 (Admin) precisaram de um admin
+**sintético** store-scoped: o único admin real do banco também é `super_admin`, o que teria mascarado
+o teste de negação cross-tenant (super_admin passa `is_admin_of()` de qualquer loja, por desenho —
+não é bug). 5 cenários do RPC (A/B/C/E — D coberto pelos mesmos casos de B/C) confirmados via
+inspeção do estado gravado (bypassando RLS só para leitura de verificação, nunca para os testes de
+policy em si).
+
+**Achado durante os testes**: um teste pré-existente (`scripts/address-schema-test.mjs`, caso `BA1`)
+validava como esperado o comportamento ANTIGO e inseguro (`authenticated` genérico inserindo e lendo
+qualquer linha) — corrigido para validar o oposto (fail closed). Também descobri, testando, que
+`INSERT ... RETURNING` é sujeito à policy de `SELECT` (documentado do Postgres, não um bug) — sem
+efeito em produção porque o RPC real bypassa RLS inteiramente (`SECURITY DEFINER`, dono `postgres`
+com `rolbypassrls=true`).
+
+**Regressão**: `test:domain` (suíte completa) verde. `test:db-guards` verde exceto a falha já
+conhecida e pré-existente (`S4:addresses backfill`, drift de `store_id`, cresceu de 5 para 8 linhas
+— fora desta REF). 2 builds (storefront + admin) verdes.
+
+**Publicado**: commit `d211443`, `origin/main` = `d211443f5b8a0331d5013830758398b212fa973b`. Deploy
+Vercel `dpl_3DNUVe2UJTnnk8pmBqxASfsLZ6Nf`, READY, alias de produção confirmada.
+
+**Validado em produção**: bundle publicado inspecionado — `customerId` presente no chunk
+`CheckoutPage-DXRMGnjP.js`, minificado mas reconhecível (`{...u,customerId:A.id}`). Estado final de
+policies/grants reconfirmado por leitura direta pós-deploy. `route-distance` (REF-DELIVERY-FEE-03,
+não tocada) re-testado com as mesmas coordenadas de sempre — resultado idêntico, sem regressão. Diff
+do commit confirma zero arquivo de routing/fee/waterfall/confidence tocado.
+
+**Limitações**: nenhum teste real de clique-a-clique no navegador contra produção (evitado por
+criar pedido real); a prova de Admin cross-tenant usou um admin sintético (o único real é super
+admin); as 22→ linhas legadas (sempre `customer_id NULL`) seguem inacessíveis por RLS para todo
+mundo, por desenho (fail closed, não é regressão).
+
+**Follow-ups**: `REF-ADDRESS-STOREID-01` (drift de `store_id`, agora 8 linhas) continua separada, não
+tocada. `REF-ADDRESS-UX-01` (histórico de endereços) está desbloqueada — todos os critérios da Fase 9
+foram atendidos — mas permanece pausada até autorização explícita para retomar.
+
+**STATUS FINAL: REF-ADDRESS-SEC-01 = FECHADA (2026-08-17).**
