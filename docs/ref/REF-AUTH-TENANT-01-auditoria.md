@@ -54,3 +54,37 @@ regressão completa. Cada onda com gate próprio de aprovação.
 
 SQL preliminar (conceitual, não a versão final) no artifact. Aguardando aprovação do desenho antes de
 qualquer implementação.
+
+## Gate final — auditoria de `activate_tenant()` (2ª rodada)
+
+Dono confirmou: Custom Access Token Hook disponível no Free e Pro do Supabase — não precisa migrar de
+plano.
+
+**Achado de concorrência que corrigiu o desenho**: a 1ª versão usava `auth_user_id` como chave
+primária de `active_tenant` (1 linha por pessoa, global). Isso quebra o cenário de 2 abas em lojas
+diferentes (mesma pessoa): a 2ª ativação sobrescreveria a 1ª, e no próximo refresh silencioso da 1ª
+aba ela perderia o próprio tenant sem pedir. **Corrigido**: as claims padrão do Supabase já incluem
+`session_id` (confirmado na pesquisa da 1ª rodada) — cada login tem o seu, e como cada loja é um
+domínio separado (localStorage isolado por origem, já é assim hoje), abas em lojas diferentes têm
+`session_id` diferentes. `active_tenant` passa a ser chaveada por `session_id`
+(`REFERENCES auth.sessions(id) ON DELETE CASCADE` — confirmei que `auth.sessions` existe de verdade
+no projeto), não mais por pessoa — isolamento correto entre abas/sessões, limpeza automática no
+logout.
+
+**`activate_tenant()` auditada nos 16 pontos pedidos**: SECURITY DEFINER (mesmo padrão de
+`save_structured_address`), só `authenticated`, mesma verificação `EXISTS(customers+stores ativa)`
+já validada nas REFs anteriores, sem distinguir "loja não existe" de "loja inativa" na mensagem de
+erro (evita dar pista pra quem testa IDs por tentativa e erro). Achado incidental: não há UNIQUE
+constraint em `customers(auth_user_id, store_id)` — não afeta `activate_tenant` (EXISTS não precisa
+de linha única), registrado como hardening futuro, fora do escopo crítico.
+
+**Hook fail-closed confirmado linha por linha**: reconfirma `stores.status='ativo'` a CADA refresh
+(não só na ativação) — se a loja for desativada depois, o claim some no próximo refresh, nunca emite
+valor inválido.
+
+**RLS conceitual demonstrada**: `store_id = (auth.jwt()->>'tenant_id')::uuid AND customer_id IN
+(customers do auth.uid() nesse mesmo tenant)` — teste definitivo (6 tentativas: leitura direta,
+parâmetro manipulado, RPC manipulada, curl, e finalmente ativação legítima seguida de troca) percorrido
+passo a passo, todas resolvendo como especificado.
+
+Zero implementação nesta rodada também. Aguardando aprovação final do dono.
