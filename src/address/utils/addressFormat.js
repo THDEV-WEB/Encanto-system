@@ -50,6 +50,60 @@ export function normalizarEndereco(a = {}, { completa = false, cidadePadrao = ''
 /* Chave de dedupe de sugestão (road+house_number) — regra única usada pelo provedor de busca. */
 export function chaveDedupe(s) { const a = s.address || {}; return (a.road || '') + ',' + (a.house_number || ''); }
 
+/* REF-ADDRESS-UX-01 — chave de dedupe de ENDEREÇOS RECENTES (shape flat da tabela addresses, não o
+   shape {address:{...}} dos provedores). Regra pedida: rua+numero+complemento+CEP — o mesmo endereço
+   reutilizado várias vezes (cada confirmação no checkout grava uma linha nova) aparece só 1 vez na
+   lista, com a ocorrência mais recente "vencendo" (ver enderecosRecentesDedup em
+   services/AddressClienteService.js, que já busca ordenado por created_at DESC). */
+export function chaveDedupeRecente(r = {}) {
+  return [r.rua, r.numero, r.complemento, r.cep].map((v) => String(v || '').trim().toLowerCase()).join('|');
+}
+
+/* Deduplica uma lista de endereços recentes (já ordenada por created_at DESC pela query) mantendo só a
+   1ª ocorrência de cada chaveDedupeRecente — como a lista de entrada já vem da mais nova pra mais
+   velha, a 1ª ocorrência de cada chave É a mais recente. Reaproveitar um endereço (nova linha gravada
+   no checkout) automaticamente "sobe" ele pro topo na próxima leitura — sem UPDATE, sem coluna
+   updated_at, zero migration (decisão registrada na auditoria). Pura, testável sem rede/banco. */
+export function deduplicarRecentes(linhas, limite = 5) {
+  const vistos = new Set();
+  const out = [];
+  for (const r of linhas || []) {
+    const chave = chaveDedupeRecente(r);
+    if (vistos.has(chave)) continue;
+    vistos.add(chave);
+    out.push(r);
+    if (out.length >= limite) break;
+  }
+  return out;
+}
+
+/* Rótulo do endereço recente na lista — reaproveita curtaSugestao (mesmo shape norm{rua,numero,bairro}
+   + fallback via display_name) passando formatted_address no lugar. */
+export function recenteMain(r = {}) {
+  return curtaSugestao({ rua: r.rua, numero: r.numero, bairro: r.bairro }, { display_name: r.formatted_address || '' });
+}
+/* Linha secundária — mesmo padrão visual de sugestaoSub (bairro · cidade/estado · CEP), shape flat. */
+export function recenteSub(r = {}) {
+  const cidadeEstado = [r.cidade, r.estado].filter(Boolean).join('/');
+  return [cidadeEstado, r.cep ? 'CEP ' + r.cep : ''].filter(Boolean).join(' · ');
+}
+
+/* Meta que onSelect(label, meta) recebe ao reutilizar um endereço recente — MESMO shape que
+   confirmSearch já monta (rua/numero/bairro/cidade/estado/cep/complemento/referencia/lat/lng/full/
+   provider/confidence), garantindo que checkout/routing/taxa de entrega (que só leem endereco.lat/
+   endereco.lng do objeto canônico, ver deliveryFeeRules.js/routeDistanceService.js) continuam
+   funcionando idênticos, sem saber se o endereço veio de uma busca nova ou de "recentes". Não
+   geocodifica de novo — usa lat/lng/confidence exatamente como persistidos (Fase 5 do pedido). */
+export function metaDeRecente(r = {}) {
+  return {
+    lat: r.latitude ?? null, lng: r.longitude ?? null,
+    rua: r.rua || '', numero: r.numero || '', bairro: r.bairro || '',
+    cidade: r.cidade || '', estado: r.estado || '', cep: r.cep || '',
+    complemento: r.complemento || '', referencia: r.referencia || '',
+    full: r.formatted_address || '', provider: r.provider || '', confidence: r.confidence || null,
+  };
+}
+
 /* ── SUGESTÕES (lista da aba Buscar) — idêntico ao render inline original ── */
 export function sugestaoMain(s) { const a = s.address || {}; return ruaNumero(a) || s.display_name.split(',')[0]; }
 /* REF-ADDRESS-AUTOCOMPLETE-01 (2026-08-17): cidade/estado juntos ("Timbó/Santa Catarina") — achado da

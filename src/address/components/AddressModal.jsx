@@ -63,6 +63,8 @@ export function AddressModal({ onClose, onSelect }) {
               referencia={eng.referencia}
               onReferenciaChange={eng.setReferencia}
               onConfirm={eng.confirmSearch}
+              recentes={eng.recentes}
+              onUsarRecente={eng.usarRecente}
             />
           )}
 

@@ -13,8 +13,9 @@
    escolhida não tem confiança 'exact' (achado do ADR §0.2 — match só de rua, número não confirmado pelo
    provedor), um aviso equivalente aparece na tela de detalhes, sem bloquear a confirmação. */
 import { useEffect, useRef } from 'react';
-import { sugestaoMain, sugestaoSub } from '../utils/addressFormat.js';
+import { sugestaoMain, sugestaoSub, recenteMain, recenteSub } from '../utils/addressFormat.js';
 import { AddressDetalhesEntrega } from './AddressDetalhesEntrega.jsx';
+import { useAuth } from '../../hooks/useAuth.js';
 
 const AVISO_ESTILO = {
   padding: '8px 10px', background: '#FEF3C7', border: '1px solid #FDE68A',
@@ -24,8 +25,9 @@ const AVISO_ESTILO = {
 export function AddressSearch({
   query, onQueryChange, status, suggestions, onGPS, onPick, onGoCep, onGoMap, erro,
   pickedItem, onVoltar, numero, onNumeroChange, complemento, onComplementoChange,
-  referencia, onReferenciaChange, onConfirm,
+  referencia, onReferenciaChange, onConfirm, recentes, onUsarRecente,
 }) {
+  const { isLogged } = useAuth();
   const inputRef = useRef(null);
   useEffect(() => { inputRef.current?.focus(); }, []);   // foco ao entrar na aba (= efeito [tab] original)
 
@@ -101,6 +103,28 @@ export function AddressSearch({
       )}
       {status === 'idle' && !query && (
         <div style={{ marginTop: 12 }}>
+          {isLogged && recentes && recentes.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div className="addr-section-label">Endereços recentes</div>
+              <div className="addr-suggestions">
+                {recentes.map((r) => (
+                  <div key={r.id} className="addr-suggestion-item" onClick={() => onUsarRecente(r)}>
+                    <span className="addr-suggestion-icon">📍</span>
+                    <div className="addr-suggestion-text">
+                      <div className="addr-suggestion-main">{recenteMain(r)}</div>
+                      <div className="addr-suggestion-sub">{recenteSub(r)}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {isLogged && (!recentes || recentes.length === 0) && (
+            <p style={{ fontSize: 12.5, color: 'var(--gray-500)', margin: '0 0 12px' }}>Nenhum endereço salvo ainda.</p>
+          )}
+          {isLogged && recentes && recentes.length > 0 && (
+            <p style={{ fontSize: 12.5, color: 'var(--gray-500)', margin: '0 0 8px', fontWeight: 600 }}>Digite um novo endereço</p>
+          )}
           <div className="addr-section-label">Dicas de busca</div>
           <div style={{ fontSize: 12, color: 'var(--gray-500)', lineHeight: 1.8, padding: '4px 0' }}>
             • Ex: <b>Rua das Flores, 123</b><br />

@@ -27,16 +27,19 @@ import { geocoding } from '../services/geocodingService.js';
 import { cepValido, queryValida, numeroPreenchido, respostaCepOk } from '../validators/addressValidators.js';
 import {
   normalizarEndereco, curtaSugestao, curtaGps, curtaCep, linhaReversaMapa, linhaConfirmarMapa,
+  recenteMain, metaDeRecente,
 } from '../utils/addressFormat.js';
 import { CENTRO_PADRAO, formatarCoord } from '../utils/coordinates.js';
 import { criarErro, tipoErroGeolocalizacao } from '../utils/addressErrors.js';
 import { criarGuardiaoSequencia } from '../utils/searchGuard.js';
 import { useCompanyInfo } from '../../hooks/useCompanyInfo.js';
+import { useEnderecosRecentes } from '../../hooks/useEnderecosRecentes.js';
 
 const online = () => typeof navigator === 'undefined' || navigator.onLine !== false; // SSR-safe: sem navigator = assume online
 
 export function useAddressSearch({ onSelect }) {
   const companyInfo = useCompanyInfo();
+  const { recentes, temHistorico } = useEnderecosRecentes();
   const cidadePadrao = companyInfo.cidade || '';
   const estadoPadrao = companyInfo.estado || '';
   const [tab, setTab] = useState('search');          // search | cep | map
@@ -139,6 +142,14 @@ export function useAddressSearch({ onSelect }) {
     }, (posErro) => { setStatus('idle'); setErro(criarErro(tipoErroGeolocalizacao(posErro && posErro.code))); });
   }, [onSelect, cidadePadrao, estadoPadrao]);
 
+  /* ── REF-ADDRESS-UX-01: reutilizar um ENDEREÇO RECENTE — confirma direto, sem pedir número de novo
+     (já foi confirmado pelo próprio cliente quando o endereço foi salvo da 1ª vez) e sem chamar o
+     geocoder de novo (Fase 5 do pedido: coordenadas já persistidas e confiáveis). `recenteMain`/
+     `metaDeRecente` são puras e testadas isoladamente (tests/address-recentes.golden.mjs). */
+  const usarRecente = useCallback((r) => {
+    onSelect(recenteMain(r), metaDeRecente(r));
+  }, [onSelect]);
+
   /* ── Selecionar uma sugestão da busca: guarda e pede número/complemento/referência (Onda 5) — não
      confirma mais direto com o `numero` que o provedor devolveu (era a lacuna do achado §0.2: número
      descartado em silêncio). Reseta os campos compartilhados (mesmo padrão de buscarCEP ao achar CEP). */
@@ -225,6 +236,7 @@ export function useAddressSearch({ onSelect }) {
     suggestions, status, erro,
     cepQuery, cepData, cepNumero, setCepNumero,
     mapPin, mapAddr,
+    recentes, temHistorico, usarRecente,
     mudarCep, usarGPS, pick, confirmSearch, confirmCEP, confirmMap, aoArrastarPino, aoClicarPino,
   };
 }

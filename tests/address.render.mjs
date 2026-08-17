@@ -16,6 +16,7 @@ const h = React.createElement;
 const NBSP = String.fromCharCode(160);
 const norm = (s) => s.split(NBSP).join(' ');
 
+const { AuthProvider } = await import('../src/providers/AuthProvider.jsx');
 const { AddressModal } = await import('../src/address/index.js');
 const { AddressPreview } = await import('../src/address/components/AddressPreview.jsx');
 const { AddressActions } = await import('../src/address/components/AddressActions.jsx');
@@ -26,6 +27,12 @@ const { AddressSummary } = await import('../src/address/components/AddressSummar
 
 const noop = () => {};
 const cepData = { logradouro: 'Rua das Flores', bairro: 'Centro', localidade: 'Timbó', uf: 'SC', cep: '89120-000' };
+/* REF-ADDRESS-UX-01: AddressModal/AddressSearch agora leem useAuth() (recentes/isLogged) — em runtime
+   real sempre estão sob <AuthProvider>; aqui replicamos isso. renderToStaticMarkup NUNCA roda efeitos
+   (ver cabeçalho do arquivo), então o estado inicial síncrono (status:'loading' -> isLogged:false,
+   customer:null) é tudo que este teste enxerga — nenhuma chamada de rede acontece, e as seções novas
+   (isLogged-only) ficam ausentes, preservando os goldens BYTE-A-BYTE. */
+const withAuth = (el) => h(AuthProvider, null, el);
 
 /* ── ÂNCORA: markup do AddressModal ORIGINAL (monólito), aba 'search'/idle — o novo deve igualar ── */
 const GOLDEN_MODAL_SEARCH =
@@ -70,15 +77,15 @@ const GOLDEN_SUMMARY_RETIRADA =
 `<div style="display:flex;align-items:center;gap:12px;justify-content:space-between;background:var(--grape-pale);border:1px solid #DDD6FE;border-radius:12px;padding:12px 14px"><div style="flex:1;min-width:0"><div style="font-weight:700;font-size:14px;color:var(--gray-700);line-height:1.4">🏪 Rua João Schlay, 77 Casa 02</div><div style="font-size:12px;color:var(--gray-500);margin-top:2px;line-height:1.5">Você retira o pedido no balcão da loja.</div></div></div>`;
 
 const CASES = [
-  { nome: 'AddressModal (aba search = golden do monólito original)', el: () => h(AddressModal, { onClose: noop, onSelect: noop }), snap: GOLDEN_MODAL_SEARCH },
+  { nome: 'AddressModal (aba search = golden do monólito original)', el: () => withAuth(h(AddressModal, { onClose: noop, onSelect: noop })), snap: GOLDEN_MODAL_SEARCH },
   { nome: 'AddressPreview', el: () => h(AddressPreview, { cepData }), snap: GOLDEN_PREVIEW },
   { nome: 'AddressActions', el: () => h(AddressActions, { onConfirm: noop, label: '✅ Confirmar endereço' }), snap: GOLDEN_ACTIONS },
   { nome: 'AddressForm(found)', el: () => h(AddressForm, { cepQuery: '89120-000', onCepChange: noop, status: 'found', cepData, cepNumero: '77', onNumeroChange: noop, complemento: 'Casa 02', onComplementoChange: noop, referencia: '', onReferenciaChange: noop, onConfirm: noop }), snap: GOLDEN_FORM_FOUND },
   { nome: 'AddressMap', el: () => h(AddressMap, { mapPin: { lat: -26.795, lng: -49.27 }, mapAddr: 'Rua X, 10', cepNumero: '', onNumeroChange: noop, complemento: '', onComplementoChange: noop, referencia: '', onReferenciaChange: noop, onConfirm: noop, aoArrastarPino: noop, aoClicarPino: noop }), snap: GOLDEN_MAP },
-  { nome: 'AddressSearch(notfound)', el: () => h(AddressSearch, { query: 'xyz', onQueryChange: noop, status: 'notfound', suggestions: [], onGPS: noop, onPick: noop, onGoCep: noop, onGoMap: noop, pickedItem: null }), snap: GOLDEN_SEARCH_NOTFOUND },
-  { nome: 'AddressSearch(pickedItem — número/complemento/referência, Onda 5)', el: () => h(AddressSearch, { query: 'joão schlei', pickedItem: pickedItemFix, onVoltar: noop, numero: '123', onNumeroChange: noop, complemento: '', onComplementoChange: noop, referencia: '', onReferenciaChange: noop, onConfirm: noop }), snap: GOLDEN_SEARCH_PICKED },
-  { nome: 'AddressSearch(erro — GPS sem permissão, Onda 5b)', el: () => h(AddressSearch, { query: '', onQueryChange: noop, status: 'idle', suggestions: [], onGPS: noop, onPick: noop, onGoCep: noop, onGoMap: noop, pickedItem: null, erro: { tipo: 'permissao_negada', mensagem: 'Sem permissão de localização. Ative nas configurações do navegador, ou busque pelo endereço/CEP.' } }), snap: GOLDEN_SEARCH_ERRO },
-  { nome: 'AddressSearch(pickedItem confiança baixa, Onda 5b)', el: () => h(AddressSearch, { query: 'rua amazonas', pickedItem: pickedItemBaixaConfianca, onVoltar: noop, numero: '', onNumeroChange: noop, complemento: '', onComplementoChange: noop, referencia: '', onReferenciaChange: noop, onConfirm: noop }), snap: GOLDEN_SEARCH_PICKED_BAIXA_CONFIANCA },
+  { nome: 'AddressSearch(notfound)', el: () => withAuth(h(AddressSearch, { query: 'xyz', onQueryChange: noop, status: 'notfound', suggestions: [], onGPS: noop, onPick: noop, onGoCep: noop, onGoMap: noop, pickedItem: null })), snap: GOLDEN_SEARCH_NOTFOUND },
+  { nome: 'AddressSearch(pickedItem — número/complemento/referência, Onda 5)', el: () => withAuth(h(AddressSearch, { query: 'joão schlei', pickedItem: pickedItemFix, onVoltar: noop, numero: '123', onNumeroChange: noop, complemento: '', onComplementoChange: noop, referencia: '', onReferenciaChange: noop, onConfirm: noop })), snap: GOLDEN_SEARCH_PICKED },
+  { nome: 'AddressSearch(erro — GPS sem permissão, Onda 5b)', el: () => withAuth(h(AddressSearch, { query: '', onQueryChange: noop, status: 'idle', suggestions: [], onGPS: noop, onPick: noop, onGoCep: noop, onGoMap: noop, pickedItem: null, erro: { tipo: 'permissao_negada', mensagem: 'Sem permissão de localização. Ative nas configurações do navegador, ou busque pelo endereço/CEP.' } })), snap: GOLDEN_SEARCH_ERRO },
+  { nome: 'AddressSearch(pickedItem confiança baixa, Onda 5b)', el: () => withAuth(h(AddressSearch, { query: 'rua amazonas', pickedItem: pickedItemBaixaConfianca, onVoltar: noop, numero: '', onNumeroChange: noop, complemento: '', onComplementoChange: noop, referencia: '', onReferenciaChange: noop, onConfirm: noop })), snap: GOLDEN_SEARCH_PICKED_BAIXA_CONFIANCA },
   { nome: 'AddressSummary(entrega+endereco)', el: () => h(AddressSummary, { endereco: enderecoFix, retirada: false, retiradaLabel: RETIRADA_LABEL, onEditar: noop }), snap: GOLDEN_SUMMARY_ENTREGA },
   { nome: 'AddressSummary(entrega+vazio)', el: () => h(AddressSummary, { endereco: null, retirada: false, retiradaLabel: RETIRADA_LABEL, onEditar: noop }), snap: GOLDEN_SUMMARY_VAZIO },
   { nome: 'AddressSummary(retirada)', el: () => h(AddressSummary, { endereco: null, retirada: true, retiradaLabel: RETIRADA_LABEL, onEditar: noop }), snap: GOLDEN_SUMMARY_RETIRADA },
