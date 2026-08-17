@@ -1,6 +1,8 @@
 # REF-ADDRESS-AUTOCOMPLETE-01 — Auditoria e pesquisa técnica
 
-Status: **fase de auditoria concluída, aguardando decisão de provider**. Nenhuma linha de produção alterada.
+Status: auditoria + decisão de provider + Fase 11 (testes de comportamento e multi-tenant) **concluídas**.
+Gate de schema de confidence: **proposta pronta, aguardando aprovação explícita** — nada aplicado.
+Nenhuma migration, UPDATE, deploy ou push realizados.
 
 Relatório completo (com tabelas/formatação) publicado como artifact nesta sessão. Este arquivo é o
 espelho textual no repositório, seguindo o mesmo padrão de `REF-DELIVERY-FEE-03-progress.md`.
@@ -98,10 +100,56 @@ exige migration do `CHECK addresses_confidence_check`), fluxo sugestão→númer
 existente — maiores gaps: homônimos (rua/cidade), debounce/race condition, mobile, isolamento
 multi-tenant ponta-a-ponta do autocomplete.
 
-## Riscos e decisões pendentes (só o dono decide)
+## Decisão do dono (2026-08-17) e implementação da parte segura
 
-1. Provider: Mapbox (pago, mais forte) ou manter só o stack gratuito com Photon priorizado?
-2. Migration de confidence (5 níveis) — primeira mudança de schema desta REF, precisa aprovação
-   explícita quando chegar a hora.
-3. Fora de escopo por instrução explícita: drift de `store_id` em `addresses`,
-   `deliveryFeeRules.js`/`route-distance`/taxa de entrega — nenhum dos dois foi tocado.
+Stack gratuito, Photon > Nominatim, sem Mapbox/custo/chave nova. Implementado e commitado localmente
+(push não pedido): reorder do waterfall + `searchGuard.js` (corrige race condition, 5 testes) —
+commits `dbd6447` (auditoria) e `9492f40` (código+testes).
+
+## Fase 11 — testes de comportamento (concluída, commit `19b3471`)
+
+4 arquivos de teste (novos/expandidos), todos verdes, `test:domain` completo + 2 builds verdes:
+- `address-autocomplete-scenarios.golden.mjs` (11 casos): rua homônima (achado — Photon ignora bias,
+  Nominatim assume e prioriza quando Photon falha), cidade homônima (estado sempre presente no shape;
+  gap documentado — `sugestaoSub()` não mostra estado na sub-label), número confirmado pelo provedor vs.
+  digitado pelo usuário (confidence nunca "sobe" sem confirmação real), endereço inexistente, falha de
+  provedor (Photon indisponível → Nominatim assume; ambos indisponíveis → `[]` sem lançar).
+- `address-multitenant.golden.mjs` (6 casos), fundamentado em introspecção real (read-only) do banco:
+  Encanto (`8604324d…`, cidade=Timbó/SC, lojaLat/lojaLng configurados) vs. Bar da Sogra (`776a01c8…`,
+  todos os campos de `company_info` NULL — tenant novo, nunca configurado). Bias de busca, fallback do
+  mapa (`CENTRO_PADRAO` = centro do Brasil, não a Encanto) e cache do Nominatim comprovadamente isolados
+  por loja. `addressRepository.paraPayloadRpc` exportado (sem mudança de comportamento) para provar com
+  a função REAL que o payload nunca inclui `store_id` — gap real: drift cresceu de 2 para 5 linhas desde
+  a última medição, todas rastreadas (via `orders.endereco_id`) a pedidos legítimos da Encanto, **zero
+  vazamento entre tenants** confirmado. Bar da Sogra tem 0 pedidos reais até agora.
+- `address.guard.mjs` ganhou o invariante (13): nenhum arquivo de `address/` referencia
+  `default_store_id()`.
+
+## Gate de confidence — estado atual e proposta (NÃO aplicada)
+
+**Produtores hoje**: `inferirConfidence()` (house_number→exact, road→street_level, nenhum→approximate);
+`confirmCEP` hardcoda `'exact'` (bypassa inferirConfidence, ViaCEP nunca dá coordenada); GPS/mapa não
+setam confidence (fica `null`). **Consumidores**: `confidenceValida`, `enderecoValidoParaEntrega`
+(coords obrigatórias só se `exact`), aviso na UI (`AddressSearch.jsx`), RPC `save_structured_address`.
+**Distribuição real** (19 linhas): 18 `street_level`, 1 `exact`, 0 `approximate`, 0 `NULL`.
+
+**Proposta recomendada (opção A — estender, não renomear)**: manter `exact`/`street_level` como estão
+(zero consumidor muda), retirar `approximate` (0 linhas reais usam), adicionar `neighborhood_level`/
+`city_level`/`unknown`. Migration seria só `DROP`+`ADD CONSTRAINT` — revalida as 19 linhas existentes
+sem precisar de nenhum `UPDATE` (confirmado pela distribuição real). `inferirConfidence()` precisaria de
+2 ramos novos (checar `suburb/neighbourhood` e `city/town` separadamente) — a migration sozinha não
+basta pra popular os níveis novos. SQL completo + análise de risco + lista de arquivos no artifact
+publicado (link na sessão).
+
+**Riscos**: baixo pro dado existente (nenhum UPDATE necessário); médio pro código (sem o `inferirConfidence`
+novo, os 2 níveis extras nunca são gravados de verdade); `confirmCEP` continua com um hardcode
+pré-existente questionável (`'exact'` sem coordenada) — não criado por esta migration, mas adjacente;
+zero risco de RLS (confidence não participa de policy nenhuma).
+
+**Pendente, precisa aprovação explícita antes de qualquer execução**: qual opção de schema (estender vs.
+renomear), e só depois criar de fato o arquivo de migration + aplicar.
+
+## Fora de escopo por instrução explícita
+
+Drift de `store_id` em `addresses` (documentado, não corrigido) e `deliveryFeeRules.js`/`route-distance`/
+taxa de entrega (REF-DELIVERY-FEE-03 fechada, domínios separados) — nenhum dos dois foi tocado.
