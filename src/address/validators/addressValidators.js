@@ -30,16 +30,17 @@ export const coordenadasValidas = (lat, lng) =>
    cabeçalho: preparo para as Ondas 5/6 religarem número/complemento/referência e o waterfall de
    geocoding). Puros, sem IO. */
 
-/* confidence: mesmo conjunto do CHECK addresses_confidence_check (migration Onda 1) — espelha a regra
-   do banco no cliente para dar feedback antes do round-trip, nunca a substitui (o banco continua sendo
-   a fonte de verdade). null/undefined é válido (dado legado/ainda não classificado). */
-const CONFIDENCE_VALORES = ['exact', 'street_level', 'approximate'];
+/* confidence: mesmo conjunto do CHECK addresses_confidence_check (migration Onda 1; escopo enxuto
+   REF-ADDRESS-AUTOCOMPLETE-01 2026-08-17 — 'approximate' virou 'unknown', ver addressFormat.js) —
+   espelha a regra do banco no cliente para dar feedback antes do round-trip, nunca a substitui (o banco
+   continua sendo a fonte de verdade). null/undefined é válido (dado legado/ainda não classificado). */
+const CONFIDENCE_VALORES = ['exact', 'street_level', 'unknown'];
 export const confidenceValida = (c) => c == null || CONFIDENCE_VALORES.includes(c);
 
 /* Endereço pronto para entrega (ADR REF-ADDRESS-02 §4.1/§7): número é sempre obrigatório; coordenadas só
    viram obrigatórias quando o provedor afirma confidence='exact' — é exatamente a distinção que faltava
    no achado do ADR §0.2 (Nominatim descartava o número em silêncio num match a nível de rua). Com
-   confidence 'street_level'/'approximate'/ausente, não exige coordenadas (o mapa/GPS ainda não é
+   confidence 'street_level'/'unknown'/ausente, não exige coordenadas (o mapa/GPS ainda não é
    obrigatório em todos os fluxos hoje). */
 export const enderecoValidoParaEntrega = (endereco) => {
   if (!endereco || !endereco.label) return false;

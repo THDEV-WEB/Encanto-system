@@ -52,10 +52,11 @@ check('coordenadasValidas: finitas e dentro dos limites (preparo/segurança)', (
 });
 
 /* ── REF-ADDRESS-02 · Onda 2 — validadores novos (ainda não ligados a nenhum fluxo) ── */
-check('confidenceValida: mesmo conjunto do CHECK addresses_confidence_check (migration Onda 1)', () => {
+check('confidenceValida: mesmo conjunto do CHECK addresses_confidence_check (escopo enxuto REF-ADDRESS-AUTOCOMPLETE-01: exact/street_level/unknown)', () => {
   assert.equal(confidenceValida('exact'), true);
   assert.equal(confidenceValida('street_level'), true);
-  assert.equal(confidenceValida('approximate'), true);
+  assert.equal(confidenceValida('unknown'), true);
+  assert.equal(confidenceValida('approximate'), false); // aposentado nesta REF
   assert.equal(confidenceValida(null), true);
   assert.equal(confidenceValida(undefined), true);
   assert.equal(confidenceValida('chutometro'), false);
@@ -108,7 +109,7 @@ check('chaveDedupe = road,house_number', () => {
 check('sugestaoMain / sugestaoSub', () => {
   assert.equal(sugestaoMain(s), 'Rua João Schlay, 77');
   assert.equal(sugestaoMain({ address: {}, display_name: 'Somewhere, City' }), 'Somewhere');
-  assert.equal(sugestaoSub(s), 'Centro · Timbó · CEP 89120-000');
+  assert.equal(sugestaoSub(s), 'Centro · Timbó/Santa Catarina · CEP 89120-000'); // REF-ADDRESS-AUTOCOMPLETE-01: UF junto da cidade
 });
 check('curtaSugestao (pick)', () => {
   assert.equal(curtaSugestao(normalizarEndereco(a, { completa: true }), s), 'Rua João Schlay, 77 — Centro');
@@ -128,9 +129,9 @@ check('inferirConfidence: REF-ADDRESS-02 Onda 3 — mesma distinção provada ao
   assert.equal(inferirConfidence({ address: { road: 'Rua Amazonas', house_number: '533' } }), 'exact');
   // caso real do achado: rua casada, número descartado pelo provedor -> street_level, não exact
   assert.equal(inferirConfidence({ address: { road: 'Rua Amazonas' } }), 'street_level');
-  assert.equal(inferirConfidence({ address: {} }), 'approximate');
-  assert.equal(inferirConfidence({}), 'approximate');
-  assert.equal(inferirConfidence(null), 'approximate');
+  assert.equal(inferirConfidence({ address: {} }), 'unknown'); // REF-ADDRESS-AUTOCOMPLETE-01: 'approximate' -> 'unknown'
+  assert.equal(inferirConfidence({}), 'unknown');
+  assert.equal(inferirConfidence(null), 'unknown');
 });
 
 check('linhaReversaMapa x linhaConfirmarMapa (diferença suburb||neighbourhood vs suburb preservada)', () => {

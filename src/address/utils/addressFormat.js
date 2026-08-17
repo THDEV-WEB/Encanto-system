@@ -12,12 +12,20 @@ function ruaNumero(a = {}) { return [a.road, a.house_number].filter(Boolean).joi
    ({address:{road,house_number,...}}), a partir só do que o provedor efetivamente devolveu. É a
    distinção provada ao vivo no ADR §0.2: "Rua Amazonas 533" casava a rua mas descartava o número em
    silêncio — um match a nível de rua NÃO é o mesmo que um match exato, mesmo quando o provedor "responde
-   algo". Provider-agnóstico (usado pelos 3 adapters do waterfall: Mapbox/Nominatim/Photon). */
+   algo". Provider-agnóstico (usado pelos 3 adapters do waterfall: Mapbox/Nominatim/Photon).
+
+   REF-ADDRESS-AUTOCOMPLETE-01 (2026-08-17): 'approximate' virou 'unknown' — mesmo escopo enxuto de
+   confidence aprovado pelo dono (exact/street_level/unknown). Não virou neighborhood_level/city_level:
+   enderecoPlausivel.js já exige address.road pra qualquer resultado de BUSCA sobreviver ao filtro (a
+   mesma condição que já produz exact/street_level aqui), então esses 2 níveis mais amplos nunca seriam
+   alcançados pelo fluxo de sugestões como está hoje — ficariam inertes no schema. 'unknown' resolve o
+   caso real que motivou a mudança: GPS/mapa (que não passa por enderecoPlausivel, usa reverso() direto)
+   hoje deixava confidence sem classificar quando o provedor não confirma nem rua nem número. */
 export function inferirConfidence(item) {
   const addr = (item && item.address) || {};
   if (addr.house_number) return 'exact';
   if (addr.road) return 'street_level';
-  return 'approximate';
+  return 'unknown';
 }
 
 /* Normaliza o `address` do Nominatim para o shape canônico do pedido {rua,numero,bairro,cidade,estado,cep}.
@@ -44,9 +52,13 @@ export function chaveDedupe(s) { const a = s.address || {}; return (a.road || ''
 
 /* ── SUGESTÕES (lista da aba Buscar) — idêntico ao render inline original ── */
 export function sugestaoMain(s) { const a = s.address || {}; return ruaNumero(a) || s.display_name.split(',')[0]; }
+/* REF-ADDRESS-AUTOCOMPLETE-01 (2026-08-17): cidade/estado juntos ("Timbó/Santa Catarina") — achado da
+   auditoria de rua/cidade homônima ("Timbó" existe em SC/PE/SP/BA): sem o estado, 2 sugestões de mesmo
+   nome de cidade ficavam indistinguíveis na lista, mesmo o dado já chegando certo no shape canônico. */
 export function sugestaoSub(s) {
   const a = s.address || {};
-  return [a.suburb || a.neighbourhood, a.city || a.town, a.postcode ? 'CEP ' + a.postcode : ''].filter(Boolean).join(' · ');
+  const cidadeEstado = [a.city || a.town, a.state].filter(Boolean).join('/');
+  return [a.suburb || a.neighbourhood, cidadeEstado, a.postcode ? 'CEP ' + a.postcode : ''].filter(Boolean).join(' · ');
 }
 
 /* pick(s): rótulo curto do endereço escolhido (recebe o shape já normalizado + a sugestão p/ fallback). */

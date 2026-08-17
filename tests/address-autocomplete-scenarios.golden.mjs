@@ -42,24 +42,35 @@ const waterfallReal = criarWaterfall(ORDEM_PADRAO); // mesma instância de produ
 /* ══════════════ 1. RUA HOMÔNIMA ══════════════
    Achado real desta auditoria (teste ao vivo contra HeiGIT/Pelias, sessão anterior): "Rua Itajaí"
    existe em pelo menos 6 municípios de SC (Timbó, Indaial, Pomerode, Apiúna, Blumenau, Ibirama...).
-   Fixture inspirado nesse achado real, não inventado. */
-await check('rua homônima — Photon (1º provedor ativo hoje) NÃO recebe viés de cidade e pode devolver a rua de OUTRA cidade primeiro (achado, não bug: é o trade-off já registrado na auditoria da reordenação)', async () => {
+   Fixture inspirado nesse achado real, não inventado.
+
+   RESOLVIDO (2026-08-17): testei ao vivo contra a API pública do Photon — o parâmetro nativo
+   `lat`/`lon` (viés de proximidade) já resolve os 2 critérios de aceite do dono sozinho, sem precisar
+   de nenhuma camada de re-ranking própria: "Rua Itajaí" com lat/lon=posição da Encanto devolve Timbó
+   primeiro; "Rua Itajaí, Indaial" (cidade explícita no texto) devolve Indaial primeiro mesmo com o viés
+   ainda apontando pra Timbó. Esse comportamento é do PRÓPRIO Photon (não é código nosso, não dá pra
+   mockar de forma significativa) — os testes abaixo confirmam só a parte que É nosso código: que
+   passamos `lat`/`lon` corretamente quando a loja tem posição configurada, e que degradamos
+   graciosamente (sem os parâmetros) quando não tem. */
+await check('rua homônima — com bias.lat/lng (posição da loja configurada), Photon recebe o viés de proximidade na URL', async () => {
   const chamadas = mockFetchPorHost({
-    'photon.komoot.io': {
-      features: [
-        { properties: { name: 'Rua Itajaí', street: 'Rua Itajaí', city: 'Pomerode', state: 'Santa Catarina', postcode: '89107-000' }, geometry: { coordinates: [-49.168292, -26.72693] } },
-        { properties: { name: 'Rua Itajaí', street: 'Rua Itajaí', city: 'Timbó', state: 'Santa Catarina', postcode: '89120-000' }, geometry: { coordinates: [-49.259369, -26.835153] } },
-      ],
-    },
+    'photon.komoot.io': { features: [{ properties: { name: 'Rua Itajaí', street: 'Rua Itajaí', city: 'Timbó', state: 'Santa Catarina' }, geometry: { coordinates: [-49.259369, -26.835153] } }] },
   });
   try {
-    // bias = Timbó/SC (a loja é a Encanto) — mas o Photon ignora esse argumento na própria implementação.
-    const r = await waterfallReal.sugestoes('Rua Itajaí', { cidade: 'Timbó', estado: 'SC' });
-    assert.equal(chamadas.length, 1, 'só o Photon deveria ter sido chamado (achou algo plausível de cara)');
-    assert.ok(chamadas[0].includes('photon.komoot.io'), 'Photon é o 1º provedor ativo (Mapbox dormente sem token)');
-    assert.ok(!chamadas[0].includes('Timb'), 'a URL do Photon nunca carrega o viés de cidade — confirma o gap: Photon não filtra por proximidade da loja');
-    // Photon devolveu Pomerode ANTES de Timbó, na ordem que o provedor mandou — o waterfall não reordena por bias.
-    assert.equal(r[0].address.city, 'Pomerode', 'sem reordenação por bias, o waterfall repassa a ordem do provedor como veio');
+    const r = await waterfallReal.sugestoes('Rua Itajaí', { cidade: 'Timbó', estado: 'SC', lat: -26.850651757610454, lng: -49.28720263609122 });
+    assert.equal(chamadas.length, 1);
+    assert.ok(chamadas[0].includes('lat=-26.850651757610454'), 'lat da loja deveria estar na URL do Photon');
+    assert.ok(chamadas[0].includes('lon=-49.28720263609122'), 'lng da loja (como lon=) deveria estar na URL do Photon');
+    assert.equal(r[0].address.city, 'Timbó');
+  } finally { restaurarFetch(); }
+});
+await check('rua homônima — sem bias.lat/lng (loja sem posição configurada, ex.: tenant novo), Photon NÃO recebe lat/lon — degradação graciosa, mesma busca nacional de antes', async () => {
+  const chamadas = mockFetchPorHost({
+    'photon.komoot.io': { features: [{ properties: { name: 'Rua Itajaí', street: 'Rua Itajaí', city: 'Itajaí', state: 'Santa Catarina' }, geometry: { coordinates: [-48.66, -26.9] } }] },
+  });
+  try {
+    await waterfallReal.sugestoes('Rua Itajaí', { cidade: '', estado: '' }); // Bar da Sogra hoje: sem lojaLat/lojaLng
+    assert.ok(!chamadas[0].includes('&lat=') && !chamadas[0].includes('&lon='), 'sem posição configurada, a URL não deve carregar lat/lon nenhum');
   } finally { restaurarFetch(); }
 });
 await check('rua homônima — quando Photon falha, Nominatim (respeita bias) assume e prioriza a cidade certa da loja', async () => {
@@ -87,15 +98,14 @@ await check('cidade homônima — o campo estado SEMPRE chega no shape canônico
   assert.equal(timboOutro.estado, 'Pernambuco');
   assert.notEqual(timboSC.estado, timboOutro.estado, 'os 2 "Timbó" são distinguíveis pelo estado — nunca tratados como o mesmo lugar');
 });
-await check('cidade homônima — GAP (achado, não corrigido nesta etapa): sugestaoSub() não mostra o estado na lista de sugestões', () => {
+await check('cidade homônima — RESOLVIDO (2026-08-17): sugestaoSub() agora mostra o estado, os 2 "Timbó" ficam distinguíveis na lista', () => {
   const timboSC = { address: { road: 'Rua Itajaí', city: 'Timbó', state: 'Santa Catarina', postcode: '89120-000' } };
   const timboPE = { address: { road: 'Rua Central', city: 'Timbó', state: 'Pernambuco', postcode: '55800-000' } };
   const subSC = sugestaoSub(timboSC);
   const subPE = sugestaoSub(timboPE);
-  assert.ok(!subSC.includes('Santa Catarina') && !subSC.includes('SC'), 'confirma o gap: estado não aparece na sub-label hoje');
-  // se os 2 resultados aparecessem juntos numa busca nacional (sem bias), o usuário NÃO conseguiria
-  // diferenciá-los só pela lista — precisaria adivinhar pelo CEP. Registrado como recomendação no relatório.
-  assert.notEqual(subSC, subPE, 'ainda assim as sub-labels diferem (cidade é igual mas CEP não) — não é uma colisão total, mas é ambíguo quanto ao estado');
+  assert.equal(subSC, 'Timbó/Santa Catarina · CEP 89120-000');
+  assert.equal(subPE, 'Timbó/Pernambuco · CEP 55800-000');
+  assert.notEqual(subSC, subPE, 'os 2 "Timbó" ficam claramente distinguíveis agora, não só pelo CEP');
 });
 await check('cidade homônima — com bias.estado, Nominatim usa state= na query estruturada (já testado em address-geocoding.golden.mjs; aqui confirma pela integração real do waterfall)', async () => {
   _limparCacheNominatim();

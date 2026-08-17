@@ -47,11 +47,11 @@ await check('normalizarFeaturePhoton: feature só de rua (sem número, caso real
   assert.equal(r.address.house_number, '');
   assert.equal(r._confidence, 'street_level');
 });
-await check('normalizarFeaturePhoton: feature vazia/sem coordenadas não quebra -> approximate', () => {
+await check('normalizarFeaturePhoton: feature vazia/sem coordenadas não quebra -> unknown', () => {
   const r = normalizarFeaturePhoton({});
   assert.equal(r.address.road, '');
   assert.equal(r.lat, '');
-  assert.equal(r._confidence, 'approximate');
+  assert.equal(r._confidence, 'unknown'); // REF-ADDRESS-AUTOCOMPLETE-01: 'approximate' -> 'unknown'
 });
 
 /* ── Normalizador Mapbox (fixture do shape documentado da Geocoding API v5 — NÃO verificado ao vivo, ver header do provider) ── */
@@ -80,7 +80,7 @@ await check('normalizarFeatureMapbox: feature só de rua (sem campo address) -> 
 await check('normalizarFeatureMapbox: feature vazia não quebra', () => {
   const r = normalizarFeatureMapbox({});
   assert.equal(r.address.road, '');
-  assert.equal(r._confidence, 'approximate');
+  assert.equal(r._confidence, 'unknown'); // REF-ADDRESS-AUTOCOMPLETE-01: 'approximate' -> 'unknown'
 });
 
 /* ── Providers reais: disponibilidade/nome (estrutural, sem rede) ── */

@@ -86,7 +86,9 @@ export function useAddressSearch({ onSelect }) {
      (o waterfall nunca lança, então sem esse check as duas causas ficariam indistinguíveis; ver ADR §7).
      REF-ADDRESS-AUTOCOMPLETE-01: guardiaoBusca (searchGuard.js) descarta a resposta de uma chamada que
      não é mais a mais recente — corrige a race condition em que a rede entrega a resposta de uma busca
-     ANTIGA depois de uma busca mais NOVA já ter mostrado sugestões atuais. */
+     ANTIGA depois de uma busca mais NOVA já ter mostrado sugestões atuais. `lat`/`lng` da loja (quando
+     configurada) entram no bias — o Photon usa isso como viés de proximidade nativo (testado ao vivo:
+     prioriza a cidade da loja por padrão, cede à cidade que o usuário digitar explicitamente no texto). */
   const guardiaoBusca = useRef(criarGuardiaoSequencia()).current;
   const searchAddress = useCallback(async (q) => {
     const seq = guardiaoBusca.iniciar();
@@ -95,7 +97,12 @@ export function useAddressSearch({ onSelect }) {
     setErro(null);
     setStatus('loading');
     try {
-      const res = await geocoding.sugestoes(q, { cidade: cidadePadrao, estado: estadoPadrao });
+      const bias = { cidade: cidadePadrao, estado: estadoPadrao };
+      if (Number.isFinite(companyInfo.lojaLat) && Number.isFinite(companyInfo.lojaLng)) {
+        bias.lat = companyInfo.lojaLat;
+        bias.lng = companyInfo.lojaLng;
+      }
+      const res = await geocoding.sugestoes(q, bias);
       if (!guardiaoBusca.aindaValido(seq)) return;
       if (res.length > 0) { setSuggestions(res); setStatus('found'); }
       else { setSuggestions([]); setStatus('notfound'); }
@@ -103,7 +110,7 @@ export function useAddressSearch({ onSelect }) {
       if (!guardiaoBusca.aindaValido(seq)) return;
       setSuggestions([]); setStatus('notfound');
     }
-  }, [cidadePadrao, estadoPadrao, guardiaoBusca]);
+  }, [cidadePadrao, estadoPadrao, companyInfo.lojaLat, companyInfo.lojaLng, guardiaoBusca]);
   useEffect(() => { const t = setTimeout(() => searchAddress(query), 450); return () => clearTimeout(t); }, [query, searchAddress]);
 
   /* Editar o texto de novo depois de ter escolhido uma sugestão descarta a escolha (volta pras sugestões). */
@@ -112,7 +119,9 @@ export function useAddressSearch({ onSelect }) {
   /* ── GPS (geolocalização + reverse-geocode) — Onda 5b: erro granular (ADR §7) em vez de alert() genérico.
      Ao ACHAR a posição, o reverse-geocode continua tolerante (catch preserva o fallback de coordenadas
      cruas — comportamento intocado); só a falha em OBTER a posição (permissão/GPS/timeout) ganhou causa
-     própria. */
+     própria. REF-ADDRESS-AUTOCOMPLETE-01: `d._confidence` (já calculado por inferirConfidence dentro de
+     cada provider adapter, ver waterfallGeocoder.reverso) passa a ser repassado — antes o GPS deixava
+     confidence sempre null, mesmo quando o provedor não confirmava nem a rua (agora vira 'unknown'). */
   const usarGPS = useCallback(() => {
     setErro(null);
     if (!online()) { setErro(criarErro('sem_internet')); return; }
@@ -125,7 +134,7 @@ export function useAddressSearch({ onSelect }) {
         const a = d.address || {};
         const short = curtaGps(a, d);
         const n = normalizarEndereco(a, { cidadePadrao, estadoPadrao });   // variante enxuta (GPS)
-        onSelect(short + (n.bairro ? ' — ' + n.bairro : ''), { lat, lng, rua: n.rua, numero: n.numero, bairro: n.bairro, cidade: n.cidade, estado: n.estado, cep: n.cep });
+        onSelect(short + (n.bairro ? ' — ' + n.bairro : ''), { lat, lng, rua: n.rua, numero: n.numero, bairro: n.bairro, cidade: n.cidade, estado: n.estado, cep: n.cep, confidence: d._confidence || null });
       } catch { onSelect(formatarCoord(lat) + ', ' + formatarCoord(lng), { lat, lng }); }
     }, (posErro) => { setStatus('idle'); setErro(criarErro(tipoErroGeolocalizacao(posErro && posErro.code))); });
   }, [onSelect, cidadePadrao, estadoPadrao]);
@@ -169,7 +178,10 @@ export function useAddressSearch({ onSelect }) {
   }, [cepData, cepNumero, complemento, referencia, onSelect]);
 
   /* ── Confirmar localização pelo mapa (número/complemento/referência sempre como campos próprios —
-     antes só entravam embutidos no texto do label, nunca no meta estruturado) ── */
+     antes só entravam embutidos no texto do label, nunca no meta estruturado) ──
+     REF-ADDRESS-AUTOCOMPLETE-01: mesmo repasse de `d._confidence` do branch de GPS (só no branch que
+     tem um reverse-geocode fresco em mãos — o branch "else" usa mapAddr já formatado por um clique/drag
+     anterior, sem a resposta bruta do provedor disponível aqui, então não força confidence nesse caso). */
   const confirmMap = useCallback(async () => {
     const numero = cepNumero.trim();
     if (!mapAddr.trim() && !numero) {
@@ -179,7 +191,7 @@ export function useAddressSearch({ onSelect }) {
       const addr = linhaConfirmarMapa(a);
       onSelect(addr || 'Localização no mapa', {
         lat: mapPin.lat, lng: mapPin.lng, rua: n.rua, bairro: n.bairro, cidade: n.cidade, estado: n.estado,
-        cep: n.cep, complemento, referencia,
+        cep: n.cep, complemento, referencia, confidence: d._confidence || null,
       });
     } else {
       onSelect(mapAddr || ('Lat ' + formatarCoord(mapPin.lat)), { lat: mapPin.lat, lng: mapPin.lng, numero, complemento, referencia });

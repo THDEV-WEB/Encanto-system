@@ -9,7 +9,17 @@
    e o parâmetro `lang=pt` retornou HTTP 400 nesse teste — por isso NÃO é enviado aqui. O endpoint de
    reverse-geocode (`/reverse`) segue a documentação pública do Photon mas NÃO foi exercitado ao vivo
    nesta referência; se o formato divergir, o try/catch do waterfallGeocoder isola a falha (cai para o
-   próximo provedor) sem quebrar a busca. */
+   próximo provedor) sem quebrar a busca.
+
+   REF-ADDRESS-AUTOCOMPLETE-01 (2026-08-17): `sugestoes(query, bias)` passa a usar `bias.lat`/`bias.lng`
+   (posição da loja, quando configurada) como viés de proximidade (`&lat=&lon=` — parâmetros nativos do
+   Photon). Testado AO VIVO contra a API pública: "Rua Itajaí" sem viés espalha por várias cidades do
+   Brasil; com o viés apontando pra Timbó, Timbó sobe pro topo sozinho; e quando o usuário digita outra
+   cidade no texto ("Rua Itajaí, Indaial"), a correspondência textual domina o viés geográfico — o
+   próprio Photon já resolve os 2 critérios de aceite (prioriza a loja por padrão, cede ao texto
+   explícito), sem precisar de nenhuma camada de re-ranking própria. Sem `bias.lat`/`bias.lng` (loja sem
+   posição configurada, ex.: tenant novo) a URL fica idêntica à de antes — degradação graciosa, mesmo
+   princípio do resto do domínio. */
 import { inferirConfidence } from '../../../utils/addressFormat.js';
 
 const SEARCH_URL = 'https://photon.komoot.io/api/';
@@ -53,8 +63,11 @@ export const provider = {
   /* Sem chave, endpoint público — sempre "disponível" no sentido de configuração (rate-limit/uso
      razoável é tratado pelo try/catch do waterfall, não aqui). */
   disponivel: () => true,
-  async sugestoes(query) {
-    const url = SEARCH_URL + '?q=' + encodeURIComponent(query) + '&limit=6';
+  async sugestoes(query, bias) {
+    let url = SEARCH_URL + '?q=' + encodeURIComponent(query) + '&limit=6';
+    if (Number.isFinite(bias?.lat) && Number.isFinite(bias?.lng)) {
+      url += '&lat=' + bias.lat + '&lon=' + bias.lng;
+    }
     const r = await fetch(url);
     const d = await r.json();
     const feats = Array.isArray(d && d.features) ? d.features : [];
