@@ -378,3 +378,101 @@ qualquer commit ou arquivo rastreado. `.env.e2e` confirmado gitignored (`.gitign
 reais, e agora também com prova end-to-end contra um JWT real emitido depois do Hook ligado no
 projeto E2E). Produção continua com o Hook desligado de propósito — habilitar lá é uma decisão
 separada, não tomada nesta onda. Não avancei pra Onda 4.
+
+### Onda 4 — Integração de sessão / storefront
+
+**Onde o storefront já resolvia cada peça (mapeamento, sem refatorar nada disso)**:
+`StorefrontProvider.jsx` resolve a loja por domínio (`get_store_by_domain(hostname)`) e expõe via
+`useStorefrontStore()` — só UX/contexto, nunca autorização (igual antes). `AuthProvider.jsx` gerencia
+sessão/`customer` do cliente (`dbCliente`, cliente Supabase dedicado, isolado do `db` do Admin por
+`storageKey` próprio). Composição em `App.jsx`: `<StorefrontProvider><AuthProvider>` — `AuthProvider`
+já vive DENTRO do contexto da loja resolvida, então pode consumir `useStorefrontStore()` sem precisar
+mudar a árvore.
+
+**Implementado** (arquivos):
+- `src/utils/jwt.js` (novo) — `decodeJwtPayload(token)`, decodifica o payload sem verificar assinatura
+  (a verificação real é do Postgres/PostgREST no servidor; aqui só lemos `tenant_id` já assinado pra
+  decidir se precisa agir).
+- `src/services/tenantSync.js` (novo) — `precisaAtivarTenant()` (decisão pura: token sem
+  `tenant_id`/com tenant errado/loja não resolvida ou inativa) + `syncTenant()` (efeito: chama
+  `activate_tenant` só se precisar, `refreshSession()` só se a ativação teve sucesso). Recebe
+  `dbCliente` por parâmetro — puro, sem importar React, testável sem rede e reaproveitado
+  IDENTICAMENTE pelo hook do provider e pelo script de prova real (o que é testado é o que roda).
+- `src/services/AuthService.js` — novo método `syncTenant(accessToken, storeId, storeStatus)`,
+  delega pro módulo acima passando `dbCliente`.
+- `src/providers/AuthProvider.jsx` — `useStorefrontStore()` + novo `useEffect` (separado do efeito de
+  sessão existente, não mexe nele) que chama `AuthService.syncTenant(...)` quando há sessão E loja
+  resolvida. Guarda dupla contra loop: (1) `precisaAtivarTenant` já não faz nada quando o claim já
+  bate — o próprio `refreshSession()` dispara `onAuthStateChange` de novo, o efeito roda de novo, dessa
+  vez vê "já bate" e para — converge sozinho, nunca looping; (2) `useRef` cobre a janela assíncrona
+  entre disparos concorrentes do mesmo efeito.
+- `tests/address.render.mjs` — único teste que renderizava `<AuthProvider>` sozinho (sem
+  `StorefrontProvider` por fora); `useStorefrontStore()` lançaria fora desse contexto. `withAuth`
+  passou a envolver com `<StorefrontProvider>` também — `renderToStaticMarkup` nunca roda efeitos
+  (mesmo raciocínio já usado pro próprio `AuthProvider`), então isso não dispara rede nem muda os
+  goldens byte-a-byte (reconfirmado rodando o teste).
+
+**Fluxo antes/depois**:
+- Antes: login → `carregarCustomer` → fim. JWT nunca ganhava `tenant_id`.
+- Depois: login → `carregarCustomer` (inalterado) **e**, em paralelo, quando sessão+loja resolvida →
+  `syncTenant` decide se precisa ativar → `activate_tenant()` (Onda 2) → `refreshSession()` → Hook
+  (Onda 3) assina `tenant_id` → `onAuthStateChange` atualiza a sessão → efeito reavalia, já bate, para.
+
+**Convidado**: `session?.access_token` ausente → o efeito nem chama `AuthService.syncTenant` — zero
+requisição, checkout continua exatamente como sempre (não tocado, coberto pelos goldens de checkout já
+existentes, todos verdes sem alteração).
+
+**Admin/Super Admin/addresses**: nada tocado — `is_admin_of`, RLS de `addresses`,
+`link_customer_to_auth`, checkout, autocomplete — zero arquivo desses domínios no diff desta onda.
+
+**Testado**:
+1. `tests/tenantSync.golden.mjs` (novo, 14 verificações, zero rede, `dbCliente` mockado): convidado
+   sem token → zero chamada; loja não resolvida/inativa → zero chamada; claim já correto → zero chamada
+   (base da convergência sem loop); precisa ativar → chama `activate_tenant` com `p_store_id` certo e
+   depois `refreshSession`; troca de loja → reativa pra loja certa; `activate_tenant` falha →
+   `refreshSession` NUNCA é chamado; `refreshSession` falha → erro devolvido, nunca lança exceção;
+   `dbCliente` nulo → não lança.
+2. `scripts/auth-tenant-onda4-e2e-real-test.mjs` (novo, **24 verificações, TODAS contra o projeto E2E
+   real, importando os módulos de verdade do frontend** — não uma reimplementação paralela): login
+   real sem `tenant_id` (seguro) → `syncTenant(Encanto)` real → JWT real com `tenant_id=Encanto` →
+   refresh com o mesmo tenant é idempotente (zero chamada de RPC extra, espiado de verdade) → troca
+   real Encanto→Bar (JWT muda, `session_id` preservado) → troca de volta Bar→Encanto → loja inexistente
+   nega sem crash e sem alterar o tenant vigente → loja inativa é barrada antes mesmo de chamar a RPC
+   (`storeStatus!=='ativo'`) → **duas sessões reais e simultâneas da mesma pessoa** (login duas vezes)
+   cada uma com seu próprio tenant, sem disputa, `session_id` diferentes → logout/login: linha em
+   `active_tenant` da sessão antiga **some por CASCADE** (confirmado com dado real, não só
+   estruturalmente como na Onda 3), sessão nova nasce sem `tenant_id` (nada herdado), ativa
+   corretamente de novo.
+3. Fixtures novas do E2E, documentadas como código reproduzível em `scripts/e2e-tenant-fixture-stores.mjs`
+   (idempotente, mesmo padrão de `scripts/e2e-fixture-accounts.mjs`): loja "Bar da Sogra (fixture E2E)"
+   (ativa) e "Loja Inativa (fixture E2E)" (suspensa), ambas com `customers` vinculando o MESMO
+   `auth_user_id` do cliente fixture — replica o cenário real "1 pessoa, 2 lojas legítimas" e isola
+   "loja inativa" como único motivo de negação num dos testes.
+
+**Regressão**: `test:domain` verde (inclui as 2 suites novas). `build`/`build:admin` verdes.
+`test:db-guards` (produção) continua parando no mesmo FAIL pré-existente de sempre
+(`addresses.store_id`); Ondas 2 e 3 desta REF reconfirmadas isoladas, ainda verdes (24/24 e 11/11,
+sem regressão causada por esta onda).
+
+**Diff**: `src/utils/jwt.js`, `src/services/tenantSync.js` (novos); `src/services/AuthService.js`,
+`src/providers/AuthProvider.jsx`, `tests/address.render.mjs` (modificados);
+`tests/tenantSync.golden.mjs`, `scripts/auth-tenant-onda4-e2e-real-test.mjs`,
+`scripts/e2e-tenant-fixture-stores.mjs` (novos); `package.json` (3 scripts novos). **Achado**: havia
+2 arquivos de OUTRO ator (`migrations/REF-SEC-DATA-01-harden-critical*.sql`,
+`scripts/sec-data-01-harden-critical-test.mjs`) presentes no working tree no momento do commit —
+NÃO tocados, NÃO adicionados, `git add` explícito só dos arquivos desta onda (mesma disciplina de
+sempre).
+
+**Riscos/limitações**: nenhuma migration de banco nesta onda (zero DDL em produção — só código
+frontend + fixtures de teste no projeto E2E). `syncTenant` roda em paralelo a `carregarCustomer`, sem
+bloquear a UI — se falhar (usuário sem vínculo com a loja do domínio atual), a sessão simplesmente
+segue sem `tenant_id` para sempre até algo mudar de verdade (login/logout, domínio) — comportamento
+correto e intencional (nenhuma RLS depende disso ainda, ver Onda 5). `precisaAtivarTenant` reavalia a
+cada nova referência de token — em auto-refresh de rotina (sem troca de loja) o Hook reconfirma o
+mesmo `tenant_id`, então o claim já bate e nenhuma chamada extra de `activate_tenant` acontece
+(confirmado no ITEM8 do script real). Não testei via browser/Playwright de verdade (duas abas reais,
+clique em UI) — a prova usa 2 conexões `supabase-js` diretas simulando 2 abas (2 sessões reais e
+simultâneas), que é o que efetivamente importa (mesmo mecanismo, sem depender de driver de browser).
+
+**Resultado**: Onda 4 fechada. Nenhuma RLS/RPC downstream ainda lê `tenant_id` (isso é Onda 5). Não
+avancei pra Onda 5. Hook de produção continua desligado.

@@ -3,17 +3,20 @@
    Apos login, carrega o customer proprio: se ainda nao tem telefone -> precisaTelefone (1o acesso).
    Expoe {status, isLogged, user, customer, precisaTelefone, entrarComGoogle, enviarEmail,
    confirmarEmail, completarCadastro, sair}. */
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { AuthContext } from '../contexts/AuthContext.js';
 import { AuthService } from '../services/AuthService.js';
 import { setUsuario, limparUsuario } from '../lib/sentry.js'; // REF-OBS-01: no-op sem VITE_SENTRY_DSN
 import { limparGuestIdentity } from '../utils/guestIdentity.js'; // REF-CUSTOMER-01: fonte unica (Supabase encerra o cache de visitante)
+import { useStorefrontStore } from '../hooks/useStorefrontStore.js'; // REF-AUTH-TENANT-01 · Onda 4: loja resolvida por dominio -> alvo do tenant_id
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [status,  setStatus]  = useState('loading'); // loading | anon | logged
   const [customer, setCustomer] = useState(null);
   const [precisaTelefone, setPrecisaTelefone] = useState(false);
+  const { store } = useStorefrontStore(); // REF-AUTH-TENANT-01 · Onda 4: loja resolvida por dominio
+  const sincronizandoTenantRef = useRef(false); // trava contra chamadas concorrentes (nunca loop)
 
   const carregarCustomer = useCallback(async (s) => {
     if (!s?.user) { setCustomer(null); setPrecisaTelefone(false); limparUsuario(); return; }
@@ -49,6 +52,22 @@ export function AuthProvider({ children }) {
     });
     return () => { vivo = false; off && off(); };
   }, [carregarCustomer]);
+
+  /* REF-AUTH-TENANT-01 · Onda 4: mantem o claim tenant_id do JWT em dia com a loja resolvida por
+     dominio (activate_tenant + refreshSession, Ondas 2/3). Convidado (session vazia) ou loja ainda
+     nao resolvida -> nao faz nada, zero chamada. Depende so de access_token/store_id/store.status
+     (nunca do objeto session inteiro) -- o proprio refreshSession() dispara onAuthStateChange, que
+     troca a session e o access_token, reexecutando este efeito UMA vez; nessa segunda passada o claim
+     ja bate com a loja (syncTenant/precisaAtivarTenant e quem decide isso) e ele nao faz nada -> loop
+     converge sozinho, nunca infinito. sincronizandoTenantRef cobre so a janela assincrona entre
+     disparos concorrentes do MESMO efeito (StrictMode, re-render rapido), nao substitui essa checagem. */
+  useEffect(() => {
+    if (sincronizandoTenantRef.current) return;
+    if (!session?.access_token || !store?.store_id) return;
+    sincronizandoTenantRef.current = true;
+    AuthService.syncTenant(session.access_token, store.store_id, store.status)
+      .finally(() => { sincronizandoTenantRef.current = false; });
+  }, [session?.access_token, store?.store_id, store?.status]);
 
   const entrarComGoogle = useCallback(()             => AuthService.signInWithGoogle(), []);
   const enviarEmail     = useCallback((email)        => AuthService.signInWithEmailOtp(email), []);

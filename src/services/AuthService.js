@@ -7,6 +7,7 @@ import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
 import { App as CapacitorApp } from '@capacitor/app';
 import { buildStorefrontRpcParam, getResolvedStoreId } from './storefrontStore.js'; // REF-SAAS-01 · Onda 6.1: {}/null ate resolver, {p_store_id}/id da loja resolvida por dominio
+import { syncTenant } from './tenantSync.js'; // REF-AUTH-TENANT-01 · Onda 4: mantem tenant_id do JWT em dia com a loja resolvida
 
 const semAuth = () => ({ data: null, error: { message: 'auth indisponivel (offline)' } });
 
@@ -142,5 +143,12 @@ export const AuthService = {
     const e = (email || '').trim().toLowerCase();
     if (!/.+@.+\..+/.test(e)) return { data: null, error: { message: 'e-mail invalido' } };
     return dbCliente.auth.updateUser({ email: e });
+  },
+
+  /* REF-AUTH-TENANT-01 · Onda 4: mantem o claim tenant_id do JWT em dia com a loja resolvida por
+     dominio. Best-effort, nunca lanca — ver services/tenantSync.js pra logica pura/testavel. */
+  async syncTenant(accessToken, storeId, storeStatus) {
+    if (!dbCliente) return { ativado: false };
+    return syncTenant({ dbCliente, accessToken, storeId, storeStatus });
   },
 };

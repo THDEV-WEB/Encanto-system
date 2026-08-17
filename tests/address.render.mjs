@@ -17,6 +17,7 @@ const NBSP = String.fromCharCode(160);
 const norm = (s) => s.split(NBSP).join(' ');
 
 const { AuthProvider } = await import('../src/providers/AuthProvider.jsx');
+const { StorefrontProvider } = await import('../src/providers/StorefrontProvider.jsx');
 const { AddressModal } = await import('../src/address/index.js');
 const { AddressPreview } = await import('../src/address/components/AddressPreview.jsx');
 const { AddressActions } = await import('../src/address/components/AddressActions.jsx');
@@ -31,8 +32,12 @@ const cepData = { logradouro: 'Rua das Flores', bairro: 'Centro', localidade: 'T
    real sempre estão sob <AuthProvider>; aqui replicamos isso. renderToStaticMarkup NUNCA roda efeitos
    (ver cabeçalho do arquivo), então o estado inicial síncrono (status:'loading' -> isLogged:false,
    customer:null) é tudo que este teste enxerga — nenhuma chamada de rede acontece, e as seções novas
-   (isLogged-only) ficam ausentes, preservando os goldens BYTE-A-BYTE. */
-const withAuth = (el) => h(AuthProvider, null, el);
+   (isLogged-only) ficam ausentes, preservando os goldens BYTE-A-BYTE.
+   REF-AUTH-TENANT-01 · Onda 4: AuthProvider passou a chamar useStorefrontStore() (sincronizacao de
+   tenant) — precisa estar sob <StorefrontProvider> tambem, senao o hook lanca. Mesmo raciocinio do
+   AuthProvider: renderToStaticMarkup nunca roda o efeito que resolve a loja por dominio, entao
+   `store` fica null (estado inicial), zero rede, zero mudanca nos goldens. */
+const withAuth = (el) => h(StorefrontProvider, null, h(AuthProvider, null, el));
 
 /* ── ÂNCORA: markup do AddressModal ORIGINAL (monólito), aba 'search'/idle — o novo deve igualar ── */
 const GOLDEN_MODAL_SEARCH =
