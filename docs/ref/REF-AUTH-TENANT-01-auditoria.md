@@ -613,3 +613,183 @@ dele, decisão já tomada e documentada desde a auditoria original desta REF).
 
 **Resultado**: Onda 5 fechada (no E2E). Produção segue sem a migration (Hook desligado lá). Não
 avancei pra Onda 6.
+
+---
+
+### Onda 6 — `link_customer_to_auth` tenant-aware
+
+#### Auditoria (antes de qualquer mudança)
+
+`link_customer_to_auth(p_phone, p_email, p_name, p_store_id=default_store_id())` — SECURITY DEFINER,
+`search_path` seguro, `auth.uid()` sempre server-side. `p_store_id` nunca era comparado contra nada —
+só usado como filtro de busca/gravação, confiado cegamente (vindo do domínio resolvido no client via
+`buildStorefrontRpcParam()`). `admin_link_customer_to_auth` correta, sem caller no frontend, fora do
+escopo. `link_customer_to_auth_email` não existe (nem hoje nem no histórico de migrations).
+`customers`: 7 colunas, `store_id`/`phone` NOT NULL, uniques compostas `(store_id, phone)` /
+`(store_id, lower(email))` / `(store_id, auth_user_id)`. RLS: `"Admin all customers"`
+(`is_admin_of(store_id)`) + `"Cliente le proprio customer"` (SELECT-only, `auth_user_id=auth.uid()`,
+sem âncora de loja desde SAAS-01 Onda 6.1 — determinismo delegado à query do frontend, não tocado
+nesta onda). Grants de tabela batem com o padrão RPC-only (sem policy de escrita pro cliente comum).
+**Achado de mínimo privilégio**: `EXECUTE` de `link_customer_to_auth` estava concedido a `PUBLIC`/`anon`
+além de `authenticated` (não explorável — nega antes de tocar em dado — mas fora do padrão das Ondas
+2/3). Produção real: 2 lojas ativas de verdade (Encanto + Bar da Sogra, provisionada na Onda 8 do
+SAAS-01), 18 customers reais, todos em Encanto, zero pessoa com customer em 2+ lojas — nenhum drift
+legado a resolver. E2E: schema/RLS/RPC idênticos a produção; grants de tabela ainda amplos
+(`anon` com CRUD completo em `customers`, mesmo drift já visto em `addresses` na Onda 5 — RLS
+bloqueia de qualquer forma, não mexido nesta onda por não ter sido pedido).
+
+**Tensão de desenho identificada e resolvida antes de implementar**: `e2e/support/fixture-customer.js`
+(helper de setup do Playwright, usado em `minha-conta.spec.js`) chama `link_customer_to_auth` direto
+por um client anon, sem nunca passar por `activate_tenant`/Hook — nunca terá `tenant_id`. Produção
+também nunca tem `tenant_id` hoje (Hook desligado). Resolvido com degradação graciosa formalmente
+aprovada pelo dono: `tenant_id` presente exige coerência com `p_store_id` (proteção real, nova);
+`tenant_id` ausente preserva o comportamento legado, byte a byte.
+
+#### RPC — antes/depois
+
+**Antes**: `v_store := p_store_id` usado sem nenhuma verificação.
+**Depois**: adicionado logo após as validações de entrada —
+```sql
+v_tenant uuid := nullif(auth.jwt()->>'tenant_id', '')::uuid;
+...
+if v_tenant is not null and v_tenant <> v_store then
+  return jsonb_build_object('ok', false, 'error', 'loja invalida');
+end if;
+```
+Mesma mensagem genérica (`'loja invalida'`) do check de `p_store_id IS NULL` — não revela se a loja
+alvo existe. Resto da função (lock advisory, casos a/b/c, guarda `requer_verificacao` da
+REF-LOYALTY-01a, anti-takeover de telefone) **byte a byte idêntico** — nenhuma proteção existente foi
+tocada.
+
+#### Regra tenant presente / tenant ausente
+
+- **Presente**: `p_store_id` precisa ser exatamente igual ao `tenant_id` do JWT, senão `DENY` — mesmo
+  que a loja alvo exista de verdade, mesmo que o caller já possua customer legítimo lá (ITEM5: usar o
+  telefone real do próprio customer da Bar enquanto o tenant é Encanto continua negado — a checagem
+  acontece antes de qualquer lookup por telefone).
+- **Ausente**: comportamento idêntico ao que já existia antes desta onda — `p_store_id` como seletor,
+  `default_store_id()` como fallback quando omitido. Nenhum fallback novo foi criado (não escolhe por
+  domínio, não escolhe primeiro tenant, não escolhe por customer existente) — só preserva o que já
+  estava lá.
+
+#### Anti-takeover
+
+Preservado sem nenhuma alteração de código: telefone já vinculado a outro `auth.uid()` continua
+negando (`'telefone ja vinculado a outra conta'`), com ou sem `tenant_id` presente (ITEM6/ITEM8).
+Guarda `requer_verificacao` da REF-LOYALTY-01a (convidado com histórico de pedidos/selos) continua
+intacta com `tenant_id` presente (ITEM9).
+
+#### Múltiplos tenants
+
+Mesma pessoa com customer legítimo em Encanto e Bar da Sogra: sessão com `tenant_id=Encanto` só opera
+o customer de Encanto (ITEM1/2/5); sessão com `tenant_id=Bar` só opera o customer da Bar (ITEM3/4) —
+inclusive com **duas sessões reais e simultâneas** da mesma pessoa (login duplo de verdade), cada uma
+respeitando só o próprio tenant, provado via API direta (não simulação).
+
+#### Grants
+
+`REVOKE EXECUTE ... FROM PUBLIC, anon` + reafirmação explícita `GRANT ... TO authenticated`. Confirmado
+ao vivo no E2E pós-migration: `EXECUTE` restrito a `authenticated`/`postgres`/`service_role`. Chamada
+real por `anon` sem sessão recebe `permission denied for function link_customer_to_auth` (provado via
+API real, não só leitura de catálogo).
+
+#### Testes — E2E (SQL simulado)
+
+`scripts/auth-tenant-onda6-link-customer-rls-test.mjs` — **15/15**. `BEGIN...ROLLBACK`,
+`SET LOCAL ROLE`/`request.jwt.claims`, fixtures reais do E2E (`USER_DUAL` com customer legítimo em
+Encanto/Bar da Sogra E2E, dos fixtures da Onda 4) + 2 fixtures de admin do E2E reaproveitados como
+"pessoa distinta"/"pessoa nova" (só existem 3 `auth.users` reais no projeto E2E, e a RPC grava
+`customers.auth_user_id` com FK real — diferente dos testes de RLS pura de `addresses`/`activate_tenant`
+que só liam `auth.uid()`, aqui precisa de usuário real de verdade). Cobre: tenant×store
+ALLOW/DENY nas 2 direções (Encanto↔Bar), posse legítima do telefone real não atravessa tenant errado,
+anti-takeover com e sem tenant, `requer_verificacao` com tenant presente, criação de customer novo com
+tenant presente, fallback sem tenant (explícito e por omissão de `p_store_id`), loja inativa
+(defesa em profundidade documentada, mesmo padrão da Onda 5), grants, Admin/Super Admin intocados.
+
+#### Testes — API real (ataque)
+
+`scripts/auth-tenant-onda6-link-customer-real-test.mjs` — **13/13**. Login real, RPC real via
+`supabase-js`, `activate_tenant`+Hook+`refreshSession` reais (mesmo módulo `tenantSync.js` da Onda 4).
+Ataque via API direta manipulando `p_store_id` nas duas direções (Encanto→Bar, Bar→Encanto) —
+rejeitado pela RPC nas duas. Duas sessões reais e simultâneas da mesma pessoa (login duplo de
+verdade) operando em paralelo, cada uma no próprio tenant, com tentativa cruzada simultânea negada.
+`anon` real sem login recebe erro ao chamar a RPC. Restaura o `phone` original dos 2 customers fixture
+via `service_role` no final (captura o estado ANTES de qualquer chamada) — `name`/`email` nunca são
+tocados pela suíte (sempre `null`, `coalesce` preserva o valor existente), zero resíduo.
+
+#### Regressão
+
+`test:domain` verde. `build`/`build:admin` verdes. `test:db-guards` (produção): mesmo FAIL
+pré-existente de sempre (`addresses.store_id NULL`, contagem idêntica `total=22 · store_id NULL=8`).
+**Achado, não causado por esta onda**: a cadeia do `test:db-guards` parou num FAIL novo em
+`test:datetime-schema` (`DT5`, grants de `admin_orders_search` divergentes do baseline pinado) —
+investigado e confirmado como resultado de uma migration de **outro ator**
+(`migrations/REF-SEC-DATA-01-harden-r5-r6-r8.sql`, não commitada, presente na working tree) já aplicada
+em produção por eles, fora desta sessão — nada a ver com `link_customer_to_auth`/Onda 6. Rodei o resto
+da cadeia manualmente (script a script) pra não deixar isso mascarar uma regressão real: todos os 16
+scripts restantes (`saas01-onda1` até `saas02-onda2`, incluindo `saas01-onda3-identidade-cliente` —
+regressão direta da produção, que continua na versão ANTIGA de `link_customer_to_auth` — e
+`auth-tenant-onda2`/`onda3`) **100% verdes**. Ondas 4/5 (E2E) reconfirmadas 24/24 e 22/22+15/15.
+
+**Achado real, discutido e registrado (não corrigido nesta onda)**: rodei pela primeira vez a suíte
+Playwright real (`e2e/tests/cliente/`) contra o E2E desde que os fixtures de Bar da Sogra/Loja Inativa
+existem (criados na Onda 4 desta própria REF). `minha-conta.spec.js` falha de forma determinística
+(8/8 execuções) — `AuthService.getMeuCustomer()` roda, na carga inicial da página, ANTES do domínio
+resolver `storefrontId` (corrida genuína entre `StorefrontProvider` e `AuthProvider`, named
+explicitamente no próprio código-fonte), cai no caminho SEM `.eq('store_id', ...)`, e
+`customers WHERE auth_user_id=X LIMIT 1` sem `ORDER BY` devolve, hoje, a linha de "Loja Inativa" (não
+a de Encanto) — confirmado direto no banco. Bug pré-existente da **SAAS-01 Onda 6.1** (que removeu a
+âncora de `store_id` da RLS e documentou explicitamente esse risco: "sem isso, a query ficaria
+ambígua"), só se torna **observável** porque a Onda 4 desta REF acrescentou customers reais em mais de
+uma loja para o mesmo `auth_user_id` fixture — antes disso, `LIMIT 1` sem filtro trivialmente
+devolvia a única linha existente. `fidelidade.spec.js`/`meus-pedidos.spec.js` (mesma pasta,
+mesmo fixture) passam normais — o problema é isolado à leitura de `customer.name`/`.phone` em
+`MinhaContaScreen`. **Zero impacto em produção hoje**: confirmado que nenhum customer real tem 2+
+lojas lá, então o `LIMIT 1` sem filtro sempre devolve a única linha possível, correta por
+consequência. Fora do escopo autorizado desta onda (dono foi explícito: "GETMEUCUSTOMER: NÃO alterar
+nesta Onda... fica registrado como follow-up separado") — não alterei `AuthService.js`/
+`AuthProvider.jsx`. Registrado aqui com o maior detalhe possível para decisão do dono.
+
+#### Migration / Rollback
+
+`migrations/REF-AUTH-TENANT-01-onda6-link-customer-tenant.sql` (+rollback) — `CREATE OR REPLACE` da
+função (sem `DROP` — mesma assinatura de sempre, não é overload) + `REVOKE`/`GRANT` de `EXECUTE`.
+**Zero `UPDATE`/`INSERT`/`DELETE` de dados** — confirmado por leitura antes de aplicar, conforme
+pedido. Aplicada **somente no E2E** (`node run-e2e.mjs --file ...`), confirmada via
+`information_schema.routine_privileges` ao vivo. **Produção não tocada** — nenhum comando de escrita
+foi executado contra `db.env` (produção) nesta onda, só leituras (`SELECT`) para a auditoria e as
+reconfirmações de regressão. Rollback restaura a função antiga (sem checagem de tenant) e os 3 grants
+originais (`PUBLIC`, `anon`, `authenticated`).
+
+#### Diff
+
+`migrations/REF-AUTH-TENANT-01-onda6-link-customer-tenant.sql` (+rollback, novos);
+`scripts/auth-tenant-onda6-link-customer-rls-test.mjs`,
+`scripts/auth-tenant-onda6-link-customer-real-test.mjs` (novos); `package.json` (2 scripts novos,
+**não** wireados em `test:db-guards` — só-E2E, mesmo tratamento das Ondas 3/4/5). Nenhum arquivo de
+outro REF/ator incluído (`REF-SEC-DATA-01`, `REF-WHATSAPP-01`, `loadtest-e2e.mjs` etc. deliberadamente
+deixados de fora do `git add`, presentes na working tree mas não meus).
+
+#### Impacto Admin / Super Admin
+
+Nenhum arquivo de Admin no diff. `admin_link_customer_to_auth`/`is_admin_of`/`is_super_admin`
+confirmados via `pg_proc.prosecdef` inalterados — continuam `SECURITY DEFINER`, nada tocado.
+
+#### Riscos / Limitações
+
+- Migration não aplicada em produção — depende da decisão futura e separada de ligar o Hook lá
+  primeiro (mesmo racional da Onda 5).
+- Degradação graciosa é **temporária por desenho**: enquanto o Hook estiver desligado em produção, a
+  proteção nova (tenant×store) não protege ninguém lá — só passa a valer depois do cutover do Hook,
+  quando as sessões de produção passarem a carregar `tenant_id` de verdade.
+- Loja inativa: a RPC, isoladamente, não reconfirma `stores.status` (mesma limitação de camada já
+  documentada na Onda 5 para a RLS de `addresses`) — a proteção real é o Hook nunca emitir esse claim
+  pra loja inativa, já comprovado na Onda 3.
+- **Achado novo, fora de escopo**: `getMeuCustomer()`/`"Cliente le proprio customer"` (SAAS-01 Onda
+  6.1) tem uma corrida de carregamento que hoje escolhe a loja errada no E2E multi-loja (ver
+  Regressão acima) — dormente em produção (zero customer real com 2+ lojas hoje), mas bloqueia
+  `minha-conta.spec.js` no E2E até ser corrigido numa onda própria.
+- `addresses.store_id` NULL em 8 linhas históricas continua fora de escopo (`REF-ADDRESS-STOREID-01`).
+
+**Resultado**: Onda 6 fechada (no E2E). Produção segue sem a migration (Hook desligado lá). Não
+avancei pra Onda 7.
