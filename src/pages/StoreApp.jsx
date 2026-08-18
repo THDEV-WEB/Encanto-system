@@ -25,6 +25,7 @@ import { useScrollToProduct } from '../hooks/useScrollToProduct.js';     // REF-
 import { useDeliveryEta } from '../hooks/useDeliveryEta.js';             // REF-DELIVERY-01: tempo de entrega (config unica Supabase)
 import { useCompanyInfo } from '../hooks/useCompanyInfo.js';             // REF-COMPANY-01: dados institucionais (config unica Supabase)
 import { AddressProvider, useAddress } from '../address/index.js'; // REF-CHECKOUT-ADDRESS-01: fonte unica do endereco (provider)
+import { useAuth } from '../hooks/useAuth.js'; // REF-SEC-DATA-01 R12: detecta logout de verdade p/ limpar endereco/carrinho
 import { useStorefrontStore } from '../hooks/useStorefrontStore.js'; // REF-SAAS-01 · Onda 6.1: loja resolvida por dominio
 import { LazySection } from '../components/ui/LazySection.jsx';
 import { DS } from '../services/DataService.js';                       // REF-CLIENTE-02: catalogo atual p/ recompra
@@ -99,6 +100,22 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
   const horario = useBusinessHours();
   const storeOpen = horario.aberto;
   const cart = useCart();
+
+  /* REF-SEC-DATA-01 R12: logout limpa endereco/carrinho — sem isso, um dispositivo compartilhado
+     herdava o endereco/carrinho completo do cliente anterior. AddressProvider/useCart vivem ABAIXO do
+     AuthProvider na arvore (App.jsx), entao sair() (AuthProvider.jsx) nao consegue chama-los direto —
+     este efeito reage a MUDANCA de status. So dispara na TRANSICAO real 'logged'->'anon' (nunca no
+     mount inicial, que sempre passa por 'loading' primeiro) — um visitante nunca logado nunca passa
+     por 'logged', entao seu carrinho/endereco proprio nunca e tocado por aqui. */
+  const { status: authStatus } = useAuth();
+  const prevAuthStatusRef = useRef(authStatus);
+  useEffect(() => {
+    if (prevAuthStatusRef.current === 'logged' && authStatus === 'anon') {
+      limparEndereco();
+      cart.clear();
+    }
+    prevAuthStatusRef.current = authStatus;
+  }, [authStatus, limparEndereco, cart]);
 
   /* REF-CLIENTE-02 Onda 4: "Pedir novamente" — re-adiciona os itens do pedido antigo resolvendo pelo
      catalogo ATUAL (preco atual via pricing; pula custom/indisponivel/que exige tamanho-variante) e
