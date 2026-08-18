@@ -88,22 +88,25 @@ await check('mesma query textual, viés da Encanto vs viés vazio da Bar da Sogr
   } finally { restaurarFetch(); }
 });
 
-/* ══════════════ (D) persistência — GAP real, achado nesta auditoria, NÃO corrigido (gate de schema) ══════════════
-   Introspecção real (read-only) feita nesta sessão: addresses tem 19 linhas, 14 com store_id=Encanto,
-   0 com store_id=Bar da Sogra (tenant sem nenhum pedido real ainda) e 5 com store_id=NULL — todas as 5
-   ligadas (via orders.endereco_id) a pedidos REAIS da Encanto, confirmando que NÃO há vazamento entre
-   tenants (nenhuma delas pertence à Bar da Sogra) — mas a marcação do tenant na tabela `addresses` está
-   QUEBRADA pra qualquer loja, não só pra Bar da Sogra: a RPC save_structured_address nunca recebeu
-   store_id nem ganhou esse parâmetro depois que a coluna foi criada (REF-SAAS-01 · Onda 0). */
-await check('GAP confirmado: addressRepository (função REAL, paraPayloadRpc) NÃO inclui store_id no payload da RPC save_structured_address — nenhuma loja fica marcada, mesmo tendo a coluna há tempos', async () => {
+/* ══════════════ (D) persistência — GAP histórico (5 linhas antigas), store_id agora derivado no
+   SERVIDOR, nunca no payload (REF-AUTH-TENANT-01 · Onda 5) ══════════════
+   Introspecção real (read-only) feita na sessão original: addresses tinha 19 linhas, 14 com
+   store_id=Encanto, 0 com store_id=Bar da Sogra (tenant sem pedido real ainda) e 5 com store_id=NULL —
+   todas as 5 ligadas (via orders.endereco_id) a pedidos REAIS da Encanto, confirmando que NÃO havia
+   vazamento entre tenants. A causa raiz (save_structured_address nunca recebia/usava store_id) foi
+   corrigida na Onda 5 da REF-AUTH-TENANT-01 — mas a correção é INTENCIONALMENTE do lado do SERVIDOR
+   (deriva de customers.store_id/tenant_id do JWT dentro da RPC), nunca de um parâmetro vindo do
+   client — por isso o payload continua, de propósito, sem a chave store_id. As 5 linhas históricas
+   NULL continuam fora de escopo (REF-ADDRESS-STOREID-01, drift antigo, não mexido). */
+await check('store_id nunca sai no payload do client (por design — é derivado no servidor, nunca confiado do client)', async () => {
   const { paraPayloadRpc } = await import('../src/address/repository/addressRepository.js');
   const endereco = {
-    storeId: ENCANTO.storeId, // mesmo se o chamador tivesse essa info em mãos, a função hoje não a usa
+    storeId: ENCANTO.storeId, // mesmo se o chamador tivesse essa info em mãos, a função não a usa
     rua: 'Rua X', numero: '10', bairro: 'Centro', cidade: 'Timbó', estado: 'SC', cep: '89120-000',
     lat: -26.85, lng: -49.28, provider: 'photon', confidence: 'exact',
   };
   const payloadReal = paraPayloadRpc(endereco);
-  assert.ok(!('store_id' in payloadReal), 'documenta o gap real: nenhuma chave store_id sai no payload hoje, mesmo com storeId disponível no objeto de entrada (raiz do drift de 5 linhas confirmado nesta auditoria via leitura real do banco)');
+  assert.ok(!('store_id' in payloadReal), 'nenhuma chave store_id sai no payload, mesmo com storeId disponível no objeto de entrada — a RPC deriva sozinha, nunca confia no client');
   assert.equal(payloadReal.rua, 'Rua X', 'confere que o resto do payload continua correto (função real, não reimplementada)');
 });
 

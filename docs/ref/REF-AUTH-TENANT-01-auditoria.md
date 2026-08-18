@@ -476,3 +476,140 @@ simultâneas), que é o que efetivamente importa (mesmo mecanismo, sem depender 
 
 **Resultado**: Onda 4 fechada. Nenhuma RLS/RPC downstream ainda lê `tenant_id` (isso é Onda 5). Não
 avancei pra Onda 5. Hook de produção continua desligado.
+
+### Onda 5 — RLS/RPC de `addresses` usando o claim `tenant_id`
+
+**⚠️ Só aplicada no projeto E2E. NÃO aplicada em produção** — produção ainda tem o Hook desligado
+(Onda 3); se esta migration fosse aplicada lá agora, `auth.jwt()->>'tenant_id'` nunca existiria pra
+ninguém e as 4 policies (que exigem `tenant_id IS NOT NULL`) bloqueariam todo acesso a `addresses`
+pra todo mundo. Confirmado ao final desta onda que produção continua com as policies antigas
+(`addresses_*_own`), grants e `save_structured_address` intactos.
+
+#### Auditoria (antes de qualquer alteração)
+
+Policies da SEC-01 (4, todas `customer_id IN (SELECT... auth_user_id=auth.uid())`, sem escopo de
+loja nenhum): exatamente o gap que motivou toda a cadeia SEC-02→AUTH-TENANT-01. Grants:
+`authenticated` DELETE/INSERT/SELECT/UPDATE, `anon` nenhum. RPCs que tocam `addresses`: só 2
+(`admin_order_endereco`, já escopada por `is_admin_of`, não tocada; `save_structured_address`, alvo
+desta onda). Nenhuma RPC de leitura existe — `AddressClienteService.recentes()` faz
+`.from('addresses').select()` direto, dependendo só da RLS (permanece assim; a policy mais estrita
+sozinha já resolve, sem precisar inventar uma RPC nova). FKs confirmadas: `addresses.customer_id →
+customers.id` (nullable), `addresses.store_id → stores.id` (nullable, sempre NULL em toda escrita
+nova até esta onda), `customers.store_id → stores.id` (NOT NULL).
+
+**Achado crítico fora do escopo esperado, resolvido com autorização explícita**:
+`src/address/repository/addressRepository.js` chamava `save_structured_address` usando `db` (cliente
+do Admin) em vez de `dbCliente` (cliente da sessão do cliente) — `auth.uid()` dentro da RPC nunca
+refletia o cliente logado de verdade, então a checagem de ownership falhava silenciosamente sempre e
+todo endereço salvo pelo checkout virava órfão, logado ou não. Não abria brecha de segurança nova
+(caía pro lado seguro), mas invalidava qualquer coisa que esta onda construísse em cima de
+`auth.uid()`/`tenant_id` dentro da RPC. Corrigido: 1 linha de import (`dbCliente` em vez de `db`).
+
+#### Policies — antes → depois
+
+Antes (SEC-01, 4 policies `_own`): só `customer_id IN (SELECT... auth_user_id=auth.uid())`.
+
+Depois (4 policies `_tenant`, mesma forma em SELECT/INSERT/UPDATE/DELETE):
+```sql
+(auth.jwt()->>'tenant_id') IS NOT NULL
+AND store_id = (auth.jwt()->>'tenant_id')::uuid
+AND customer_id IN (
+  SELECT c.id FROM customers c
+  WHERE c.auth_user_id = auth.uid() AND c.store_id = (auth.jwt()->>'tenant_id')::uuid
+)
+```
+3 condições em conjunto: linha pertence ao tenant certo, dono (customer) pertence ao tenant certo,
+sessão está no tenant certo. `store_id` do CLIENT nunca é confiado como autorização em nenhum lugar —
+só comparado contra o claim assinado. UPDATE tem a mesma condição em USING **e** WITH CHECK (barra
+mover um endereço pra outro tenant). `admin_order_endereco`/`is_admin_of` **não tocadas**.
+
+#### `save_structured_address` — antes → depois
+
+Antes: só validava ownership (`customer_id` pertence a `auth.uid()`), nunca gravava `store_id`.
+Depois: deriva `store_id` do `customers.store_id` do customer JÁ validado (nunca de parâmetro) e,
+quando há `tenant_id` no JWT, exige coerência extra (`customer.store_id = tenant_id`) — sessão da
+Encanto não consegue vincular endereço ao customer da Bar, mesmo sendo a mesma pessoa nas duas. Sem
+`tenant_id` (Hook desligado, caso de produção hoje), cai pro comportamento já correto de confiar no
+`customers.store_id` do customer validado — **funciona hoje mesmo sem o Hook**, fica mais estrito
+automaticamente quando o Hook for ligado, sem precisar de outra migration.
+
+#### Testado
+
+**`scripts/auth-tenant-onda5-addresses-rls-test.mjs`** (novo, 22 verificações, `BEGIN...ROLLBACK`
+contra o E2E, fixtures reais + sintéticas): customer Encanto→Encanto ALLOW, customer
+Encanto→Bar/Bar→Encanto DENY (mesma pessoa, tenant errado) em SELECT/UPDATE/DELETE/INSERT;
+`customer_id`/`store_id` manipulados isoladamente (cada um sozinho já é suficiente pra DENY); UPDATE
+tentando mover o próprio endereço pra outro tenant, DENY; token sem `tenant_id` nega tudo mesmo pra
+dado legítimo; stranger sem nenhum customer nega mesmo com `tenant_id` válido; RPC direta com
+`customer_id` cross-tenant vira órfã (não vincula errado); RPC com `customer_id` legítimo vincula E
+deriva `store_id` certo; anon nega (`permission denied`); Admin/Super Admin confirmados não tocados.
+
+**`scripts/auth-tenant-onda5-addresses-real-test.mjs`** (novo, 15 verificações, **ataque via API
+real** — login genuíno, RPC real, leitura/escrita direta via REST com JWT de verdade, não simulação
+SQL): RPC real cria endereço vinculado; SELECT direto via REST vê o próprio; troca real de tenant
+(Encanto→Bar) faz o MESMO endereço sumir da visão via REST; UPDATE/DELETE diretos via REST
+cross-tenant não afetam nenhuma linha; INSERT direto via REST com `store_id` manipulado é rejeitado
+pela RLS; **duas sessões reais e simultâneas da mesma pessoa** (login duas vezes), cada uma só vê o
+endereço do próprio tenant, nas duas direções; anon real via REST nega. Limpa os próprios dados no
+final via `service_role` (zero resíduo).
+
+**Achado de infraestrutura durante os testes (não relacionado a tenant_id)**: o `addresses` do
+projeto E2E estava desatualizado — faltavam as colunas de geocoding estruturado (`estado`, `cep`,
+`referencia`, `latitude`, `longitude`, `place_id`, `formatted_address`, `provider`, `confidence`) e a
+migration SEC-01/HARDEN-ORDERS-RLS-step2 nunca tinha sido aplicada lá (`anon` ainda com grant total).
+Corrigido com um catch-up cirúrgico (só as colunas + grants de `addresses`, sem tocar
+`orders`/`customers`/`order_items` — que têm suas próprias migrations mais recentes no E2E que eu não
+queria arriscar sobrescrever) — não é uma migration nova desta REF, é sincronizar o ambiente de teste
+com o que produção já tinha antes desta onda começar.
+
+#### Regressão
+
+`test:domain` verde (inclui os guards de `addressRepository`/`address-multitenant` atualizados —
+2 testes estruturais antigos travavam o comportamento ANTIGO/com bug como se fosse o esperado,
+corrigidos pra travar o comportamento novo, mesmo padrão já visto em SEC-01). `build`/`build:admin`
+verdes (1 segfault do `npm`/Node no meio do build do Admin, confirmado transiente — build já tinha
+terminado com sucesso antes do crash, refeito e confirmado limpo). `test:db-guards` (produção):
+mesmo FAIL pré-existente de sempre, contagem **idêntica** (`total=22 · store_id NULL=8`, zero
+mudança — confirma que produção não foi tocada). Ondas 2/3/4 reconfirmadas sem regressão (24/24,
+11/11, 24/24).
+
+#### Diff
+
+`migrations/REF-AUTH-TENANT-01-onda5-addresses-tenant-rls.sql` (+rollback);
+`src/address/repository/addressRepository.js` (client fix); `tests/address.guard.mjs`,
+`tests/address-multitenant.golden.mjs` (guards atualizados); `scripts/auth-tenant-onda5-addresses-rls-test.mjs`,
+`scripts/auth-tenant-onda5-addresses-real-test.mjs` (novos); `package.json` (2 scripts novos, **não**
+wireados em `test:db-guards` — são só-E2E, mesmo tratamento das Ondas 3/4). Catch-up de schema/grants
+do `addresses` no E2E aplicado direto (não é migration desta REF, é sincronizar ambiente de teste).
+**Achado**: outro ator commitou `REF-SEC-DATA-01` durante esta onda e deixou uma edição de
+`package.json` (registro do `test:sec-data-01` + wiring em `test:db-guards`) não commitada na working
+tree — isolei via patch cirúrgico aplicado só ao índice (`git apply --cached`), garantindo que meu
+commit contém EXATAMENTE minhas 2 linhas, sem tocar nem reverter a deles (que continua pendente na
+working tree, para eles commitarem separadamente).
+
+#### Impacto Admin / Super Admin
+
+Nenhum arquivo de Admin no diff. `is_admin_of`, `is_super_admin`, `admin_order_endereco` — nem lidas
+para alteração, só confirmadas via `pg_proc.prosecdef` que continuam exatamente como estavam. Admin
+nunca teve `tenant_id` e continua sem precisar dele (`is_admin_of(store_id)` já resolve o caso de uso
+dele, decisão já tomada e documentada desde a auditoria original desta REF).
+
+#### Riscos / Limitações
+
+- **Loja desativada (defesa em profundidade)**: a policy RLS, por si só, **não** verifica
+  `stores.status` — ela confia inteiramente em `tenant_id` só existir no JWT quando a loja estiver
+  ativa, garantia que é do Hook (Onda 3, reconfirma a cada emissão), não da RLS. Testado (ITEM14)
+  que, se hipoteticamente um `tenant_id` de loja inativa aparecesse numa claim, a RLS SOZINHA
+  permitiria — a proteção real é o Hook nunca emitir esse claim, já comprovado empiricamente na
+  Onda 3. Registrado com honestidade, não escondido: não é uma falha desta onda, é a mesma
+  arquitetura de camadas já decidida (Hook = fonte de verdade do tenant, RLS = confia no que está
+  assinado).
+- Migration não aplicada em produção — depende de uma decisão futura e separada de ligar o Hook lá
+  primeiro.
+- `addresses.store_id` NULL em 8 linhas históricas continua fora de escopo
+  (`REF-ADDRESS-STOREID-01`), não mexido.
+- `REF-ADDRESS-UX-01`/`REF-ADDRESS-SEC-02` continuam não fechadas — dependem desta cadeia inteira
+  fechar, incluindo eventualmente ligar o Hook em produção.
+
+**Resultado**: Onda 5 fechada (no E2E). Produção segue sem a migration (Hook desligado lá). Não
+avancei pra Onda 6.

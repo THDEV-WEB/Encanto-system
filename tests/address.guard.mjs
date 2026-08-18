@@ -119,8 +119,8 @@ check('(9) addressRepository é o único lugar que chama save_structured_address
   const comRpc = outros.filter((f) => /save_structured_address/.test(strip(read(f))));
   assert.deepStrictEqual(comRpc, [], `save_structured_address referenciada fora do repository: ${JSON.stringify(comRpc)}`);
   const repo = strip(read(REPO));
-  assert.ok(/db\.rpc\(\s*['"]save_structured_address['"]/.test(repo), 'repository deve chamar a RPC save_structured_address via db.rpc');
-  assert.ok(/from\s+['"]\.\.\/\.\.\/lib\/supabase\.js['"]/.test(repo), 'repository deve usar o mesmo cliente db de lib/supabase.js (mesmo padrão de create_order)');
+  assert.ok(/dbCliente\.rpc\(\s*['"]save_structured_address['"]/.test(repo), 'repository deve chamar a RPC save_structured_address via dbCliente.rpc');
+  assert.ok(/from\s+['"]\.\.\/\.\.\/lib\/dbCliente\.js['"]/.test(repo), 'REF-AUTH-TENANT-01 Onda 5: repository deve usar dbCliente (sessao do cliente) — db (Admin) nunca carrega auth.uid() do cliente logado, quebrava o vinculo customer_id silenciosamente');
 });
 
 /* (10) REF-ADDRESS-02 · Onda 3 — waterfall de geocoding: delegação + URLs preservadas + Mapbox degradado sem token */

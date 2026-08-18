@@ -1,13 +1,17 @@
 /* address/repository/addressRepository.js — REF-ADDRESS-02 · Onda 2.
-   Única camada que persiste o endereço estruturado (tabela `addresses`, migration Onda 1). Espelha
-   exatamente o padrão de DataService.savePedido (mesmo cliente `db` de lib/supabase.js — a mesma
-   instância que create_order usa, porque save_structured_address é chamada por visitante e cliente
-   logado igual, sem depender de sessão; mesmo timeout defensivo via RPC_TIMEOUT). Nunca lança em falha
-   de rede — devolve null e loga, quem chama decide o que fazer (mesmo contrato de savePedido).
+   Única camada que persiste o endereço estruturado (tabela `addresses`, migration Onda 1). Mesmo
+   timeout defensivo via RPC_TIMEOUT que DataService.savePedido usa. Nunca lança em falha de rede —
+   devolve null e loga, quem chama decide o que fazer (mesmo contrato de savePedido).
 
-   Ainda não é consumida por nenhuma UI/checkout (isso é a Onda 6) — existe isolada, pronta e testável
-   por estrutura (tests/address.guard.mjs), sem mudar nenhum comportamento hoje. */
-import { db, RPC_TIMEOUT } from '../../lib/supabase.js';
+   REF-AUTH-TENANT-01 · Onda 5 (correção): usava `db` (cliente do ADMIN, lib/supabase.js) — funciona
+   pra convidado (RPC não depende de sessão pra customer_id=null), mas pra CLIENTE LOGADO fazia
+   auth.uid() dentro da RPC ficar sempre NULL (db nunca carrega a sessão do cliente no bundle da loja),
+   quebrando silenciosamente o vínculo customer_id em TODO save via checkout, logado ou não. Trocado
+   pra `dbCliente` (mesma instância que AuthService/AuthProvider usam) — agora a RPC enxerga auth.uid()
+   real quando a pessoa está logada, e continua funcionando igual pra convidado (dbCliente também
+   funciona sem sessão, só não tem uid nenhum pra achar). */
+import { dbCliente } from '../../lib/dbCliente.js';
+import { RPC_TIMEOUT } from '../../lib/supabase.js';
 
 /* Exportada só para teste (REF-ADDRESS-AUTOCOMPLETE-01): prova o shape exato que salvar() manda pra
    RPC, incluindo o achado da auditoria de que store_id nunca é incluído — ver
@@ -37,9 +41,9 @@ export const addressRepository = {
   /* Grava o endereço estruturado (objeto canônico de addressModel.js) via RPC SECURITY DEFINER
      save_structured_address. Retorna o uuid criado, ou null em erro/offline (nunca lança). */
   async salvar(endereco) {
-    if (!db) { console.warn('[Encanto] addressRepository.salvar: Supabase indisponível (offline).'); return null; }
+    if (!dbCliente) { console.warn('[Encanto] addressRepository.salvar: Supabase indisponível (offline).'); return null; }
     const p_address = paraPayloadRpc(endereco);
-    const call = () => db.rpc('save_structured_address', { p_address });
+    const call = () => dbCliente.rpc('save_structured_address', { p_address });
     const withTimeout = (p) => Promise.race([p,
       new Promise((res) => setTimeout(() => res({ data: null, error: { message: 'timeout' } }), RPC_TIMEOUT))]);
     const r = await withTimeout(call());
