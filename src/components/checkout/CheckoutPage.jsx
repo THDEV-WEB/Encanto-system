@@ -115,7 +115,6 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
   ];
   const submit = async () => {
     if (submittingRef.current || loading) return;   // impede envio simultâneo
-    console.log('[ENCANTO] Finalizar Pedido clicado. cart.items=', cart.items, 'total=', cart.total);
     setErr('');
     /* GATE de horário (REF-BUSINESS-HOURS-01): fora do expediente NÃO cria pedido — interrompe antes de
        validar/persistir e informa o próximo horário correto. Guest e logado passam pelo mesmo gate. */

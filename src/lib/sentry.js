@@ -34,6 +34,18 @@ if (sentryAtivo) {
        tracesSampleRate/integrations abaixo). */
     integrations: [Sentry.browserTracingIntegration()],
     tracesSampleRate: 0.2,
+    /* REF-SEC-DATA-01 R17: o SDK captura console.log/warn/error como breadcrumb por padrão (integração
+       Breadcrumbs, embutida — `integrations` acima SOMA a esse conjunto default, nunca o substitui) e
+       anexa isso a QUALQUER erro reportado depois, mesmo sem relação nenhuma com o log. Achado real:
+       3 console.log de depuração esquecidos logavam o carrinho inteiro (produto/adicionais/observação
+       livre do cliente) — removidos nesta mesma correção, mas a causa raiz é a captura automática em si.
+       Descartar so a categoria 'console' fecha a classe inteira: qualquer console.log futuro que alguém
+       esquecer de remover não vaza mais pro Sentry, sem precisar caçar cada ocorrência de novo. Outras
+       categorias (ex.: 'negocio', ver registrarBreadcrumb abaixo) continuam intactas. */
+    beforeBreadcrumb(breadcrumb) {
+      if (breadcrumb.category === 'console') return null;
+      return breadcrumb;
+    },
   });
 
   /* REF-SENTRY-01 · Onda 2 ("Resource Loading Errors"): falha de carregamento de <img>/<script>/<link>

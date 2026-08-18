@@ -22,13 +22,11 @@ export function useCart() {
   const count = items.reduce((a,i)=>a+i.qty, 0);
   const total = totalCarrinho(items);
   const add = (prod, qty, adicionais, obs)=>{
-    console.log('[ENCANTO] cart.add chamado. prod.id=', prod?.id, 'tipo:', typeof prod?.id, 'qty=', qty);
     setItems(prev=>{
       const key = prod.id + JSON.stringify((adicionais||[]).map(a=>a.id).sort()) + '::' + (obs||'').slice(0,80);
       const idx = prev.findIndex(i=>i._key===key);
       if (idx>=0) { const n=[...prev]; n[idx]={...n[idx],qty:n[idx].qty+qty}; return n; }
       const novo = [...prev, {...prod, qty, adicionais:adicionais||[], obs:obs||'', _key:key}];
-      console.log('[ENCANTO] Carrinho atualizado. Itens:', novo.length, novo);
       return novo;
     });
   };

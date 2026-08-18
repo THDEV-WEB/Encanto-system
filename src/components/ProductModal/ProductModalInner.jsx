@@ -293,9 +293,7 @@ export function ProductModalInner({ prod, catNome, adicionais, onClose, onAdd, o
                 prodParaCarrinho = {...prod, preco: precoTamanho(tSel), preco_promo: null};
               }
 
-              console.log('[ENCANTO] Adicionar clicado. prod.id=', prod.id, 'qty=', qty, 'sel=', sel, 'obs=', obsCompleto);
               onAdd(prodParaCarrinho,qty,selComPreco,obsCompleto);
-              console.log('[ENCANTO] onAdd executado.');
               onClose();
             }}>
             <span>Adicionar</span>
