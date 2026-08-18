@@ -30,6 +30,25 @@ const HEIGIT_TIMEOUT_MS = 5000; // menor que o timeout do cliente (6000ms, ver r
 const PERFIL = "driving-car";
 const HEIGIT_URL = `https://api.heigit.org/openrouteservice/v2/directions/${PERFIL}`;
 
+// REF-SEC-DATA-01 R14: esta funcao nao exige sessao de usuario real (decisao de desenho, ver comentario
+// no CORS_HEADERS abaixo — mesmo padrao de RPC publica via anon key). O unico risco pratico e alguem com
+// a anon key (publica, vem no bundle) esgotar a cota diaria do HeiGIT (2.000 req/dia) via script. Rate
+// limit LEVE por IP, so na chamada real ao HeiGIT (nunca em cache hit — repetir a MESMA rota nao gasta
+// cota) — teto bem acima do uso legitimo de checkout, baixo o bastante pra travar um abuso automatizado.
+const RATE_LIMIT_JANELA_MS = 60_000;
+const RATE_LIMIT_MAX_POR_JANELA = 30;
+const rateLimitPorIp = new Map<string, number[]>();
+
+function ipPermitido(ip: string): boolean {
+  const agora = Date.now();
+  if (rateLimitPorIp.size >= MAX_ENTRADAS) rateLimitPorIp.clear(); // mesmo guard de memoria do cache de rota
+  const chamadas = (rateLimitPorIp.get(ip) ?? []).filter((t) => agora - t < RATE_LIMIT_JANELA_MS);
+  if (chamadas.length >= RATE_LIMIT_MAX_POR_JANELA) { rateLimitPorIp.set(ip, chamadas); return false; }
+  chamadas.push(agora);
+  rateLimitPorIp.set(ip, chamadas);
+  return true;
+}
+
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*", // rota de leitura, sem credencial de usuario — mesmo padrao de RPCs publicas via anon key
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -126,6 +145,12 @@ Deno.serve(async (req) => {
   const cacheado = cacheGet(chave);
   if (cacheado) {
     return jsonResponse({ distanceKm: cacheado.distanceKm, durationMin: cacheado.durationMin, provider: "heigit", profile: PERFIL, cached: true });
+  }
+
+  // R14: so a partir daqui a chamada realmente vai gastar cota do HeiGIT — cache hit acima nunca conta.
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() || "desconhecido";
+  if (!ipPermitido(ip)) {
+    return jsonResponse({ error: true, reason: "rate_limited" }, 429);
   }
 
   const apiKey = Deno.env.get("OPENROUTESERVICE_API_KEY");
