@@ -2,10 +2,11 @@
    FONTE UNICA E CANONICA das mensagens ao cliente. "Nao quero textos espalhados pelo sistema" (spec):
    toda copy de notificacao vive AQUI. Modulo PURO (sem React/IO/DOM) -> roda em Node (golden test).
 
-   Fluxo de producao: cada troca de status enfileira uma notificacao (trigger -> notification_outbox) e a
-   Edge Function `whatsapp-notify` RENDERIZA por estes MESMOS templates e envia pela WhatsApp Cloud API.
-   A Edge Function mantem um espelho TS destes templates (supabase/functions/whatsapp-notify/templates.ts)
-   — manter em sincronia; o snapshot em tests/whatsapp-templates.golden.mjs trava a copy canonica.
+   Fluxo de producao: cada troca de status enfileira uma notificacao (trigger -> notification_outbox) e o
+   dispatcher SQL (public.enc_render_message, chamado por enc_dispatch_notifications via pg_cron/pg_net —
+   ver migrations/REF-ORDER-01b-whatsapp-dispatch.sql) RENDERIZA por estes MESMOS templates e envia pela
+   WhatsApp Cloud API. O dispatcher mantem um espelho SQL destes templates (enc_render_message) — manter
+   em sincronia; o snapshot em tests/whatsapp-templates.golden.mjs trava a copy canonica.
 
    Placeholders suportados: {{cliente}} {{numero}} {{tempo}} {{empresa}}.
    REF-COMPANY-02: {{empresa}} vem do NOME CURTO institucional (settings.company_info.nomeCurto),

@@ -1,9 +1,10 @@
 /* tests/whatsapp-service.golden.mjs — REF-ORDER-01 · Parte 3 (F6).  node tests/whatsapp-service.golden.mjs
-   (npm run test:whatsapp-svc). Trava o contrato CANONICO da WhatsApp Cloud API (WhatsAppService) e a
-   PARIDADE com a reimplementacao inline da Edge Function (Deno nao importa o bundle do browser). Puro/Node. */
+   (npm run test:whatsapp-svc). Trava o contrato CANONICO da WhatsApp Cloud API (WhatsAppService) — copia
+   de referencia usada por testes/documentacao (o envio real roda via pg_net/pg_cron, ver
+   migrations/REF-ORDER-01b-whatsapp-dispatch.sql). Puro/Node.
+   REF-SEC-DATA-01 R13: a checagem de paridade com a Edge Function whatsapp-notify foi removida junto
+   com a remocao da propria Edge Function (estava morta/orfa, nunca ligada ao envio real). */
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import {
   normalizePhoneBR, isConfigured, buildCloudApiRequest, sendViaCloudApi, WA_API_VERSION_DEFAULT,
 } from '../src/services/notifications/WhatsAppService.js';
@@ -65,15 +66,5 @@ await check('sendViaCloudApi sucesso via fetch injetado', async () => {
   assert.equal(r.status, 200);
 });
 
-/* ── PARIDADE com a Edge Function (reimplementacao inline) ── */
-await check('Edge Function espelha o contrato canonico (url/produto/normalizacao/preview)', () => {
-  const idx = readFileSync(fileURLToPath(new URL('../supabase/functions/whatsapp-notify/index.ts', import.meta.url)), 'utf8');
-  assert.ok(idx.includes('graph.facebook.com/'), 'endpoint Cloud API divergente');
-  assert.ok(idx.includes('/messages'), 'path /messages ausente');
-  assert.ok(idx.includes('messaging_product') && idx.includes('whatsapp'), 'messaging_product divergente');
-  assert.ok(idx.includes('d.length <= 11') && idx.includes('"55"'), 'normalizacao de telefone divergente');
-  assert.ok(idx.includes('preview_url: false'), 'preview_url divergente');
-});
-
-console.log(fail === 0 ? '\nOK whatsapp-service.golden — contrato Cloud API + paridade com a Edge Function' : `\nFALHA whatsapp-service.golden — ${fail} caso(s)`);
+console.log(fail === 0 ? '\nOK whatsapp-service.golden — contrato Cloud API' : `\nFALHA whatsapp-service.golden — ${fail} caso(s)`);
 process.exit(fail ? 1 : 0);

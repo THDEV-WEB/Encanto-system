@@ -10,8 +10,8 @@
    ("if you don't want to expose it to the user, [mantenha no servidor]"). Expor a chave no bundle
    client-side deixaria qualquer pessoa livre para copia-la do DevTools e estourar a cota diaria da
    conta (2.000 req/dia). A Edge Function guarda o segredo como Supabase secret (nunca no bundle) e e
-   o UNICO lugar que fala com o HeiGIT — mesmo principio ja usado em whatsapp-notify (REF-ORDER-01)
-   para as credenciais da Meta.
+   o UNICO lugar que fala com o HeiGIT — mesmo principio de manter segredo de servidor fora do bundle
+   ja usado no projeto pras credenciais da Meta (Supabase Vault, ver REF-ORDER-01b).
 
    FALLBACK (mesmo principio de deliveryFeeRules.montarResumoFinanceiro: nunca bloqueia o checkout):
    qualquer falha da Edge Function (indisponivel, timeout, erro HTTP, rate limit, sem rota encontrada)

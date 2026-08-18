@@ -130,8 +130,8 @@ Deno.serve(async (req) => {
 
   const apiKey = Deno.env.get("OPENROUTESERVICE_API_KEY");
   if (!apiKey) {
-    // Mesmo principio de whatsapp-notify: sem segredo configurado, devolve erro identificavel (nao
-    // 'sem rota') — o cliente cai no fallback Haversine, nada trava.
+    // Mesmo principio ja usado no projeto pra outros segredos de servidor: sem segredo configurado,
+    // devolve erro identificavel (nao 'sem rota') — o cliente cai no fallback Haversine, nada trava.
     return jsonResponse({ error: true, reason: "not_configured" }, 503);
   }
 

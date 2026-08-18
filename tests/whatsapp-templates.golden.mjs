@@ -1,7 +1,9 @@
 /* tests/whatsapp-templates.golden.mjs — REF-ORDER-01 · Parte 3.  node tests/whatsapp-templates.golden.mjs
    (npm run test:whatsapp). Trava a copy CANONICA das notificacoes (messageTemplates.js): renderizacao dos
    placeholders, cobertura dos 5 estados com template, ausencia de template para 'cancelado', e PARIDADE
-   com o espelho TS da Edge Function (supabase/functions/whatsapp-notify/templates.ts). Puro/Node-safe. */
+   com o dispatcher SQL (enc_render_message). Puro/Node-safe.
+   REF-SEC-DATA-01 R13: a checagem de paridade com a Edge Function whatsapp-notify foi removida junto
+   com a remocao da propria Edge Function (estava morta/orfa, nunca ligada ao envio real). */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -58,15 +60,6 @@ check('placeholder sem valor vira vazio (nunca "{{x}}")', () => {
   assert.ok(!/\{\{/.test(txt));
 });
 
-/* PARIDADE JS (canonico) x TS (espelho da Edge Function) — cada template canonico aparece verbatim no .ts */
-check('espelho TS da Edge Function em sincronia com o canonico', () => {
-  const tsPath = fileURLToPath(new URL('../supabase/functions/whatsapp-notify/templates.ts', import.meta.url));
-  const ts = readFileSync(tsPath, 'utf8');
-  for (const s of COM_TEMPLATE) {
-    assert.ok(ts.includes(NOTIFY_TEMPLATES[s]), `template '${s}' divergente entre .js e templates.ts`);
-  }
-});
-
 /* PARIDADE JS (canonico) x SQL (enc_render_message, dispatcher SQL-nativo agendado via pg_cron — o
    caminho de envio provavelmente ativo em producao). REF-COMPANY-02: esta checagem NAO existia antes
    (a 3a copia das mensagens tinha ficado fora do golden desde a REF-ORDER-01b) — fecha essa lacuna.
@@ -92,5 +85,5 @@ check('enc_tempo_estimado (SQL, migrations/REF-GOLIVE-01-tempo-entrega-unico.sql
   assert.ok(corpo.includes('cerca de 20 min'), 'retirada deveria permanecer constante de negocio');
 });
 
-console.log(fail === 0 ? '\nOK whatsapp-templates.golden — copy canonica + paridade com a Edge Function' : `\nFALHA whatsapp-templates.golden — ${fail} caso(s)`);
+console.log(fail === 0 ? '\nOK whatsapp-templates.golden — copy canonica + paridade com o dispatcher SQL' : `\nFALHA whatsapp-templates.golden — ${fail} caso(s)`);
 process.exit(fail ? 1 : 0);
