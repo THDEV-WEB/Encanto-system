@@ -381,11 +381,20 @@ try {
   out('');
 
   out('— RECONCILIACAO: reconcile_orders registra order_events com store_id correto para pedido divergente —');
+  // REF-SEC-DATA-01: reconcile_orders() e cron-only (EXECUTE revogado de authenticated, achado R2 da
+  // auditoria de protecao de dados — so postgres/service_role podem chama-la agora). Este teste usa a
+  // funcao so como FERRAMENTA pra popular o evento de reconciliacao, nao testa sua propria seguranca
+  // (isso e' coberto por scripts/sec-data-01-harden-critical-test.mjs) — RESET ROLE volta pro dono
+  // (postgres, EXECUTE implicito) so pra essa chamada, depois retorna a authenticated pra ler
+  // order_events atraves da RLS real do admin (o proposito original deste caso de teste).
   await tx('authenticated', ADMIN_REAL_USER_ID, [...setupSql(encantoId),
     // forca uma divergencia real: total do pedido != soma dos itens
     `UPDATE public.orders SET total = 999.99 WHERE id = '${ORDER_A_ID}'`,
   ], async () => {
+    await client.query('RESET ROLE');
     await client.query(`SELECT public.reconcile_orders($1)`, [ORDER_A_ID]);
+    await client.query("SELECT set_config('request.jwt.claims', $1, true)", [JSON.stringify({ sub: ADMIN_REAL_USER_ID, role: 'authenticated' })]);
+    await client.query('SET LOCAL ROLE authenticated');
     const ev = await client.query(`SELECT store_id FROM public.order_events WHERE order_id = $1 AND tipo = 'RECONCILIACAO_DIVERGENTE'`, [ORDER_A_ID]);
     const ok = ev.rowCount === 1 && ev.rows[0].store_id === encantoId;
     record('RECONCILE', 'reconcile_orders registra divergencia com store_id da propria loja', ok ? 'PASS' : 'FAIL', JSON.stringify(ev.rows));
