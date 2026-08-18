@@ -121,8 +121,12 @@ try {
       out('');
 
       // DT5 — grants de admin_orders_search batem com o baseline capturado na auditoria (2026-07-27).
+      // Atualizado por REF-SEC-DATA-01 (achado R8, 2026-08-17): PUBLIC/anon tinham EXECUTE superfluo
+      // nesta e em outras 4 RPCs admin (ja gated por is_admin_of() internamente, mas sem defesa em
+      // profundidade no grant) — revogados de proposito em migrations/REF-SEC-DATA-01-harden-r5-r6-r8.sql.
+      // Novo baseline reflete o estado corrigido, nao o original inseguro.
       {
-        const BASELINE = ['PUBLIC', 'anon', 'authenticated', 'postgres', 'service_role'].sort();
+        const BASELINE = ['authenticated', 'postgres', 'service_role'].sort();
         const r = await client.query(`SELECT grantee FROM information_schema.routine_privileges WHERE routine_schema='public' AND routine_name='admin_orders_search' AND privilege_type='EXECUTE' ORDER BY grantee`);
         const atual = r.rows.map(x => x.grantee).sort();
         const ok = JSON.stringify(atual) === JSON.stringify(BASELINE);
