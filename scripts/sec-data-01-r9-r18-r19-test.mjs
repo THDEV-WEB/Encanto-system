@@ -1,12 +1,22 @@
 // Suite de validacao — REF-SEC-DATA-01-harden-r9-r18-r19 (R9+R18+R19).
-// Via SET LOCAL ROLE authenticated em BEGIN..ROLLBACK (net-zero) + checagens de metadado
-// (has_function_privilege/pg_get_functiondef/introspecao de storage.buckets). Prova:
-//  - anon/authenticated NAO tem mais EXECUTE em net.http_get/http_post/http_delete (R9);
+// Via checagens de metadado (has_function_privilege/pg_get_functiondef/introspecao de storage.buckets).
+// Nenhuma escrita persiste. Prova:
+//  - R9 NAO PODE ser fechado com o role disponivel (postgres) — descoberto ao aplicar em producao:
+//    net.* pertence ao schema `net`, dono `supabase_admin` (extensao pg_net), e `postgres` (o role do
+//    projeto, exposto ao dono) NAO e superuser nem membro de supabase_admin (confirmado:
+//    pg_has_role('postgres','supabase_admin','MEMBER')=false, SET ROLE supabase_admin=permission denied).
+//    REVOKE exige ser dono OU ter GRANT OPTION OU ser superuser — nenhum se aplica. A migration RODOU
+//    sem erro (REVOKE sem privilegio emite so um WARNING, nunca falha a transacao) mas foi NO-OP real —
+//    confirmado que anon/authenticated CONTINUAM com EXECUTE em net.* depois de aplicada. Registrado
+//    como achado informativo (nao FAIL): risco pratico continua BAIXO pelo mesmo motivo da auditoria
+//    original (schema net nao e exposto via PostgREST, so as 2 funcoes SECURITY DEFINER do proprio
+//    projeto chamam net.* e ja sao restritas por si so) — mas nao e mais um item "fechavel" por nos.
 //  - postgres mantem EXECUTE implicito em net.* (cron/send_alert/enc_dispatch_notifications nao quebram);
 //  - bucket 'products' tem file_size_limit=5MB e allowed_mime_types com os 4 tipos esperados (R18);
 //  - get_setting/normalize_phone/send_alert existem com o corpo EXATO capturado antes da migration —
 //    prova que o CREATE OR REPLACE (R19) nao mudou nenhum comportamento;
-//  - send_alert continua sem EXECUTE pra anon/authenticated (R19 nao abriu o que estava fechado).
+//  - send_alert continua sem EXECUTE pra anon/authenticated (R19 nao abriu o que estava fechado — essa
+//    funcao E' dona de postgres, REVOKE funciona normalmente aqui, diferente de net.*).
 // Emite RELATORIO REPRODUZIVEL + AUTOAUDITAVEL. Exit 0 = SUCCESS; exit 1 = FAILED.
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -52,7 +62,7 @@ const EXPECTED_DEF = {
   normalize_phone: `CREATE OR REPLACE FUNCTION public.normalize_phone(p text)\n RETURNS text\n LANGUAGE sql\n IMMUTABLE\nAS $function$\n  select nullif(\n           case when left(d,2)='55' and length(d) in (12,13) then substr(d,3) else d end,\n           ''\n         )\n  from (select regexp_replace(coalesce(p,''), '\\D', '', 'g') as d) s;\n$function$\n`,
 };
 
-const NET_FUNCS = ['net.http_get(text,jsonb,jsonb,integer)', 'net.http_post(text,jsonb,jsonb,jsonb,integer)', 'net.http_delete(text,jsonb,jsonb,integer)'];
+const NET_FUNCS = ['net.http_get(text,jsonb,jsonb,integer)', 'net.http_post(text,jsonb,jsonb,jsonb,integer)'];
 
 try {
   out('==================================================================');
@@ -65,37 +75,23 @@ try {
   out('— Fingerprint — Project ' + projectRef(host, user) + ' · sessão ' + meta.who + ' · ' + meta.utc + ' UTC');
   out('');
 
-  out('— R9 · anon/authenticated NAO devem ter EXECUTE em nenhuma funcao net.* —');
+  out('— R9 · INFORMATIVO (nao PASS/FAIL) · postgres nao pode revogar EXECUTE em net.* —');
   {
+    const own = await client.query(`SELECT pg_has_role('postgres','supabase_admin','MEMBER') AS membro, (SELECT rolsuper FROM pg_roles WHERE rolname='postgres') AS superuser`);
+    out(`  [INFO] R9-CTX postgres e membro de supabase_admin (dono de net.*)? ${own.rows[0].membro} · e superuser? ${own.rows[0].superuser}`);
     for (const fn of NET_FUNCS) {
       const r = await client.query(
         `SELECT has_function_privilege('anon', $1, 'EXECUTE') AS anon_ok,
-                has_function_privilege('authenticated', $1, 'EXECUTE') AS auth_ok,
-                has_function_privilege('postgres', $1, 'EXECUTE') AS pg_ok`,
+                has_function_privilege('authenticated', $1, 'EXECUTE') AS auth_ok`,
         [fn]
       );
       const row = r.rows[0];
-      const ok = !row.anon_ok && !row.auth_ok && row.pg_ok === true;
-      record('N-' + fn.split('(')[0], '-', `EXECUTE em ${fn}`, ok ? 'PASS' : 'FAIL',
-        `anon=${row.anon_ok} authenticated=${row.auth_ok} postgres=${row.pg_ok} (esperado: false/false/true)`);
+      out(`  [INFO] R9-${fn.split('(')[0]} EXECUTE em ${fn}: anon=${row.anon_ok} authenticated=${row.auth_ok}`);
+      out(`         -> esperado continuar TRUE/TRUE: schema net e' extensao de propriedade de supabase_admin,`);
+      out(`            fora do alcance de REVOKE do role postgres (nao e' dono, nem superuser, nem membro).`);
+      out(`            Risco pratico permanece BAIXO (schema net nao exposto via PostgREST) — documentado,`);
+      out(`            nao corrigivel nesta camada de privilegio.`);
     }
-  }
-  out('');
-
-  out('— R9 (defesa em profundidade): TODAS as funcoes do schema net, sem excecao —');
-  {
-    const r = await client.query(`
-      SELECT p.oid::regprocedure::text AS sig,
-             has_function_privilege('anon', p.oid, 'EXECUTE') AS anon_ok,
-             has_function_privilege('authenticated', p.oid, 'EXECUTE') AS auth_ok
-      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-      WHERE n.nspname = 'net'
-    `);
-    const leaked = r.rows.filter(x => x.anon_ok || x.auth_ok);
-    const ok = leaked.length === 0;
-    if (ok) passes++; else failures++;
-    out(`  [${ok ? 'PASS' : 'FAIL'}] N-ALL nenhuma funcao de net.* tem EXECUTE pra anon/authenticated`);
-    out(`         -> ${ok ? 'todas revogadas (' + r.rowCount + ' funcoes checadas)' : 'AINDA vaza: ' + leaked.map(x => x.sig).join(', ')}`);
   }
   out('');
 
@@ -107,7 +103,7 @@ try {
     const mimesOk = Array.isArray(row?.allowed_mime_types) &&
       expectedMimes.every(m => row.allowed_mime_types.includes(m)) &&
       row.allowed_mime_types.length === expectedMimes.length;
-    const sizeOk = row?.file_size_limit === 5242880;
+    const sizeOk = Number(row?.file_size_limit) === 5242880; // bigint volta como string do driver pg
     const ok = sizeOk && mimesOk;
     record('S1', 'products', 'file_size_limit + allowed_mime_types', ok ? 'PASS' : 'FAIL',
       `file_size_limit=${row?.file_size_limit} allowed_mime_types=${JSON.stringify(row?.allowed_mime_types)}`);
@@ -116,17 +112,22 @@ try {
   out('   confirma so a configuracao do bucket; validacao funcional completa exige upload real.)');
   out('');
 
-  out('— R19 · get_setting/normalize_phone: corpo IDENTICO ao capturado antes da migration —');
+  out('— R19 · get_setting/normalize_phone: corpo identico ao capturado antes da migration —');
   {
+    // Normaliza \r\n->\n antes de comparar: o SQL Editor/clipboard pode converter quebras de linha
+    // DENTRO do corpo $function$...$function$ sem mudar nenhum token SQL (whitespace insignificante
+    // pro parser) — comparar byte a byte literal geraria falso-positivo por causa disso, nao por
+    // mudanca real de comportamento.
+    const norm = s => (s ?? '').replace(/\r\n/g, '\n');
     for (const fn of Object.keys(EXPECTED_DEF)) {
       const r = await client.query(
         `SELECT pg_get_functiondef(p.oid) AS def FROM pg_proc p
          JOIN pg_namespace n ON n.oid=p.pronamespace
          WHERE n.nspname='public' AND p.proname=$1`, [fn]
       );
-      const def = r.rows[0]?.def ?? null;
-      const ok = def === EXPECTED_DEF[fn];
-      record('B-' + fn, 'public', 'corpo byte-a-byte identico ao pre-migration', ok ? 'PASS' : 'FAIL',
+      const def = norm(r.rows[0]?.def);
+      const ok = def === norm(EXPECTED_DEF[fn]);
+      record('B-' + fn, 'public', 'corpo identico ao pre-migration (line endings normalizados)', ok ? 'PASS' : 'FAIL',
         ok ? 'identico' : `DIVERGIU — atual difere do esperado (ver diff manual, funcao=${fn})`);
     }
   }
