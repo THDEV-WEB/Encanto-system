@@ -4,7 +4,7 @@
    (fluxo oficial do Supabase, por confirmacao). Estados: carregando/salvando/erro/sucesso + toasts.
    Vinculo SEGURO: escreve via link_customer_to_auth (auth.uid()) e auth.updateUser — nunca em customers
    direto; RLS/auth.uid() garantem que ninguem edita dados de outro. Separada de "Meus pedidos". */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../hooks/useAuth.js';
 import { useMinhaConta } from '../../hooks/useMinhaConta.js';
 import { ScreenModal } from '../menu/ScreenModal.jsx';
@@ -35,12 +35,20 @@ export function MinhaContaScreen({ onClose }) {
   const [emailPendente, setEmailPendente] = useState(false);
   const [toast, setToast] = useState(null); // { tipo, msg }
 
-  /* Sincroniza os valores iniciais quando o customer termina de carregar — SO em campos ainda intactos
-     (nao sobrescreve o que o usuario ja digitou). Cobre a restauracao de sessao pos-login. */
+  /* Sincroniza os valores iniciais quando o customer (a IDENTIDADE, nao so o texto) muda — cobre a
+     restauracao de sessao pos-login E a correcao de REF-AUTH-TENANT-01-FIX-GET-MEUCUSTOMER (2a carga,
+     quando a loja resolve depois da 1a leitura ambigua de getMeuCustomer). Nao usa mais "so se o campo
+     ainda estiver vazio": esse guard vazio/nao-vazio nunca conseguia corrigir um nome ERRADO que ja
+     tinha chegado preenchido da 1a leitura (nao-vazio = nunca mais sincroniza). `customer?.id` como
+     chave: SO re-sincroniza quando o customer por tras muda de verdade (login/logout/correcao de loja)
+     -- uma nova leitura do MESMO customer (id igual) nao sobrescreve o que o usuario ja digitou. */
+  const customerSincronizadoRef = useRef(Symbol('nao-sincronizado'));
   useEffect(() => {
-    setNome((n) => (n ? n : mc.nomeInicial));
-    setTelefone((t) => (t ? t : mc.telefoneInicial));
-  }, [mc.nomeInicial, mc.telefoneInicial]);
+    if (customerSincronizadoRef.current === customer?.id) return;
+    customerSincronizadoRef.current = customer?.id;
+    setNome(mc.nomeInicial);
+    setTelefone(mc.telefoneInicial);
+  }, [customer?.id, mc.nomeInicial, mc.telefoneInicial]);
 
   if (!isLogged) {
     return (

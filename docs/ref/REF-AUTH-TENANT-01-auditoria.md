@@ -793,3 +793,122 @@ confirmados via `pg_proc.prosecdef` inalterados — continuam `SECURITY DEFINER`
 
 **Resultado**: Onda 6 fechada (no E2E). Produção segue sem a migration (Hook desligado lá). Não
 avancei pra Onda 7.
+
+---
+
+### REF-AUTH-TENANT-01-FIX-GET-MEUCUSTOMER — correção isolada, fora da numeração de ondas
+
+Autorizada separadamente, entre a Onda 6 e a Onda 7, especificamente pro achado da regressão da Onda 6
+(`minha-conta.spec.js` falhando 8/8 no E2E). Zero mudança em RLS/RPC/tenant/Admin/Super Admin/migration
+— 100% frontend, 100% no call-site de `getMeuCustomer`.
+
+#### Causa raiz confirmada
+
+`getMeuCustomer(userId)` é chamado por `AuthProvider.carregarCustomer` a partir do efeito de MOUNT, via
+`AuthService.getSession()` — leitura local/rápida (inclusive com sessão pré-injetada via `storageState`,
+caso do E2E Playwright). Esse efeito roda ANTES do `StorefrontProvider` resolver a loja por domínio
+(`get_store_by_domain`, RPC de rede, deliberadamente não-bloqueante desde a REF-PERF-01). Confirmado
+direto no banco: `SELECT ... FROM customers WHERE auth_user_id=X LIMIT 1` sem `ORDER BY` devolve hoje a
+linha de "Loja Inativa" em vez da de Encanto para o fixture com customer em 3 lojas. O efeito de mount
+que dispara essa 1ª carga só depende de `[carregarCustomer]` (estável) — nunca re-executa quando
+`store.store_id` resolve depois, então o estado errado nunca era corrigido.
+
+Achado durante os testes (2 camadas adicionais do MESMO problema, não visíveis só pela auditoria):
+1. `MinhaContaScreen.jsx` tinha um guard local (`setNome(n => n ? n : mc.nomeInicial)`) que só
+   preenchia o campo se ele ainda estivesse VAZIO — uma vez que o valor errado chegava (não-vazio),
+   nenhuma correção posterior do `customer` do contexto conseguia mais sobrescrevê-lo.
+2. Ao introduzir uma 2ª carga (disparada quando a loja resolve), passou a existir mais de uma chamada
+   de `carregarCustomer` em voo ao mesmo tempo — sem guarda, a resposta de rede de uma chamada MAIS
+   ANTIGA (o fetch ambíguo do mount) podia chegar DEPOIS de uma chamada MAIS NOVA (ex.: o reload
+   explícito que já existia em `atualizarPerfil`, logo após salvar o perfil) e sobrescrever dado fresco
+   com dado obsoleto — só apareceu sob timing apertado de teste automatizado, não em uso humano normal.
+
+#### Solução escolhida (3 mudanças, todas em `AuthProvider.jsx`/`MinhaContaScreen.jsx`)
+
+1. **`AuthProvider.jsx`** — novo `useEffect` (mesmo padrão já aprovado do tenant-sync da Onda 4),
+   disparado por `[store?.store_id, session?.user?.id, carregarCustomer]`: quando a loja resolve (e há
+   sessão), recarrega o customer — agora com o filtro certo (`getMeuCustomer` já aplicava
+   `.eq('store_id', ...)` quando o singleton está preenchido; o bug era só de TIMING, não de query).
+   `session?.user?.id` (não a sessão inteira, mesmo cuidado do efeito de tenant-sync) evita refirar em
+   cada refresh de token.
+2. **`AuthProvider.jsx`** — guarda de sequência em `carregarCustomer` (`cargaCustomerSeqRef`): cada
+   chamada recebe um número; só a chamada MAIS RECENTE tem permissão de aplicar seu resultado via
+   `setCustomer`. Resolve a corrida entre múltiplas cargas em voo (mount, correção de loja, reload
+   explícito pós-salvar) sem precisar de `AbortController` (a API do Supabase não aceita `signal`).
+3. **`MinhaContaScreen.jsx`** — sincronização do estado local (`nome`/`telefone`) trocou de "só se o
+   campo ainda estiver vazio" para "sempre que `customer?.id` mudar" (via `useRef` com sentinela
+   `Symbol`). Resincroniza quando a IDENTIDADE do customer muda (login/logout/correção de loja); nunca
+   sobrescreve edição em andamento do usuário quando é o MESMO customer recarregado (mesmo id).
+
+Por que não "esperar a loja resolver antes de carregar o customer": a 1ª carga imediata (mesmo
+potencialmente ambígua) é o que mantém o boot não-bloqueante pra maioria dos casos reais — produção
+hoje só tem 1 loja real com customers (Encanto), então essa 1ª carga já é sempre correta lá; o efeito
+novo só entra em jogo pra corrigir o caso multi-loja, sem custo extra de rede pro caso comum.
+
+#### Por que não há race condition remanescente
+
+A guarda de sequência garante que, entre N chamadas de `carregarCustomer` em qualquer ordem de
+resolução de rede, só o resultado da chamada iniciada por ÚLTIMO é aplicado — as demais são
+descartadas silenciosamente. Como toda ação que dispara uma nova carga (loja resolvendo, login,
+salvar perfil) sempre acontece estritamente DEPOIS da anterior ter sido *iniciada*, o resultado final
+sempre reflete a intenção mais recente, independente de qual resposta de rede chega primeiro.
+
+#### Comportamento multi-tenant
+
+Sessão na Encanto → só o customer de Encanto (`getMeuCustomer` já filtra por `store_id` quando
+resolvido). Sessão na Bar da Sogra → só o customer da Bar. Mesma pessoa, lojas diferentes, cada
+resolução de domínio traz o customer certo — provado em navegador real (ver Testes).
+
+#### Testes
+
+**Antes** (código anterior a esta correção, confirmado via `git stash` contra o MESMO ambiente):
+`minha-conta.spec.js` falha deterministicamente 8/8.
+
+**Depois**:
+- `minha-conta.spec.js` (3 testes) — verde, reconfirmado em 3 execuções seguidas (9/9), incluindo o
+  teste de edição (prova que a guarda de sequência não quebra o fluxo de salvar).
+- `e2e/tests/cliente/minha-conta-multi-loja.spec.js` (novo, 3 testes) — loja resolvida = Bar da Sogra
+  mostra o customer da Bar (nunca o de Encanto/Inativa); loja resolvida = Encanto mostra o customer da
+  Encanto; duas sessões reais e simultâneas (mesma pessoa, mesma loja) sem contaminação cruzada.
+  Reconfirmado em 3 execuções seguidas (9/9). Usa `page.route()` só pra mockar a resposta de
+  `get_store_by_domain` — exceção justificada e documentada no próprio arquivo: este ambiente de E2E só
+  tem 1 hostname real configurado (Encanto), não há como navegar de verdade pra um domínio que resolva
+  pra Bar da Sogra/Loja Inativa sem provisionar hosting adicional; login, RPC de `getMeuCustomer` e RLS
+  continuam 100% reais.
+- Regressão ampla: `e2e/tests/auth` + `cliente` + `store` + `cart` (50 testes) — **100% verde** quando
+  rodados juntos. `e2e/tests/checkout/checkout-logado.spec.js` — 1 falha (timeout esperando a tela de
+  sucesso após finalizar pedido) que **já existia antes desta correção**: confirmado rodando o MESMO
+  teste com `git stash` dos 2 arquivos desta correção (código idêntico ao commit da Onda 6) — falha
+  idêntica. Root cause aparente: lentidão do `create_order` (botão fica "Enviando…" além do timeout de
+  5s da asserção), sem relação com `getMeuCustomer`. Quando essa suíte de checkout roda JUNTO com as
+  outras no mesmo worker, a falha dela (que não fecha o `context` por sair via exceção antes da linha
+  `context.close()`) deixa uma requisição em voo que ocasionalmente atrapalha o teste seguinte
+  (`minha-conta.spec.js` "editar") — confirmado isolando: sem a pasta `checkout`, as outras 50 (+ os
+  10 de `cliente`, já contados) passam 100% de forma reprodutível. Fragilidade pré-existente da suíte
+  de checkout, fora do escopo desta correção (não autorizada a mexer nela).
+- `test:domain`, `build`, `build:admin`, `test:auth-lock` (guard estrutural do anti-deadlock do
+  `onAuthStateChange`, região não tocada por esta correção) — todos verdes.
+- "Minha Conta — loja inativa": **não aplicável via UI real** — `StoreApp.jsx` mostra a tela "Loja
+  indisponível" e nunca renderiza a árvore normal (onde Minha Conta é aberta) quando
+  `store.status !== 'ativo'`; o gate já acontece numa camada acima de onde este bug vive.
+
+#### Regressão
+
+Zero novo FAIL além do já investigado e confirmado pré-existente/não-relacionado (`checkout-logado`).
+
+#### Commit
+
+Arquivos: `src/providers/AuthProvider.jsx`, `src/components/conta/MinhaContaScreen.jsx`,
+`e2e/tests/cliente/minha-conta-multi-loja.spec.js`. Nenhuma migration, nenhum arquivo de RLS/RPC/Admin/
+Super Admin. `package.json` não precisou de mudança (specs Playwright são descobertos automaticamente
+pela config, não listados individualmente).
+
+#### Limitações
+
+- A correção é reativa (corrige após a loja resolver), não preventiva — existe uma janela técnica
+  (não observada nos testes, mas teoricamente possível sob rede muito lenta) onde o `customer` errado
+  fica visível por um instante antes da correção. Aceitável: produção hoje tem 0 clientes reais com
+  2+ lojas (o cenário nem existe ainda fora do E2E), e a guarda de sequência garante que o estado FINAL
+  está sempre correto.
+- `checkout-logado.spec.js` continua com a falha pré-existente (não corrigida, fora do escopo
+  autorizado desta correção) — registrada, não escondida.

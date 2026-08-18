@@ -17,10 +17,24 @@ export function AuthProvider({ children }) {
   const [precisaTelefone, setPrecisaTelefone] = useState(false);
   const { store } = useStorefrontStore(); // REF-AUTH-TENANT-01 · Onda 4: loja resolvida por dominio
   const sincronizandoTenantRef = useRef(false); // trava contra chamadas concorrentes (nunca loop)
+  /* REF-AUTH-TENANT-01-FIX-GET-MEUCUSTOMER: agora existe MAIS DE UM gatilho pra carregarCustomer (mount,
+     onAuthStateChange, o novo efeito de "loja resolveu" abaixo, e o reload explicito pos-salvar de
+     completarCadastro/atualizarPerfil) — podem ficar EM VOO ao mesmo tempo. Sem guarda, a resposta de
+     uma chamada MAIS ANTIGA (ex.: o fetch ambiguo do mount, sem store_id) pode chegar DEPOIS de uma
+     chamada MAIS NOVA (ex.: o reload explicito logo apos salvar o perfil) e sobrescrever dado fresco
+     com dado obsoleto — sequencia de REDE, nao de codigo. Guarda por numero de sequencia (nao
+     AbortController: getMeuCustomer nao aceita signal) — so a chamada mais recente tem permissao de
+     aplicar seu resultado; qualquer resposta de uma chamada ja superada e descartada. */
+  const cargaCustomerSeqRef = useRef(0);
 
   const carregarCustomer = useCallback(async (s) => {
-    if (!s?.user) { setCustomer(null); setPrecisaTelefone(false); limparUsuario(); return; }
+    const minhaSeq = ++cargaCustomerSeqRef.current;
+    if (!s?.user) {
+      if (minhaSeq === cargaCustomerSeqRef.current) { setCustomer(null); setPrecisaTelefone(false); limparUsuario(); }
+      return;
+    }
     const cust = await AuthService.getMeuCustomer(s.user.id);
+    if (minhaSeq !== cargaCustomerSeqRef.current) return; // superada por uma chamada mais nova -- descarta
     setCustomer(cust);
     setPrecisaTelefone(!cust?.phone);   // 1o acesso (sem telefone) -> pedir telefone uma vez
     /* REF-CUSTOMER-01: a partir daqui o Supabase (cust) e a fonte OFICIAL — encerra qualquer cache local
@@ -68,6 +82,24 @@ export function AuthProvider({ children }) {
     AuthService.syncTenant(session.access_token, store.store_id, store.status)
       .finally(() => { sincronizandoTenantRef.current = false; });
   }, [session?.access_token, store?.store_id, store?.status]);
+
+  /* REF-AUTH-TENANT-01-FIX-GET-MEUCUSTOMER: no mount, a carga do customer (efeito acima) roda a
+     partir de AuthService.getSession() -- leitura local/rapida (inclusive com sessao ja pre-injetada
+     via storageState, caso do E2E) -- que via de regra RESOLVE ANTES do RPC de rede de
+     get_store_by_domain (StorefrontProvider, deliberadamente nao-bloqueante desde a REF-PERF-01).
+     Ate a Onda 4 desta REF, cada pessoa tinha no maximo 1 linha em customers, entao um SELECT sem
+     store_id sempre devolvia a unica linha possivel mesmo sem ORDER BY. Agora que a mesma pessoa pode
+     legitimamente ter customer em mais de uma loja (ADR SAAS-01 §2), esse primeiro SELECT (sem filtro,
+     loja ainda nao resolvida) fica ambiguo -- ver AuthService.getMeuCustomer. Este efeito, disparado
+     quando `store.store_id` fica disponivel, recarrega o customer -- agora com o filtro certo --
+     corrigindo a leitura pra loja da sessao atual. Idempotente (carregarCustomer so seta estado; rodar
+     de novo com o mesmo resultado nao muda nada visivel) e nunca dispara pra convidado (carregarCustomer
+     retorna cedo sem session.user). `session?.user?.id` (nao a session inteira) como dependencia evita
+     refirar em cada refresh de token -- so quando a loja resolve ou quando alguem loga/desloga. */
+  useEffect(() => {
+    if (!store?.store_id || !session?.user?.id) return;
+    carregarCustomer(session);
+  }, [store?.store_id, session?.user?.id, carregarCustomer]);
 
   const entrarComGoogle = useCallback(()             => AuthService.signInWithGoogle(), []);
   const enviarEmail     = useCallback((email)        => AuthService.signInWithEmailOtp(email), []);
