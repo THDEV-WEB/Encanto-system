@@ -291,6 +291,15 @@ export const DS = {
     }), { throwOnError: true });
     return r.data;
   },
+  /* REF-STORE-ONBOARD-01 · Onda 2: usado quando linkStoreAdmin volta vinculado:false (e-mail nao existe
+     em auth.users ainda) -- supabase/functions/invite-store-admin/index.ts cria a identidade via convite
+     (service_role, unico ponto do sistema que a usa) e completa o vinculo com a MESMA RPC link_store_admin. */
+  async inviteStoreAdmin(storeId, adminEmail) {
+    const r = await this.run(d=>d.functions.invoke('invite-store-admin', {
+      body: { storeId, email: adminEmail },
+    }), { throwOnError: true });
+    return r.data;
+  },
   /* REF-SAAS-02 · Onda 1: Platform Console -- visao de gestao de tenants, separada do Admin da loja. */
   async platformListTenants() {
     const r = await this.run(d=>d.rpc('platform_list_tenants'), { throwOnError: true });

@@ -103,13 +103,24 @@ function DetalheTenant({ loja, onFechar, onMudou, onAbrirAdmin }) {
 
   const recarregarTudo = () => { carregar(); onMudou?.(); };
 
+  /* REF-STORE-ONBOARD-01 · Onda 2: DS.inviteStoreAdmin substitui DS.linkStoreAdmin aqui -- a Edge
+     Function faz a MESMA chamada link_store_admin primeiro (comportamento de hoje intacto quando o
+     e-mail já existe, `convidado:false`) e só recorre a convite (service_role) quando a conta não
+     existe ainda (`convidado:true`). Um botão só, superset do que já funcionava. */
   const vincular = async () => {
     if (!emailNovo.trim() || vinculando) return;
     setVinculando(true); setMsg(null);
     try {
-      const r = await DS.linkStoreAdmin(loja.store_id, emailNovo.trim());
-      if (r.vinculado) { setMsg({ tipo: 'ok', texto: `${r.email} agora é admin desta loja.` }); setEmailNovo(''); recarregarTudo(); }
-      else setMsg({ tipo: 'erro', texto: r.motivo });
+      const r = await DS.inviteStoreAdmin(loja.store_id, emailNovo.trim());
+      if (r.error) { setMsg({ tipo: 'erro', texto: r.reason || 'Não foi possível vincular.' }); return; }
+      if (r.vinculado) {
+        const texto = r.convidado
+          ? `${r.email} foi convidado e já é admin desta loja — vai receber um e-mail para definir a senha.`
+          : `${r.email} agora é admin desta loja.`;
+        setMsg({ tipo: 'ok', texto }); setEmailNovo(''); recarregarTudo();
+      } else {
+        setMsg({ tipo: 'erro', texto: r.motivo });
+      }
     } catch (e) {
       setMsg({ tipo: 'erro', texto: e?.message || 'Não foi possível vincular.' });
     } finally { setVinculando(false); }
@@ -171,6 +182,9 @@ function DetalheTenant({ loja, onFechar, onMudou, onAbrirAdmin }) {
               {vinculando ? 'Vinculando…' : 'Vincular'}
             </button>
           </div>
+          <p style={{ fontSize: 11.5, color: 'var(--gray-400)', marginTop: 4 }}>
+            Se o e-mail já tiver conta, vincula na hora. Se não tiver, envia um convite por e-mail para criar a conta.
+          </p>
           {msg && <p style={{ fontSize: 12.5, marginTop: 8, fontWeight: 600, color: msg.tipo === 'ok' ? '#16A34A' : '#DC2626' }}>{msg.texto}</p>}
 
           <div style={{ display: 'flex', gap: 8, marginTop: 24, flexWrap: 'wrap' }}>

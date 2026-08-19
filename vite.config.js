@@ -89,14 +89,26 @@ const buildPwaPlugin = (desativado, filename = 'sw.js', navigateFallback = 'inde
    - Service Worker desativado (`buildPwaPlugin(true)`, ver acima) -> um Service Worker Workbox pressupõe
      "nova versão = novo fetch de rede"; dentro de um APK empacotado localmente essa premissa não existe
      (nova versão = novo APK instalado) — zero comportamento de PWA dentro do Capacitor. */
+/* REF-STORE-ONBOARD-01 · Onda 2: `convite.html` é um 2o ENTRY POINT dentro do MESMO build admin (mesmo
+   `rollupOptions.input`, um objeto com as duas chaves em vez de string única) — não um mode/projeto Vercel
+   novo. Página isolada de 1 uso só (o admin recém-convidado define a senha inicial), com seu PRÓPRIO
+   cliente Supabase local (src/ConviteApp.jsx cria o dele, nunca importa lib/supabase.js) justamente para
+   nunca tocar `detectSessionInUrl:false`/storageKey do `db` do Admin (LOGIN-ARCH-02.2) nem o estado
+   'login'/'admin' de useAdminSession.js (REF-STABILITY-02) — os dois protegem o boot do Admin de propósito,
+   esta página fica fora dessa árvore inteira. Sai em `dist/convite.html` (mesma saída/deploy do admin),
+   alcançável em `admin.{slug}.valionsistemas.com.br/convite.html` via o serving estático default da Vercel
+   (a Vercel serve qualquer arquivo presente no output — só a rota "/" tem rewrite explícito em
+   vercel.json) — zero mudança em vercel.json, mesmo raciocínio já provado pelo próprio admin.html.
+   globIgnores ganha 2 padrões novos pra o Service Worker do ADMIN nunca precachear os assets desta
+   página (ela nunca registra SW próprio — não é PWA, não tem manifest, é descartável). */
 /* REF-ADMIN-04 · Onda 1: 3o valor de `mode` (`vite build --mode admin`), mesmo mecanismo de gate único
    já usado pelo `capacitor` (REF-CAP-01) — nunca um vite.config.admin.js paralelo, mesma razão de sempre
    (elimina o risco de as saídas divergirem em silêncio com o tempo). `base:'/'` porque o admin é servido
    na RAIZ do seu próprio domínio (subdomínio dedicado, ver ADR), nunca sob `/encanto/` — ao contrário do
    Capacitor (raiz local do WebView), aqui é raiz de um domínio Vercel de verdade.
    `rollupOptions.input` só é sobrescrito neste modo: web/capacitor continuam usando o default do Vite
-   (o `index.html` da raiz), agora que `admin.html` também existe no repo — sem isso, o build da loja
-   passaria a incluir os dois HTMLs juntos.
+   (o `index.html` da raiz), agora que `admin.html`/`convite.html` também existem no repo — sem isso, o
+   build da loja passaria a incluir os HTMLs do admin junto.
    REF-ADMIN-04 · Onda 3 (achado ao vivo): `outDir` do admin é `'dist'` (RAIZ), não `'dist/admin'` como
    na Onda 1/2 original. Causa: `vercel.json` (compartilhado pelos 2 projetos Vercel, mesmo repositório)
    tem `"outputDirectory": "dist"` no nível raiz — esse campo do `vercel.json`, quando presente, prevalece
@@ -119,7 +131,10 @@ export default defineConfig(({ mode }) => {
     plugins: [
       react(),
       isAdmin
-        ? buildPwaPlugin(false, 'sw-admin.js', 'admin.html', ['encanto/**', 'capacitor/**']) // REF-ADMIN-04 Onda 2/3: manifest próprio + nunca precacheia saída da loja/Capacitor que possa coexistir em dist/
+        // REF-ADMIN-04 Onda 2/3: manifest próprio + nunca precacheia saída da loja/Capacitor que possa
+        // coexistir em dist/. REF-STORE-ONBOARD-01 Onda 2: idem para convite.html (página de 1 uso só,
+        // sem SW/manifest próprio, nunca deve entrar no precache do PWA do admin).
+        ? buildPwaPlugin(false, 'sw-admin.js', 'admin.html', ['encanto/**', 'capacitor/**', 'convite.html', 'assets/convite-*'])
         : buildPwaPlugin(isCapacitor),
       ...(sentryUploadPronto ? [sentryVitePlugin({
         org: process.env.SENTRY_ORG,
@@ -135,7 +150,7 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir,
       emptyOutDir: !isAdmin, // REF-ADMIN-04 Onda 3: admin escreve em dist/ (raiz) sem limpar — protege dist/encanto e dist/capacitor de builds locais em sequência
-      rollupOptions: isAdmin ? { input: 'admin.html' } : undefined,
+      rollupOptions: isAdmin ? { input: { admin: 'admin.html', convite: 'convite.html' } } : undefined,
       // Só gera .map quando há credencial pra subir pro Sentry E apagar do dist depois (plugin acima) —
       // sem isso, gerar .map deixaria o mapa do código-fonte publicamente acessível no Vercel (adivinhando
       // a URL), sem nenhum benefício (ninguém pra consumi-lo). 'hidden' = sem sourceMappingURL no JS final
