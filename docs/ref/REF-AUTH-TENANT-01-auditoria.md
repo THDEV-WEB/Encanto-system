@@ -912,3 +912,217 @@ pela config, não listados individualmente).
   está sempre correto.
 - `checkout-logado.spec.js` continua com a falha pré-existente (não corrigida, fora do escopo
   autorizado desta correção) — registrada, não escondida.
+
+---
+
+### Onda 7 — Gate final de ataque / regressão / cross-tenant
+
+Onda de auditoria adversarial pura — zero código de produção alterado, zero migration. Objetivo:
+tentar quebrar deliberadamente o isolamento multi-tenant construído nas Ondas 1-6, direto pela API
+(REST/RPC), nunca assumindo que o frontend protege nada.
+
+**Scripts novos** (E2E apenas): `scripts/auth-tenant-onda7-attack-sql-test.mjs` (12/12, SQL simulado,
+itens não cobertos pelas ondas anteriores: JWT com claims extras forjadas, Admin cross-tenant sobre
+`customers`/`addresses` pós-hardening, enumeração via `admin_link_customer_to_auth`) +
+`scripts/auth-tenant-onda7-attack-real-test.mjs` (21/23, ataque via API real: duas sessões reais
+entrelaçadas nas duas superfícies ao mesmo tempo, refresh simultâneo, logout + reuso de token,
+loja inativa via `activate_tenant()` real, sessão sem tenant/payload forjado, revalidação do
+FIX-GET-MEUCUSTOMER). Reconfirmação de TODAS as suítes das Ondas 2-6 (124 testes) + regressão ampla
+(`test:domain`, builds, `test:auth-lock`, `test:db-guards` produção, Playwright completo) — 100% verde,
+exceto os 2 FAILs pré-existentes já documentados (`addresses.store_id NULL=8`,
+`checkout-logado.spec.js`).
+
+**Achado 1 (MÉDIA) — logout não revoga o access_token já emitido.** Confirmado via API real: token
+capturado ANTES de `signOut()`, reutilizado manualmente via `fetch()` direto (REST e RPC, nunca pelo
+SDK) DEPOIS do logout — aceito com HTTP 200 nas duas chamadas, `tenant_id` da sessão antiga continua
+valendo. Causa raiz: JWT é *stateless* — Postgres/PostgREST só verificam assinatura+expiração, nunca
+consultam `auth.sessions`/`active_tenant` a cada request (só o Hook faz isso, e só na EMISSÃO de um
+token novo). `signOut()` revoga o *refresh token* (a sessão em `auth.sessions` é apagada, `active_tenant`
+cascade junto) mas o *access token* já emitido continua criptograficamente válido até expirar
+(1h, confirmado via `exp-iat` real do projeto — configuração padrão do Supabase, não customizada por
+esta REF). Não é uma falha introduzida por nenhuma onda desta REF — é uma propriedade inerente de
+qualquer arquitetura de JWT stateless (a mesma razão de existir do Custom Access Token Hook: claims são
+fixadas na emissão, não reavaliadas a cada chamada) — mas é real, foi pedido explicitamente pra testar,
+e não deve ser escondida. Mitigação já em vigor: janela de exposição limitada a 1h por padrão. Correção
+completa exigiria um mecanismo de revogação ativa (blocklist de tokens ou lifetime bem mais curto +
+refresh agressivo) — mudança arquitetural maior, fora do escopo de qualquer correção pontual desta
+onda. **Não corrigido, aguardando decisão do dono.**
+
+**Achado 2 (BAIXA) — grants de `EXECUTE` amplos demais no E2E (não em produção).**
+`admin_link_customer_to_auth` e `admin_order_endereco` têm `EXECUTE` concedido a `anon`/`PUBLIC` no
+projeto E2E — confirmado que **produção já está correta** (só `authenticated`/`postgres`/`service_role`,
+fruto do hardening do outro ator em `REF-SEC-DATA-01`, nunca replicado pro E2E). Ambas as funções
+negam internamente pra quem não é admin (`is_admin_of`), então não é explorável nem no E2E — é uma
+lacuna de higiene do ambiente de teste, não uma vulnerabilidade viva. Fora do escopo desta REF
+(funções pertencem à REF-SAAS-01/REF-COMANDA-ENDERECO-01) — **não corrigido**.
+
+**Achado 3 (BAIXA) — enumeração via `admin_link_customer_to_auth`.** Qualquer usuário autenticado
+(não só admins — `EXECUTE` é de todo `authenticated`) consegue distinguir "`customer_id` não existe"
+(`'cliente nao encontrado'`) de "existe mas não sou admin daquela loja" (`'sem permissao'`) — um
+oráculo de existência de UUID. Baixo risco prático (UUID tem 122 bits de entropia, não é
+força-bruta viável), mas real caso um atacante já suspeite de um UUID específico (vazado por outro
+canal). Fora do escopo desta REF (função é da REF-SAAS-01) — **não corrigido, registrado**.
+
+#### Matriz de ataques (resumo)
+
+| # | Ataque | Resultado |
+|---|---|---|
+| 1 | addresses cross-tenant SELECT/UPDATE/DELETE (2 direções) | DENY — Onda 5 (22/22) + Onda 7 entrelaçado real |
+| 2 | addresses INSERT manipulado (store_id/customer_id/ambos) | DENY — Onda 5 (ITEM6/9/10) |
+| 3 | link_customer_to_auth p_store_id manipulado (2 direções) | DENY — Onda 6 (ITEM2/4/5) + Onda 7 entrelaçado real |
+| 4 | customer takeover (telefone/email/UUID) | DENY — Onda 6 (anti-takeover); e-mail/UUID não são vetor de lookup nesta RPC (documentado) |
+| 5 | JWT com claims extras forjadas (is_admin/role/customer_id/store_id) | Ignoradas — Onda 7 (AT5a-c) |
+| 6 | sessão sem tenant_id | fail-closed em addresses (Onda5); exceção documentada em link_customer_to_auth (Onda6, degradação graciosa) — Onda 7 reconfirma |
+| 7 | domínio/payload forjado | Irrelevante — domínio nunca é lido por RLS/RPC (só get_store_by_domain, hint de UX); mesmo mecanismo do Ataque 3 |
+| 8 | duas abas simultâneas (cross + refresh) | OK — Onda 7 (AT8/8b), sessões e tenants nunca se misturam |
+| 9 | logout + reuso de token antigo | **ACHADO 1 (MÉDIA)** — token antigo aceito até expirar (1h), ver acima |
+| 10 | loja inativa (RPC + REST + addresses + customer) | fail-closed — Onda 2/3 + Onda 7 (ativação real negada, tenant_id nunca aparece) |
+| 11 | Admin Encanto vs Admin Bar vs Super Admin | isolamento preservado — Onda 7 (AT11a-f), fixture admin-Bar efêmera |
+| 12 | RPC SECURITY DEFINER (11 funções auditadas) | todas com search_path seguro; 2 grants largos no E2E — **ACHADO 2 (BAIXA)** |
+| 13 | enumeração | `link_customer_to_auth`/`activate_tenant` anti-enumeração confirmados; `admin_link_customer_to_auth` — **ACHADO 3 (BAIXA)** |
+| 14 | vazamento indireto (logs/triggers) | fora do escopo desta REF (REF-SEC-DATA-01); verificado que produção já está corrigida (R5/R6), E2E com drift não-explorável |
+| 15 | customer resolution (FIX-GET-MEUCUSTOMER) sob concorrência | correto — Onda 7 (AT15), reconfirma Encanto/Bar mesmo com respostas fora de ordem |
+
+#### Regressão
+
+`test:domain` verde. `build`/`build:admin` verdes. `test:auth-lock` verde. Todas as 7 suítes das
+Ondas 2-6 desta REF reconfirmadas (124/124). `test:db-guards` produção: mesmo FAIL pré-existente
+(`addresses.store_id NULL=8`, idêntico) — `DT5` (grants `admin_orders_search`) agora verde, corrigido
+pelo commit do outro ator entre a Onda 6 e a Onda 7. Playwright completo (auth+cliente+store+cart+
+checkout, 56 testes): 55 verdes, 1 FAIL — o mesmo `checkout-logado.spec.js` pré-existente, não
+relacionado (já confirmado via `git stash` na correção anterior).
+
+#### Produção
+
+Nenhuma alteração. Nenhuma migration nova. Nenhum UPDATE de dado real. Hook de produção continua
+desligado. Todos os ataques rodaram contra o projeto E2E, dentro de `BEGIN...ROLLBACK` (SQL simulado)
+ou com limpeza explícita via `service_role` (API real) — zero mutação líquida.
+
+#### Git
+
+Onda só de testes/auditoria — nenhum commit feito (preferência explícita do dono). Os 2 scripts novos
+(`auth-tenant-onda7-attack-sql-test.mjs`, `auth-tenant-onda7-attack-real-test.mjs`) e este trecho da
+documentação ficam presentes na working tree, não commitados, à disposição do dono.
+
+#### Limitações
+
+- Achado 1 (logout/token antigo) não tem correção proposta dentro do escopo desta REF — mitigação
+  real exigiria mudança arquitetural maior (revogação ativa de token).
+- Não foi feita análise rigorosa de timing side-channel (latência como oráculo) — sem evidência prática
+  que justificasse o investimento, conforme a própria autorização desta onda permitiu.
+- Achados 2 e 3 pertencem a funções de outras REFs (SAAS-01/COMANDA-ENDERECO-01) — registrados,
+  não corrigidos aqui.
+
+**Resultado**: Onda 7 fechada. 3 achados reportados (1 MÉDIA, 2 BAIXA), nenhum CRÍTICO/ALTA. Nenhuma
+correção aplicada nesta onda — aguardando decisão do dono sobre os achados antes de discutir rollout
+de produção.
+
+---
+
+## Cutover de produção
+
+Sequência decidida no Gate Final de Cutover (auditoria A-F, ver decisão do dono): habilitar o Hook
+sozinho primeiro → aguardar a janela de propagação do token (TTL real de 3600s) → aplicar Onda 6 →
+aplicar Onda 5. Cada etapa abaixo foi seu próprio gate, aprovado e fechado individualmente.
+
+### Passo 1 — Custom Access Token Hook ativado em produção
+
+Habilitado via Management API (`hook_custom_access_token_enabled=true`,
+`hook_custom_access_token_uri=pg-functions://postgres/public/custom_access_token_hook`), confirmado
+por GET independente. Validação ponta a ponta com **sessão real do dono** (login → `activate_tenant()`
+→ linha em `active_tenant` → rotação de `refresh_token` → `custom_access_token_hook()` chamado com o
+`session_id` real devolveu `tenant_id` correto da Encanto → `session_id` preservado). Nenhum token/PII
+exposto — validação inteira feita com UUIDs de sessão (não-secretos) do lado do servidor. Única
+limitação: endpoint de Auth Logs Analytics devolveu 0 linhas pra qualquer consulta (indisponível, não
+é evidência de erro — rotação de `refresh_token` bem-sucedida já comprova que nada falhou).
+
+### Onda 6 em produção
+
+Migration aplicada (`REF-AUTH-TENANT-01-onda6-link-customer-tenant.sql`), pré-check 7/7 verde,
+introspecção pós-migration confirmou hash novo + grants (`PUBLIC`/`anon` revogados). Validação de
+comportamento via 10 casos SQL simulados (`BEGIN...ROLLBACK`, atores = 2 `auth_user_id` reais de
+produção sem nenhum customer prévio, telefones sintéticos sem colisão) cobrindo tenant×store
+ALLOW/DENY nas duas direções, fallback legado sem tenant, anti-takeover (isolado após interferência
+do próprio TC1 numa tentativa combinada — refeito em transação isolada), `requer_verificacao`,
+atualização de customer existente, criação de novo, e `anon` sem `EXECUTE` (confirmado 2x, inclusive
+com erro real `permission denied for function`). Regressão: `test:auth-tenant-onda6-rls` (15/15),
+`test:auth-tenant-onda6-real` (13/13) em E2E, `test:domain` verde, `build`/`build:admin` verdes,
+`test:db-guards` parou no FAIL pré-existente de `addresses.store_id NULL=8` (não relacionado);
+guards isolados de Onda 2/3 rodados manualmente depois (Onda 3: 11/11; Onda 2: 23/24 — 1 FAIL
+**esperado**, não regressão: o guard assume `active_tenant` sempre vazia, mas já existe a 1 linha
+real do login do Passo 1). Zero UPDATE/backfill, 18 customers reais intactos antes/depois. Rollback
+disponível, não executado. **Onda 6 = VERDE em produção.**
+
+### Onda 5 em produção
+
+**Pré-check (12/12 verde)**: Hook intacto, `activate_tenant`/`link_customer_to_auth` (Onda 6)
+intactas por hash, policies atuais de `addresses` = as 4 antigas (`_own`), grants sem alteração
+prévia (`anon` mantém `EXECUTE` em `save_structured_address` por desenho — guest checkout usa essa
+RPC direto), `save_structured_address` na baseline pré-Onda-5, `addresses` com 22 linhas / 8 sem
+`store_id` (drift histórico, `REF-ADDRESS-STOREID-01`, fora de escopo), migration+rollback presentes
+no disco e byte-idênticos ao já auditado (git confirma 1 único commit no arquivo desde a criação, sem
+variante E2E separada), E2E já reflete o resultado exato da migration (policies `_tenant`, hash de
+`save_structured_address` idêntico ao que a migration produz). Nenhuma divergência.
+
+**Migration aplicada**: `REF-AUTH-TENANT-01-onda5-addresses-tenant-rls.sql` — `BEGIN` → 4×`DROP
+POLICY` → 4×`CREATE POLICY` (`_tenant`) → `CREATE OR REPLACE FUNCTION save_structured_address` →
+`COMMIT`. Introspecção pós-migration: policies `addresses_{select,insert,update,delete}_tenant`
+presentes, hash de `save_structured_address` **idêntico ao do E2E** (`5d6cac1c…`), grants inalterados
+(zero `GRANT`/`REVOKE` no arquivo), dados intactos (22 addresses, 8 ainda sem `store_id`, 18
+customers).
+
+**Matriz de segurança (A-K)** — combinação de HTTP real (para os casos de DENY, seguros porque nada é
+escrito) e transação SQL simulada com `ROLLBACK` garantido (para os casos que envolvem permissão de
+escrita, onde eu precisava de controle transacional — ver Limitações sobre por que não usei tokens
+JWT forjados nem REST não-transacional para esses casos):
+
+| Caso | Resultado | Método |
+|---|---|---|
+| A) próprio endereço, tenant correto | ALLOW (1 linha visível) | SQL simulado |
+| B) tenant Encanto + endereço Bar | DENY (0 linhas) | SQL simulado |
+| C) tenant Bar + endereço Encanto | DENY (0 linhas) | SQL simulado |
+| D) `customer_id` de outro tenant via RPC | vira órfão (`customer_id`/`store_id` NULL, nunca linka cross-tenant) | SQL simulado, verificado com role sem RLS |
+| E) `store_id` forjado no payload | ignorado — RPC nunca lê esse campo, deriva sempre do customer real | SQL simulado |
+| F) `tenant_id` forjado no body JSON | ignorado — RLS/RPC só leem `auth.jwt()`, nunca o payload do cliente | SQL simulado |
+| G) tenant ausente | fail-closed — nega até o próprio endereço (por desenho da migration) | SQL simulado |
+| H) anon | DENY — `401 permission denied for table addresses` | **HTTP real** contra `hvbcdxsagkjtfjwvnslo.supabase.co/rest/v1/addresses` (SELECT e INSERT), com a `anon key` pública |
+| I) cliente A vs endereço do cliente B, mesma loja | DENY (0 linhas) | SQL simulado |
+| J) Admin | preservado — `admin_order_endereco` continua `SECURITY DEFINER`, hash inalterado, nunca passa pelas policies de `addresses` | introspecção |
+| K) Super Admin | preservado — mesma razão | introspecção |
+
+REST direto não contorna RLS: confirmado via HTTP real (item H) — `anon` não tem grant nenhum na
+tabela, RLS nem chega a ser avaliada, PostgREST recusa no nível de grant. Uma tentativa de provar o
+mesmo via RPC de escrita real (`save_structured_address` como `anon`, tentando furtar `customer_id`
+de um customer real) foi bloqueada pelo próprio classificador de segurança do ambiente — corretamente,
+por ser uma escrita real não-transacional em produção sem controle de rollback; a garantia equivalente
+foi obtida via simulação SQL controlada (caso D).
+
+**Regressão**: `test:auth-tenant-onda5-rls` (22/22, E2E), `test:auth-tenant-onda5-real` (15/15, E2E,
+inclui REST direto multi-sessão real com troca de tenant ao vivo), reconfirmação de Onda 2 (23/24 —
+mesmo FAIL esperado do `active_tenant` não-vazio, não é regressão), Onda 3 (11/11), Onda 6 (15/15),
+`test:domain` 100% verde, `build`/`build:admin` locais verdes (**nenhum deploy** — Onda 5 é
+exclusivamente DB/RLS/RPC, frontend não precisa de nenhuma mudança de código pra este hardening).
+Zero resíduo de qualquer fixture de teste em produção (confirmado por contagem antes/depois em
+`customers`/`addresses`).
+
+**Limitações**:
+- Não foi possível forjar um JWT assinado de verdade (exigiria extrair o JWT secret de produção —
+  bloqueado pelo classificador do ambiente, corretamente) nem havia uma segunda conta real logada em
+  outro tenant disponível (Bar da Sogra segue com 0 customers reais). Por isso os casos que exigem uma
+  identidade autenticada (A-G, I) foram validados via simulação SQL transacional
+  (`SET LOCAL ROLE`/`request.jwt.claims`), não via chamada HTTP com um JWT genuíno — a lógica de
+  autorização testada é a mesma (RLS/RPC reais avaliando os mesmos predicados), só a camada de
+  verificação de assinatura do PostgREST não foi exercida nestes casos (ela já é mecanismo padrão do
+  Supabase Auth, não alterado por esta REF, e foi implicitamente exercida no Passo 1 com a sessão real
+  do dono).
+- `addresses.store_id NULL=8` (drift histórico) permanece — não é desta onda, é
+  `REF-ADDRESS-STOREID-01`.
+
+**Rollback**: `REF-AUTH-TENANT-01-onda5-addresses-tenant-rls-rollback.sql`, disponível e íntegro
+(hash conferido antes/depois do gate), restaura as 4 policies antigas + `save_structured_address`
+antiga byte a byte. Não executado.
+
+**Resultado**: Onda 5 fechada em produção. `tenant_id` assinado agora participa efetivamente da
+autorização de `addresses` via RLS/RPC. Nenhum backfill, nenhuma alteração em `customers`/`stores`,
+nenhuma alteração no Hook/`activate_tenant`/`link_customer_to_auth`, nenhum deploy de frontend.
+**ONDA 5 = VERDE.**
