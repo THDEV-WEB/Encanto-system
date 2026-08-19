@@ -58,9 +58,11 @@ export function ConviteApp() {
         setStatus('pronto');
       }
     });
-    // Sem token válido na URL: onAuthStateChange nunca dispara com sessão. Timeout curto cobre esse caso
-    // (link direto sem token, token já consumido antes, ou expirado) sem depender de um evento que não vem.
-    const timer = setTimeout(() => { if (vivo) setStatus((s) => (s === 'resolvendo' ? 'invalido' : s)); }, 2500);
+    // Sem token válido na URL: onAuthStateChange nunca dispara com sessão. Timeout cobre esse caso (link
+    // direto sem token, token já consumido antes, ou expirado) sem depender de um evento que não vem.
+    // 6000ms (não 2500ms) de propósito -- mesma margem de TIMEOUT_MS em routeDistanceService.js -- pra
+    // nunca mostrar "link inválido" cedo demais numa rede lenta, num fluxo de 1a impressão só.
+    const timer = setTimeout(() => { if (vivo) setStatus((s) => (s === 'resolvendo' ? 'invalido' : s)); }, 6000);
     return () => { vivo = false; clearTimeout(timer); sub?.subscription?.unsubscribe?.(); };
   }, [client]);
 
