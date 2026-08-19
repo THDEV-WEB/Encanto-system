@@ -13,6 +13,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useDeliveryFeeConfig } from '../../hooks/useDeliveryFeeConfig.js';
 import { useCompanyInfo } from '../../hooks/useCompanyInfo.js';
+import { useStoreConfigStatus } from '../../hooks/useStoreConfigStatus.js';
 import { definirDeliveryFeeConfig } from '../../services/delivery/deliveryFeeConfig.js';
 import { salvarCompanyInfo } from '../../services/company/companyInfo.js';
 import { localizacaoLojaConfigurada } from '../../services/company/companyInfoRules.js';
@@ -76,6 +77,35 @@ function StatusLocalizacaoLoja({ configurada }) {
             : 'Sem essa configuração, TODOS os pedidos de entrega saem com taxa R$ 0,00 (o checkout nunca é '
               + 'bloqueado, mas a cobrança real não acontece). Arraste o pino até a loja no mapa abaixo e clique '
               + 'em "Salvar localização".'}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* REF-STORE-ONBOARD-01 · Onda 1: mesmo papel/estilo de StatusLocalizacaoLoja acima, mas para a TABELA DE
+   PREÇOS (delivery_fee_config) — concern separado das coordenadas. Sem isso, uma loja nova não tem como
+   saber que as faixas abaixo são o preço REAL de outro negócio (fallback hardcoded de
+   get_delivery_fee_config), não um exemplo neutro. configurado === null (RPC ainda não respondeu, ou
+   falhou) não renderiza nada — nunca bloqueia a edição normal. */
+function StatusPrecoEntrega({ configurado }) {
+  if (configurado === null) return null;
+  const cor = configurado ? '#16A34A' : '#DC2626';
+  const fundo = configurado ? '#F0FDF4' : '#FEF2F2';
+  return (
+    <div role="status" data-testid="status-entrega-loja" data-configurada={configurado} style={{
+      display: 'flex', alignItems: 'flex-start', gap: 10, padding: '14px 16px', borderRadius: 12,
+      background: fundo, border: `1.5px solid ${cor}`, marginBottom: 18,
+    }}>
+      <span aria-hidden="true" style={{ fontSize: 20, lineHeight: 1 }}>{configurado ? '✅' : '❌'}</span>
+      <div>
+        <div style={{ fontSize: 13.5, fontWeight: 700, color: cor }}>
+          {configurado ? 'Tabela de preços configurada para esta loja' : 'Tabela de preços ainda NÃO configurada para esta loja'}
+        </div>
+        <div style={{ fontSize: 12.5, color: 'var(--gray-700)', marginTop: 3, lineHeight: 1.6 }}>
+          {configurado
+            ? 'As faixas abaixo são os preços reais desta loja.'
+            : 'As faixas abaixo são um modelo temporário, não os preços reais da sua entrega. Ajuste os valores e clique em "Salvar Alterações" para substituir o padrão.'}
         </div>
       </div>
     </div>
@@ -207,7 +237,7 @@ function FaixaLinha({ faixa, indice, erro, onCampo, onRemover }) {
   );
 }
 
-function BlocoFaixas() {
+function BlocoFaixas({ onSalvo }) {
   const config = useDeliveryFeeConfig();
   const idRef = useRef(0);
   const nextId = () => (idRef.current += 1);
@@ -262,7 +292,7 @@ function BlocoFaixas() {
     setSalvando(true); setMsg(null);
     const r = await definirDeliveryFeeConfig(persistido);
     setSalvando(false);
-    if (r.ok) setMsg({ tipo: 'ok', texto: 'Configuração de entrega salva com sucesso.' });
+    if (r.ok) { setMsg({ tipo: 'ok', texto: 'Configuração de entrega salva com sucesso.' }); onSalvo?.(); }
     else setMsg({ tipo: 'erro', texto: r.error || 'Não foi possível salvar. Verifique seu acesso de administrador.' });
   };
 
@@ -325,6 +355,7 @@ function BlocoFaixas() {
 
 export function AdminTaxaEntrega() {
   const info = useCompanyInfo();
+  const configStatus = useStoreConfigStatus(); // REF-STORE-ONBOARD-01 · Onda 1: tabela propria ou padrao?
   return (
     <div>
       <div style={{ marginBottom: 20 }}>
@@ -335,8 +366,9 @@ export function AdminTaxaEntrega() {
         </p>
       </div>
       <StatusLocalizacaoLoja configurada={localizacaoLojaConfigurada(info)} />
+      <StatusPrecoEntrega configurado={configStatus.tem_delivery_config} />
       <BlocoLocalizacao />
-      <BlocoFaixas />
+      <BlocoFaixas onSalvo={configStatus.refresh} />
     </div>
   );
 }

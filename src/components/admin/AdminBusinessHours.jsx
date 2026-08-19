@@ -13,8 +13,37 @@
    grade semanal. */
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useBusinessHoursSchedule } from '../../hooks/useBusinessHoursSchedule.js';
+import { useStoreConfigStatus } from '../../hooks/useStoreConfigStatus.js';
 import { definirCronograma, DIA_NOMES, DIAS_LONGOS } from '../../services/businessHours/index.js';
 import { paraEditavel, paraPersistir, validarDia, aplicarCopiaHorarios } from '../../services/businessHours/scheduleForm.js';
+
+/* REF-STORE-ONBOARD-01 · Onda 1: mesmo papel/estilo de StatusLocalizacaoLoja (AdminTaxaEntrega.jsx) --
+   sem isso, uma loja nova nao tem como saber que o cronograma abaixo e' o horario REAL de outro negocio
+   (fallback hardcoded de get_business_hours_schedule), nao um exemplo neutro. tem_horario_config === null
+   (RPC ainda nao respondeu, ou falhou) nao renderiza nada -- nunca bloqueia a edicao normal. */
+function StatusHorarioLoja({ configurado }) {
+  if (configurado === null) return null;
+  const cor = configurado ? '#16A34A' : '#DC2626';
+  const fundo = configurado ? '#F0FDF4' : '#FEF2F2';
+  return (
+    <div role="status" data-testid="status-horario-loja" data-configurada={configurado} style={{
+      display: 'flex', alignItems: 'flex-start', gap: 10, padding: '14px 16px', borderRadius: 12,
+      background: fundo, border: `1.5px solid ${cor}`, marginBottom: 18,
+    }}>
+      <span aria-hidden="true" style={{ fontSize: 20, lineHeight: 1 }}>{configurado ? '✅' : '❌'}</span>
+      <div>
+        <div style={{ fontSize: 13.5, fontWeight: 700, color: cor }}>
+          {configurado ? 'Horário configurado para esta loja' : 'Horário ainda NÃO configurado para esta loja'}
+        </div>
+        <div style={{ fontSize: 12.5, color: 'var(--gray-700)', marginTop: 3, lineHeight: 1.6 }}>
+          {configurado
+            ? 'A grade abaixo é o horário real desta loja.'
+            : 'A grade abaixo é um exemplo temporário, não o horário real do seu negócio. Ajuste os dias/horários e clique em "Salvar Alterações" para substituir o padrão.'}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function Switch({ ativo, onChange, disabled }) {
   return (
@@ -138,6 +167,7 @@ function CopiarModal({ origem, rotuloOrigem, alvo, setAlvo, onAplicar, onFechar 
 
 export function AdminBusinessHours() {
   const cronograma = useBusinessHoursSchedule();      // documento OFICIAL (fonte unica)
+  const configStatus = useStoreConfigStatus();        // REF-STORE-ONBOARD-01 · Onda 1: propria ou padrao?
   const idRef = useRef(0);
   const nextId = () => (idRef.current += 1);
 
@@ -186,7 +216,7 @@ export function AdminBusinessHours() {
     setSalvando(true); setMsg(null);
     const r = await definirCronograma({ schedule: paraPersistir(dias), exceptions: cronograma.exceptions || {} });
     setSalvando(false);
-    if (r.ok) setMsg({ tipo: 'ok', texto: 'Horário de funcionamento salvo com sucesso.' });
+    if (r.ok) { setMsg({ tipo: 'ok', texto: 'Horário de funcionamento salvo com sucesso.' }); configStatus.refresh(); }
     else setMsg({ tipo: 'erro', texto: r.error || 'Não foi possível salvar. Verifique seu acesso de administrador.' });
   };
 
@@ -194,6 +224,7 @@ export function AdminBusinessHours() {
     <div className="admin-card" style={{ marginBottom: 20 }}>
       <div className="admin-card-header"><h3>🕒 Horário de Funcionamento</h3></div>
       <div style={{ padding: '24px 20px' }}>
+        <StatusHorarioLoja configurado={configStatus.tem_horario_config} />
         <p style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 18 }}>
           Configure os dias e horários em que a loja atende. Cada dia aceita quantos períodos forem necessários
           (ex.: manhã e noite). O botão <strong>Salvar Alterações</strong> aplica tudo de uma vez.

@@ -321,6 +321,12 @@ export const DS = {
     }), { throwOnError: true });
     return r.data;
   },
+  /* REF-STORE-ONBOARD-01 · Onda 1: {tem_horario_config, tem_delivery_config} da loja ATIVA do Admin
+     (buildStoreRpcParam) -- alimenta o banner "usando padrao" em AdminBusinessHours/AdminTaxaEntrega. */
+  async getStoreConfigStatus() {
+    const r = await this.run(d=>d.rpc('get_store_config_status', buildStoreRpcParam()));
+    return r.data ?? null;
+  },
   /* HARDEN-06: log genérico em application_logs — reutilizável por qualquer módulo (best-effort, sem PII). */
   async logEvent(module, operation, level, message, payload) {
     try {
