@@ -30,10 +30,9 @@
 // Edge Function (nao precisa de `supabase secrets set` para eles, diferente de OPENROUTESERVICE_API_KEY
 // em route-distance). Nenhum segredo novo a configurar.
 //
-// DEPENDENCIA EXTERNA (fora do alcance desta funcao): o redirectTo do convite precisa estar na allow-list
-// de "Redirect URLs" do Supabase Auth (Dashboard -> Authentication -> URL Configuration) --
-// `https://admin.*.valionsistemas.com.br/convite.html` (ou o dominio equivalente). Sem isso o convite
-// e enviado mas o link falha ao ser clicado. Ver README.md desta pasta.
+// REDIRECT URL: confirmado e aplicado em producao (2026-08-19) na allow-list de "Redirect URLs" do
+// Supabase Auth -- https://admin.*.valionsistemas.com.br/** + entradas explicitas por loja existente.
+// Ver README.md desta pasta para o historico e o valor exato aplicado.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 

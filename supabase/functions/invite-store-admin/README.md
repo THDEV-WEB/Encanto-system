@@ -60,10 +60,9 @@ https://admin.*.valionsistemas.com.br/convite.html
 sai no mesmo deploy). Se o projeto não aceitar coringa nessa posição, adicionar uma entrada por loja
 (`https://admin.encanto.valionsistemas.com.br/convite.html`, `https://admin.bar-da-sogra.valionsistemas.com.br/convite.html`, …) até confirmar o padrão aceito.
 
-**Não verificado nesta implementação** — o ambiente usado para desenvolver isto não teve acesso de
-leitura à configuração de Auth do projeto (Management API bloqueada para endpoints com `project_ref` no
-path, mesmo com token válido — só `GET /v1/projects` funcionou). Confirmar manualmente antes do primeiro
-teste real do convite.
+**Confirmado e aplicado em produção em 2026-08-19** via Management API (`PATCH /v1/projects/{ref}/config/auth`,
+aditivo — só acrescentou as 3 URLs acima, nenhuma entrada anterior foi removida). `uri_allow_list` hoje
+inclui essas 3 além das entradas que já existiam para o storefront.
 
 ## Teste manual (produção, após deploy + redirect URL configurados)
 
