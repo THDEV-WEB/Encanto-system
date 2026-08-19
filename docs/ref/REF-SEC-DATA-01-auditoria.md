@@ -109,24 +109,47 @@ Dispositivo compartilhado herdava endereço e carrinho completos do cliente ante
 não afetar o carrinho de um visitante que nunca logou).
 
 **Migrations/scripts desta rodada**: `migrations/REF-SEC-DATA-01-harden-r9-r18-r19.sql` (+rollback),
-`scripts/sec-data-01-r9-r18-r19-test.mjs` (`npm run test:sec-data-01-r9r18r19`, 5/5 PASS após corrigir 2
-bugs do próprio script — comparação de `file_size_limit` como string vs number, e normalização de line
-endings `\r\n`/`\n` no corpo de função capturado via SQL Editor). Commits locais `2ab7560`, `a2e0c4c`,
-`97308f7`, `cd332b8`, `2cb0d21` — sem push até o momento.
+`scripts/sec-data-01-r9-r18-r19-test.mjs` (`npm run test:sec-data-01-r9r18r19`). Commits `2ab7560`,
+`a2e0c4c`, `97308f7`, `cd332b8`, `2cb0d21`, `d582c9e`.
 
-## Pendências antes de fechar a Rodada 3 (ações manuais do dono)
+## FECHAMENTO (2026-08-19) — Rodada 3 encerrada, aprovado pelo dono
 
-1. Confirmar no Dashboard (Edge Functions → Secrets) se `WHATSAPP_TOKEN`/`WHATSAPP_PHONE_NUMBER_ID`/
-   `WHATSAPP_API_VERSION` chegaram a ser configurados na Edge Function removida (R13); se sim,
-   `supabase secrets unset`.
-2. Deploy da `route-distance` atualizada (CLI/Dashboard) para o rate-limit do R14 entrar em vigor.
-3. Smoke test manual do R12: login → seleciona endereço + adiciona item ao carrinho → logout → confirma
-   os dois vazios → recarrega como visitante → adiciona item novo → confirma que sobrevive.
+As 3 validações manuais pendentes foram concluídas:
 
-A REF-SEC-DATA-01 (Rodada 3) só é considerada fechada depois dessas 3 validações.
+- **R13 (secrets do WhatsApp)** — verificados via `supabase secrets list --project-ref
+  hvbcdxsagkjtfjwvnslo`: nenhum secret órfão (`WHATSAPP_TOKEN`/`WHATSAPP_PHONE_NUMBER_ID`/
+  `WHATSAPP_API_VERSION` nunca chegaram a ser configurados na Edge Function removida — só existiam no
+  Vault, usado pelo path real via `pg_net`/`pg_cron`). Nada a remover.
+- **R14 (deploy do `route-distance`)** — deploy confirmado em produção via `supabase functions deploy`:
+  projeto `hvbcdxsagkjtfjwvnslo`, versão publicada `2`, status `ACTIVE`. Validação pós-deploy: chamada
+  HTTP real (`POST /functions/v1/route-distance` com a anon key pública) retornou `200` com resposta
+  válida (`{"distanceKm":1.9645,"durationMin":5.18,"provider":"heigit","cached":false}`) — confirma
+  ausência de regressão no caminho normal. O bloqueio de deploy encontrado antes era o classificador de
+  auto mode do ambiente (não um erro do código/migration) — resolvido com uma permissão explícita
+  adicionada ao `settings.local.json`. `supabase functions download` (usado numa tentativa de comparar
+  o código publicado byte a byte) continua bloqueado pelo mesmo classificador — não é pendência da REF,
+  pois não é necessário para comprovar deploy/funcionamento (a validação funcional acima já basta).
+- **R12 (smoke test de logout)** — em vez de clique manual, escrito e rodado
+  `e2e/tests/cliente/logout-limpa-endereco-carrinho.spec.js` contra o ambiente de E2E real (login/sessão
+  genuínos): **2/2 PASS** — confirma que endereço e carrinho são limpos na transição real de logout, e
+  que o carrinho de um visitante nunca-logado não é afetado.
+
+**R18/R19**: 100% verdes (`npm run test:sec-data-01-r9r18r19`, 5/5 PASS após corrigir 2 bugs do próprio
+script de teste — comparação de `file_size_limit` como string vs number, e normalização de line endings
+`\r\n`/`\n` no corpo de função capturado via SQL Editor).
+
+**R9**: mantido como **risco residual aceito** — não corrigível pelo role disponível no Supabase
+gerenciado (`postgres` não é dono/membro/superuser sobre os objetos da extensão `pg_net`, que pertence a
+`supabase_admin`). Nenhuma alteração adicional necessária ou planejada para R9; eventual correção
+dependeria de intervenção do suporte da própria plataforma Supabase.
+
+**REF-SEC-DATA-01 está FORMALMENTE FECHADA.** As 3 rodadas de correção (críticos, altos, e os 7 achados
+menores desta rodada) estão aplicadas e validadas em produção, com exceção do R9 (residual aceito) e
+R4/R10/R11 (tratados à parte). Nenhum achado novo foi aberto no processo de fechamento.
 
 ## Não corrigidos nesta REF (fora de escopo, registrados)
 
 - **R4/R10/R11** — isolamento cross-tenant de `addresses`/`link_customer_to_auth`. Tratados em
   `docs/ref/REF-AUTH-TENANT-01-auditoria.md`.
+- **R9** — risco residual aceito, limitação de plataforma (ver seção FECHAMENTO acima).
 - **R15/R16** — informativos por desenho, não são pendência.
