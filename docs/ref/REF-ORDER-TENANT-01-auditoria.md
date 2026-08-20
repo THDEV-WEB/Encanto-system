@@ -1,5 +1,7 @@
 # REF-ORDER-TENANT-01 — Integridade de pedido por tenant
 
+**Status: FECHADA — Onda 1 VERDE, ao vivo em produção (2026-08-19).**
+
 Nasceu de um achado durante a auditoria da Parte B de `REF-ADDRESS-STOREID-01`: ao investigar se
 `orders.store_id` poderia ser uma fonte confiável para derivar `addresses.store_id` no checkout
 convidado, descobriu-se que `create_order()` — a RPC que cria o próprio pedido — também confiava
