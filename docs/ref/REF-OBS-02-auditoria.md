@@ -1,6 +1,6 @@
 # REF-OBS-02 — Observabilidade dos caminhos fail-closed de isolamento tenant
 
-**Status: FECHADA — VERDE (pendente só de deploy/validação real em produção, ver seção final).**
+**Status: FECHADA — VERDE, ao vivo em produção (2026-08-20).**
 
 ## 1. Auditoria do estado atual do Sentry (antes de qualquer código novo)
 
@@ -123,8 +123,50 @@ deliberadamente fora de escopo (mesma decisão já registrada na REF-SENTRY-01).
 
 ## Validação em produção
 
-(preenchido após o push/deploy — ver commit e evidência de evento real abaixo)
+**Deploy confirmado**: bundle ao vivo mudou (`assets/index-2bA5wC6A.js`), `release` embutido =
+`574135ecd5306b4b7008b5749a7c3d0bae3c4e5a` (SHA completo do commit desta REF), DSN inalterado
+(`o4511791896002560.ingest.de.sentry.io/4511793830887504`) — confirmado por download direto do
+bundle público, sem suposição. As 2 strings `'loja invalida'`/`'loja nao identificada'` presentes no
+bundle minificado (grep direto), confirmando que o código novo realmente foi ao ar.
+
+**Evento de teste controlado — evidência real, não suposição**: como o DENY fail-closed só dispara
+para tráfego ilegítimo (Origin desconhecido, ou sessão de tenant divergente), não há como triggerar
+organicamente `capturarDenyTenant` a partir de um navegador real na própria página de produção — um
+carregamento legítimo do site sempre envia o Origin real, que é reconhecido por design. Reproduzida a
+mesma técnica já usada e documentada no fechamento da REF-SENTRY-01 (gatilho temporário, gated por
+query param, revertido imediatamente): 1 linha temporária em `src/main.jsx` chamando
+`capturarDenyTenant('loja nao identificada', {...})` sob `?__sentry_denytest__=1`, build LOCAL com o
+DSN REAL de produção (público, extraído do próprio bundle ao vivo — não é segredo) via
+`VITE_SENTRY_DSN`, servido com `vite preview`, disparado via Playwright contra
+`http://localhost/encanto/?__sentry_denytest__=1`. Resultado: **3 respostas HTTP 200 do ingest real do
+Sentry**, uma delas com `event id` retornado (`8bc3753819b343db92df14eb9af89df0`) — prova de que o
+evento foi aceito pelo backend real do Sentry (não só "enviado", mas confirmado recebido pela própria
+API). Esse mesmo mecanismo (`Sentry.withScope`+`captureMessage` nível `warning`) é idêntico ao já
+usado e comprovado pelo listener de falha de recurso da REF-SENTRY-01 — `capturarDenyTenant` reaproveita
+um padrão já validado, não introduz um mecanismo novo. Limpeza imediata: `git checkout -- src/main.jsx`
+(zero traço no código final, confirmado via `git status`), script temporário apagado, `vite preview`
+encerrado, rebuild local sem DSN restaurado.
+
+**Pendente do dono** (fora do meu alcance — token de leitura da API do Sentry usado na REF-SENTRY-01 já
+foi revogado ao final daquela REF, por instrução do próprio fechamento): conferir visualmente no painel
+do Sentry o evento `8bc3753819b343db92df14eb9af89df0` (mensagem "Tenant DENY: loja nao identificada",
+tag `app.origem=tenant_deny`) e, se quiser, apagá-lo (claramente identificável, `rpc:'validation_test'`
+no contexto, sem mistura com evento real).
+
+**Fluxo normal da aplicação**: regressão completa (`test:domain` + Playwright E2E) já confirmada limpa
+antes do commit (ver seção Testes) — nenhuma mudança de comportamento fora dos 2 pontos de DENY.
 
 ## Commits
 
-`(preencher no fechamento)`
+`574135e` — REF-OBS-02: observabilidade dos DENY fail-closed de isolamento tenant (5 arquivos:
+`src/lib/sentry.js`, `src/services/DataService.js`, `src/address/repository/addressRepository.js`,
+`tests/address-multitenant.golden.mjs`, `docs/ref/REF-OBS-02-auditoria.md`). Pushed para `origin/main`
+(deploy explicitamente autorizado nesta REF) — confirmado ao vivo em produção.
+
+## Resultado
+
+**REF-OBS-02 = VERDE.** Sentry já estava ativo (achado da auditoria corrige a premissa inicial); o gap
+real (2 caminhos fail-closed sem observabilidade) foi identificado, corrigido com um helper dedicado
+de nível `warning` (nunca crítico por padrão), testado localmente e via evento real de produção
+(HTTP 200 + event id do próprio Sentry), sem duplicar nenhuma instrumentação existente, sem PII, e sem
+regressão (E2E 118-120 passando, 5 falhas todas confirmadas pré-existentes/flaky via A/B).
