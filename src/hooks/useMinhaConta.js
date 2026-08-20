@@ -9,7 +9,7 @@ const soDigitos = (s) => (s || '').replace(/\D/g, '');
 const emailValido = (e) => /.+@.+\..+/.test((e || '').trim());
 
 export function useMinhaConta() {
-  const { user, customer, atualizarPerfil, atualizarEmail, excluirMeusDados } = useAuth();
+  const { user, customer, atualizarPerfil, atualizarEmail, excluirMeusDados, exportarMeusDados } = useAuth();
 
   /* Salva nome + telefone no MESMO customer (nao cria novo; preserva pedidos/historico/vinculo). */
   const salvarPerfil = async (nome, telefone) => {
@@ -49,6 +49,14 @@ export function useMinhaConta() {
     return { ok: true, msg: 'Seus dados foram removidos.' };
   };
 
+  /* REF-LGPD-01 · Onda 2 (LGPD-R03): portabilidade. O download em si (Blob/<a>) fica na tela, que e'
+     onde DOM/browser API pertencem -- aqui so' busca o JSON e mapeia erro. */
+  const baixarDados = async () => {
+    const r = await exportarMeusDados();
+    if (r?.error) return { ok: false, msg: 'Não foi possível gerar o arquivo agora. Tente novamente.' };
+    return { ok: true, dados: r.data };
+  };
+
   return {
     nomeInicial: customer?.name || '',
     telefoneInicial: customer?.phone || '',
@@ -58,5 +66,6 @@ export function useMinhaConta() {
     salvarPerfil,
     salvarEmail,
     excluirDados,
+    baixarDados,
   };
 }

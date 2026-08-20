@@ -160,4 +160,10 @@ export const AuthService = {
     if (!dbCliente) return semAuth();
     return dbCliente.rpc('lgpd_delete_my_data', { p_confirmacao: 'EXCLUIR' });
   },
+
+  /* REF-LGPD-01 · Onda 2 (LGPD-R03): portabilidade — export read-only dos proprios dados. */
+  async exportMyData() {
+    if (!dbCliente) return semAuth();
+    return dbCliente.rpc('lgpd_export_my_data');
+  },
 };

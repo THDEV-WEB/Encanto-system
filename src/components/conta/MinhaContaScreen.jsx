@@ -36,6 +36,7 @@ export function MinhaContaScreen({ onClose }) {
   const [toast, setToast] = useState(null); // { tipo, msg }
   const [confirmandoExclusao, setConfirmandoExclusao] = useState(false); // REF-LGPD-01: passo 1 -> passo 2
   const [excluindo, setExcluindo] = useState(false);
+  const [baixando, setBaixando] = useState(false); // REF-LGPD-01 · Onda 2 (LGPD-R03)
 
   /* Sincroniza os valores iniciais quando o customer (a IDENTIDADE, nao so o texto) muda — cobre a
      restauracao de sessao pos-login E a correcao de REF-AUTH-TENANT-01-FIX-GET-MEUCUSTOMER (2a carga,
@@ -92,6 +93,25 @@ export function MinhaContaScreen({ onClose }) {
     setExcluindo(false);
     if (!r.ok) { setToast({ tipo: 'erro', msg: r.msg }); return; }
     onClose(); // sessao ja foi encerrada (excluirMeusDados chama sair()) -- fecha a tela, nada mais a mostrar aqui
+  };
+
+  /* REF-LGPD-01 · Onda 2 (LGPD-R03): portabilidade — baixa um .json com os proprios dados. So' o
+     navegador do usuario (Blob local); nada fica salvo em nenhum servidor por causa deste download. */
+  const baixarMeusDados = async () => {
+    if (baixando) return;
+    setBaixando(true);
+    const r = await mc.baixarDados();
+    setBaixando(false);
+    if (!r.ok) { setToast({ tipo: 'erro', msg: r.msg }); return; }
+    const blob = new Blob([JSON.stringify(r.dados, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `meus-dados-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -157,6 +177,17 @@ export function MinhaContaScreen({ onClose }) {
             </button>
           </>
         )}
+      </div>
+
+      {/* REF-LGPD-01 · Onda 2 (LGPD-R03): portabilidade. */}
+      <div style={sec}>
+        <div style={secTitle}>Baixar meus dados</div>
+        <p style={{ fontSize: 12.5, color: 'var(--gray-500)', lineHeight: 1.5, margin: '0 0 10px' }}>
+          Gera um arquivo com seu cadastro, endereços, pedidos e fidelidade — no formato que você quiser levar para outro lugar.
+        </p>
+        <button style={{ ...ghost, opacity: baixando ? 0.55 : 1 }} disabled={baixando} onClick={baixarMeusDados}>
+          {baixando ? 'Gerando…' : '⬇️ Baixar meus dados (.json)'}
+        </button>
       </div>
 
       {/* REF-LGPD-01 · Onda 1 (LGPD-R01): exclusao/anonimizacao dos proprios dados. */}

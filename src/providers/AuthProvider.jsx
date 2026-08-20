@@ -146,6 +146,9 @@ export function AuthProvider({ children }) {
     return r;
   }, [sair]);
 
+  /* REF-LGPD-01 · Onda 2 (LGPD-R03): portabilidade — so' le, nunca muda estado local. */
+  const exportarMeusDados = useCallback(() => AuthService.exportMyData(), []);
+
   const value = useMemo(() => ({
     session,
     user: session?.user ?? null,
@@ -154,8 +157,8 @@ export function AuthProvider({ children }) {
     disponivel: AuthService.disponivel(),
     customer,
     precisaTelefone,
-    entrarComGoogle, enviarEmail, confirmarEmail, completarCadastro, atualizarPerfil, atualizarEmail, sair, excluirMeusDados,
-  }), [session, status, customer, precisaTelefone, entrarComGoogle, enviarEmail, confirmarEmail, completarCadastro, atualizarPerfil, atualizarEmail, sair, excluirMeusDados]);
+    entrarComGoogle, enviarEmail, confirmarEmail, completarCadastro, atualizarPerfil, atualizarEmail, sair, excluirMeusDados, exportarMeusDados,
+  }), [session, status, customer, precisaTelefone, entrarComGoogle, enviarEmail, confirmarEmail, completarCadastro, atualizarPerfil, atualizarEmail, sair, excluirMeusDados, exportarMeusDados]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

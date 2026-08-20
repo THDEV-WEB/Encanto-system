@@ -1,9 +1,13 @@
-/* tests/lgpd-01.golden.mjs — REF-LGPD-01 · Onda 1. Roda: node tests/lgpd-01.golden.mjs
-   Analise estatica pura (sem banco/rede) sobre os achados corrigidos na Onda 1:
-     LGPD-R01 (exclusao/anonimizacao), LGPD-R02 (politica de privacidade versionada),
-     LGPD-R04 (purga notification_outbox), LGPD-R05 (agenda purge_old_logs),
-     LGPD-R06 (RLS customers com tenant_id, sem quebrar o fallback existente),
-     LGPD-R10 (e-mail nao vaza na excecao de link_store_admin).
+/* tests/lgpd-01.golden.mjs — REF-LGPD-01 · Ondas 1-2. Roda: node tests/lgpd-01.golden.mjs
+   Analise estatica pura (sem banco/rede) sobre os achados corrigidos:
+     Onda 1: LGPD-R01 (exclusao/anonimizacao), LGPD-R02 (politica de privacidade versionada),
+       LGPD-R04 (purga notification_outbox), LGPD-R05 (agenda purge_old_logs),
+       LGPD-R06 (RLS customers com tenant_id, sem quebrar o fallback existente),
+       LGPD-R10 (e-mail nao vaza na excecao de link_store_admin).
+     Onda 2: LGPD-R03 (portabilidade — export self-service read-only).
+   Testes FUNCIONAIS reais (contra producao, com ROLLBACK, sem persistir nada) rodaram fora deste
+   arquivo durante a implementacao — ver scratchpad da sessao; nao versionados aqui por dependerem de
+   credenciais locais (C:/Users/00thi/.encanto/db.env) fora do repositorio.
    Mesmo padrao de tests/loyalty.guard.mjs (readFileSync + assert, sem framework). */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -91,6 +95,23 @@ check('R01: migration anonimiza customers/addresses/loyalty, mas NUNCA apaga ord
   assert.ok(/revoke all on function public\.lgpd_anonymize_customer/i.test(sql), 'helper interno nunca deve ser exposto direto');
 });
 
+/* ── LGPD-R03: portabilidade (export self-service) + oposicao (canal ja existente, mitigado) ─── */
+check('R03: lgpd_export_my_data e read-only, ancorado em auth.uid(), sem parametro de outro cliente', () => {
+  const sql = stripSql(readSql('REF-LGPD-01-onda2-r03-exportar-meus-dados.sql'));
+  assert.ok(/create or replace function public\.lgpd_export_my_data\(\)/i.test(sql), 'funcao deve ser sem parametros (nunca aceita id de outro cliente)');
+  assert.ok(/auth\.uid\(\)/.test(sql));
+  assert.ok(!/delete |update |insert into/i.test(sql.replace(/insert into public\.settings/gi, '')), 'export deve ser 100% read-only (so SELECT/jsonb_agg)');
+  assert.ok(/grant execute on function public\.lgpd_export_my_data\(\) to authenticated/i.test(sql));
+  assert.ok(!/to anon/i.test(sql), 'nunca deve conceder a anon (precisa estar logado)');
+});
+
+check('R03: AuthService/hook/tela expoe o download self-service', () => {
+  const svc = strip(read('services/AuthService.js'));
+  assert.ok(/rpc\('lgpd_export_my_data'\)/.test(svc));
+  const tela = strip(read('components/conta/MinhaContaScreen.jsx'));
+  assert.ok(/baixarMeusDados/.test(tela) && /Blob/.test(tela), 'download deve ser gerado no proprio navegador (Blob), nada persistido em servidor');
+});
+
 /* ── LGPD-R04 / LGPD-R05: infraestrutura de retencao/purga ───────────────────────────────────── */
 check('R04: purga de notification_outbox agendada, cron-only, so estados terminais', () => {
   const sql = readSql('REF-LGPD-01-onda1-r04-purge-notification-outbox.sql');
@@ -123,13 +144,14 @@ check('R10: link_store_admin nao interpola mais p_admin_email na excecao', () =>
 });
 
 /* ── toda migration desta onda tem rollback companion (convencao do projeto) ──────────────────── */
-check('todas as migrations LGPD-01 Onda 1 tem rollback companion', () => {
+check('todas as migrations LGPD-01 (Ondas 1-2) tem rollback companion', () => {
   for (const base of [
     'REF-LGPD-01-onda1-r01-exclusao-anonimizacao',
     'REF-LGPD-01-onda1-r04-purge-notification-outbox',
     'REF-LGPD-01-onda1-r05-agenda-purge-old-logs',
     'REF-LGPD-01-onda1-r06-customers-select-tenant',
     'REF-LGPD-01-onda1-r10-sanitiza-excecao-email',
+    'REF-LGPD-01-onda2-r03-exportar-meus-dados',
   ]) {
     assert.doesNotThrow(() => readSql(base + '.sql'), `falta ${base}.sql`);
     assert.doesNotThrow(() => readSql(base + '-rollback.sql'), `falta ${base}-rollback.sql`);
@@ -137,6 +159,6 @@ check('todas as migrations LGPD-01 Onda 1 tem rollback companion', () => {
 });
 
 console.log(fail === 0
-  ? '\nOK lgpd-01.golden — Onda 1 (LGPD-R01/R02/R04/R05/R06/R10) consistente'
+  ? '\nOK lgpd-01.golden — Ondas 1-2 (LGPD-R01/R02/R03/R04/R05/R06/R10) consistentes'
   : `\nFALHA lgpd-01.golden — ${fail} invariante(s)`);
 process.exit(fail ? 1 : 0);
