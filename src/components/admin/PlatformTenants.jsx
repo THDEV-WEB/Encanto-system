@@ -45,22 +45,29 @@ function statusOperacional(loja) {
   return { texto: 'Operacional', ...CORES_STATUS.ativo };
 }
 
-/* Fase 18: separa o endereço PADRAO da VALION (automatico por slug, sem SQL manual -- ver
-   get_store_by_domain na migration REF-SAAS-02-onda1) do domínio PERSONALIZADO do cliente (opcional).
-   So' marca o padrao como confirmado quando `dominio` bate exatamente com o padrao esperado (e' o que
-   prova que o hostname resolve de verdade -- Encanto tem isto desde a Onda 0); sem isso, o código já
-   está pronto mas depende do domínio curinga *.valionsistemas.com.br (feito 1 vez para a plataforma
-   inteira, não por loja) ainda ser apontado no DNS/Vercel -- infra fora do alcance desta REF. */
+/* Fase 18 (+ REF-STORE-ONBOARD-01 Onda 2 · Opção C): separa o endereço PADRAO da VALION (automatico
+   por slug, sem SQL manual -- ver get_store_by_domain) do domínio PERSONALIZADO do cliente (opcional).
+   Dois padrões automáticos coexistem, nunca escolhidos por adivinhação: LEGADO
+   (`{slug}.valionsistemas.com.br`, congelado -- só Encanto usa) e NOVO
+   (`{slug}.lojas.valionsistemas.com.br`, o que `provision_store()` grava desde a Onda 2 · Opção C em
+   qualquer loja provisionada a partir de então). Confirmado quando `dominio` bate com QUALQUER um dos
+   dois -- é o que prova que o hostname resolve de verdade. */
 function statusEndereco(loja) {
-  const padraoStorefront = `${loja.slug}.valionsistemas.com.br`;
-  const padraoAdmin = `admin.${loja.slug}.valionsistemas.com.br`;
-  if (loja.dominio === padraoStorefront) {
-    return { padraoConfirmado: true, storefrontUrl: padraoStorefront, adminUrl: padraoAdmin, personalizado: null };
+  const padraoLegadoStorefront = `${loja.slug}.valionsistemas.com.br`;
+  const padraoLegadoAdmin = `admin.${loja.slug}.valionsistemas.com.br`;
+  const padraoNovoStorefront = `${loja.slug}.lojas.valionsistemas.com.br`;
+  const padraoNovoAdmin = `admin-${loja.slug}.lojas.valionsistemas.com.br`;
+
+  if (loja.dominio === padraoLegadoStorefront) {
+    return { padraoConfirmado: true, storefrontUrl: padraoLegadoStorefront, adminUrl: padraoLegadoAdmin, personalizado: null };
+  }
+  if (loja.dominio === padraoNovoStorefront) {
+    return { padraoConfirmado: true, storefrontUrl: padraoNovoStorefront, adminUrl: padraoNovoAdmin, personalizado: null };
   }
   if (loja.dominio) {
-    return { padraoConfirmado: false, storefrontUrl: padraoStorefront, adminUrl: padraoAdmin, personalizado: loja.dominio };
+    return { padraoConfirmado: false, storefrontUrl: padraoNovoStorefront, adminUrl: padraoNovoAdmin, personalizado: loja.dominio };
   }
-  return { padraoConfirmado: false, storefrontUrl: padraoStorefront, adminUrl: padraoAdmin, personalizado: null };
+  return { padraoConfirmado: false, storefrontUrl: padraoNovoStorefront, adminUrl: padraoNovoAdmin, personalizado: null };
 }
 
 function LinhaAdmin({ admin, storeId, onDesvinculado }) {
