@@ -7,6 +7,7 @@ import { useState, useEffect } from 'react';
 import {
   adminLerConfig, adminSalvarConfig, adminBuscar, adminAjustar, adminResgatar,
 } from '../../services/loyalty/index.js';
+import { adminExcluirDadosCliente } from '../../services/lgpd/lgpdService.js'; // REF-LGPD-01 · Onda 1
 import { useCompanyInfo } from '../../hooks/useCompanyInfo.js';
 import { formatarTelefoneBR } from '../../services/company/companyInfo.js';
 
@@ -53,11 +54,15 @@ export function AdminFidelidade() {
   const [acting,   setActing]   = useState(false);
   const [actErro,  setActErro]  = useState('');
   const [nota,     setNota]     = useState('');
+  const [confirmandoExclusao, setConfirmandoExclusao] = useState(false); // REF-LGPD-01: 2 passos
+  const [excluindo, setExcluindo] = useState(false);
+  const [excluido,  setExcluido]  = useState(false);
 
   const buscar = async () => {
     const q = query.trim();
     if (!q || buscando) return;
     setBuscando(true); setBuscaErro(''); setActErro(''); setCliente(null);
+    setConfirmandoExclusao(false); setExcluido(false);
     const r = await adminBuscar(q);
     setBuscando(false);
     if (r.ok) setCliente(r);
@@ -80,6 +85,17 @@ export function AdminFidelidade() {
   const ajustar   = (delta) => aplicar(() => adminAjustar(cliente.customer_id, delta, nota));
   const resgatar  = ()      => aplicar(() => adminResgatar(cliente.customer_id));
   const rewardAvail = cliente ? (cliente.reward_available ?? (cliente.stamps >= cliente.required)) : false;
+
+  /* REF-LGPD-01 · Onda 1 (LGPD-R01): exclusao/anonimizacao assistida — atende um pedido recebido por
+     outro canal (WhatsApp/telefone). Irreversivel; 2 passos, mesmo padrao de MinhaContaScreen.jsx. */
+  const confirmarExclusaoAdmin = async () => {
+    if (!cliente || excluindo) return;
+    setExcluindo(true); setActErro('');
+    const r = await adminExcluirDadosCliente(cliente.customer_id);
+    setExcluindo(false);
+    if (!r.ok) { setActErro(r.error === 'sem permissao' ? 'Sem permissão de administrador.' : 'Não foi possível concluir.'); return; }
+    setExcluido(true); setConfirmandoExclusao(false);
+  };
 
   return (
     <div>
@@ -181,6 +197,32 @@ export function AdminFidelidade() {
                 em qualquer dispositivo do cliente. O selo automático é concedido no backend a cada
                 pedido válido; cancelamento reverte o selo daquele pedido.
               </p>
+
+              {/* REF-LGPD-01 · Onda 1 (LGPD-R01): exclusao/anonimizacao assistida pelo admin. */}
+              <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--gray-100)' }}>
+                {excluido ? (
+                  <p style={{ fontSize: 13, color: '#15803D', fontWeight: 600 }}>✓ Dados deste cliente removidos.</p>
+                ) : !confirmandoExclusao ? (
+                  <button className="btn-sm" style={{ color: '#DC2626', borderColor: '#DC2626' }}
+                    onClick={() => setConfirmandoExclusao(true)}>
+                    🔒 Excluir dados deste cliente (LGPD)
+                  </button>
+                ) : (
+                  <div>
+                    <p style={{ fontSize: 12.5, color: '#DC2626', fontWeight: 600, marginBottom: 8 }}>
+                      Remove nome, telefone, e-mail, endereços e fidelidade deste cliente. Pedidos já feitos
+                      continuam no histórico da loja. Isso não pode ser desfeito. Tem certeza?
+                    </p>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button className="btn-sm" disabled={excluindo} onClick={() => setConfirmandoExclusao(false)}>Cancelar</button>
+                      <button className="btn-sm" style={{ background: '#DC2626', color: '#fff', borderColor: '#DC2626' }}
+                        disabled={excluindo} onClick={confirmarExclusaoAdmin}>
+                        {excluindo ? 'Excluindo…' : 'Sim, excluir'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

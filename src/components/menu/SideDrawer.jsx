@@ -65,6 +65,7 @@ export function SideDrawer({ onClose, onNavigate }) {
         <button style={item} onClick={() => onNavigate('contato')}><span style={{ fontSize: 18 }}>📞</span> Contato</button>
         <button style={item} onClick={() => onNavigate('sobre')}><span style={{ fontSize: 18 }}>🏪</span> Sobre nós</button>
         <button style={item} onClick={() => onNavigate('termos')}><span style={{ fontSize: 18 }}>📄</span> Termos e Políticas</button>
+        <button style={item} onClick={() => onNavigate('privacidade')}><span style={{ fontSize: 18 }}>🔒</span> Política de Privacidade</button>
 
         <div style={{ display: 'flex', gap: 14, padding: links.length ? '20px' : 0, marginTop: 'auto', flexWrap: 'wrap' }}>
           {links.map((l) => (

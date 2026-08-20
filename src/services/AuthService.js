@@ -151,4 +151,13 @@ export const AuthService = {
     if (!dbCliente) return { ativado: false };
     return syncTenant({ dbCliente, accessToken, storeId, storeStatus });
   },
+
+  /* REF-LGPD-01 · Onda 1 (LGPD-R01): exclusao/anonimizacao dos proprios dados. Confirmacao explicita
+     'EXCLUIR' exigida pela propria RPC (nunca dispara por retry/engano). Anonimiza nome/telefone/e-mail
+     do(s) customer(s) vinculados a esta sessao e apaga enderecos/fidelidade; pedidos permanecem
+     (historico operacional, ver comentario da migration). Irreversivel. */
+  async deleteMyData() {
+    if (!dbCliente) return semAuth();
+    return dbCliente.rpc('lgpd_delete_my_data', { p_confirmacao: 'EXCLUIR' });
+  },
 };

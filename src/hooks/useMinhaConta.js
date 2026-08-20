@@ -9,7 +9,7 @@ const soDigitos = (s) => (s || '').replace(/\D/g, '');
 const emailValido = (e) => /.+@.+\..+/.test((e || '').trim());
 
 export function useMinhaConta() {
-  const { user, customer, atualizarPerfil, atualizarEmail } = useAuth();
+  const { user, customer, atualizarPerfil, atualizarEmail, excluirMeusDados } = useAuth();
 
   /* Salva nome + telefone no MESMO customer (nao cria novo; preserva pedidos/historico/vinculo). */
   const salvarPerfil = async (nome, telefone) => {
@@ -40,6 +40,15 @@ export function useMinhaConta() {
     return { ok: true, pendente: true, msg: `Enviamos um link de confirmação para ${e}. Confirme por lá para concluir a troca.` };
   };
 
+  /* REF-LGPD-01 · Onda 1 (LGPD-R01): exclusao/anonimizacao dos proprios dados. A confirmacao ja e'
+     exigida na tela (2 passos) antes de chamar isto -- aqui so mapeia erro tecnico pra mensagem amigavel. */
+  const excluirDados = async () => {
+    const r = await excluirMeusDados();
+    if (r?.error) return { ok: false, msg: 'Não foi possível concluir agora. Tente novamente em instantes.' };
+    if (r?.data?.ok === false) return { ok: false, msg: r.data.error || 'Não foi possível concluir.' };
+    return { ok: true, msg: 'Seus dados foram removidos.' };
+  };
+
   return {
     nomeInicial: customer?.name || '',
     telefoneInicial: customer?.phone || '',
@@ -48,5 +57,6 @@ export function useMinhaConta() {
     temCadastro: !!customer?.id,
     salvarPerfil,
     salvarEmail,
+    excluirDados,
   };
 }

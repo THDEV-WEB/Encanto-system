@@ -111,7 +111,7 @@ export const DEFAULT_COMPANY_INFO = {
   corDestaque: '#FFBF00',
   termosSecoes: [
     { titulo: 'Uso do serviço', corpo: 'Ao realizar um pedido você concorda com as condições de compra, prazos de entrega e formas de pagamento informadas no checkout.' },
-    { titulo: 'Privacidade', corpo: 'Coletamos apenas os dados necessários para processar o seu pedido (nome, contato e endereço). Não compartilhamos seus dados com terceiros sem necessidade operacional.' },
+    { titulo: 'Privacidade', corpo: 'Para saber quais dados coletamos, para que usamos e com quem compartilhamos, veja a Política de Privacidade (item próprio do menu).' },
     { titulo: 'Cancelamento e trocas', corpo: 'Pedidos em preparo podem ter regras específicas de cancelamento. Em caso de problemas, fale conosco pelo WhatsApp.' },
     { titulo: 'Contato', corpo: 'Dúvidas sobre estes termos podem ser tratadas pelos nossos canais de contato.' },
   ],

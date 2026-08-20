@@ -136,6 +136,16 @@ export function AuthProvider({ children }) {
 
   const atualizarEmail = useCallback((email) => AuthService.atualizarEmail(email), []);
 
+  /* REF-LGPD-01 · Onda 1 (LGPD-R01): exclusao/anonimizacao dos proprios dados + logout imediato (mesmo
+     caminho de sair() — limpa customer/guest identity; StoreApp.jsx reage a transicao logged->anon e
+     limpa endereco/carrinho, igual a qualquer logout normal). Nao tenta "continuar logado" apos excluir:
+     o customer que a sessao apontava nao existe mais com os dados de antes. */
+  const excluirMeusDados = useCallback(async () => {
+    const r = await AuthService.deleteMyData();
+    if (!r?.error && r?.data?.ok !== false) await sair();
+    return r;
+  }, [sair]);
+
   const value = useMemo(() => ({
     session,
     user: session?.user ?? null,
@@ -144,8 +154,8 @@ export function AuthProvider({ children }) {
     disponivel: AuthService.disponivel(),
     customer,
     precisaTelefone,
-    entrarComGoogle, enviarEmail, confirmarEmail, completarCadastro, atualizarPerfil, atualizarEmail, sair,
-  }), [session, status, customer, precisaTelefone, entrarComGoogle, enviarEmail, confirmarEmail, completarCadastro, atualizarPerfil, atualizarEmail, sair]);
+    entrarComGoogle, enviarEmail, confirmarEmail, completarCadastro, atualizarPerfil, atualizarEmail, sair, excluirMeusDados,
+  }), [session, status, customer, precisaTelefone, entrarComGoogle, enviarEmail, confirmarEmail, completarCadastro, atualizarPerfil, atualizarEmail, sair, excluirMeusDados]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

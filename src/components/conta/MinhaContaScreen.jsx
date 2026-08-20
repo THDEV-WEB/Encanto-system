@@ -34,6 +34,8 @@ export function MinhaContaScreen({ onClose }) {
   const [savingEmail, setSavingEmail] = useState(false);
   const [emailPendente, setEmailPendente] = useState(false);
   const [toast, setToast] = useState(null); // { tipo, msg }
+  const [confirmandoExclusao, setConfirmandoExclusao] = useState(false); // REF-LGPD-01: passo 1 -> passo 2
+  const [excluindo, setExcluindo] = useState(false);
 
   /* Sincroniza os valores iniciais quando o customer (a IDENTIDADE, nao so o texto) muda — cobre a
      restauracao de sessao pos-login E a correcao de REF-AUTH-TENANT-01-FIX-GET-MEUCUSTOMER (2a carga,
@@ -79,6 +81,17 @@ export function MinhaContaScreen({ onClose }) {
     setSavingEmail(false);
     setToast({ tipo: r.ok ? 'sucesso' : 'erro', msg: r.msg });
     if (r.ok) { setEmailPendente(true); setNovoEmail(''); }
+  };
+
+  /* REF-LGPD-01 · Onda 1 (LGPD-R01): exclusao/anonimizacao dos proprios dados. Dois passos (o botao
+     "Excluir meus dados" so' revela o botao vermelho de confirmacao final) -- nunca dispara com 1 clique. */
+  const confirmarExclusao = async () => {
+    if (excluindo) return;
+    setExcluindo(true);
+    const r = await mc.excluirDados();
+    setExcluindo(false);
+    if (!r.ok) { setToast({ tipo: 'erro', msg: r.msg }); return; }
+    onClose(); // sessao ja foi encerrada (excluirMeusDados chama sair()) -- fecha a tela, nada mais a mostrar aqui
   };
 
   return (
@@ -142,6 +155,35 @@ export function MinhaContaScreen({ onClose }) {
               disabled={savingEmail} onClick={enviarTrocaEmail}>
               {savingEmail ? 'Enviando…' : 'Enviar confirmação'}
             </button>
+          </>
+        )}
+      </div>
+
+      {/* REF-LGPD-01 · Onda 1 (LGPD-R01): exclusao/anonimizacao dos proprios dados. */}
+      <div style={sec}>
+        <div style={{ ...secTitle, color: 'var(--red-600, #C0392B)' }}>Excluir meus dados</div>
+        <p style={{ fontSize: 12.5, color: 'var(--gray-500)', lineHeight: 1.5, margin: '0 0 10px' }}>
+          Remove seu nome, telefone, e-mail e endereços salvos. Seus pedidos já feitos continuam no histórico da loja (dado operacional/fiscal), mas deixam de estar ligados à sua identidade. Essa ação não pode ser desfeita.
+        </p>
+        {!confirmandoExclusao ? (
+          <button style={{ ...ghost, borderColor: 'var(--red-600, #C0392B)', color: 'var(--red-600, #C0392B)' }}
+            onClick={() => setConfirmandoExclusao(true)}>
+            Excluir meus dados
+          </button>
+        ) : (
+          <>
+            <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--red-600, #C0392B)', margin: '0 0 10px' }}>
+              Tem certeza? Isso não pode ser desfeito.
+            </p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button style={{ ...ghost, marginTop: 0, flex: 1 }} disabled={excluindo} onClick={() => setConfirmandoExclusao(false)}>
+                Cancelar
+              </button>
+              <button style={{ ...primary, marginTop: 0, flex: 1, background: 'var(--red-600, #C0392B)', opacity: excluindo ? 0.55 : 1 }}
+                disabled={excluindo} onClick={confirmarExclusao}>
+                {excluindo ? 'Excluindo…' : 'Sim, excluir'}
+              </button>
+            </div>
           </>
         )}
       </div>

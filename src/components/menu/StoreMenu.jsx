@@ -11,6 +11,7 @@ const LoginScreen        = lazy(() => import('./LoginScreen.jsx').then(m => ({ d
 const ContatoScreen      = lazy(() => import('./ContatoScreen.jsx').then(m => ({ default: m.ContatoScreen })));
 const SobreScreen        = lazy(() => import('./SobreScreen.jsx').then(m => ({ default: m.SobreScreen })));
 const TermosScreen       = lazy(() => import('./TermosScreen.jsx').then(m => ({ default: m.TermosScreen })));
+const PrivacidadeScreen  = lazy(() => import('./PrivacidadeScreen.jsx').then(m => ({ default: m.PrivacidadeScreen }))); // REF-LGPD-01
 const FidelidadeScreen   = lazy(() => import('./FidelidadeScreen.jsx').then(m => ({ default: m.FidelidadeScreen })));
 const MeusPedidosScreen  = lazy(() => import('../pedidos/MeusPedidosScreen.jsx').then(m => ({ default: m.MeusPedidosScreen })));
 const MinhaContaScreen   = lazy(() => import('../conta/MinhaContaScreen.jsx').then(m => ({ default: m.MinhaContaScreen })));
@@ -21,7 +22,7 @@ const MinhaContaScreen   = lazy(() => import('../conta/MinhaContaScreen.jsx').th
 // precisarem conhecer os detalhes do menu.
 export const StoreMenu = forwardRef(function StoreMenu({ onRecomprar }, ref) {
   const [drawer, setDrawer] = useState(false);
-  const [tela, setTela] = useState(null); // login | pedidos | conta | contato | sobre | termos | fidelidade
+  const [tela, setTela] = useState(null); // login | pedidos | conta | contato | sobre | termos | privacidade | fidelidade
   const navegar = (t) => { setDrawer(false); setTela(t); };
   const fechar = () => setTela(null);
 
@@ -46,6 +47,7 @@ export const StoreMenu = forwardRef(function StoreMenu({ onRecomprar }, ref) {
         {tela === 'contato' && <ContatoScreen onClose={fechar} />}
         {tela === 'sobre' && <SobreScreen onClose={fechar} />}
         {tela === 'termos' && <TermosScreen onClose={fechar} />}
+        {tela === 'privacidade' && <PrivacidadeScreen onClose={fechar} />}
         {tela === 'fidelidade' && <FidelidadeScreen onClose={fechar} />}
       </Suspense>
       {/* 1o acesso: pede telefone (identidade) apos login por Google/e-mail. Auto-oculta. */}
