@@ -10,7 +10,7 @@ import { db, RPC_TIMEOUT } from '../lib/supabase.js';
 import { PRODUCTS_PAGE_SIZE, PRODUCTS_PAGINATE, PRODUCTS_CACHE_TTL } from '../constants/catalogConfig.js';
 import { prodInCat } from '../utils/catalog.js';
 import { emitProductsChanged } from './productCacheBus.js';
-import { capturarErroDados } from '../lib/sentry.js';
+import { capturarErroDados, capturarDenyTenant } from '../lib/sentry.js';
 import { buildStoreRpcParam, buildStoreColumn, getActiveStoreId } from './adminStore.js'; // REF-SAAS-01 · Onda 5: {} no storefront, {p_store_id}/{store_id} no Admin
 import { buildStorefrontRpcParam, buildStorefrontColumn, getResolvedStoreId } from './storefrontStore.js'; // REF-SAAS-01 · Onda 6.1: {}/null ate resolver, {p_store_id}/{store_id}/id da loja resolvida por dominio
 
@@ -175,6 +175,13 @@ export const DS = {
     const res = r.data;   // {ok, order_id|error, sqlstate, idempotent}
     if (res && res.ok === false) {
       console.error('[ENCANTO] create_order falhou (rollback no banco):', res.error, '['+res.sqlstate+']');
+      /* REF-OBS-02: os 2 DENY fail-closed de isolamento tenant (REF-ORDER-TENANT-01) não vêm com
+         `sqlstate` (não são exceção do Postgres, só um retorno lógico antecipado) — único jeito seguro
+         de distinguir esse caso específico dos demais `ok:false` (violação de unicidade etc., já
+         cobertos pelo console.error acima, fora de escopo aqui). */
+      if (!res.sqlstate && (res.error === 'loja invalida' || res.error === 'loja nao identificada')) {
+        capturarDenyTenant(res.error, { rpc: 'create_order', hostname: window.location.hostname });
+      }
       return null;
     }
     return res?.order_id ?? null;

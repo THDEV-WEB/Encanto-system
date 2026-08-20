@@ -12,6 +12,7 @@
    funciona sem sessão, só não tem uid nenhum pra achar). */
 import { dbCliente } from '../../lib/dbCliente.js';
 import { RPC_TIMEOUT } from '../../lib/supabase.js';
+import { capturarDenyTenant } from '../../lib/sentry.js';
 
 /* Exportada só para teste (REF-ADDRESS-AUTOCOMPLETE-01): prova o shape exato que salvar() manda pra
    RPC, incluindo o achado da auditoria de que store_id nunca é incluído — ver
@@ -47,7 +48,17 @@ export const addressRepository = {
     const withTimeout = (p) => Promise.race([p,
       new Promise((res) => setTimeout(() => res({ data: null, error: { message: 'timeout' } }), RPC_TIMEOUT))]);
     const r = await withTimeout(call());
-    if (r.error) { console.error('[Encanto] save_structured_address erro:', r.error.message || r.error); return null; }
+    if (r.error) {
+      console.error('[Encanto] save_structured_address erro:', r.error.message || r.error);
+      /* REF-OBS-02: o DENY fail-closed de isolamento tenant (REF-ADDRESS-STOREID-01 Parte B) chega
+         aqui como exceção do Postgres (RAISE EXCEPTION), não distinta de outras falhas de rede/validação
+         a não ser pela mensagem exata — filtro por ela evita capturar qualquer outro erro (offline,
+         timeout, payload inválido) como se fosse DENY de tenant. */
+      if (r.error.message === 'loja nao identificada') {
+        capturarDenyTenant(r.error.message, { rpc: 'save_structured_address', hostname: window.location.hostname });
+      }
+      return null;
+    }
     return r.data ?? null;
   },
 };

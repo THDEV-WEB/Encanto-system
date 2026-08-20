@@ -89,6 +89,24 @@ export function capturarErroDados(err, contexto) {
   });
 }
 
+/** Reporta um DENY fail-closed de isolamento tenant (create_order/save_structured_address —
+    REF-ORDER-TENANT-01/REF-ADDRESS-STOREID-01: 'loja invalida'/'loja nao identificada'). Nível
+    'warning' (não exception) de propósito: um DENY isolado é comportamento ESPERADO (tentativa
+    forjada, domínio não reconhecido) — não é uma falha da aplicação. `contexto.hostname` (technical,
+    nunca PII) é o que permite ao painel do Sentry distinguir os dois cenários: volume de DENY vindo de
+    hostnames que NÃO são os nossos (ruído de fundo esperado) vs. qualquer DENY vindo de um hostname
+    real de produção (`*.valionsistemas.com.br`) — isso sim seria inesperado (config/infra/regressão) e
+    vale investigar. No-op se Sentry não estiver ativo. */
+export function capturarDenyTenant(motivo, contexto) {
+  if (!sentryAtivo) return;
+  Sentry.withScope((scope) => {
+    scope.setTag('app.origem', 'tenant_deny');
+    scope.setTag('deny.motivo', motivo);
+    scope.setContext('tenant_deny', { motivo, ...contexto });
+    Sentry.captureMessage(`Tenant DENY: ${motivo}`, 'warning');
+  });
+}
+
 /** Marca o pedido atual como TAG pesquisável em qualquer evento subsequente da mesma sessão — ajuda a
     achar no Sentry todos os erros próximos a um pedido específico (ex.: relatado pelo cliente/WhatsApp). */
 export function marcarPedido(orderId) {

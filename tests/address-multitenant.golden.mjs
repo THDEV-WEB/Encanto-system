@@ -10,7 +10,11 @@
      addresses: Bar da Sogra tem 0 pedidos/endereços até agora (tenant novo, sem tráfego real ainda) —
        por isso o isolamento do AUTOCOMPLETE em si só pode ser provado por código/mock nesta etapa, não
        por evidência de produção — registrado honestamente no relatório, não escondido. */
+import { register } from 'node:module';
 import assert from 'node:assert/strict';
+register('./_render-loader.mjs', import.meta.url); // REF-OBS-02: addressRepository.js agora importa
+  // lib/sentry.js (import.meta.env acesso direto, sem `?.`, de propósito — ver comentário lá); mesmo
+  // shim de _render-loader.mjs (já usado por test:render) faz import.meta.env virar {} em Node puro.
 import { criarWaterfall, ORDEM_PADRAO } from '../src/address/services/geocoding/waterfallGeocoder.js';
 import { CENTRO_PADRAO } from '../src/address/utils/coordinates.js';
 
