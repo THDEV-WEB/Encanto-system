@@ -3,7 +3,7 @@
    (Onda 5.2): consome buildOrderArgs/buildOrderConfirmationMessage/buildCheckoutView de utils/orderPayload.js
    e DS.savePedido de services/DataService.js. NAO importa pricing/addons/format direto (G-CK2). newRequestId
    (utils/ids) e STORAGE_KEYS (constants) sao dependencias PRE-EXISTENTES do submit (idempotency key/localStorage). */
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, lazy, Suspense } from 'react';
 import { useAuth } from '../../hooks/useAuth.js';
 import { useCompanyInfo } from '../../hooks/useCompanyInfo.js';   // REF-COMPANY-02: nome curto na mensagem do WhatsApp
 import { useBusinessHours } from '../../hooks/useBusinessHours.js';   // REF-BUSINESS-HOURS-01: bloqueio fora do horario
@@ -21,6 +21,9 @@ import { localizacaoLojaConfigurada } from '../../services/company/companyInfoRu
 import { lerGuestIdentity, salvarGuestIdentity } from '../../utils/guestIdentity.js'; // REF-CUSTOMER-01: cache local so p/ visitante
 import { registrarBreadcrumb, marcarPedido } from '../../lib/sentry.js'; // REF-OBS-01/REF-SENTRY-01: no-op sem VITE_SENTRY_DSN
 
+// REF-LGPD-01 · Onda 3 (LGPD-R14): so' carrega o chunk se o cliente realmente abrir o aviso.
+const PrivacidadeScreen = lazy(() => import('../menu/PrivacidadeScreen.jsx').then(m => ({ default: m.PrivacidadeScreen })));
+
 export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEta }) {
   /* REF-CLIENTE-02 (vinculo pedido<->conta): create_order reusa o customer POR TELEFONE e nunca toca
      auth_user_id. Logo o pedido so aparece em "Meus Pedidos" se o telefone do checkout casar com o do
@@ -29,6 +32,7 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
      Guest (nao logado) segue 100% editavel: guest checkout intocado. */
   const { isLogged, customer, status } = useAuth();
   const companyInfo = useCompanyInfo();
+  const [mostrarPrivacidade, setMostrarPrivacidade] = useState(false); // REF-LGPD-01 · Onda 3 (LGPD-R14)
   const feeConfig = useDeliveryFeeConfig();   // REF-DELIVERY-FEE-01: config administravel (faixas/maquininha)
   /* REF-CHECKOUT-ADDRESS-01: o endereco de entrega vem da FONTE UNICA (dominio Address, mesmo objeto do
      header). O checkout NAO tem mais um endereco proprio; edita o mesmo objeto pelo mesmo AddressModal
@@ -288,10 +292,22 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
         </div>
       )}
       {err&&<p data-testid="checkout-erro" role="alert" style={{color:'var(--red)',fontSize:13,marginBottom:8}}>{err}</p>}
+      {/* REF-LGPD-01 · Onda 3 (LGPD-R14): aviso factual, so' informa e linka a politica ja versionada
+          (LGPD-R02) -- nao e' um checkbox de consentimento (nao inventamos essa exigencia juridica). */}
+      <p style={{fontSize:11.5,color:'var(--gray-500)',lineHeight:1.5,marginBottom:8,textAlign:'center'}}>
+        Ao confirmar, seus dados de pedido são usados para entrega e contato — veja a{' '}
+        <button type="button" onClick={() => setMostrarPrivacidade(true)}
+          style={{background:'none',border:'none',padding:0,color:'inherit',textDecoration:'underline',cursor:'pointer',font:'inherit'}}>
+          Política de Privacidade
+        </button>.
+      </p>
       <button className="confirm-btn" data-testid="checkout-submit" onClick={submit} disabled={loading || lojaFechada}
         style={lojaFechada?{opacity:0.6,cursor:'not-allowed'}:undefined}>
         {lojaFechada ? '🔒 Loja fechada no momento' : (loading ? 'Enviando...' : `Confirmar via WhatsApp • ${view.total}`)}
       </button>
+      <Suspense fallback={null}>
+        {mostrarPrivacidade && <PrivacidadeScreen onClose={() => setMostrarPrivacidade(false)} />}
+      </Suspense>
     </div>
   );
 }

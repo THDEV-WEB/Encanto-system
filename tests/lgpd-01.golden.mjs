@@ -5,6 +5,7 @@
        LGPD-R06 (RLS customers com tenant_id, sem quebrar o fallback existente),
        LGPD-R10 (e-mail nao vaza na excecao de link_store_admin).
      Onda 2: LGPD-R03 (portabilidade — export self-service read-only).
+     Onda 3: LGPD-R12 (loja ativa do admin limpa no logout), LGPD-R14 (aviso no checkout).
    Testes FUNCIONAIS reais (contra producao, com ROLLBACK, sem persistir nada) rodaram fora deste
    arquivo durante a implementacao — ver scratchpad da sessao; nao versionados aqui por dependerem de
    credenciais locais (C:/Users/00thi/.encanto/db.env) fora do repositorio.
@@ -143,6 +144,21 @@ check('R10: link_store_admin nao interpola mais p_admin_email na excecao', () =>
   assert.ok(/raise exception 'email invalido' using errcode/i.test(sql), 'deve manter uma excecao generica (mesmo ERRCODE)');
 });
 
+/* ── LGPD-R12: encanto_admin_active_store nao fica orfao apos logout/queda de sessao do admin ──── */
+check('R12: useAdminSession limpa a loja ativa quando a sessao cai (logout ou queda em outra aba)', () => {
+  const code = strip(read('hooks/useAdminSession.js'));
+  assert.ok(/setActiveStoreId\(null\)/.test(code), 'deve chamar setActiveStoreId(null) na transicao pra sessao vazia');
+  assert.ok(/if \(!session\) \{[\s\S]{0,220}setActiveStoreId\(null\)/.test(code), 'a chamada deve estar no branch de sessao encerrada (nao no branch de sessao ativa)');
+});
+
+/* ── LGPD-R14: aviso de tratamento no checkout, factual, sem inventar checkbox de consentimento ── */
+check('R14: CheckoutPage linka a Politica de Privacidade (aviso), sem gate/checkbox de consentimento novo', () => {
+  const code = strip(read('components/checkout/CheckoutPage.jsx'));
+  assert.ok(/PrivacidadeScreen/.test(code), 'deve importar/renderizar a tela de Politica de Privacidade');
+  assert.ok(/mostrarPrivacidade/.test(code), 'deve ter estado local pra abrir o aviso');
+  assert.ok(!/type="checkbox"/.test(code), 'nao deve inventar checkbox de consentimento (LGPD-13: nao inventar exigencia juridica)');
+});
+
 /* ── toda migration desta onda tem rollback companion (convencao do projeto) ──────────────────── */
 check('todas as migrations LGPD-01 (Ondas 1-2) tem rollback companion', () => {
   for (const base of [
@@ -159,6 +175,6 @@ check('todas as migrations LGPD-01 (Ondas 1-2) tem rollback companion', () => {
 });
 
 console.log(fail === 0
-  ? '\nOK lgpd-01.golden — Ondas 1-2 (LGPD-R01/R02/R03/R04/R05/R06/R10) consistentes'
+  ? '\nOK lgpd-01.golden — Ondas 1-3 (LGPD-R01/R02/R03/R04/R05/R06/R10/R12/R14) consistentes'
   : `\nFALHA lgpd-01.golden — ${fail} invariante(s)`);
 process.exit(fail ? 1 : 0);

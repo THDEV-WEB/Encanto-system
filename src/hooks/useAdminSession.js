@@ -25,6 +25,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { db } from '../lib/supabase.js';
 import { setUsuario, limparUsuario, marcarArea } from '../lib/sentry.js'; // REF-OBS-01: no-op sem VITE_SENTRY_DSN
+import { setActiveStoreId } from '../services/adminStore.js'; // REF-LGPD-01 · Onda 3 (LGPD-R12)
 
 export function useAdminSession() {
   const [mode, setMode] = useState('login'); // REF-ADMIN-04: sempre abre no login — nao ha' mais 'store' pra defaultar
@@ -42,6 +43,7 @@ export function useAdminSession() {
         setAdmin(null);
         setMode((m) => (m === 'admin' ? 'login' : m));
         limparUsuario(); // REF-OBS-01: logout/expiração — some do contexto do Sentry
+        setActiveStoreId(null); // REF-LGPD-01 · Onda 3 (LGPD-R12): nao deixa loja ativa orfa no localStorage
       } else {
         setAdmin((a) => (a ? { ...a, session } : a));
       }
