@@ -11,7 +11,13 @@ import { fileURLToPath } from 'node:url';
 /* raiz do encanto-react (config vive em e2e/, o app e o vite.config.js vivem 1 nivel acima) */
 const PROJECT_ROOT = fileURLToPath(new URL('..', import.meta.url));
 const PORT = 5183; // distinto do :5173 do `npm run dev` — nunca colide com o dev server do dono
-const BASE_URL = process.env.E2E_BASE_URL || `http://localhost:${PORT}`;
+/* "encanto.localhost" (nao so "localhost") — REF-ORDER-TENANT-01: create_order() deriva a loja do
+   checkout guest a partir do header Origin real da requisicao (nunca de um parametro do client);
+   resolve_store_from_origin() reconhece {slug}.localhost alem de {slug}.valionsistemas.com.br
+   exatamente pra isso. "*.localhost" e reservado pela IETF (RFC 6761) e todo navegador SO resolve
+   pra loopback (127.0.0.1) sem precisar de hosts file/DNS — mesmo servidor, mesma porta, so um
+   hostname que a stores.dominio consegue reconhecer (fixture Encanto tem slug='encanto'). */
+const BASE_URL = process.env.E2E_BASE_URL || `http://encanto.localhost:${PORT}`;
 const CI = !!process.env.CI;
 
 export default defineConfig({

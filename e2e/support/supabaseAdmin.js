@@ -52,10 +52,18 @@ export function supabaseAdmin() {
 
 let _anon = null;
 /** Client com a chave anon (mesma que o app usa) — para ações que devem respeitar RLS normalmente
-    (ex.: login do cliente fixture). null se o ambiente ainda não existir. */
+    (ex.: login do cliente fixture). null se o ambiente ainda não existir.
+    REF-ORDER-TENANT-01: header Origin fixo (mesmo domínio reconhecido pelo fixture Encanto do E2E,
+    ver playwright.config.js) — este client roda em Node, nunca num navegador real, então nunca
+    teria um Origin de verdade; create_order() deriva a loja do GUEST a partir desse header (nunca
+    de um parâmetro do client), então chamadas Node-side (fixture-order.js) precisam de um valor
+    realista aqui, do mesmo jeito que um navegador real enviaria ao visitar a loja. */
 export function supabaseAnon() {
   if (!(E2E_ENV.url && E2E_ENV.anonKey)) { avisarAmbientePendente('cliente anon'); return null; }
-  if (!_anon) _anon = createClient(E2E_ENV.url, E2E_ENV.anonKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  if (!_anon) _anon = createClient(E2E_ENV.url, E2E_ENV.anonKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { headers: { origin: 'https://encanto.localhost' } },
+  });
   return _anon;
 }
 
