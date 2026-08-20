@@ -111,12 +111,17 @@ try {
   out('— ITEM 1: super admin provisiona uma loja nova (status ativo, sem dominio) —');
   let novaLojaId = null;
   await tx('authenticated', SUPER_ADMIN_TESTE, setupSuperAdmin(), async () => {
-    const { result } = await callRpc('ITEM1-provision', 'provision_store cria a loja com status=ativo e dominio=NULL', `SELECT public.provision_store($1,$2,NULL) AS r`, ['Bar da Sogra (teste)', SLUG_1],
+    const { result } = await callRpc('ITEM1-provision', 'provision_store cria a loja com status=ativo e dominio automatico', `SELECT public.provision_store($1,$2,NULL) AS r`, ['Bar da Sogra (teste)', SLUG_1],
       (row, err) => ({ ok: err === null && row?.r?.status === 'ativo' && !!row?.r?.store_id, detail: err || JSON.stringify(row?.r) }));
     novaLojaId = result?.r?.store_id || null;
+    // REF-STORE-ONBOARD-01 · Onda 2 (Opcao C, 2026-08-20): desde a migration REF-STORE-ONBOARD-01-onda2-
+    // dominio-lojas.sql, provision_store passou a preencher `dominio` automaticamente no padrao novo
+    // ({slug}.lojas.valionsistemas.com.br) -- o wildcard garante que o host ja resolve desde a criacao,
+    // diferente do modelo antigo (dominio=NULL ate confirmacao manual de DNS). Esta asserção testava o
+    // comportamento ANTIGO de proposito; atualizada para o comportamento atual, correto.
     const checaDominio = await superScalar(`SELECT dominio FROM public.stores WHERE id = $1`, [novaLojaId]);
-    const ok = checaDominio?.dominio === null;
-    record('ITEM1-sem-dominio', 'loja nasce sem dominio (DNS/Vercel permanecem manuais, fora do escopo desta onda)', ok ? 'PASS' : 'FAIL', JSON.stringify(checaDominio));
+    const ok = checaDominio?.dominio === `${SLUG_1}.lojas.valionsistemas.com.br`;
+    record('ITEM1-dominio-automatico', 'loja nasce com dominio automatico no padrao .lojas. (REF-STORE-ONBOARD-01 Onda 2)', ok ? 'PASS' : 'FAIL', JSON.stringify(checaDominio));
     // REF-SAAS-01 · Onda 8.2 (correcao pos-onda): loja sem e-mail nasce com admin_count=0 -- e a UI
     // (AdminPlataforma.jsx) precisa desse numero pra nunca deixar uma loja "orfa" invisivel na lista.
     await callRpc('ITEM1-admin-count-zero', 'list_my_stores() mostra admin_count=0 pra loja recem-criada sem vinculo', `SELECT admin_count FROM public.list_my_stores() WHERE store_id = $1`, [novaLojaId],
