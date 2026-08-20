@@ -124,11 +124,27 @@ Deno.serve(async (req) => {
 
   // Passo 1: tenta vincular do jeito que ja funciona hoje. Autorizacao (is_super_admin) e' inteiramente
   // desta chamada -- se falhar por 42501/outro erro, devolve e PARA aqui, sem tocar service_role.
+  //
+  // BUG achado na validacao E2E real (REF-STORE-ONBOARD-01, 2026-08-19/20): link_store_admin tem 3
+  // desfechos, nao 2 -- {vinculado:true} (link novo), {vinculado:false, motivo:"nao existe nenhuma
+  // conta..."} (precisa convidar) E {vinculado:false, motivo:"este usuario ja e administrador desta
+  // loja"} (JA satisfeito, nao precisa de nada). A versao anterior so checava vinculado===true e tratava
+  // QUALQUER outro caso como "precisa convidar" -- repetir a chamada pra um admin ja vinculado disparava
+  // um SEGUNDO convite real por e-mail (auth.admin.inviteUserByEmail de novo num usuario ja convidado),
+  // falhando o teste de idempotencia (item 13 da validacao). Fix: so' avanca pro convite quando o motivo
+  // e' especificamente "conta nao existe" -- qualquer outro vinculado:false (inclusive "ja e admin") e'
+  // terminal, devolve na hora, nunca toca service_role.
   const tentativa1 = await callerClient.rpc("link_store_admin", { p_store_id: storeId, p_admin_email: email });
   if (tentativa1.error) {
     return jsonResponse({ error: true, reason: tentativa1.error.message });
   }
   if (tentativa1.data?.vinculado === true) {
+    return jsonResponse({ ...tentativa1.data, convidado: false });
+  }
+  const contaNaoExiste = typeof tentativa1.data?.motivo === "string"
+    && tentativa1.data.motivo.includes("nao existe nenhuma conta");
+  if (!contaNaoExiste) {
+    // Ex.: "este usuario ja e administrador desta loja" -- ja esta no estado desejado, nada a fazer.
     return jsonResponse({ ...tentativa1.data, convidado: false });
   }
 
