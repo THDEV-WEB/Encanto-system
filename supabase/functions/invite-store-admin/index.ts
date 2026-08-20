@@ -15,7 +15,9 @@
 //   2) So' quando a RPC volta {vinculado:false, motivo:"nao existe nenhuma conta..."} -- ou seja, so'
 //      depois de confirmar (pela RPC, nao por conta propria) que o caller E' super admin E que a conta
 //      realmente nao existe -- a funcao usa service_role para UMA UNICA chamada:
-//      auth.admin.inviteUserByEmail(email, {redirectTo: admin.{slug}.valionsistemas.com.br/convite.html}).
+//      auth.admin.inviteUserByEmail(email, {redirectTo}) -- redirectTo varia por padrao de dominio da
+//      loja (legado admin.{slug}.valionsistemas.com.br vs. novo admin-{slug}.lojas.valionsistemas.com.br,
+//      ver REF-STORE-ONBOARD-01 Onda 2 · Opcao C, comentario junto da construcao do redirectTo abaixo).
 //   3) Chama link_store_admin de novo (com o JWT do caller, nao service_role) para completar o vinculo
 //      agora que a identidade existe. Se essa 2a chamada falhar (rede, corrida), devolve
 //      {convidado:true, vinculado:false} -- o fluxo normal de "Vincular" (ja existente) resolve depois,
@@ -152,11 +154,20 @@ Deno.serve(async (req) => {
   const serviceClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 
   const { data: storeRow, error: storeErr } = await serviceClient
-    .from("stores").select("slug").eq("id", storeId).single();
+    .from("stores").select("slug, dominio").eq("id", storeId).single();
   if (storeErr || !storeRow?.slug) {
     return jsonResponse({ error: true, reason: "loja_nao_encontrada" });
   }
-  const redirectTo = `https://admin.${storeRow.slug}.valionsistemas.com.br/convite.html`;
+  // REF-STORE-ONBOARD-01 Onda 2 (Opcao C): padrao legado (Encanto -- dominio explicito no formato
+  // antigo, congelado de proposito) vs. padrao novo (.lojas., automatico via wildcard, qualquer loja
+  // sem dominio nesse formato antigo -- inclui toda loja provisionada depois desta mudanca). Nunca
+  // hardcoded pro slug "encanto" especificamente -- generaliza pra qualquer excecao legada futura.
+  const dominioLegado = typeof storeRow.dominio === "string"
+    && storeRow.dominio.endsWith(".valionsistemas.com.br")
+    && !storeRow.dominio.endsWith(".lojas.valionsistemas.com.br");
+  const redirectTo = dominioLegado
+    ? `https://admin.${storeRow.slug}.valionsistemas.com.br/convite.html`
+    : `https://admin-${storeRow.slug}.lojas.valionsistemas.com.br/convite.html`;
 
   const { error: inviteErr } = await serviceClient.auth.admin.inviteUserByEmail(email, { redirectTo });
   if (inviteErr) {

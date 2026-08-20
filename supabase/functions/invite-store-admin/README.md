@@ -53,16 +53,21 @@ convite é enviado normalmente mas o clique no link falha (GoTrue rejeita o `red
 **Authentication → URL Configuration → Redirect URLs**, adicionar:
 
 ```
-https://admin.*.valionsistemas.com.br/convite.html
+https://admin.*.valionsistemas.com.br/convite.html          (padrao legado -- so Encanto)
+https://admin-*.lojas.valionsistemas.com.br/convite.html    (padrao novo -- Onda 2 · Opcao C)
 ```
 
-(coringa `*` cobre qualquer slug de loja — mesmo domínio que já serve `admin.html` hoje, `convite.html`
-sai no mesmo deploy). Se o projeto não aceitar coringa nessa posição, adicionar uma entrada por loja
-(`https://admin.encanto.valionsistemas.com.br/convite.html`, `https://admin.bar-da-sogra.valionsistemas.com.br/convite.html`, …) até confirmar o padrão aceito.
+(coringa `*` cobre qualquer slug de loja em cada padrão — mesmo domínio que já serve `admin.html` hoje,
+`convite.html` sai no mesmo deploy). Se o projeto não aceitar coringa nessa posição, adicionar uma
+entrada por loja até confirmar o padrão aceito.
 
 **Confirmado e aplicado em produção em 2026-08-19** via Management API (`PATCH /v1/projects/{ref}/config/auth`,
-aditivo — só acrescentou as 3 URLs acima, nenhuma entrada anterior foi removida). `uri_allow_list` hoje
-inclui essas 3 além das entradas que já existiam para o storefront.
+aditivo — só acrescentou as 3 URLs originais, nenhuma entrada anterior foi removida). Em 2026-08-20,
+mais uma entrada aditiva (`https://admin-*.lojas.valionsistemas.com.br/convite.html`) foi acrescentada
+para o padrão novo (REF-STORE-ONBOARD-01 Onda 2 · Opção C — ver `docs/adr` da REF para a especificação
+completa de por que o padrão de domínio mudou de `admin.{slug}.valionsistemas.com.br` para
+`admin-{slug}.lojas.valionsistemas.com.br` em lojas novas). `uri_allow_list` hoje tem 11 entradas,
+nenhuma removida desde a criação desta função.
 
 ## Teste manual (produção, após deploy + redirect URL configurados)
 
