@@ -5,7 +5,7 @@
     { "source": "/", "destination": "/encanto", "permanent": false, "has": [{ "type": "host", "value": "encanto.valionsistemas.com.br" }] },
     { "source": "/", "destination": "/encanto", "permanent": false, "has": [{ "type": "host", "value": "encanto-system.vercel.app" }] },
     { "source": "/", "destination": "/encanto", "permanent": false, "has": [{ "type": "host", "value": "^(?!admin\\.)[a-z0-9-]+\\.valionsistemas\\.com\\.br$" }] },
-    { "source": "/", "destination": "/encanto", "permanent": false, "has": [{ "type": "host", "value": "^(?!admin-)[a-z0-9-]+\\.lojas\\.valionsistemas\\.com\\.br$" }] }
+    { "source": "/", "destination": "/encanto", "permanent": false, "has": [{ "type": "host", "value": "^[a-z0-9-]+\\.lojas\\.valionsistemas\\.com\\.br$" }] }
   ],
   "rewrites": [
     { "source": "/encanto/download", "destination": "/encanto/index.html", "has": [{ "type": "host", "value": "encanto.valionsistemas.com.br" }] },
@@ -13,7 +13,7 @@
     { "source": "/", "destination": "/admin.html", "has": [{ "type": "host", "value": "admin.encanto.valionsistemas.com.br" }] },
     { "source": "/", "destination": "/admin.html", "has": [{ "type": "host", "value": "^admin\\.[a-z0-9-]+\\.valionsistemas\\.com\\.br$" }] },
     { "source": "/", "destination": "/admin.html", "has": [{ "type": "host", "value": "admin.valionsistemas.com.br" }] },
-    { "source": "/", "destination": "/admin.html", "has": [{ "type": "host", "value": "^admin-[a-z0-9-]+\\.lojas\\.valionsistemas\\.com\\.br$" }] }
+    { "source": "/", "destination": "/admin.html", "has": [{ "type": "host", "value": "^[a-z0-9-]+\\.admin\\.lojas\\.valionsistemas\\.com\\.br$" }] }
   ],
   "headers": [
     {

@@ -56,7 +56,7 @@ function statusEndereco(loja) {
   const padraoLegadoStorefront = `${loja.slug}.valionsistemas.com.br`;
   const padraoLegadoAdmin = `admin.${loja.slug}.valionsistemas.com.br`;
   const padraoNovoStorefront = `${loja.slug}.lojas.valionsistemas.com.br`;
-  const padraoNovoAdmin = `admin-${loja.slug}.lojas.valionsistemas.com.br`;
+  const padraoNovoAdmin = `${loja.slug}.admin.lojas.valionsistemas.com.br`;
 
   if (loja.dominio === padraoLegadoStorefront) {
     return { padraoConfirmado: true, storefrontUrl: padraoLegadoStorefront, adminUrl: padraoLegadoAdmin, personalizado: null };

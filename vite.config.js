@@ -97,9 +97,10 @@ const buildPwaPlugin = (desativado, filename = 'sw.js', navigateFallback = 'inde
    'login'/'admin' de useAdminSession.js (REF-STABILITY-02) — os dois protegem o boot do Admin de propósito,
    esta página fica fora dessa árvore inteira. Sai em `dist/convite.html` (mesma saída/deploy do admin),
    alcançável em `admin.{slug}.valionsistemas.com.br/convite.html` (loja legada) ou
-   `admin-{slug}.lojas.valionsistemas.com.br/convite.html` (padrão novo, Onda 2 · Opção C) via o serving
-   estático default da Vercel (a Vercel serve qualquer arquivo presente no output — só a rota "/" tem
-   rewrite explícito em vercel.json, uma regra por host/padrão, ver vercel.json).
+   `{slug}.admin.lojas.valionsistemas.com.br/convite.html` (padrão novo, Onda 2 · Opção C — subzona
+   própria, projeto Vercel `encanto-admin`, separado de `encanto-system`) via o serving estático default
+   da Vercel (a Vercel serve qualquer arquivo presente no output — só a rota "/" tem rewrite explícito em
+   vercel.json, uma regra por host/padrão, ver vercel.json).
    globIgnores ganha 2 padrões novos pra o Service Worker do ADMIN nunca precachear os assets desta
    página (ela nunca registra SW próprio — não é PWA, não tem manifest, é descartável). */
 /* REF-ADMIN-04 · Onda 1: 3o valor de `mode` (`vite build --mode admin`), mesmo mecanismo de gate único

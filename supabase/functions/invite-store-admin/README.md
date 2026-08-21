@@ -54,7 +54,7 @@ convite é enviado normalmente mas o clique no link falha (GoTrue rejeita o `red
 
 ```
 https://admin.*.valionsistemas.com.br/convite.html          (padrao legado -- so Encanto)
-https://admin-*.lojas.valionsistemas.com.br/convite.html    (padrao novo -- Onda 2 · Opcao C)
+https://*.admin.lojas.valionsistemas.com.br/convite.html    (padrao novo -- Onda 2 · Opcao C)
 ```
 
 (coringa `*` cobre qualquer slug de loja em cada padrão — mesmo domínio que já serve `admin.html` hoje,
@@ -63,11 +63,13 @@ entrada por loja até confirmar o padrão aceito.
 
 **Confirmado e aplicado em produção em 2026-08-19** via Management API (`PATCH /v1/projects/{ref}/config/auth`,
 aditivo — só acrescentou as 3 URLs originais, nenhuma entrada anterior foi removida). Em 2026-08-20,
-mais uma entrada aditiva (`https://admin-*.lojas.valionsistemas.com.br/convite.html`) foi acrescentada
-para o padrão novo (REF-STORE-ONBOARD-01 Onda 2 · Opção C — ver `docs/adr` da REF para a especificação
-completa de por que o padrão de domínio mudou de `admin.{slug}.valionsistemas.com.br` para
-`admin-{slug}.lojas.valionsistemas.com.br` em lojas novas). `uri_allow_list` hoje tem 11 entradas,
-nenhuma removida desde a criação desta função.
+mais uma entrada aditiva foi acrescentada para o padrão novo (REF-STORE-ONBOARD-01 Onda 2 · Opção C).
+**Correção em 2026-08-21**: investigação com token real da Vercel revelou que `encanto-system` e
+`encanto-admin` são **projetos Vercel separados** — um único wildcard não roteia pra dois projetos, então
+o padrão precisou virar duas subzonas (`*.lojas.` pro storefront, `*.admin.lojas.` pro admin). A entrada
+`https://admin-*.lojas.valionsistemas.com.br/convite.html` (padrão antigo, errado) foi substituída por
+`https://*.admin.lojas.valionsistemas.com.br/convite.html` — ver `docs/adr` da REF para a especificação
+completa. `uri_allow_list` tem 11 entradas, nenhuma removida desde a criação desta função (só corrigida).
 
 ## Teste manual (produção, após deploy + redirect URL configurados)
 

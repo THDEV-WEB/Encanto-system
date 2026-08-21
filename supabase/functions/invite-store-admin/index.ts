@@ -16,7 +16,7 @@
 //      depois de confirmar (pela RPC, nao por conta propria) que o caller E' super admin E que a conta
 //      realmente nao existe -- a funcao usa service_role para UMA UNICA chamada:
 //      auth.admin.inviteUserByEmail(email, {redirectTo}) -- redirectTo varia por padrao de dominio da
-//      loja (legado admin.{slug}.valionsistemas.com.br vs. novo admin-{slug}.lojas.valionsistemas.com.br,
+//      loja (legado admin.{slug}.valionsistemas.com.br vs. novo {slug}.admin.lojas.valionsistemas.com.br,
 //      ver REF-STORE-ONBOARD-01 Onda 2 · Opcao C, comentario junto da construcao do redirectTo abaixo).
 //   3) Chama link_store_admin de novo (com o JWT do caller, nao service_role) para completar o vinculo
 //      agora que a identidade existe. Se essa 2a chamada falhar (rede, corrida), devolve
@@ -32,9 +32,9 @@
 // Edge Function (nao precisa de `supabase secrets set` para eles, diferente de OPENROUTESERVICE_API_KEY
 // em route-distance). Nenhum segredo novo a configurar.
 //
-// REDIRECT URL: confirmado e aplicado em producao (2026-08-19) na allow-list de "Redirect URLs" do
-// Supabase Auth -- https://admin.*.valionsistemas.com.br/** + entradas explicitas por loja existente.
-// Ver README.md desta pasta para o historico e o valor exato aplicado.
+// REDIRECT URL: allow-list de "Redirect URLs" do Supabase Auth precisa cobrir os dois padroes --
+// https://admin.*.valionsistemas.com.br/** (legado) e https://*.admin.lojas.valionsistemas.com.br/**
+// (novo, Onda 2 · Opcao C -- corrigido em 2026-08-21, ver ADR). Ver README.md desta pasta pro historico.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -167,7 +167,7 @@ Deno.serve(async (req) => {
     && !storeRow.dominio.endsWith(".lojas.valionsistemas.com.br");
   const redirectTo = dominioLegado
     ? `https://admin.${storeRow.slug}.valionsistemas.com.br/convite.html`
-    : `https://admin-${storeRow.slug}.lojas.valionsistemas.com.br/convite.html`;
+    : `https://${storeRow.slug}.admin.lojas.valionsistemas.com.br/convite.html`;
 
   const { error: inviteErr } = await serviceClient.auth.admin.inviteUserByEmail(email, { redirectTo });
   if (inviteErr) {
