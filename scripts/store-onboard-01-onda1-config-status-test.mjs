@@ -71,8 +71,10 @@ try {
   out('');
 
   const encantoId  = (await client.query(`SELECT id FROM public.stores WHERE slug = 'encanto'`)).rows[0].id;
-  const sograRow   = (await client.query(`SELECT id, (SELECT count(*)::int FROM public.admins a WHERE a.store_id = s.id) AS admin_count FROM public.stores s WHERE slug = 'bar-da-sogra'`)).rows[0];
-  out(`— Lojas reais resolvidas (fora de qualquer sessao simulada, como superuser): encanto=${encantoId} · bar-da-sogra=${sograRow.id} (admin_count=${sograRow.admin_count}) —`);
+  // Busca pelo UUID estavel, nao pelo slug -- a loja foi renomeada de "bar-da-sogra" pra "aquariosbar"
+  // (Aquarios Bar, 2026-08-21); o UUID nunca muda, so o slug/nome mudaram.
+  const sograRow   = (await client.query(`SELECT id, (SELECT count(*)::int FROM public.admins a WHERE a.store_id = s.id) AS admin_count FROM public.stores s WHERE id = '776a01c8-f836-417a-a957-a0e1109f90a2'`)).rows[0];
+  out(`— Lojas reais resolvidas (fora de qualquer sessao simulada, como superuser): encanto=${encantoId} · aquarios-bar=${sograRow.id} (admin_count=${sograRow.admin_count}) —`);
   out('');
 
   // ---------------- Camada A: estrutural ----------------
@@ -110,7 +112,7 @@ try {
       return { ok, detail: JSON.stringify(r) };
     });
 
-  await callRpc('A/H', 'Bar da Sogra (producao, caso real) -> horario NAO configurado (fallback nao vira "propria")',
+  await callRpc('A/H', 'Aquarios Bar (producao, caso real, ex-Bar da Sogra) -> horario NAO configurado (fallback nao vira "propria")',
     `SELECT public.get_store_config_status('${sograRow.id}') AS r`, [],
     (row) => {
       const r = row?.r;
@@ -118,7 +120,7 @@ try {
       return { ok, detail: JSON.stringify(r) };
     });
 
-  await callRpc('B/H', 'Bar da Sogra (producao, caso real) -> delivery NAO configurado (fallback nao vira "propria")',
+  await callRpc('B/H', 'Aquarios Bar (producao, caso real, ex-Bar da Sogra) -> delivery NAO configurado (fallback nao vira "propria")',
     `SELECT public.get_store_config_status('${sograRow.id}') AS r`, [],
     (row) => {
       const r = row?.r;

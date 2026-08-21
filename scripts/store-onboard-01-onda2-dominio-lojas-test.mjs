@@ -3,6 +3,13 @@
 // store-onboard-01-onda1-config-status-test.mjs. Cobre os itens A-J e L do checklist aprovado pelo
 // dono; K (convite real -> redirect .lojas.) fica pendente de DNS/deploy real, fora do alcance de um
 // teste de banco puro.
+//
+// 2026-08-21: 2 correções pós-escrita original, sem mudar a cobertura dos itens A-J/L:
+//   1. Loja real usada como fixture renomeada de "Bar da Sogra" (bar-da-sogra) pra "Aquarios Bar"
+//      (aquariosbar) -- identidade comercial corrigida pelo dono, mesmo store_id.
+//   2. Padrão do host de admin corrigido de admin-{slug}.lojas... pra {slug}.admin.lojas... --
+//      investigação com token real da Vercel revelou que encanto-system/encanto-admin são projetos
+//      SEPARADOS (um wildcard não roteia pra dois projetos), exigindo subzona própria pro admin.
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 const require = createRequire('C:/Users/00thi/.encanto/package.json');
@@ -15,7 +22,7 @@ const client = new pg.Client({
   ssl: { rejectUnauthorized: false }, statement_timeout: 15000, connectionTimeoutMillis: 15000,
 });
 
-const BAR_DA_SOGRA_ID = '776a01c8-f836-417a-a957-a0e1109f90a2';
+const AQUARIOS_BAR_ID = '776a01c8-f836-417a-a957-a0e1109f90a2'; // ex-"bar-da-sogra", renomeada 2026-08-21
 const ENCANTO_ID = '8604324d-0529-443d-aa79-4337057bfa01';
 const ADMIN_REAL_USER_ID = 'b9dc7626-af9c-4ab5-95f7-3207e6469129'; // super admin real (ja usado em testes anteriores desta REF)
 
@@ -31,16 +38,16 @@ async function main() {
 
   out('\n=== Camada A: get_store_by_domain -- padrao novo (.lojas.) ===');
   {
-    const r = await client.query(`SELECT store_id FROM public.get_store_by_domain($1)`, ['bar-da-sogra.lojas.valionsistemas.com.br']);
-    check('A: bar-da-sogra.lojas... resolve Bar da Sogra', r.rows[0]?.store_id === BAR_DA_SOGRA_ID, r.rows[0]?.store_id);
+    const r = await client.query(`SELECT store_id FROM public.get_store_by_domain($1)`, ['aquariosbar.lojas.valionsistemas.com.br']);
+    check('A: aquariosbar.lojas... resolve Aquarios Bar', r.rows[0]?.store_id === AQUARIOS_BAR_ID, r.rows[0]?.store_id);
   }
   {
-    // get_store_by_domain resolve STOREFRONT por hostname -- admin-{slug} nao e um host de storefront
-    // (isso e' roteamento do vercel.json, testado separadamente abaixo em D). Aqui so confirmo que um
-    // hostname de admin NAO e' erroneamente tratado como storefront de outra loja (cai no default).
-    const r = await client.query(`SELECT store_id FROM public.get_store_by_domain($1)`, ['admin-bar-da-sogra.lojas.valionsistemas.com.br']);
+    // get_store_by_domain resolve STOREFRONT por hostname -- {slug}.admin.lojas... e uma subzona
+    // separada (roteamento e' do vercel.json/projeto Vercel encanto-admin, testado em D). Aqui so
+    // confirmo que um hostname de admin NAO e' erroneamente tratado como storefront de outra loja.
+    const r = await client.query(`SELECT store_id FROM public.get_store_by_domain($1)`, ['aquariosbar.admin.lojas.valionsistemas.com.br']);
     const defaultId = (await client.query(`SELECT public.default_store_id() AS id`)).rows[0].id;
-    check('B: admin-bar-da-sogra.lojas... NAO e tratado como storefront de outra loja (cai no default, nunca em bar-da-sogra por engano)',
+    check('B: aquariosbar.admin.lojas... NAO e tratado como storefront (cai no default, subzona diferente)',
       r.rows[0]?.store_id === defaultId, r.rows[0]?.store_id);
   }
   {
@@ -62,11 +69,11 @@ async function main() {
 
     const testeHost = (padroes, host) => padroes.some(p => new RegExp(p).test(host));
 
-    check('D: admin-bar-da-sogra.lojas.valionsistemas.com.br roteia pro admin.html', testeHost(adminRules, 'admin-bar-da-sogra.lojas.valionsistemas.com.br'));
+    check('D: aquariosbar.admin.lojas.valionsistemas.com.br roteia pro admin.html', testeHost(adminRules, 'aquariosbar.admin.lojas.valionsistemas.com.br'));
     check('D: admin.encanto.valionsistemas.com.br continua roteando pro admin.html (legado)', testeHost(adminRules, 'admin.encanto.valionsistemas.com.br'));
-    check('D2: bar-da-sogra.lojas.valionsistemas.com.br roteia pro storefront (/encanto)', testeHost(storefrontRules, 'bar-da-sogra.lojas.valionsistemas.com.br'));
+    check('D2: aquariosbar.lojas.valionsistemas.com.br roteia pro storefront (/encanto)', testeHost(storefrontRules, 'aquariosbar.lojas.valionsistemas.com.br'));
     check('D3: encanto.valionsistemas.com.br continua roteando pro storefront (legado)', testeHost(storefrontRules, 'encanto.valionsistemas.com.br'));
-    check('D4: a regra de storefront NAO captura um host de admin (admin-x.lojas...)', !testeHost(storefrontRules, 'admin-bar-da-sogra.lojas.valionsistemas.com.br'));
+    check('D4: a regra de storefront NAO captura um host de admin (subzona .admin.lojas. diferente)', !testeHost(storefrontRules, 'aquariosbar.admin.lojas.valionsistemas.com.br'));
   }
 
   out('\n=== Camada B: resolve_store_from_origin (guest checkout) -- BEGIN...ROLLBACK ===');
@@ -78,8 +85,8 @@ async function main() {
       return r.rows[0].id;
     };
 
-    check('F: Origin bar-da-sogra.lojas... resolve Bar da Sogra',
-      (await comOrigin('https://bar-da-sogra.lojas.valionsistemas.com.br')) === BAR_DA_SOGRA_ID);
+    check('F: Origin aquariosbar.lojas... resolve Aquarios Bar',
+      (await comOrigin('https://aquariosbar.lojas.valionsistemas.com.br')) === AQUARIOS_BAR_ID);
 
     check('G: Origin encanto.valionsistemas.com.br resolve SOMENTE Encanto (mapeamento preciso, sem contaminacao cruzada)',
       (await comOrigin('https://encanto.valionsistemas.com.br')) === ENCANTO_ID);
@@ -133,10 +140,10 @@ async function main() {
     check('L: Encanto ainda tem dominio no padrao legado (Edge Function vai usar redirectTo antigo)', legado, dominio);
   }
   {
-    const r = await client.query(`SELECT dominio FROM public.stores WHERE id=$1`, [BAR_DA_SOGRA_ID]);
+    const r = await client.query(`SELECT dominio FROM public.stores WHERE id=$1`, [AQUARIOS_BAR_ID]);
     const dominio = r.rows[0].dominio;
-    const novo = dominio === 'bar-da-sogra.lojas.valionsistemas.com.br';
-    check('L2: Bar da Sogra tem dominio no padrao NOVO (Edge Function vai usar redirectTo .lojas.)', novo, dominio);
+    const novo = dominio === 'aquariosbar.lojas.valionsistemas.com.br';
+    check('L2: Aquarios Bar tem dominio no padrao NOVO (Edge Function vai usar redirectTo .lojas.)', novo, dominio);
   }
 
   out(`\n${'='.repeat(66)}\n RESULTADO: ${pass} passes, ${fail} failures\n${'='.repeat(66)}`);
