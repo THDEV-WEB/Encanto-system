@@ -1,94 +1,84 @@
-# ADR REF-STORE-ONBOARD-01 (Onda 2) — Padrão de domínio para lojas novas: subzonas `lojas.valionsistemas.com.br` / `admin.lojas.valionsistemas.com.br`
+# ADR REF-STORE-ONBOARD-01 (Onda 2) — Padrão de domínio para lojas novas
 
-- **Status:** 🟢 **Aprovado e implementado (código) — ativação em DNS/Vercel pendente do dono.**
-- **Escopo:** padrão de hostname para storefront/admin/convite de toda loja provisionada a partir desta Onda. Não altera o padrão da Encanto (congelado, ver §3).
-- **Data:** 2026-08-20, corrigido 2026-08-21 (ver §5.1).
-- **Contexto:** auditoria da REF-STORE-ONBOARD-01 (2026-08-18/19) encontrou que o storefront da segunda loja da plataforma não resolvia DNS. Investigação (2026-08-20) provou, consultando o nameserver autoritativo direto, que **não existe wildcard `*.valionsistemas.com.br`** — cada subdomínio hoje em produção foi criado manualmente, um a um. A premissa da auditoria original ("wildcard já configurado 1x pra plataforma inteira") estava incorreta.
-- **Loja de referência**: a loja usada como caso real ao longo desta REF foi renomeada em 2026-08-21 — identidade comercial correta é **Aquarios Bar** (slug `aquariosbar`), não "Bar da Sogra" (slug `bar-da-sogra`, nome provisório usado até então). Mesmo `store_id` (`776a01c8-f836-417a-a957-a0e1109f90a2`) o tempo todo — troca de nome/slug/domínio, nunca de identidade. Auditoria completa do impacto do rename em `scripts/store-onboard-01-rename-aquariosbar.mjs`.
+- **Status:** 🟡 **Wildcard (Opção C) ABANDONADO (bloqueio real do Registro.br, ver §5) — modelo ATIVO agora é domínio explícito por loja via CNAME, sem wildcard.** Código implementado, domínios adicionados na Vercel, DNS ativa assim que o dono criar os 2 CNAMEs (§9).
+- **Escopo:** hostname de storefront/admin/convite da Aquarios Bar (segunda loja real da plataforma). Não altera o padrão da Encanto (congelado, ver §3). Arquitetura de domínio dedicado + wildcard pra onboarding zero-touch fica para avaliação futura separada — fora do escopo desta rodada.
+- **Data:** 2026-08-20, corrigido 2026-08-21 (topologia Vercel, §4), pivotado 2026-08-21 (wildcard abandonado, §5).
+- **Loja de referência**: renomeada em 2026-08-21 — identidade comercial correta é **Aquarios Bar** (slug `aquariosbar`), não "Bar da Sogra". Mesmo `store_id` (`776a01c8-f836-417a-a957-a0e1109f90a2`) o tempo todo. Auditoria do rename em `scripts/store-onboard-01-rename-aquariosbar.mjs`.
 
-## 1. Opções avaliadas
+## 1. Opções avaliadas (histórico — Opção C foi a escolha original, depois abandonada, ver §5)
 
-| | A — wildcard na raiz (`*.valionsistemas.com.br`) | B — registro manual por loja (o que já existia) | **C — wildcard em subzona (`*.lojas.valionsistemas.com.br`)** |
+| | A — wildcard na raiz (`*.valionsistemas.com.br`) | B — registro manual por loja | C — wildcard em subzona (`*.lojas.valionsistemas.com.br`) |
 |---|---|---|---|
-| Zero-touch por loja nova | Sim | Não — sempre manual | **Sim** |
-| Blast radius | Alto — exige migrar os nameservers do domínio inteiro (`valionsistemas.com.br`), afetando e-mail institucional (`mail.<produto>...`) e qualquer produto Valion futuro | Nenhum | **Baixo — só a subzona `lojas`, resto do domínio intocado** |
-| Credencial | Registro.br + Vercel, escopo do domínio inteiro | Registro.br + Vercel, por loja | Registro.br + Vercel, escopo estreito (1x) |
+| Zero-touch por loja nova | Sim | Não — sempre manual | Sim (na teoria — depois provado inviável, §5) |
+| Blast radius | Alto — nameservers do domínio inteiro, e-mail institucional em risco | Nenhum | Baixo, mas inexecutável no Registro.br atual |
+| Credencial | Registro.br + Vercel, domínio inteiro | Registro.br + Vercel, por loja | Registro.br + Vercel, escopo estreito — bloqueado (§5) |
 
-Fontes: [Vercel — Working with domains](https://vercel.com/docs/domains/working-with-domains) ("Wildcard domains must be configured with the nameservers method"); [Vercel — Configuring Custom Domains (Multi-Tenant Platforms)](https://vercel.com/docs/platforms/multi-tenant-platforms/configuring-domains); [Vercel KB — wildcard domain without nameservers](https://vercel.com/kb/guide/wildcard-domain-without-vercel-nameservers) (delegação parcial de `_acme-challenge`, válida só para wildcard em subdomínio, não na raiz).
+Fontes: [Vercel — Working with domains](https://vercel.com/docs/domains/working-with-domains); [Vercel — Configuring Custom Domains (Multi-Tenant Platforms)](https://vercel.com/docs/platforms/multi-tenant-platforms/configuring-domains); [Vercel KB — wildcard domain without nameservers](https://vercel.com/kb/guide/wildcard-domain-without-vercel-nameservers).
 
-**Decisão: Opção C.** Menor risco de infraestrutura, entrega o objetivo de onboarding sem toque manual, não força decisão sobre o domínio institucional inteiro.
+**Decisão original (2026-08-20): Opção C.** **Revertida em 2026-08-21 — ver §5.** Modelo ativo agora é B (registro explícito por loja), que já era suportado pelo código desde o início (§6).
 
-## 2. Padrão definitivo (não é fase de transição — permanente)
+## 2. Padrão de hosts (Aquarios Bar, caso real ativo)
 
 ```
-Storefront:  https://{slug}.lojas.valionsistemas.com.br/
-Admin:       https://{slug}.admin.lojas.valionsistemas.com.br/
-Convite:     https://{slug}.admin.lojas.valionsistemas.com.br/convite.html
+Storefront:  https://aquariosbar.lojas.valionsistemas.com.br/
+Admin:       https://aquariosbar.admin.lojas.valionsistemas.com.br/
+Convite:     https://aquariosbar.admin.lojas.valionsistemas.com.br/convite.html
 ```
 
-Exemplo real (Aquarios Bar): `aquariosbar.lojas.valionsistemas.com.br` / `aquariosbar.admin.lojas.valionsistemas.com.br`.
-
-**Duas subzonas, não uma — corrigido em 2026-08-21, ver §5.1.** O desenho original (`admin-{slug}.lojas...`, hífen em vez de ponto) partia de uma suposição nunca verificada: que `encanto-system` serve tanto storefront quanto Admin. Investigação com token real da Vercel provou que são **dois projetos Vercel separados** (`encanto-system` e `encanto-admin`) — um wildcard só roteia pra um projeto, então um único `*.lojas.` não consegue cobrir os dois. Corrigido pra duas subzonas independentes, uma por projeto.
-
-A guarda `provision_store()` contra slug começando com `admin-` (fechava colisão entre `admin-{slug}.lojas...` e o host de admin) **ficou desnecessária** com o desenho de 2 subzonas — mantida mesmo assim, como defesa adicional sem custo.
+O formato do hostname (`{slug}.lojas...` / `{slug}.admin.lojas...`, dois projetos Vercel diferentes) continua o mesmo desenhado para a Opção C — só o *mecanismo de DNS* mudou (CNAME explícito em vez de wildcard). Se um dia o zero-touch for retomado (domínio dedicado, ver §5), os hosts já provisionados assim continuam funcionando sem mudança.
 
 ## 3. Legado preservado (Encanto)
 
-`encanto.valionsistemas.com.br` / `admin.encanto.valionsistemas.com.br` continuam exatamente como estão, para sempre — não é migração pendente, é uma exceção permanente e intencional. Toda função tocada tem o ramo legado como **primeira prioridade** no `COALESCE`, byte-idêntico ao que já rodava antes desta Onda.
+`encanto.valionsistemas.com.br` / `admin.encanto.valionsistemas.com.br` continuam exatamente como estão, para sempre. Toda função tocada tem o ramo legado como **primeira prioridade** no `COALESCE`, byte-idêntico ao que já rodava antes desta Onda.
 
 ## 4. Correção 2026-08-21: topologia real da Vercel (achado via token pessoal do dono)
 
-O dono forneceu um token pessoal da Vercel para investigação read-only (só `GET`, nenhuma alteração). Achados que corrigem o plano original:
+- **3 projetos Vercel, não 2**: `encanto-system` (storefront), **`encanto-admin`** (Admin — `npm run build:admin`, projeto próprio), `valion-sistemas-site` (landing institucional). Corrige [[encanto-ref-brand-01-dominio]].
+- **Consequência**: como Admin e storefront são projetos diferentes, e a Vercel liga cada domínio (wildcard ou explícito) a 1 projeto só, o host de admin precisa estar numa forma que resolva num único label (`{slug}.admin.lojas...`, não `admin.{slug}.lojas...`) — decisão preservada mesmo depois do pivô do §5, porque não depende de wildcard pra ser válida.
 
-- **3 projetos Vercel, não 2** (memória antiga só registrava `encanto-system` + `valion-sistemas-site`): `encanto-system` (storefront), **`encanto-admin`** (Admin — `npm run build:admin`, projeto próprio), `valion-sistemas-site` (landing institucional).
-- `*.valionsistemas.com.br` **já estava cadastrado** em `encanto-system` (`verified:true`) mas **`misconfigured:true`, `acceptedChallenges:[]`** — ownership do domínio provado, mas o desafio DNS-01 do certificado wildcard nunca foi completado. Explica a origem do engano da auditoria original: alguém começou a Opção A no passado e não terminou.
-- `GET /v6/domains/{dominio}/config` confirmou ao vivo (não de memória) o CNAME exato que a Vercel pede para qualquer subzona nova: **`cname.vercel-dns.com.`** — mesmo valor pra `*.lojas.valionsistemas.com.br` e `*.admin.lojas.valionsistemas.com.br`, testado nos dois.
-- **Consequência arquitetural**: como Admin e storefront são projetos diferentes, e a Vercel liga 1 wildcard a 1 projeto só, um único `*.lojas.` não cobre os dois hosts. Corrigido pra 2 subzonas independentes (§2), cada uma delegada a um dos dois projetos (§8).
+## 5. PIVÔ 2026-08-21: wildcard abandonado — Registro.br não permite NS no editor de zona
 
-## 5. Funções/arquivos alterados (`migrations/REF-STORE-ONBOARD-01-onda2-dominio-lojas.sql` + correções de 2026-08-21)
+Ao tentar aplicar a delegação `_acme-challenge` via NS (necessária pra qualquer wildcard, §1), o dono confirmou no painel real do Registro.br ("Configurar Zona DNS", modo avançado) que o editor só oferece **A, AAAA, CNAME, MX, TXT, TLSA** — **NS não é uma opção**. Confirmado por busca na documentação oficial e em múltiplos guias de terceiros: nenhum lista NS como tipo criável no "Nova Entrada" desse editor. É um limite estrutural da interface, não falta de credencial.
 
-- **`get_store_by_domain(hostname)`** — ganha 3º ramo (`.lojas.` via regex), depois de `dominio` explícito e do padrão legado.
-- **`resolve_store_from_origin()`** — mesmo 3º ramo. **Dependência cross-REF**: esta função pertence à REF-ORDER-TENANT-01 (guest checkout); alterada aqui, com autorização explícita do dono, porque sem isso o checkout guest de qualquer loja nova sob `.lojas.` falharia (fail-closed) mesmo com storefront/Admin funcionando. REF-ORDER-TENANT-01 não foi reaberta como frente — só este ramo aditivo foi tocado.
-- **`provision_store()`** — guarda `slug !~ '^admin-'` (agora defesa redundante, ver §2) + preenche `dominio = {slug}.lojas.valionsistemas.com.br` automaticamente na criação (sob o padrão legado, `dominio` ficava `NULL` até confirmação manual de DNS; sob a Opção C isso é desnecessário, o wildcard garante resolução desde a criação).
-- Rollback: `migrations/REF-STORE-ONBOARD-01-onda2-dominio-lojas-rollback.sql` (restaura os 3 ramos ao estado anterior). **Risco documentado:** se houver rollback depois de lojas já criadas sob `.lojas.`, elas param de resolver por hostname até alguém setar `dominio` manualmente — nenhum dado é perdido.
+**Consequência**: o mecanismo do qual a Opção C inteira dependia não é executável. Restam só duas saídas pra wildcard de verdade: nameservers do domínio **inteiro** pra Vercel (rejeitado — e-mail institucional em risco, ver auditoria anterior) ou um domínio **novo e separado**, com nameservers próprios (viável, mas é decisão de arquitetura futura, fora desta rodada).
 
-## 6. Edge Function `invite-store-admin`
+**Decisão do dono**: abandonar wildcard por enquanto. Usar **domínio explícito por loja via CNAME convencional** — o mesmo mecanismo HTTP-01 que já roda em produção pra Encanto hoje, sem nada de novo a validar. Não é zero-touch, mas destrava a Aquarios Bar imediatamente com risco zero.
 
-`redirectTo` ramifica por presença de `dominio` no padrão legado (não por slug hardcoded — generaliza pra qualquer exceção legada futura):
+**Zero mudança de código foi necessária.** A resolução por `stores.dominio` explícito já era o **1º ramo** (maior prioridade) do `COALESCE` em `get_store_by_domain`/`resolve_store_from_origin` desde a concepção original da Onda 2 — o modelo nunca dependeu de wildcard pra funcionar, só de `dominio` estar preenchido corretamente. Reauditado fresco em 2026-08-21 (não assumido): confirmado nos dois. O 3º ramo (regex `.lojas.` genérico, pensado pra wildcard) fica no código, inerte — não atrapalha nem ajuda no modelo atual, é usado só se `dominio` não estiver setado.
 
-```ts
-const dominioLegado = dominio?.endsWith('.valionsistemas.com.br') && !dominio?.endsWith('.lojas.valionsistemas.com.br');
-redirectTo = dominioLegado ? `admin.${slug}.valionsistemas.com.br/convite.html` : `${slug}.admin.lojas.valionsistemas.com.br/convite.html`;
-```
+## 6. Funções/arquivos (auditados frescos em 2026-08-21, nenhuma mudança nova necessária)
 
-Redeployada em 2026-08-21 com a correção (version 4, ACTIVE).
+- **`get_store_by_domain(hostname)`**: `dominio` explícito tem prioridade 1 no `COALESCE`. Confirmado que resolve `aquariosbar.lojas.valionsistemas.com.br` → Aquarios Bar, e que o slug antigo (`bar-da-sogra.lojas...`) não resolve mais nada.
+- **`resolve_store_from_origin()`**: mesma prioridade, mesma confirmação (guest checkout). **Nota cross-REF**: pertence à REF-ORDER-TENANT-01, alterada nesta REF só no 3º ramo aditivo (dependência técnica registrada anteriormente), não tocada de novo nesta rodada.
+- **`provision_store()`**: **achado não corrigido nesta rodada, decisão futura separada** — ainda preenche `dominio` automaticamente no padrão `.lojas.` pra qualquer loja nova, mesmo sem wildcard ativo. Sem DNS manual pra essa loja nova, o domínio gravado não resolve de verdade — comportamento enganoso que precisa ser revisto quando a arquitetura de onboarding for definida (zero-touch real vs. manual assumido).
+- **Edge Function `invite-store-admin`**: `redirectTo` ramifica por presença de `dominio` legado — confirmado que gera `https://aquariosbar.admin.lojas.valionsistemas.com.br/convite.html` pra Aquarios Bar e o host antigo pra Encanto. Deployada (version 4, ACTIVE, confirmado via API — deploy de produção mais recente de `encanto-system`/`encanto-admin` bate com o commit `1b69717`/`97c4db1`).
+- **`vercel.json`**: 2 regras aditivas (`^[a-z0-9-]+\.lojas\.valionsistemas\.com\.br$` → storefront, `^[a-z0-9-]+\.admin\.lojas\.valionsistemas\.com\.br$` → admin) — regex funciona igual pra domínio explícito ou wildcard, nenhuma mudança necessária.
+- **`uri_allow_list`**: já tinha `https://*.admin.lojas.valionsistemas.com.br/convite.html` (wildcard na string do allow-list, não no DNS — cobre `aquariosbar` sem mudança).
 
-## 7. `vercel.json` — 2 regras aditivas (nenhuma regra existente alterada)
+## 7. Vercel — domínios explícitos adicionados (2026-08-21, via API, token do dono)
 
-- Redirect storefront: host `^[a-z0-9-]+\.lojas\.valionsistemas\.com\.br$` → `/encanto`
-- Rewrite admin: host `^[a-z0-9-]+\.admin\.lojas\.valionsistemas\.com\.br$` → `/admin.html`
+| Host | Projeto | Status |
+|---|---|---|
+| `aquariosbar.lojas.valionsistemas.com.br` | `encanto-system` (`prj_Ki4HYw6zVF0P5jKRFLdfibWxdvRi`) | `verified:true`, `misconfigured:true` até o CNAME existir |
+| `aquariosbar.admin.lojas.valionsistemas.com.br` | `encanto-admin` (`prj_pq2Pjj3NOJB9wwXPdk9UcROb4CVj`) | `verified:true`, `misconfigured:true` até o CNAME existir |
 
-## 8. DNS/Vercel — execução manual do dono (fora do alcance desta sessão: sem credencial de Registro.br)
+## 8. Testes
+
+`scripts/store-onboard-01-onda2-dominio-lojas-test.mjs` — 21/21 (18 originais + 3 novos: slug antigo não resolve mais, redirect correto pra Aquarios Bar e pra Encanto). Regressão: `saas01-onda6-1` 14/14, `saas01-onda8` 36/36, `saas02-onda1` 25/25, `onda1-config-status` 11/11. Builds admin+storefront ok.
+
+## 9. Registro.br — pendência única, execução manual do dono
 
 | Local | Tipo | Nome/FQDN | Valor exato | Observação |
 |---|---|---|---|---|
-| Registro.br | NS | `_acme-challenge.lojas.valionsistemas.com.br` | `ns1.vercel-dns.com.` / `ns2.vercel-dns.com.` | Documentado pela Vercel, valor estável (não exposto por API, não muda por conta) |
-| Registro.br | CNAME | `*.lojas.valionsistemas.com.br` | `cname.vercel-dns.com.` | **Confirmado ao vivo** via API, token do dono |
-| Registro.br | NS | `_acme-challenge.admin.lojas.valionsistemas.com.br` | `ns1.vercel-dns.com.` / `ns2.vercel-dns.com.` | Nova subzona (correção §5.1) |
-| Registro.br | CNAME | `*.admin.lojas.valionsistemas.com.br` | `cname.vercel-dns.com.` | **Confirmado ao vivo** via API |
-| Vercel — projeto `encanto-system` | Add Domain | — | `*.lojas.valionsistemas.com.br` | `prj_Ki4HYw6zVF0P5jKRFLdfibWxdvRi` |
-| Vercel — projeto `encanto-admin` | Add Domain | — | `*.admin.lojas.valionsistemas.com.br` | `prj_pq2Pjj3NOJB9wwXPdk9UcROb4CVj` — **não** `encanto-system` |
+| Registro.br | CNAME | `aquariosbar.lojas.valionsistemas.com.br` | `6b42aaefa3930841.vercel-dns-017.com.` | **Confirmado ao vivo pós-attach no projeto `encanto-system`** — não é o valor genérico |
+| Registro.br | CNAME | `aquariosbar.admin.lojas.valionsistemas.com.br` | `7e0ee76337724a8d.vercel-dns-017.com.` | **Confirmado ao vivo pós-attach no projeto `encanto-admin`** |
 
-Nenhum registro existente do domínio (`encanto`, `mail.*`, MX, TXT, nameservers) é tocado.
+Nenhum NS, nenhuma troca de nameservers, nenhum registro existente tocado.
 
-## 9. Auth redirect
+## 10. Pendente
 
-`uri_allow_list` tem a entrada `https://*.admin.lojas.valionsistemas.com.br/convite.html` (corrigida em 2026-08-21, substituindo a entrada errada `admin-*.lojas...` do dia anterior) — 11 entradas no total, nenhuma removida além da correção.
-
-## 10. Testes
-
-`scripts/store-onboard-01-onda2-dominio-lojas-test.mjs` (18/18) — cobre resolução de domínio (novo e legado), roteamento `vercel.json`, guest checkout (Origin, fail-closed), guarda de slug, e ausência de mutação líquida. Regressão: `saas01-onda6-1-storefront-dominio-test.mjs` (14/14), `saas01-onda8-provisionamento-test.mjs` (36/36), `saas02-onda1-platform-console-test.mjs` (25/25), `store-onboard-01-onda1-config-status-test.mjs` (11/11, corrigido pra buscar a loja de referência por UUID em vez de slug).
-
-## 11. Pendente
-
-Convite real para `baraquarios806@gmail.com` (Aquarios Bar) só depois do DNS ativo (§8) — o convite anterior tem `redirectTo` de um padrão abandonado e não deve ser reaproveitado como evidência do modelo novo. Ver estado consolidado em memória de sessão / relatório da Onda 2.
+1. Dono cria os 2 CNAMEs acima no Registro.br.
+2. Depois: validar resolução DNS, status Vercel (sai de `misconfigured`), certificado emitido, HTTPS.
+3. Convite real NOVO para `baraquarios806@gmail.com` (o anterior tem `redirectTo` de um padrão já abandonado, não reaproveitar).
+4. Validar primeiro acesso, login, guest checkout, isolamento — só então declarar Onda 2 = VERDE.
+5. **Decisão futura separada, não desta rodada**: revisar `provision_store()`'s auto-preenchimento de `dominio` (§6) e avaliar domínio dedicado (§5) se zero-touch voltar a ser prioridade.
