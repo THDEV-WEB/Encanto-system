@@ -146,6 +146,36 @@ async function main() {
     check('L2: Aquarios Bar tem dominio no padrao NOVO (Edge Function vai usar redirectTo .lojas.)', novo, dominio);
   }
 
+  out('\n=== Verificação adicional 2026-08-21: destravar via CNAME explícito (sem wildcard) ===');
+  {
+    // Slug antigo "bar-da-sogra" nao pode mais resolver a loja apos o rename -- confirma que nao ficou
+    // nenhum residuo/cache de resolucao pelo nome antigo.
+    const r = await client.query(`SELECT store_id FROM public.get_store_by_domain($1)`, ['bar-da-sogra.lojas.valionsistemas.com.br']);
+    const defaultId = (await client.query(`SELECT public.default_store_id() AS id`)).rows[0].id;
+    check('M: slug antigo bar-da-sogra.lojas... NAO resolve mais Aquarios Bar (cai no default)', r.rows[0]?.store_id === defaultId, r.rows[0]?.store_id);
+  }
+  {
+    // Caracteriza a MESMA logica de branching que invite-store-admin/index.ts usa pra montar redirectTo
+    // (dominioLegado) -- roda em JS puro, sem chamar a Edge Function, so pra travar regressao se a regra
+    // mudar sem o teste ser atualizado junto.
+    const dominioLegadoLogic = (dominio) => typeof dominio === 'string'
+      && dominio.endsWith('.valionsistemas.com.br')
+      && !dominio.endsWith('.lojas.valionsistemas.com.br');
+    const redirectToLogic = (slug, dominio) => dominioLegadoLogic(dominio)
+      ? `https://admin.${slug}.valionsistemas.com.br/convite.html`
+      : `https://${slug}.admin.lojas.valionsistemas.com.br/convite.html`;
+
+    const rAquarios = await client.query(`SELECT slug, dominio FROM public.stores WHERE id=$1`, [AQUARIOS_BAR_ID]);
+    const redirectAquarios = redirectToLogic(rAquarios.rows[0].slug, rAquarios.rows[0].dominio);
+    check('I: convite da Aquarios Bar gera redirect pro host correto',
+      redirectAquarios === 'https://aquariosbar.admin.lojas.valionsistemas.com.br/convite.html', redirectAquarios);
+
+    const rEncanto = await client.query(`SELECT slug, dominio FROM public.stores WHERE id=$1`, [ENCANTO_ID]);
+    const redirectEncanto = redirectToLogic(rEncanto.rows[0].slug, rEncanto.rows[0].dominio);
+    check('I2: convite da Encanto continua gerando redirect pro host legado',
+      redirectEncanto === 'https://admin.encanto.valionsistemas.com.br/convite.html', redirectEncanto);
+  }
+
   out(`\n${'='.repeat(66)}\n RESULTADO: ${pass} passes, ${fail} failures\n${'='.repeat(66)}`);
   await client.end();
   process.exit(fail > 0 ? 1 : 0);
