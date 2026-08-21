@@ -1,7 +1,6 @@
 # REF-SEC-02 — Rate limiting / CSP / npm audit
 
-**Status: EM ANDAMENTO — npm audit + CSP prontos (local), aguardando autorização de deploy. Rate
-limiting ainda não iniciado.**
+**Status: EM ANDAMENTO — npm audit + CSP FECHADOS e ao vivo em produção. Rate limiting em execução.**
 
 ## 1. `npm audit`
 
@@ -95,11 +94,17 @@ dedicado que injeta EXATAMENTE os headers acima, byte a byte iguais aos do `verc
   Chromium: "Refused to ... because it violates the following Content Security Policy directive"),
   nunca inferidas.
 
-### Commit
+### Validação em produção
 
-`0ca3322` (só `vercel.json`) — **local, push/deploy ainda não solicitado** (diferente da
-REF-OBS-02, que teve deploy explicitamente autorizado; aqui a autorização recebida cobriu
-auditoria+implementação+teste local, não deploy).
+Deploy confirmado — headers reais conferidos ao vivo (com cache-buster, driblando um `X-Vercel-Cache:
+HIT` inicial que ainda servia a resposta pré-deploy) em `encanto.valionsistemas.com.br` E
+`admin.encanto.valionsistemas.com.br`, byte a byte iguais à política testada localmente. Smoke real
+via Playwright contra o site AO VIVO (não build local): página carrega, mapa (Leaflet, `unpkg.com` +
+tiles OSM) abre e funciona, **0 violações de CSP no console real do navegador**.
+
+### Commits
+
+`0ca3322` (`vercel.json`) + `ebc6fcd` (doc) — **pushed e deployados, confirmados ao vivo**.
 
 ## 3. Rate limiting nas RPCs próprias
 
