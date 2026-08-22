@@ -1,7 +1,10 @@
 name: CI
 
 # REF-CI-01 — protege a qualidade do projeto automaticamente a cada push/PR para main.
-# 3 jobs INDEPENDENTES (rodam em paralelo, nenhum depende do outro):
+# 4 jobs INDEPENDENTES (rodam em paralelo, nenhum depende do outro):
+#   - lint:          ESLint + typecheck (REF-DEVEX-01). Erro de lint quebra o job; typecheck hoje não
+#                    verifica nada por padrão (checkJs:false, opt-in por arquivo via `// @ts-check`),
+#                    mas fica pronto pra pegar regressão assim que algum arquivo ligar o check.
 #   - build:         npm ci + vite build. Sem segredos (VITE_SUPABASE_URL/KEY ausentes não falham o
 #                    build — só geram um aviso; lib/supabase.js já degrada para db=null em runtime).
 #   - domain-tests:  os ~26 scripts de domínio (tests/*.mjs) via `npm run test:domain` — puramente
@@ -31,6 +34,28 @@ permissions:
   contents: read
 
 jobs:
+  lint:
+    name: Lint + typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Typecheck (tsc, opt-in por arquivo)
+        run: npm run typecheck
+
   build:
     name: Build
     runs-on: ubuntu-latest

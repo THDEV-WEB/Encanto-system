@@ -220,7 +220,7 @@ try {
   });
   out('');
 
-  out('— ITEM 12: session_id ausente do claim — DENY (\"sessao invalida\", categoria distinta de tenant) —');
+  out('— ITEM 12: session_id ausente do claim — DENY ("sessao invalida", categoria distinta de tenant) —');
   await tx('authenticated', USER_ENCANTO_ONLY, null, [], async () => {
     await callRpc('ITEM12-deny', 'sem session_id no JWT -> nao grava nada', `SELECT public.activate_tenant($1)`, [ENCANTO],
       (row, err) => ({ ok: err !== null && err.includes('sessao invalida'), detail: err || 'sem erro (FALHA GRAVE)' }));

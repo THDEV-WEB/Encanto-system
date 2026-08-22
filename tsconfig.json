@@ -1,0 +1,24 @@
+{
+  // REF-DEVEX-01: projeto e 100% JS/JSX sem nenhuma anotacao de tipo hoje. `checkJs:true` global foi
+  // testado e gerou centenas de falsos-positivos estruturais (inferencia de prop "obrigatoria" a partir
+  // do 1o uso de cada componente, CSSProperties de objetos inline como string generica, etc.) sem valor
+  // real — nao e assim que se adota TS num codebase legado. `checkJs:false` + opt-in por arquivo via
+  // comentario `// @ts-check` no topo e o padrao oficial do TypeScript pra isso: `npm run typecheck` fica
+  // limpo por padrao, e qualquer arquivo (novo ou que alguem queira endurecer) pode ligar o check sozinho.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "allowJs": true,
+    "checkJs": false,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "strict": false,
+    "noImplicitAny": false,
+    "resolveJsonModule": true,
+    "isolatedModules": true
+  },
+  "include": ["src"]
+}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { db } from '../../lib/supabase.js';
 import { DS } from '../../services/DataService.js';
 import { isHttpUrl } from '../../utils/catalog.js';
@@ -20,7 +20,7 @@ export function ImageUploader({ currentUrl, onUpload, pasta = 'products/product'
   const [uploading, setUploading] = useState(false);
   const [progress,  setProgress]  = useState(0);
   const [uploadErr, setUploadErr] = useState('');
-  const inputRef = useRef ? useRef(null) : React.useRef(null);
+  const inputRef = useRef(null);
 
   useEffect(()=>{ setPreview(currentUrl||null); setUploadErr(''); }, [currentUrl]);
 

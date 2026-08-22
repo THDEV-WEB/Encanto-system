@@ -29,6 +29,7 @@ export function SuccessPage({ msg, cart, onBack, deliveryEta, deliveryMode, what
   };
 
   const [contingencia, setContingencia] = useState(false);
+  const [statusIdx] = useState(0);
   const tentouRef = useRef(false);
   useEffect(() => {
     if (tentouRef.current) return;   // nunca dispara 2 popups (StrictMode/remount em dev)
@@ -55,7 +56,6 @@ export function SuccessPage({ msg, cart, onBack, deliveryEta, deliveryMode, what
   /* REF-DELIVERY-01: tempo estimado vem da CONFIG unica (deliveryEta), nao mais de um valor aleatorio.
      Consciente do modo (igual a DeliveryBar): entrega usa a config; retirada usa o tempo fixo de retirada. */
   const retirada = deliveryMode === 'retirada';
-  const [statusIdx] = useState(0);
   const steps = [
     {label:'Recebido',   icon:'📥'},
     {label:'Em preparo', icon:'👨‍🍳'},
