@@ -11,6 +11,7 @@ import { useCart } from '../hooks/useCart.js';
 import { useBusinessHours } from '../hooks/useBusinessHours.js';   // REF-BUSINESS-HOURS-01: horario oficial (fonte unica)
 import { useLoyalty } from '../hooks/useLoyalty.js';               // REF-LOYALTY-01: fidelidade do cliente (fonte unica Supabase)
 import { Spinner } from '../components/ui/Spinner.jsx';
+import { CatalogSkeleton } from '../components/ui/CatalogSkeleton.jsx'; // REF-PERF-02: reserva espaco aproximado da grade real, evita o salto de layout do Spinner generico
 import { StoreMenu } from '../components/menu/StoreMenu.jsx'; // LOGIN-ARCH-02: menu lateral (drawer) + login
 import { ProductCard } from '../components/ProductCard.jsx';
 import { DeliveryBar } from '../components/DeliveryBar.jsx';       // REF-UI-HEADER-02: barra Entrega/Retirada extraida (seletor + ETA + endereco-link)
@@ -431,7 +432,7 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
           <div ref={sentinelRef} className="catnav-sentinel" aria-hidden="true" />
 
           {/* ── CATÁLOGO — ordem 100% controlada por cats (coluna 'ordem' do Supabase) ── */}
-          {(loading?<Spinner/>:cats.map(cat=>{
+          {(loading?<CatalogSkeleton/>:cats.map(cat=>{
             const nome = (cat.nome||'').toLowerCase();
             const catProds = rawProds.filter(p=>prodInCat(p, cat.id) && p.disponivel!==false);
             if (catProds.length===0) return null;

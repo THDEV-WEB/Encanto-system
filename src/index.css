@@ -913,6 +913,16 @@ img{display:block;max-width:100%}
 @media(min-width:520px){.products-grid{grid-template-columns:repeat(3,1fr)}}
 @media(min-width:720px){.products-grid{grid-template-columns:repeat(4,1fr)}}
 
+/* ---- CATALOG SKELETON (REF-PERF-02) ---- */
+.skel-banner{background:var(--gray-100);box-shadow:none;display:flex;align-items:center}
+.skel-banner::before,.skel-banner::after{display:none}
+.skel-shimmer{
+  background:linear-gradient(90deg,var(--gray-100) 25%,var(--gray-200) 37%,var(--gray-100) 63%);
+  background-size:400% 100%;animation:skel-pulse 1.4s ease infinite;
+}
+@keyframes skel-pulse{0%{background-position:100% 50%}100%{background-position:0 50%}}
+@media(prefers-reduced-motion:reduce){.skel-shimmer{animation:none}}
+
 /* ---- PRODUCT CARD ---- */
 .product-card{
   background:var(--white);border-radius:var(--radius-lg);
@@ -1398,6 +1408,12 @@ img{display:block;max-width:100%}
      O translateY(-2px) que existia aqui antes foi removido -- levantava o icone 2px acima da
      linha de base do texto (o proprio comentario acima ja dizia que nao era necessario). */
   height:1.55em;width:auto;align-self:baseline;
+  /* REF-PERF-02: aspect-ratio reserva a largura (a partir da altura em em) ANTES da imagem
+     carregar -- sem isso o navegador nao tem como saber a largura (width:auto depende do
+     arquivo baixado), reserva 0px e da um salto de layout quando a imagem chega. Proporcao real
+     do valion-mark.webp (200x166, medido via sharp). Maior causa isolada de CLS medida no
+     Lighthouse mobile (score 0.393, thumbnail de 30x25px respondia por quase tudo). */
+  aspect-ratio:200/166;
   margin-right:-10px;
   transition:transform .18s ease;
 }

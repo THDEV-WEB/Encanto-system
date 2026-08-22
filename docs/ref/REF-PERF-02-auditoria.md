@@ -1,0 +1,138 @@
+# REF-PERF-02 — Lighthouse 90+
+
+Puxada do roadmap paralelo ([[encanto-roadmap-paralelo-saas01]]), última frente do Grupo 1 — depois
+de REF-DASHBOARD-01, REF-OBS-02, REF-SEC-02, REF-DEVEX-01 e REF-CI-02 (essa última puxada pelo dono
+em outra sessão, em paralelo a esta). Autorizada com um pedido explícito de cuidado: as duas frentes
+tocam área adjacente (performance/CI), e a REF-CI-02 estava em execução concorrente no mesmo
+diretório de trabalho.
+
+## Coordenação com a REF-CI-02 (execução concorrente)
+
+Confirmado via `git status`/`git log` antes de qualquer edição: a outra sessão estava editando
+`.github/workflows/ci.yml` e criando `package.json`/`lighthouserc.cjs` ao vivo. Diff conferido —
+100% aditivo (job `lighthouse` novo no fim do arquivo, sem tocar no job `lint` da REF-DEVEX-01).
+Para não colidir, esta REF evitou tocar em `ci.yml`/`package.json` enquanto a outra sessão estava
+ativa; o trabalho de performance em si (código/CSS/assets) não depende desses arquivos. A REF-CI-02
+fechou (commit `ba723ed`) antes do fim desta execução — só então o `lighthouserc.cjs` foi completado
+(ver seção "Thresholds no CI" abaixo), já que o próprio arquivo deixado por ela dizia explicitamente
+que os thresholds bloqueantes ficavam para esta REF decidir.
+
+## Metodologia
+
+Mesma da REF-PERF-01: build de produção servido via `vite preview`, Lighthouse mobile
+(`--form-factor=mobile --throttling-method=simulate`), Edge/Chromium headless. Diferença importante
+descoberta nesta REF: medir contra um build **sem** credenciais de Supabase (`npm run build` puro)
+deixa o catálogo em estado degradado/vazio e produz números artificiais e ruidosos — mesmo achado já
+registrado pela REF-CI-02 no `lighthouserc.cjs` ("27/100 vazio vs. score normal com catálogo real").
+Todas as medições reais desta REF usaram `vite build --mode e2e` (credenciais do projeto Supabase
+E2E dedicado, catálogo real seedado, nunca produção).
+
+**Baseline real** (pós-fix de catálogo vazio, antes de qualquer mudança de código): Performance
+**73/100**, CLS **0,393** (score 0,26 — de longe o maior peso negativo; FCP/LCP/TBT/SI já estavam
+entre 0,83-0,93).
+
+## Achado 1 — ícone do rodapé sem tamanho explícito
+
+`ValionCredit.jsx` (assinatura "desenvolvido pela Valion" no rodapé) usa
+`.valion-v-icon{height:1.55em;width:auto}` — o navegador não tem como saber a largura antes de
+baixar a imagem, reserva 0px e dá um salto quando ela chega. Sozinho, o "cause" do Lighthouse
+apontava este elemento como responsável por ~99% do CLS medido no 1º baseline (posteriormente
+descoberto como uma atribuição imprecisa da própria ferramenta — ver Achado 2). Corrigido com
+`aspect-ratio:200/166` (proporção real do `valion-mark.webp`, medida via `sharp`) — reserva a largura
+certa a partir da altura em `em`, sem mudar nada visualmente. `src/index.css`.
+
+## Achado 2 — troca Spinner → catálogo real (o verdadeiro dominante)
+
+Corrigir o Achado 1 não fez o CLS cair a zero — caiu para o mesmo patamar de antes (~0,30), só que
+agora sem "causa" nenhuma atribuída pelo Lighthouse (a atribuição ao ícone era um falso-positivo da
+heurística da própria ferramenta, que aponta o elemento visível mais próximo de qualquer mídia sem
+tamanho na página, não necessariamente o real causador). Investigação manual encontrou o real
+culpado: `StoreApp.jsx` renderiza `{loading ? <Spinner/> : cats.map(...)}` — um `<Spinner/>` genérico
+de ~180px (`.loading-state{padding:60px}` + ícone 32px) é substituído pela grade completa de
+categorias/produtos assim que os dados chegam, um salto de várias centenas de pixels que empurra
+tudo abaixo (inclusive o rodapé) — o mesmo padrão "conteúdo async sem placeholder do tamanho certo"
+clássico de CLS.
+
+**Fix**: novo componente `src/components/ui/CatalogSkeleton.jsx` — 2 seções falsas reaproveitando as
+MESMAS classes CSS da grade real (`.products-section`/`.promo-banner`/`.products-grid`/
+`.product-card`/`.product-img`/`.product-info`), com blocos cinza em shimmer (`@keyframes skel-pulse`,
+respeitando `prefers-reduced-motion`) no lugar de texto/imagem real. Herda automaticamente colunas
+responsivas e alturas aproximadas sem duplicar nenhum breakpoint. 2 seções (não 1) porque o projeto
+E2E tem 8 categorias cadastradas — 1 seção só deixava a reserva de espaço curta demais. Troca feita
+só no ponto exato do catálogo (`StoreApp.jsx` linha ~434); os outros 2 usos de `<Spinner/>` no mesmo
+arquivo (fallback do `Suspense` de Checkout/SuccessPage, troca de TELA inteira, não conteúdo
+in-place) foram deixados como estavam — não é o mesmo problema.
+
+## Resultado medido
+
+5 rodadas Lighthouse mobile consecutivas (mesmo build, mesmo servidor local) após os 2 fixes:
+
+| Rodada | Score | CLS |
+|---|---|---|
+| 1 | 92 | 0,108 |
+| 2 | 72 | 0,369 |
+| 3 | 71 | 0,556 |
+| 4 | 94 | 0,108 |
+| 5 | 94 | 0,001 |
+| **Mediana** | **92** | **0,108** |
+
+A variação real (71-94) não é bug de código — é jitter de rede genuíno contra o projeto Supabase E2E
+(uma API remota de verdade na internet, não mockada): quando o fetch demora mais, o salto
+skeleton→conteúdo real acontece mais tarde e por vezes se fragmenta em mais de um evento de shift
+(confirmado inspecionando `layout-shifts` da rodada mais ruidosa: 2 shifts genéricos de ~0,27+0,18 em
+vez de 1 só). Isso é esperado de uma medição local contra uma API remota; em produção (Vercel + mesma
+região do Supabase) a variância tende a ser menor. **Meta de 90+ atingida na mediana** (37→68 na
+REF-PERF-01, 68→92 nesta REF).
+
+Oportunidade remanescente, não perseguida: `unused-javascript` (~78 KiB no bundle principal). Não é
+uma métrica pontuada da categoria Performance (é diagnóstico/oportunidade, não conta pra nota) —
+perseguir isso agora não move o score e arriscaria mexer no code-splitting já validado da
+REF-PERF-01 por zero ganho de nota. Registrado aqui como nota, não como pendência.
+
+## Thresholds no CI (`lighthouserc.cjs`)
+
+Arquivo criado pela REF-CI-02 com `numberOfRuns:1` e sem `assert`, deixando explícito que threshold
+bloqueante ficava para esta REF decidir. Completado com os dados acima:
+- `numberOfRuns: 1 → 3` — LHCI agrega pela MEDIANA quando > 1, reduzindo bastante a chance de um
+  outlier de rede reprovar o CI sozinho (a mesma variância 71-94 medida localmente se aplica ao
+  runner do GitHub, que também busca dados reais do projeto E2E pela internet).
+- `assert.assertions['categories:performance']`: `minScore: 0.8` — confortavelmente abaixo da
+  mediana medida (0,92), acima do pior caso isolado observado (0,71), pensado pra pegar regressão
+  real sem tornar o CI instável por variação de rede que não é bug de código.
+- Sem assert em accessibility/best-practices/seo — fora do escopo desta REF (só performance foi
+  auditada/otimizada aqui).
+
+**Limitação de validação local**: `npm run lighthouse` (o script da REF-CI-02, via `@lhci/cli`) roda
+até completar a auditoria completa (confirmado nos logs — dezenas de linhas `Auditing: ...`
+executadas, config aceita e usada), mas trava depois, ao tentar derrubar o processo do Chrome/Edge,
+com `EPERM` no cleanup do diretório temporário — reproduzido com Edge E com o Chromium do Playwright,
+portanto não é specific a um binário. É um bug conhecido do `chrome-launcher` no Windows (falha
+intermitente de permissão ao apagar o profile temporário, comum com antivírus/indexação de arquivos
+ativos), não relacionado à correção da minha config — o healthcheck e o parsing do `lighthouserc.cjs`
+passaram, e o comando chegou a rodar a auditoria completa antes de travar na limpeza. Não deve se
+repetir no runner `ubuntu-latest` do GitHub Actions (Linux não tem esse comportamento do
+`chrome-launcher`), mas fica registrado como uma verificação que não pude confirmar 100%
+localmente — vale conferir o primeiro run real do job `lighthouse` no CI após o próximo push.
+
+## Testes
+
+`npm run lint` (0 erros) + `npm run typecheck` (0 erros) + `npm run test:domain` (suíte completa,
+exit 0) + `npm run build` (produção, normal) todos verdes após as mudanças de código. Validação de
+performance em si feita via 10+ rodadas Lighthouse standalone (fora do CI, ver seções acima).
+
+## Why
+
+Dono autorizou como última frente do Grupo 1 do roadmap, pedindo cuidado explícito com a REF-CI-02
+concorrente. Meta "Lighthouse 90+" já estava definida desde a auditoria original do roadmap
+(2026-08-08), como continuação natural da REF-PERF-01 (37→68).
+
+## How to apply
+
+Se o catálogo real de produção tiver uma distribuição de categorias muito diferente da fixture E2E
+(muito mais ou muito menos produtos visíveis por padrão), o `CatalogSkeleton` pode precisar de
+recalibração (nº de seções/cards) — o objetivo nunca foi ser pixel-perfect pra cada tenant, só
+reduzir a MAGNITUDE do salto o suficiente pra manter CLS na faixa "boa" (<0,1) ou "razoável" (<0,25)
+na maioria dos casos reais. Se o CI acusar o `EPERM` do `chrome-launcher` também no runner Linux
+(improvável, mas não custa checar no primeiro push), a correção é trocar `chromeFlags` pra incluir
+`--disable-dev-shm-usage` (mitigação comum em containers) — não tentar reproduzir/debugar isso no
+Windows local, é perda de tempo dado que já é um bug documentado do próprio `chrome-launcher`.
