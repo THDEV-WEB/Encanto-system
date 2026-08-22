@@ -1,7 +1,7 @@
 name: CI
 
 # REF-CI-01 — protege a qualidade do projeto automaticamente a cada push/PR para main.
-# 4 jobs INDEPENDENTES (rodam em paralelo, nenhum depende do outro):
+# 5 jobs INDEPENDENTES (rodam em paralelo, nenhum depende do outro):
 #   - lint:          ESLint + typecheck (REF-DEVEX-01). Erro de lint quebra o job; typecheck hoje não
 #                    verifica nada por padrão (checkJs:false, opt-in por arquivo via `// @ts-check`),
 #                    mas fica pronto pra pegar regressão assim que algum arquivo ligar o check.
@@ -14,6 +14,12 @@ name: CI
 #                    E2E_SUPABASE_* configurados no repo, os specs `@writes` apenas pulam
 #                    (test.skip(!E2E_ENV_PRONTO)) e os `@read-only` seguem rodando contra o catálogo
 #                    MOCK — o job não fica vermelho por falta de secrets, só com cobertura reduzida.
+#   - lighthouse:    mede performance/a11y/best-practices/SEO do build (REF-CI-02) contra o MESMO
+#                    projeto E2E dedicado (reaproveita os secrets acima) — sem eles, o app cai no
+#                    estado degradado (catálogo vazio) e o score de performance fica artificialmente
+#                    ruim (confirmado localmente: 27/100 vazio vs. score normal com catálogo real).
+#                    SEM asserts/thresholds ainda — só coleta e sobe o relatório como artifact; os
+#                    thresholds ficam para a REF-PERF-02 decidir, com baseline medida dentro do CI.
 #
 # DELIBERADAMENTE FORA deste pipeline automático: os guards que exigem conexão direta ao Postgres de
 # PRODUÇÃO (test:f1b, test:rls, test:orders-rls, test:auth-rls, verify:norm05, guard:slug —
@@ -150,4 +156,44 @@ jobs:
         with:
           name: playwright-report
           path: e2e/playwright-report/
+          retention-days: 14
+
+  lighthouse:
+    name: Lighthouse CI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Preparar .env (projeto Supabase dedicado a testes — nunca produção, mesmos secrets do job e2e)
+        env:
+          E2E_URL: ${{ secrets.E2E_SUPABASE_URL }}
+          E2E_ANON_KEY: ${{ secrets.E2E_SUPABASE_ANON_KEY }}
+        run: |
+          cat > .env <<EOF
+          VITE_SUPABASE_URL=${E2E_URL:-https://e2e-mock.supabase.co}
+          VITE_SUPABASE_KEY=${E2E_ANON_KEY:-e2e-mock-anon-key}
+          EOF
+
+      - name: Build de produção
+        run: npm run build
+
+      - name: Lighthouse CI (mobile, throttling simulado — mesma metodologia da REF-PERF-01)
+        run: npx --yes @lhci/cli@0.14.x autorun --config=./lighthouserc.cjs
+
+      - name: Upload do relatório Lighthouse
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-report
+          path: .lighthouseci/
           retention-days: 14
