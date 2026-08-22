@@ -49,3 +49,22 @@ principal; se resolver via Caminho 2 abaixo, se beneficia automaticamente).
 
 `REF-ADDRESS-UX-01` permanece **NÃO fechada**. Aguardando decisão do dono sobre qual caminho seguir
 (ou se aceita o risco residual do Caminho 1 documentado, ou investe no Caminho 2).
+
+## Fechamento (20 ago 2026)
+
+O Caminho 2 (Custom Access Token Hook) foi aprovado e implementado numa REF separada,
+`REF-AUTH-TENANT-01` — ver `docs/ref/REF-AUTH-TENANT-01-auditoria.md`. Hook + migração de RLS/RPC de
+`addresses` (Onda 5) + `link_customer_to_auth` (Onda 6) estão ao vivo em produção desde 19 ago 2026.
+
+Reverifiquei o critério de aprovação exato desta REF (mesmo `auth.uid()`, duas lojas, `p_store_id`/
+tenant manipulado → DENY mesmo para dado legítimo da própria pessoa) com um teste direto contra
+produção (transação `BEGIN...ROLLBACK`, dado fictício, revertido ao final, nada persistido): sessão
+com `tenant_id` da loja errada não enxerga o endereço da outra loja (0 linhas); a mesma sessão com
+`tenant_id` correto enxerga normalmente; sessão sem `tenant_id` (pré-ativação) é negada (fail-closed);
+outra pessoa com `tenant_id` correto continua sem ver o endereço alheio. As 4 policies de `addresses`
+(SELECT/INSERT/UPDATE/DELETE) e as funções `save_structured_address`/`link_customer_to_auth` já usam
+`auth.jwt()->>'tenant_id'` — nunca mais um parâmetro vindo do client.
+
+**REF-ADDRESS-SEC-02 = FECHADA.** Nenhum código/migration desta REF foi aplicado — o achado foi
+resolvido como efeito da arquitetura da `REF-AUTH-TENANT-01`. `REF-ADDRESS-UX-01` fica liberada para
+fechamento (ver `docs/ref/REF-ADDRESS-UX-01-auditoria.md`).

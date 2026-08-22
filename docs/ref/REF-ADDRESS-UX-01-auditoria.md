@@ -69,3 +69,16 @@ condicional, raro na prática (achado já visto em ruas de Blumenau/Jaraguá em 
 - **Testes**: 19 cenários com mocks determinísticos, mesmo padrão `*.golden.mjs` já usado.
 
 Artifact completo (design, tabelas, SQL formatado): link publicado na sessão.
+
+## Fechamento (20 ago 2026)
+
+O achado crítico de RLS aberta (mesma pessoa, duas lojas) que travava esta REF foi resolvido pela
+`REF-AUTH-TENANT-01` (Custom Access Token Hook + RLS/RPC de `addresses` ancoradas em
+`auth.jwt()->>'tenant_id'`), ao vivo em produção desde 19 ago 2026 — ver
+`docs/ref/REF-ADDRESS-SEC-02-revisao-arquitetural.md` (fechamento) e
+`docs/ref/REF-AUTH-TENANT-01-auditoria.md`. Confirmado com teste real contra produção (transação
+`BEGIN...ROLLBACK`, revertida ao final): sessão da mesma pessoa em outra loja não enxerga mais o
+histórico de endereços da Encanto.
+
+**REF-ADDRESS-UX-01 = FECHADA.** Feature "Endereços Recentes" (implementada e publicada em 17 ago
+2026, commit `0026eea`) permanece em produção sem nenhuma alteração adicional de código.
