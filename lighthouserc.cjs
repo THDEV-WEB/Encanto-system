@@ -40,14 +40,24 @@ module.exports = {
         'categories:performance': ['error', { minScore: 0.8 }],
       },
     },
-    /* REF-CI-02 (achado pos-push): com `upload: { target: 'filesystem', outputDir: './.lighthouseci' }`
-       explicito, o run remoto (32640266072) terminou com sucesso mas ".lighthouseci/" ficou vazio --
-       o step de upload do artifact avisou "No files were found". Sem acesso aos logs brutos do job
-       (403, exige permissao de admin no repo mesmo sendo publico) pra confirmar a causa exata, e sem
-       conseguir reproduzir localmente (o bug de cleanup do chrome-launcher no Windows, ja registrado
-       acima, impede completar QUALQUER rodada nesta maquina). Removida a secao `upload` customizada:
-       o `lhci collect` ja persiste os relatorios brutos em `.lighthouseci/` por padrao, SEM precisar de
-       configuracao explicita -- reduz a superficie de configuracao pra usar o caminho mais testado da
-       propria ferramenta. Precisa confirmar no PROXIMO push se isso resolve. */
+    /* REF-CI-02 (achado pos-push, log real obtido via API autenticada em 23/08): tanto COM
+       `upload: { target: 'filesystem', outputDir: './.lighthouseci' }` (run 32640266072) quanto SEM
+       essa secao (run 32642552214, tentativa de remove-la nao resolveu -- revertido aqui) o padrao e'
+       IDENTICO: "Healthcheck passed" -> 3 rodadas completam ("Run #1/2/3...done", "Done running
+       Lighthouse!") -> assert roda ("Checking assertions... All results processed!") -> "Done running
+       autorun." -> MESMO ASSIM ".lighthouseci/" fica vazio. O processo inteiro reporta sucesso, entao
+       nao e' crash -- e' a fase de persistencia que nao grava nada em disco por um motivo ainda nao
+       identificado (nao e' a ausencia/presenca da secao upload, jah que os dois cenarios deram o
+       mesmo resultado). Achado notavel em AMBOS os logs: "WARNING: Timed out waiting for the server
+       to start listening" logo apos "Started a web server" -- o proprio servidor de preview imprime
+       "Local:" (confirmado no log), mas o lhci nao detecta a tempo (os ~20s batem exatamente com
+       startServerReadyTimeout). Nao confirmado se isso e' causa ou so' sintoma correlato. Restaurada a
+       secao `upload` (documentacao oficial recomenda-a explicita pra filesystem, e remove-la nao teve
+       efeito nenhum) -- ver `docs/adr/REF-CI-02-lighthouse.md` para o proximo passo (step de debug
+       adicionado no ci.yml antes de tentar mais uma correcao especulativa). */
+    upload: {
+      target: 'filesystem',
+      outputDir: './.lighthouseci',
+    },
   },
 };
