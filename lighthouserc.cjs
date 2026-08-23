@@ -40,9 +40,14 @@ module.exports = {
         'categories:performance': ['error', { minScore: 0.8 }],
       },
     },
-    upload: {
-      target: 'filesystem',
-      outputDir: './.lighthouseci',
-    },
+    /* REF-CI-02 (achado pos-push): com `upload: { target: 'filesystem', outputDir: './.lighthouseci' }`
+       explicito, o run remoto (32640266072) terminou com sucesso mas ".lighthouseci/" ficou vazio --
+       o step de upload do artifact avisou "No files were found". Sem acesso aos logs brutos do job
+       (403, exige permissao de admin no repo mesmo sendo publico) pra confirmar a causa exata, e sem
+       conseguir reproduzir localmente (o bug de cleanup do chrome-launcher no Windows, ja registrado
+       acima, impede completar QUALQUER rodada nesta maquina). Removida a secao `upload` customizada:
+       o `lhci collect` ja persiste os relatorios brutos em `.lighthouseci/` por padrao, SEM precisar de
+       configuracao explicita -- reduz a superficie de configuracao pra usar o caminho mais testado da
+       propria ferramenta. Precisa confirmar no PROXIMO push se isso resolve. */
   },
 };

@@ -1,10 +1,11 @@
 # REF-CI-02 — Lighthouse CI
 
-**Status:** ✅ Implementada e validada localmente (2026-08-22) — job novo `lighthouse` no pipeline
-existente. Motor de auditoria (Lighthouse) confirmado funcionando via CLI direta, 2 rodadas (Edge
-headless como stand-in do Chrome, ausente neste ambiente Windows). O `lhci autorun` completo (healthcheck
-+ collect + upload) não pôde ser confirmado ponta a ponta NESTA máquina — ver §Verificação local para
-o motivo exato (bug de terceiros, específico do Windows). Aguardando aprovação do dono para o commit/push.
+**Status:** 🟡 Pushed e rodando em CI (commit `ba723ed`, promovido a `origin/main` em 2026-08-23 junto
+com `c7102b5` da REF-PERF-02, que ajusta o mesmo `lighthouserc.cjs` — thresholds/`numberOfRuns` são
+território dela, não desta REF). Job `lighthouse` **passou** no 1º run remoto
+(`actions/runs/32640266072`, job `97196171956`, todos os 8 steps verdes) — mas o artifact do relatório
+NÃO foi gerado (`.lighthouseci/` vazio). Correção aplicada (ver §Validação no CI remoto), aguardando o
+PRÓXIMO push para confirmar. **Não fechar até essa confirmação.**
 **Depende de:** REF-CI-01 (pipeline existente, 4 jobs paralelos), REF-E2E-01 (projeto Supabase
 dedicado a testes e seus secrets, já cadastrados no repositório para o job `e2e`).
 **Escopo:** só o job de Lighthouse. A 2ª metade do item original do roadmap (levar `test:db-guards`
@@ -90,6 +91,41 @@ Chrome já vem pré-instalado na imagem do runner, sem necessidade desse contorn
 - `npm run test:domain`: reconfirmado 100% verde após as mudanças desta REF (nenhum arquivo de
   `src/`/`tests/` tocado).
 - Sintaxe do workflow revalidada com `js-yaml` (mesmo mecanismo da CI-01) após cada edição — válida.
+
+## Validação no CI remoto (2026-08-23)
+
+O commit `ba723ed` já estava em `origin/main` quando esta sessão foi retomada — outra sessão já tinha
+feito o push, e nesse meio-tempo `c7102b5` (REF-PERF-02) foi commitado em cima, no MESMO
+`lighthouserc.cjs`: subiu `numberOfRuns` de 1 para 3 (mediana reduz ruído de rede real contra o
+projeto E2E) e adicionou `assert: { 'categories:performance': ['error', { minScore: 0.8 }] }` — decisão
+e território da REF-PERF-02, não desta REF (ver comentário no próprio arquivo).
+
+Consultada a API pública do GitHub (`api.github.com/repos/.../actions/runs/32640266072/jobs` — os
+logs brutos exigem permissão de admin mesmo em repo público, `403` sem token; a UI web do Actions
+também resumiu errado numa 1ª leitura, corrigido cruzando com a API):
+
+| Job | Conclusão |
+|---|---|
+| Lint + typecheck | ✅ success |
+| Build | ✅ success |
+| Testes de domínio | ✅ success |
+| **Lighthouse CI** | ✅ **success** (8/8 steps verdes, 1m37s) |
+| E2E (Playwright) | ❌ failure (achado à parte, não desta REF — não investigado aqui) |
+
+O job Lighthouse passou, mas o step "Upload do relatório Lighthouse" (`actions/upload-artifact@v4`)
+avisou `No files were found with the provided path: .lighthouseci/` — o step em si não falha nesse
+caso (`if-no-files-found` é `warn` por padrão), só o artifact fica ausente. Sem acesso aos logs brutos
+do `lhci autorun` para confirmar a causa exata, e sem conseguir reproduzir localmente até o fim (o bug
+de cleanup do `chrome-launcher` no Windows, documentado em §Verificação local, impede completar
+QUALQUER rodada nesta máquina, mesmo isolando só a fase `collect`) — a causa raiz não foi confirmada
+com certeza absoluta.
+
+**Correção aplicada por precaução, não por diagnóstico confirmado**: removida a seção `upload`
+explícita (`target: 'filesystem', outputDir: './.lighthouseci'`) do `lighthouserc.cjs`. O `lhci
+collect` já persiste os relatórios brutos em `.lighthouseci/` por padrão, sem precisar de configuração
+— reduz a superfície de configuração pro caminho mais testado da própria ferramenta, no lugar de uma
+customização que eu não consigo validar localmente nesta máquina. Preserva 100% do trabalho da
+REF-PERF-02 (`numberOfRuns`, `assert`, `settings` intocados).
 
 ## Limitações conhecidas
 
