@@ -112,10 +112,45 @@ que isso tenha afetado visitantes reais (mecanismo de mitigação por origem/IP 
 Vercel), mas fica registrado como lição operacional para futuras validações: preferir
 verificações espaçadas e com User-Agent real a polling agressivo contra domínios de produção.
 
+## Addendum (mesmo dia) — vetor secundário fechado + teste real de ponta a ponta
+
+Depois do fechamento inicial acima, o dono pediu para fechar também o vetor secundário e para
+validar o caminho real (não só transacional) de criação de pedido.
+
+### 3. Vetor secundário — sobrescrita de nome via telefone em `create_order`
+
+**Correção:** o `INSERT ... ON CONFLICT (store_id, phone) DO UPDATE SET name` agora só
+sobrescreve o nome quando o customer existente ainda não tem `auth_user_id` (guest/órfão —
+comportamento legado 100% preservado) ou quando `auth_user_id` já é o do próprio chamador. Nos
+demais casos (telefone de outra conta autenticada), o pedido continua sendo criado normalmente
+e vinculado ao `customer_id` correto — só o nome deixa de ser sobrescrito.
+
+**Arquivos:**
+- `migrations/REF-PROD-GOLIVE-01-fix-name-overwrite.sql` (aplicada em produção)
+- `migrations/REF-PROD-GOLIVE-01-fix-name-overwrite-rollback.sql`
+- `scripts/prod-golive-01b-name-overwrite-test.mjs` — 6/6 cenários (1 ataque + 3 regressões
+  legítimas) validados dentro de `BEGIN...ROLLBACK`, zero mutação líquida confirmada.
+
+### Teste real de ponta a ponta (fora de transação, via REST público)
+
+Para fechar a lacuna de validação registrada no fechamento original (a lógica só havia sido
+exercitada dentro de `ROLLBACK`, nunca pelo caminho real completo), foi feita 1 chamada HTTP
+real ao endpoint público (`POST .../rest/v1/rpc/create_order`, mesma chave anônima e mesmo
+header `Origin` que o navegador de um cliente real usa), criando um pedido de verdade:
+
+- `POST` retornou `{"ok": true, "order_id": "..."}`.
+- Confirmado via query read-only: pedido persistido com `store_id` correto (Encanto), customer
+  criado corretamente, item com nome/quantidade/preço corretos, status `recebido`.
+- Registro de teste removido logo em seguida (`DELETE` de `order_items`/`orders`/`customers`
+  pelos IDs exatos, confirmado que o customer não tinha nenhum outro pedido vinculado antes de
+  remover). Confirmado por query read-only final: zero resquício.
+
+Isso fecha a lacuna: o caminho real (REST → RLS/grants → RPC → banco) está confirmado
+funcionando de ponta a ponta, não só a lógica da função isoladamente.
+
 ## Pendências que continuam em aberto (fora do escopo desta frente)
 
 - A2 (PII em repositório público) e A6 (senha do admin da Aquarios Bar) — decisões de
   governança que dependem do dono, não tocadas aqui.
-- Vetor secundário de sobrescrita de nome via telefone em `create_order` (ver acima).
 - Reativação da Aquarios Bar (`status='ativo'`) só deve acontecer depois de validar a correção
   do CHECKOUT-TENANT-02 em uso real com 2 lojas simultâneas — decisão do dono.
