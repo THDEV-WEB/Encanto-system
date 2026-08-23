@@ -1,12 +1,11 @@
 # REF-CI-02 — Lighthouse CI
 
-**Status:** 🟡 Em CI, job verde, artifact ainda pendente — bloqueada por falta de visibilidade, não por
-código quebrado. `ba723ed` (esta REF) + `c7102b5` (REF-PERF-02, mesmo `lighthouserc.cjs`) foram para
-`origin/main` em 2026-08-23; job `lighthouse` passou nos 2 runs confirmados até agora
-(`32640266072` e, após a correção em `f978859`, `32642552214`), mas `.lighthouseci/` segue vazio nos
-dois — o artifact `lighthouse-report` nunca aparece. Causa raiz não identificada (sem acesso a
-logs/artifacts sem token — ver §Validação no CI remoto). **Não fechar até o dono decidir como
-prosseguir.** Achado à parte, não desta REF: o job `E2E (Playwright)` está falhando nos 2 runs.
+**Status:** ✅ Causa raiz confirmada e corrigida (2026-08-23) — `.lighthouseci/` é um diretório OCULTO
+(nome começa com ponto) e `actions/upload-artifact@v4` ignora arquivos ocultos por padrão
+(`include-hidden-files: false`). Os relatórios sempre foram gerados corretamente pelo `lhci` — só
+nunca eram vistos pelo upload. Corrigido com `include-hidden-files: true` no step. Aguardando
+confirmação no próximo run antes de fechar formalmente. Achado à parte, não desta REF: o job
+`E2E (Playwright)` segue falhando em todos os runs observados — não investigado aqui.
 **Depende de:** REF-CI-01 (pipeline existente, 4 jobs paralelos), REF-E2E-01 (projeto Supabase
 dedicado a testes e seus secrets, já cadastrados no repositório para o job `e2e`).
 **Escopo:** só o job de Lighthouse. A 2ª metade do item original do roadmap (levar `test:db-guards`
@@ -130,16 +129,33 @@ REF-PERF-02 (`numberOfRuns`, `assert`, `settings` intocados).
 
 **Correção NÃO resolveu — confirmado no 2º run** (commit `f978859`, run `32642552214`, job
 `97201812696`): job `lighthouse` passou de novo (8/8 steps verdes), mas `.lighthouseci/` continua
-vazio — nenhum artifact `lighthouse-report` na lista de artifacts do run (só `playwright-report`, do
-job `e2e`). A causa raiz segue não confirmada. Tentativa de obter evidência direta: nem os logs brutos
-do job (`GET .../actions/jobs/{id}/logs` → `403`, exige admin mesmo em repo público) nem o download de
-artifacts existentes (`GET .../actions/artifacts/{id}/zip` → `401`) são acessíveis sem token de
-autenticação — API pública do GitHub só expõe metadados (status, lista de steps/artifacts), não
-conteúdo. **Sem visibilidade real do que acontece dentro do job, decidi não seguir corrigindo às
-cegas** — próximo passo depende do dono: repassar o conteúdo do log (acesso via painel web, que ele
-tem) ou decidir se aceita fechar a REF mesmo com essa lacuna (o job não fica vermelho e o `assert` de
-performance da REF-PERF-02 continua funcionando — só o relatório HTML/JSON navegável fica indisponível
-para download).
+vazio. A causa raiz seguia não confirmada, e a API pública do GitHub só expõe metadados sem token
+(logs brutos → `403`, download de artifacts → `401`, mesmo em repo público) — parei de corrigir às
+cegas e pedi ajuda ao dono.
+
+**Causa raiz confirmada com log real (2026-08-23)**: o dono gerou um GitHub PAT fine-grained
+(`Actions: Read-only`, só este repositório) para permitir ler os logs via API autenticada. Restaurada
+a seção `upload` (a remoção não tinha efeito — ambos os cenários davam o mesmo resultado) e adicionado
+temporariamente um step de debug (`ls -la .lighthouseci/` + `find /` procurando o diretório e os
+relatórios) logo após o `lhci autorun`, antes do upload.
+
+Log do 3º run (`32658703405`, job `97241483389`) mostrou a sequência completa pela primeira vez:
+`Running Lighthouse 3 time(s)` → `Run #1/2/3...done` → `Checking assertions... All results processed!`
+→ **`Dumping 3 reports to disk at .../.lighthouseci...`** → `Done writing reports to disk.` → meu
+próprio `ls -la .lighthouseci/` listando **13 arquivos reais** (`assertion-results.json`,
+`manifest.json`, 3×`lhr-*.json`/`.html`, 3×`localhost-*.report.json`/`.html`) — os relatórios
+**sempre existiram**. O upload continuava reportando "No files were found" mesmo assim, porque
+`.lighthouseci` começa com ponto (diretório oculto no padrão Unix) e `actions/upload-artifact@v4`
+tem `include-hidden-files: false` por padrão — ele nunca enxergava o conteúdo, nada a ver com o
+`lhci` ou com a presença/ausência da seção `upload`. **Corrigido** com `include-hidden-files: true`
+no step (`.github/workflows/ci.yml`); step de debug removido, não é mais necessário (e ele próprio
+tinha um bug — `find /` retorna exit code 1 por "Permission denied" em pastas do sistema, o que
+derrubava o job com `set -e`, causando a falha real observada neste 3º run).
+
+**Achado secundário, não investigado a fundo**: nos 3 runs, aparece `WARNING: Timed out waiting for
+the server to start listening` logo após subir o preview, mesmo o servidor imprimindo "Local:"
+segundos depois — não impede o `lhci` de prosseguir e nunca causou falha; registrado como possível
+alvo de ajuste futuro (`startServerReadyTimeout` maior), não urgente.
 
 ## Limitações conhecidas
 

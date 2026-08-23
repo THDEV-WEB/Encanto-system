@@ -190,22 +190,15 @@ jobs:
       - name: Lighthouse CI (mobile, throttling simulado — mesma metodologia da REF-PERF-01)
         run: npx --yes @lhci/cli@0.14.x autorun --config=./lighthouserc.cjs
 
-      - name: "Debug — onde o lhci gravou os relatórios (achado: .lighthouseci fica vazio, causa não confirmada)"
-        if: always()
-        run: |
-          echo "--- pwd ---"
-          pwd
-          echo "--- conteudo de .lighthouseci/ (cwd) ---"
-          ls -la .lighthouseci/ 2>&1 || echo "nao existe"
-          echo "--- procurando qualquer .lighthouseci em todo o filesystem ---"
-          find / -maxdepth 6 -iname ".lighthouseci" -not -path "*/node_modules/*" 2>/dev/null
-          echo "--- procurando arquivos lhr-*.json (relatorio bruto do lighthouse) em todo o filesystem ---"
-          find / -iname "lhr-*.json" -not -path "*/node_modules/*" 2>/dev/null
-
       - name: Upload do relatório Lighthouse
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: lighthouse-report
+          # .lighthouseci é um diretório OCULTO (nome começa com ponto) -- o upload-artifact@v4
+          # ignora arquivos/pastas ocultas por padrão (include-hidden-files: false), por isso o
+          # artifact sempre ficava vazio mesmo com o lhci gerando os relatórios corretamente
+          # (confirmado via log real do job: "Dumping 3 reports to disk", 13 arquivos presentes).
+          include-hidden-files: true
           path: .lighthouseci/
           retention-days: 14
