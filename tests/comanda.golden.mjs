@@ -334,16 +334,43 @@ check("interna: 'Taxa de entrega / ajuste' continua aparecendo (Admin 100% intoc
   const txt = comandaTexto(vm);
   assert.ok(txt.includes('Taxa de entrega / ajuste'));
 });
-check('cliente: endereco estruturado aparece sob "Entrega:" (retirada nunca mostra bloco de endereco)', () => {
+check('cliente (WhatsApp): endereco NAO aparece mais, entrega nem retirada (REF-LGPD-01 R09 B-minima)', () => {
   const vm = buildComanda(pedidoEntrega, {
     enderecoEstruturado: { rua: 'Rua Nova', numero: '10', bairro: 'Centro', cidade: 'Timbó', referencia: 'Perto do mercado' },
   });
   const txt = comandaTexto(vm, { contexto: 'cliente' });
-  assert.ok(txt.includes('Entrega:'));
-  assert.ok(txt.includes('Rua Nova, 10'));
-  assert.ok(txt.includes('Ponto de referência: Perto do mercado'));
+  assert.ok(!txt.includes('Entrega:'));
+  assert.ok(!txt.includes('Rua Nova, 10'));
+  assert.ok(!txt.includes('Ponto de referência'));
   const txtRetirada = comandaTexto(vmR, { contexto: 'cliente' });
   assert.ok(!txtRetirada.includes('Entrega:'));
+});
+check('cliente (WhatsApp): observacao geral do pedido NAO aparece mais (REF-LGPD-01 R09 B-minima)', () => {
+  const txt = comandaTexto(vmE, { contexto: 'cliente' });
+  assert.ok(!txt.includes('*OBSERVAÇÕES*'));
+  assert.ok(!txt.includes('Sem cebola'));
+});
+check('cliente (WhatsApp): observacao POR ITEM continua aparecendo (customizacao de preparo, nao PII do pedido)', () => {
+  const txt = comandaTexto(vmE, { contexto: 'cliente' });
+  assert.ok(txt.includes('OBS: bem passada'));
+});
+check('cliente (WhatsApp): itens/adicionais/cliente/pagamento/totais continuam completos (B-minima nao vira "ping")', () => {
+  const txt = comandaTexto(vmE, { contexto: 'cliente' });
+  assert.ok(txt.includes('*ITENS*') && txt.includes('Marmita G'));
+  assert.ok(txt.includes('Carne Extra'));
+  assert.ok(txt.includes('*CLIENTE*') && txt.includes('Maria Souza') && txt.includes('(38) 99220-3620'));
+  assert.ok(txt.includes('*PAGAMENTO*'));
+  assert.ok(/\*TOTAL: /.test(txt));
+});
+check('interna (Admin): endereco e observacao geral continuam intactos apos R09 -- loja consulta lá', () => {
+  const vm = buildComanda(pedidoEntrega, {
+    enderecoEstruturado: { rua: 'Rua Nova', numero: '10', bairro: 'Centro', cidade: 'Timbó', referencia: 'Perto do mercado' },
+  });
+  const txt = comandaTexto(vm); // contexto 'interna' (default), NUNCA tocado por R09
+  assert.ok(txt.includes('*ENDEREÇO*'));
+  assert.ok(txt.includes('Rua Nova, 10'));
+  assert.ok(txt.includes('*OBSERVAÇÕES*'));
+  assert.ok(txt.includes('Sem cebola'));
 });
 check('cliente: rodape e so o nome comercial (sem "Obrigado pela preferencia")', () => {
   const txt = comandaTexto(vmE, { contexto: 'cliente' });

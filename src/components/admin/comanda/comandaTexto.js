@@ -9,9 +9,14 @@
    sobre o MESMO view-model (nenhuma duplicação de regra de negócio, só de apresentação):
      - 'interna' (default): documento operacional da cozinha/Admin — comandaTextoInterna, ZERO
        mudança de comportamento desde a REF-ORDER-01 (golden prova byte-a-byte).
-     - 'cliente' (REF-CHECKOUT-03): mensagem automática do WhatsApp que o cliente recebe/confirma —
-       comandaTextoCliente, layout comercial (cabeçalho PARA ENTREGA/RETIRADA, nome comercial,
-       numeroCurto sem hash, sem Ref. cliente/IDs internos, troco sempre explícito). */
+     - 'cliente' (REF-CHECKOUT-03 + REF-LGPD-01 R09 B-mínima): mensagem automática do WhatsApp que o
+       cliente recebe/confirma — comandaTextoCliente, layout comercial (cabeçalho PARA ENTREGA/RETIRADA,
+       nome comercial, numeroCurto sem hash, sem Ref. cliente/IDs internos, troco sempre explícito).
+       REF-LGPD-01 R09: NUNCA inclui endereço completo nem observações livres do cliente (o payload
+       trafega em texto claro na URL do wa.me) -- ambos continuam intactos no banco e disponíveis no
+       Admin (comandaTextoInterna, comandaHtml.js), só saem deste renderer especificamente. A loja
+       continua recebendo aviso completo de "pedido novo" com itens/adicionais/cliente/pagamento/
+       totais -- só falta o endereço em pedidos de entrega, que ela consulta no Admin. */
 
 function comandaTextoInterna(v, t) {
   const linhas = [];
@@ -104,22 +109,12 @@ function comandaTextoCliente(v, t) {
     if (it.obs) linhas.push(`  OBS: ${it.obs}`);
   });
 
-  if (v.observacoes) {
-    linhas.push('');
-    linhas.push('*OBSERVAÇÕES*');
-    linhas.push(v.observacoes);
-  }
-
   linhas.push('');
   linhas.push('*CLIENTE*');
   linhas.push('Nome:');
   linhas.push(v.cliente?.nome || '—');
   linhas.push('Telefone:');
   linhas.push(v.cliente?.telefone || '—');
-  if (v.endereco) {
-    linhas.push('Entrega:');
-    (v.endereco.linhas || []).forEach((l) => linhas.push(l));
-  }
 
   linhas.push('');
   linhas.push('*PAGAMENTO*');

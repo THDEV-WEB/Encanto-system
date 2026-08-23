@@ -93,23 +93,29 @@ check('C1. mensagem = EXATAMENTE buildComanda+comandaTexto(contexto:cliente) sob
   const esperado = comandaTexto(buildComanda(snapshot, {}), { contexto: 'cliente' });
   assert.strictEqual(msg, esperado);
 });
-check('C2. mensagem contém os campos exigidos (cliente/telefone/tipo/endereço/pagamento/itens+adicionais+obs/subtotal/total), com "Cobrar do cliente" (quem lê é a loja)', () => {
+check('C2. mensagem contém os campos exigidos (cliente/telefone/tipo/pagamento/itens+adicionais+obs-do-item/subtotal/total), com "Cobrar do cliente" (quem lê é a loja) -- REF-LGPD-01 R09 B-minima: SEM endereço, SEM observação geral do pedido', () => {
   const { customer, order, items } = buildOrderArgs(cart, FORM, ENDERECO, REQ);
   const msg = buildOrderConfirmationMessage(customer, order, items, ORDER_ID, {});
   assert.ok(msg.includes('Maria Teste'));
   assert.ok(msg.includes('38999990000'));
   assert.ok(msg.startsWith('*PARA ENTREGA*'));
-  assert.ok(msg.includes('Rua A'));
   assert.ok(msg.includes('PIX'));
   assert.ok(msg.includes('Açaí 500ml'));
   assert.ok(msg.includes('Leite Ninho'));
   assert.ok(msg.includes('Granola'));
   assert.ok(msg.includes('Batidinha Morango'));
-  assert.ok(msg.includes('sem cebola'));
+  assert.ok(msg.includes('OBS: sem cebola'));   // obs DO ITEM (Açaí) -- preparo, nunca removida por R09
   assert.ok(msg.includes('Subtotal'));
   assert.ok(msg.includes('TOTAL'));
   assert.match(msg, /\*Pedido \d{5}\*/);
   assert.ok(msg.includes('*Cobrar do cliente*'));
+  /* REF-LGPD-01 R09 (B-minima): endereço completo e observação GERAL do pedido nunca trafegam no wa.me
+     -- FORM.obs='sem cebola' vira order.observacoes (geral), que NÃO deve aparecer aqui (só a versão
+     por-item, já checada acima, com o MESMO texto por coincidência do fixture -- daí o assert negativo
+     abaixo, que prova que não é o bloco geral que está passando o teste). */
+  assert.ok(!msg.includes('*OBSERVAÇÕES*'));
+  assert.ok(!msg.includes('Rua A'));
+  assert.ok(!msg.includes('Entrega:'));
 });
 check('C3. troco (só existe no checkout, nunca persistido) aparece na mensagem quando informado', () => {
   const { customer, order, items } = buildOrderArgs(cart, FORM, ENDERECO, REQ);
@@ -134,14 +140,14 @@ check('C6. pedido de retirada: mensagem usa RETIRADA (mesmo discriminador da com
   assert.ok(msg.startsWith('*RETIRADA*'));
   assert.ok(!msg.includes('Entrega:'));
 });
-check('C7. endereco estruturado (dominio Address, ja disponivel no CheckoutPage) aparece formatado na mensagem', () => {
+check('C7. endereco estruturado (dominio Address, ja disponivel no CheckoutPage) NAO aparece mais na mensagem (REF-LGPD-01 R09 B-minima) -- continua disponível no Admin via comandaTextoInterna, só sai deste renderer', () => {
   const { customer, order, items } = buildOrderArgs(cart, FORM, ENDERECO, REQ);
   const msg = buildOrderConfirmationMessage(customer, order, items, ORDER_ID, {
     enderecoEstruturado: { rua: 'Rua das Palmeiras', numero: '55', bairro: 'Vila Nova', cidade: 'Timbó', referencia: 'Perto da praça' },
   });
-  assert.ok(msg.includes('Entrega:'));
-  assert.ok(msg.includes('Rua das Palmeiras, 55'));
-  assert.ok(msg.includes('Ponto de referência: Perto da praça'));
+  assert.ok(!msg.includes('Entrega:'));
+  assert.ok(!msg.includes('Rua das Palmeiras, 55'));
+  assert.ok(!msg.includes('Ponto de referência: Perto da praça'));
 });
 check('3. reconciliação Σ(price×qty)=total',  () => {
   const p = buildRpcPayload(cart, FORM, ENDERECO, REQ);
