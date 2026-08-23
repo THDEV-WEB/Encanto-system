@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { DS } from '../services/DataService.js';
 import { MOCK_CATS } from '../data/mockCatalog.js';
 import { isCategoriaDescontinuada } from '../utils/catalog.js';
+import { onStorefrontResolved } from '../services/storefrontResolvedBus.js';
 
 export function useCategories() {
   const [cats,    setCats]    = useState([]);
@@ -32,5 +33,11 @@ export function useCategories() {
     setLoading(false);
   },[]);
   useEffect(()=>{ load(); },[load]);
+
+  /* REF-PROD-GOLIVE-01 (fecha CHECKOUT-TENANT-02): se a 1a carga acima ocorreu ANTES da loja
+     resolver por dominio, pode ter vindo sem filtro de store_id. Refaz a busca quando a resolucao
+     chegar depois — no maximo 1x extra por sessao. */
+  useEffect(() => onStorefrontResolved(() => load()), [load]);
+
   return { cats, loading, src, refresh:load };
 }

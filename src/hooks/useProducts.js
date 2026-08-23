@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { DS } from '../services/DataService.js';
 import { filterMock } from '../data/mockCatalog.js';
 import { onProductsChanged } from '../services/productCacheBus.js';
+import { onStorefrontResolved } from '../services/storefrontResolvedBus.js';
 
 /* Cache em memória — persiste durante a sessão (singleton do módulo, como no App.jsx original) */
 const _prodCache = new Map();
@@ -14,6 +15,12 @@ const _prodCache = new Map();
    Supabase — sem depender de F5 nem de nova aba. Inscrição única no load do módulo (singleton). */
 onProductsChanged(() => _prodCache.clear());
 
+/* REF-PROD-GOLIVE-01 (fecha CHECKOUT-TENANT-02): se este cache foi populado ANTES da loja resolver
+   por domínio, pode ter vindo sem filtro de store_id (catálogo de outra loja ativa junto). Limpa
+   assim que a resolução chegar — a próxima leitura (disparada pelo tick no hook abaixo) vem
+   corretamente filtrada. */
+onStorefrontResolved(() => _prodCache.clear());
+
 export function useProducts(catId, search) {
   const cacheKey = `${catId||'*'}::${search||''}`;
 
@@ -21,6 +28,10 @@ export function useProducts(catId, search) {
   const [prods,   setProds]   = useState(()=> _prodCache.get(cacheKey) || []);
   const [loading, setLoading] = useState(!_prodCache.has(cacheKey));
   const [src,     setSrc]     = useState(_prodCache.has(cacheKey) ? 'cache' : 'mock');
+  const [resolvedTick, setResolvedTick] = useState(0);
+
+  /* Força um novo fetch (abaixo, via dep) quando a loja resolver depois deste hook já ter buscado. */
+  useEffect(() => onStorefrontResolved(() => setResolvedTick(t => t + 1)), []);
 
   useEffect(()=>{
     const key = `${catId||'*'}::${search||''}`;
@@ -58,7 +69,7 @@ export function useProducts(catId, search) {
       setLoading(false);
     });
     return () => { live = false; };
-  }, [catId, search]);
+  }, [catId, search, resolvedTick]);
 
   return { prods, loading, src };
 }
