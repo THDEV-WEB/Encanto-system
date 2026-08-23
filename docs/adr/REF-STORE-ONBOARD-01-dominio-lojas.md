@@ -75,10 +75,32 @@ Ao tentar aplicar a delegação `_acme-challenge` via NS (necessária pra qualqu
 
 Nenhum NS, nenhuma troca de nameservers, nenhum registro existente tocado.
 
-## 10. Pendente
+## 10. Pendente (Onda 2, todos os itens fechados)
 
-1. Dono cria os 2 CNAMEs acima no Registro.br.
-2. Depois: validar resolução DNS, status Vercel (sai de `misconfigured`), certificado emitido, HTTPS.
-3. Convite real NOVO para `baraquarios806@gmail.com` (o anterior tem `redirectTo` de um padrão já abandonado, não reaproveitar).
-4. Validar primeiro acesso, login, guest checkout, isolamento — só então declarar Onda 2 = VERDE.
-5. **Decisão futura separada, não desta rodada**: revisar `provision_store()`'s auto-preenchimento de `dominio` (§6) e avaliar domínio dedicado (§5) se zero-touch voltar a ser prioridade.
+1. ~~Dono cria os 2 CNAMEs acima no Registro.br.~~ Feito 2026-08-22.
+2. ~~Validar resolução DNS, status Vercel, certificado emitido, HTTPS.~~ Confirmado 2026-08-22 (cert Let's Encrypt real, HTTPS funcionando nos 2 hosts).
+3. ~~Convite real NOVO para `baraquarios806@gmail.com`.~~ Feito 2026-08-22.
+4. ~~Validar primeiro acesso, login, guest checkout, isolamento.~~ 25/26 real (`scripts/store-onboard-01-onda2-validacao-final.mjs`), Onda 2 declarada VERDE em 2026-08-22.
+5. Item 5 (revisar auto-preenchimento de `dominio` em `provision_store()`) — **resolvido na Onda 3, §11 abaixo** (não da forma originalmente cogitada: em vez de mudar o autofill, o Console agora prova o status real em vez de confiar na string).
+
+## 11. Onda 3 (2026-08-22/23) — P2 (falso-positivo de domínio), P3 (UI de domínio), P1 (clonagem de catálogo)
+
+Auditoria prévia (read-only) identificou 4 pendências candidatas (P1-P4) a partir da nota de memória original da Onda 0 + do item 5 do §10. Aprovado pelo dono: P1+P2+P3 nesta REF; P4 (PWA manifest por tenant) e P5 (fallback de horário/entrega sem aviso ao cliente final) registrados como dependência cross-REF, não implementados aqui.
+
+**P2 — falso-positivo de domínio corrigido.** `statusEndereco()` (renomeada `hostsEsperados()`) comparava só a string gravada em `dominio` contra o padrão esperado e mostrava "✓ padrão confirmado" para **qualquer** loja nova, mesmo com zero CNAME criado — confirmado como bug real em produção nesta auditoria (não hipotético: `provision_store()` grava esse padrão incondicionalmente na criação). Corrigido com uma checagem HTTPS real: `fetch(https://{host}/, {mode:'no-cors'})` — a promise só resolve depois de DNS+TCP+TLS+HTTP completarem de verdade; rejeita se qualquer etapa falhar. O Console agora mostra ✅ respondendo / ❌ não responde ainda / ⏳ verificando, nunca mais uma suposição a partir do texto gravado. Nenhuma migration — 100% frontend.
+
+**P3 — UI de domínio.** Nova RPC `platform_set_store_dominio(p_store_id, p_dominio)` (SECURITY DEFINER, `is_super_admin()`), validação de formato, aproveitando a constraint `UNIQUE(dominio)` já existente em `stores` como proteção anti-takeover (traduzida para mensagem amigável em vez de vazar `unique_violation` cru). Vazio/NULL limpa o domínio personalizado, loja volta a resolver só pelo padrão automático. Campo de edição adicionado ao detalhe da loja no Platform Console.
+
+**P1 — clonagem/seed de catálogo.** Nova RPC `platform_clone_catalog(p_source_store_id, p_target_store_id)` (SECURITY DEFINER, `is_super_admin()`). Decisões de design registradas (nenhuma decisão de produto pré-existente foi encontrada — escolhas feitas com o critério "mais segura, coerente com a arquitetura já existente"):
+- **Só clona para catálogo vazio** (nunca merge) — evita duplicar/misturar catálogo de uma loja que já criou o próprio.
+- **`categories.id`/`products.id` são PK global (não por loja)** — a clonagem nunca reusa o id de origem, sempre gera um novo (`gen_random_uuid()`) e remapeia toda referência (`products.categoria_id`, `products.categoria_ids[]`, `adicionais.aplica_categoria_id`, `product_collections.product_id`/`collection_id`) para o novo id — zero referência cruzada para a loja de origem, confirmado por teste.
+- **Produtos clonados nascem `disponivel=false`** — mesmo espírito do "seed neutro" de `company_info` (Onda 8): loja nova não aparenta operacional de verdade até o dono revisar/ativar cada item.
+- **Imagens**: URL copiada como referência (aponta pro mesmo arquivo do Storage da loja de origem até o tenant trocar) — não duplica o objeto físico.
+- **Nunca toca** `orders`/`customers`/`addresses`/`admins`/`auth.users` — essas tabelas nem são referenciadas pela função.
+- Seção de clonagem no Platform Console só aparece quando a loja de destino está vazia (mesma guarda da RPC, checada também no frontend por UX).
+
+**Testes**: `scripts/store-onboard-01-onda3-test.mjs`, 35/35 (grants das 2 RPCs, todos os caminhos de erro — não-super-admin/origem=destino/destino não-vazio/loja inexistente/domínio inválido/domínio duplicado —, clonagem real com verificação completa de integridade referencial incluindo uma categoria `tipo='collection'`, zero mutação líquida). Regressão: `onda1-config-status` 11/11, `onda2-dominio-lojas` 21/21, `saas01-onda8` 36/36, `saas02-onda1` 25/25 — idênticos à baseline, zero drift. Build admin+storefront ok.
+
+**Commits**: `ebdba14` (migration + `DataService.js`), `71d6a0e` (`PlatformTenants.jsx` + teste). Push não pedido nesta rodada.
+
+**Pendências registradas, fora do escopo desta Onda**: P4 (PWA manifest por tenant — depende de REF-MOBILE-01/REF-SAAS-02); P5 (fallback hardcoded de horário/entrega sem aviso ao cliente final — depende de REF-BUSINESS-HOURS-0x/REF-DELIVERY-01).
