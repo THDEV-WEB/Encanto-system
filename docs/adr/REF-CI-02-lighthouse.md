@@ -1,11 +1,12 @@
 # REF-CI-02 — Lighthouse CI
 
-**Status:** 🟡 Pushed e rodando em CI (commit `ba723ed`, promovido a `origin/main` em 2026-08-23 junto
-com `c7102b5` da REF-PERF-02, que ajusta o mesmo `lighthouserc.cjs` — thresholds/`numberOfRuns` são
-território dela, não desta REF). Job `lighthouse` **passou** no 1º run remoto
-(`actions/runs/32640266072`, job `97196171956`, todos os 8 steps verdes) — mas o artifact do relatório
-NÃO foi gerado (`.lighthouseci/` vazio). Correção aplicada (ver §Validação no CI remoto), aguardando o
-PRÓXIMO push para confirmar. **Não fechar até essa confirmação.**
+**Status:** 🟡 Em CI, job verde, artifact ainda pendente — bloqueada por falta de visibilidade, não por
+código quebrado. `ba723ed` (esta REF) + `c7102b5` (REF-PERF-02, mesmo `lighthouserc.cjs`) foram para
+`origin/main` em 2026-08-23; job `lighthouse` passou nos 2 runs confirmados até agora
+(`32640266072` e, após a correção em `f978859`, `32642552214`), mas `.lighthouseci/` segue vazio nos
+dois — o artifact `lighthouse-report` nunca aparece. Causa raiz não identificada (sem acesso a
+logs/artifacts sem token — ver §Validação no CI remoto). **Não fechar até o dono decidir como
+prosseguir.** Achado à parte, não desta REF: o job `E2E (Playwright)` está falhando nos 2 runs.
 **Depende de:** REF-CI-01 (pipeline existente, 4 jobs paralelos), REF-E2E-01 (projeto Supabase
 dedicado a testes e seus secrets, já cadastrados no repositório para o job `e2e`).
 **Escopo:** só o job de Lighthouse. A 2ª metade do item original do roadmap (levar `test:db-guards`
@@ -126,6 +127,19 @@ collect` já persiste os relatórios brutos em `.lighthouseci/` por padrão, sem
 — reduz a superfície de configuração pro caminho mais testado da própria ferramenta, no lugar de uma
 customização que eu não consigo validar localmente nesta máquina. Preserva 100% do trabalho da
 REF-PERF-02 (`numberOfRuns`, `assert`, `settings` intocados).
+
+**Correção NÃO resolveu — confirmado no 2º run** (commit `f978859`, run `32642552214`, job
+`97201812696`): job `lighthouse` passou de novo (8/8 steps verdes), mas `.lighthouseci/` continua
+vazio — nenhum artifact `lighthouse-report` na lista de artifacts do run (só `playwright-report`, do
+job `e2e`). A causa raiz segue não confirmada. Tentativa de obter evidência direta: nem os logs brutos
+do job (`GET .../actions/jobs/{id}/logs` → `403`, exige admin mesmo em repo público) nem o download de
+artifacts existentes (`GET .../actions/artifacts/{id}/zip` → `401`) são acessíveis sem token de
+autenticação — API pública do GitHub só expõe metadados (status, lista de steps/artifacts), não
+conteúdo. **Sem visibilidade real do que acontece dentro do job, decidi não seguir corrigindo às
+cegas** — próximo passo depende do dono: repassar o conteúdo do log (acesso via painel web, que ele
+tem) ou decidir se aceita fechar a REF mesmo com essa lacuna (o job não fica vermelho e o `assert` de
+performance da REF-PERF-02 continua funcionando — só o relatório HTML/JSON navegável fica indisponível
+para download).
 
 ## Limitações conhecidas
 
