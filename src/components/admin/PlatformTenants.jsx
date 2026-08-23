@@ -45,29 +45,54 @@ function statusOperacional(loja) {
   return { texto: 'Operacional', ...CORES_STATUS.ativo };
 }
 
-/* Fase 18 (+ REF-STORE-ONBOARD-01 Onda 2 · Opção C): separa o endereço PADRAO da VALION (automatico
-   por slug, sem SQL manual -- ver get_store_by_domain) do domínio PERSONALIZADO do cliente (opcional).
-   Dois padrões automáticos coexistem, nunca escolhidos por adivinhação: LEGADO
-   (`{slug}.valionsistemas.com.br`, congelado -- só Encanto usa) e NOVO
-   (`{slug}.lojas.valionsistemas.com.br`, o que `provision_store()` grava desde a Onda 2 · Opção C em
-   qualquer loja provisionada a partir de então). Confirmado quando `dominio` bate com QUALQUER um dos
-   dois -- é o que prova que o hostname resolve de verdade. */
-function statusEndereco(loja) {
+/* Fase 18 (+ REF-STORE-ONBOARD-01 Onda 2/3): separa o endereço PADRAO da VALION (automatico por slug)
+   do domínio PERSONALIZADO do cliente (opcional). Dois padrões automáticos coexistem, nunca escolhidos
+   por adivinhação: LEGADO (`{slug}.valionsistemas.com.br`, congelado -- só Encanto usa) e NOVO
+   (`{slug}.lojas.valionsistemas.com.br`, o que `provision_store()` grava desde a Onda 2 em qualquer loja
+   provisionada a partir de então).
+
+   REF-STORE-ONBOARD-01 · Onda 3 (P2, correção de achado da auditoria): esta função SÓ calcula os hosts
+   esperados a partir da string gravada em `dominio` -- ela NUNCA prova que o hostname resolve de
+   verdade. A versão anterior (`padraoConfirmado`) comparava só string e mostrava "✓" pra QUALQUER loja
+   nova, mesmo com zero CNAME criado no Registro.br (falso-positivo real, achado na auditoria de
+   2026-08-22). A prova real agora vem de `VerificacaoDominio` abaixo, que faz uma checagem HTTPS ao
+   vivo -- não uma comparação de string. */
+function hostsEsperados(loja) {
   const padraoLegadoStorefront = `${loja.slug}.valionsistemas.com.br`;
   const padraoLegadoAdmin = `admin.${loja.slug}.valionsistemas.com.br`;
   const padraoNovoStorefront = `${loja.slug}.lojas.valionsistemas.com.br`;
   const padraoNovoAdmin = `${loja.slug}.admin.lojas.valionsistemas.com.br`;
 
   if (loja.dominio === padraoLegadoStorefront) {
-    return { padraoConfirmado: true, storefrontUrl: padraoLegadoStorefront, adminUrl: padraoLegadoAdmin, personalizado: null };
+    return { storefrontUrl: padraoLegadoStorefront, adminUrl: padraoLegadoAdmin, personalizado: null };
   }
   if (loja.dominio === padraoNovoStorefront) {
-    return { padraoConfirmado: true, storefrontUrl: padraoNovoStorefront, adminUrl: padraoNovoAdmin, personalizado: null };
+    return { storefrontUrl: padraoNovoStorefront, adminUrl: padraoNovoAdmin, personalizado: null };
   }
   if (loja.dominio) {
-    return { padraoConfirmado: false, storefrontUrl: padraoNovoStorefront, adminUrl: padraoNovoAdmin, personalizado: loja.dominio };
+    return { storefrontUrl: padraoNovoStorefront, adminUrl: padraoNovoAdmin, personalizado: loja.dominio };
   }
-  return { padraoConfirmado: false, storefrontUrl: padraoNovoStorefront, adminUrl: padraoNovoAdmin, personalizado: null };
+  return { storefrontUrl: padraoNovoStorefront, adminUrl: padraoNovoAdmin, personalizado: null };
+}
+
+/* REF-STORE-ONBOARD-01 · Onda 3 (P2): prova REAL de que um host responde por HTTPS -- não string.
+   mode:'no-cors' devolve sempre uma resposta opaca (não dá pra ler status/corpo), mas o browser só
+   resolve essa promise depois de completar DNS+TCP+TLS+HTTP de verdade -- se qualquer uma dessas etapas
+   falhar (o caso comum: CNAME ainda não criado no Registro.br), a promise REJEITA. É sinal real, mesmo
+   sem conseguir ler a resposta. */
+async function hostResponde(host) {
+  try {
+    await fetch(`https://${host}/`, { method: 'GET', mode: 'no-cors', cache: 'no-store', signal: AbortSignal.timeout(6000) });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function RotuloVerificacao({ estado }) {
+  if (estado === 'checando') return <span style={{ color: 'var(--gray-400)' }}>⏳ verificando…</span>;
+  if (estado === 'ok') return <span style={{ color: '#16A34A', fontWeight: 600 }}>✅ respondendo</span>;
+  return <span style={{ color: '#DC2626', fontWeight: 600 }}>❌ não responde ainda (configure o CNAME no Registro.br)</span>;
 }
 
 function LinhaAdmin({ admin, storeId, onDesvinculado }) {
@@ -95,12 +120,35 @@ function LinhaAdmin({ admin, storeId, onDesvinculado }) {
   );
 }
 
-function DetalheTenant({ loja, onFechar, onMudou, onAbrirAdmin }) {
+function DetalheTenant({ loja, todasAsLojas, onFechar, onMudou, onAbrirAdmin }) {
   const [detalhe, setDetalhe] = useState(null);
   const [erro, setErro] = useState(null);
   const [emailNovo, setEmailNovo] = useState('');
   const [vinculando, setVinculando] = useState(false);
   const [msg, setMsg] = useState(null);
+
+  // REF-STORE-ONBOARD-01 · Onda 3 (P3): edição de domínio pelo Console.
+  const [dominioEdit, setDominioEdit] = useState(loja.dominio || '');
+  const [salvandoDominio, setSalvandoDominio] = useState(false);
+  const [msgDominio, setMsgDominio] = useState(null);
+  useEffect(() => { setDominioEdit(loja.dominio || ''); }, [loja.dominio]);
+
+  // REF-STORE-ONBOARD-01 · Onda 3 (P2): checagem HTTPS ao vivo dos 2 hosts padrão desta loja.
+  const hosts = hostsEsperados(loja);
+  const [verif, setVerif] = useState({ storefront: 'checando', admin: 'checando' });
+  useEffect(() => {
+    let vivo = true;
+    setVerif({ storefront: 'checando', admin: 'checando' });
+    hostResponde(hosts.storefrontUrl).then((ok) => { if (vivo) setVerif((v) => ({ ...v, storefront: ok ? 'ok' : 'falha' })); });
+    hostResponde(hosts.adminUrl).then((ok) => { if (vivo) setVerif((v) => ({ ...v, admin: ok ? 'ok' : 'falha' })); });
+    return () => { vivo = false; };
+  }, [hosts.storefrontUrl, hosts.adminUrl]);
+
+  // REF-STORE-ONBOARD-01 · Onda 3 (P1): clonagem de catálogo, só oferecida quando esta loja está vazia
+  // (mesma guarda de platform_clone_catalog -- checa aqui tb pra não deixar o usuário tentar à toa).
+  const [origemClone, setOrigemClone] = useState('');
+  const [clonando, setClonando] = useState(false);
+  const [msgClone, setMsgClone] = useState(null);
 
   const carregar = useCallback(() => {
     DS.platformTenantDetail(loja.store_id).then(setDetalhe).catch((e) => setErro(e?.message));
@@ -109,6 +157,37 @@ function DetalheTenant({ loja, onFechar, onMudou, onAbrirAdmin }) {
   useEffect(() => { carregar(); }, [carregar]);
 
   const recarregarTudo = () => { carregar(); onMudou?.(); };
+
+  const salvarDominio = async () => {
+    if (salvandoDominio) return;
+    setSalvandoDominio(true); setMsgDominio(null);
+    try {
+      await DS.platformSetStoreDominio(loja.store_id, dominioEdit.trim());
+      setMsgDominio({ tipo: 'ok', texto: 'Domínio atualizado.' });
+      recarregarTudo();
+    } catch (e) {
+      setMsgDominio({ tipo: 'erro', texto: e?.message || 'Não foi possível atualizar o domínio.' });
+    } finally {
+      setSalvandoDominio(false);
+    }
+  };
+
+  const clonarCatalogo = async () => {
+    if (!origemClone || clonando) return;
+    const nomeOrigem = todasAsLojas?.find((l) => l.store_id === origemClone)?.nome || 'loja selecionada';
+    if (!window.confirm(`Clonar o catálogo de "${nomeOrigem}" para "${loja.nome}"? Os produtos entram desativados até você revisar.`)) return;
+    setClonando(true); setMsgClone(null);
+    try {
+      const r = await DS.platformCloneCatalog(origemClone, loja.store_id);
+      setMsgClone({ tipo: 'ok', texto: `${r.categorias} categoria(s), ${r.produtos} produto(s) e ${r.adicionais} adicional(is) clonados -- desativados até você revisar e ativar cada um no Admin da loja.` });
+      setOrigemClone('');
+      recarregarTudo();
+    } catch (e) {
+      setMsgClone({ tipo: 'erro', texto: e?.message || 'Não foi possível clonar o catálogo.' });
+    } finally {
+      setClonando(false);
+    }
+  };
 
   /* REF-STORE-ONBOARD-01 · Onda 2: DS.inviteStoreAdmin substitui DS.linkStoreAdmin aqui -- a Edge
      Function faz a MESMA chamada link_store_admin primeiro (comportamento de hoje intacto quando o
@@ -143,7 +222,8 @@ function DetalheTenant({ loja, onFechar, onMudou, onAbrirAdmin }) {
   if (!detalhe) return <p style={{ fontSize: 13, color: 'var(--gray-400)' }}>Carregando detalhe…</p>;
 
   const info = detalhe.company_info || {};
-  const endereco = statusEndereco(loja);
+  const catalogoVazio = detalhe.counts.produtos === 0 && detalhe.counts.categorias === 0;
+  const opcoesOrigemClone = (todasAsLojas || []).filter((l) => l.store_id !== loja.store_id);
 
   return (
     <div style={{ borderTop: '1px solid var(--gray-200)', marginTop: 12, paddingTop: 16 }} data-testid={`plataforma-detalhe-${loja.slug}`}>
@@ -166,12 +246,49 @@ function DetalheTenant({ loja, onFechar, onMudou, onAbrirAdmin }) {
 
           <h4 style={{ fontSize: 13, fontWeight: 700, margin: '16px 0 8px' }}>🌐 Domínios</h4>
           <p style={{ fontSize: 12.5, color: 'var(--gray-600)', lineHeight: 1.9 }}>
-            Storefront padrão VALION: {endereco.storefrontUrl}{' '}
-            {endereco.padraoConfirmado ? '✓' : '⚠ pendente (depende do domínio curinga da plataforma)'}<br/>
-            Admin padrão VALION: {endereco.adminUrl}{' '}
-            {endereco.padraoConfirmado ? '✓' : '⚠ pendente'}<br/>
-            Domínio personalizado: {endereco.personalizado ? `✓ ${endereco.personalizado}` : '⚪ não utilizado'}
+            Storefront padrão VALION: {hosts.storefrontUrl} <RotuloVerificacao estado={verif.storefront} /><br/>
+            Admin padrão VALION: {hosts.adminUrl} <RotuloVerificacao estado={verif.admin} /><br/>
+            Domínio personalizado: {hosts.personalizado ? `✓ ${hosts.personalizado}` : '⚪ não utilizado'}
           </p>
+          <p style={{ fontSize: 11, color: 'var(--gray-400)', marginBottom: 8 }}>
+            "Respondendo" é um teste HTTPS real feito agora pelo seu navegador -- não uma suposição a partir do texto gravado.
+          </p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input className="form-input" placeholder="dominio-proprio.com.br (vazio = usar o padrão automático)"
+              value={dominioEdit} data-testid={`plataforma-dominio-input-${loja.slug}`}
+              onChange={(e) => { setDominioEdit(e.target.value); setMsgDominio(null); }}
+              onKeyDown={(e) => e.key === 'Enter' && salvarDominio()} style={{ flex: 1 }} />
+            <button className="btn-secondary" onClick={salvarDominio} disabled={salvandoDominio || dominioEdit.trim() === (loja.dominio || '')}
+              data-testid={`plataforma-dominio-salvar-${loja.slug}`}>
+              {salvandoDominio ? 'Salvando…' : 'Salvar domínio'}
+            </button>
+          </div>
+          {msgDominio && <p style={{ fontSize: 12.5, marginTop: 6, fontWeight: 600, color: msgDominio.tipo === 'ok' ? '#16A34A' : '#DC2626' }}>{msgDominio.texto}</p>}
+
+          <h4 style={{ fontSize: 13, fontWeight: 700, margin: '16px 0 8px' }}>📦 Catálogo</h4>
+          {catalogoVazio ? (
+            <>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <select className="form-input" value={origemClone} data-testid={`plataforma-clone-origem-${loja.slug}`}
+                  onChange={(e) => { setOrigemClone(e.target.value); setMsgClone(null); }} style={{ flex: 1 }}>
+                  <option value="">Clonar catálogo de…</option>
+                  {opcoesOrigemClone.map((l) => <option key={l.store_id} value={l.store_id}>{l.nome}</option>)}
+                </select>
+                <button className="btn-secondary" onClick={clonarCatalogo} disabled={!origemClone || clonando}
+                  data-testid={`plataforma-clone-btn-${loja.slug}`}>
+                  {clonando ? 'Clonando…' : '📦 Clonar'}
+                </button>
+              </div>
+              <p style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 4 }}>
+                Copia categorias/produtos/adicionais como ponto de partida -- produtos entram desativados até você revisar. Nunca copia pedidos, clientes, endereços ou dados de acesso.
+              </p>
+            </>
+          ) : (
+            <p style={{ fontSize: 12.5, color: 'var(--gray-500)' }}>
+              Esta loja já tem catálogo próprio ({detalhe.counts.categorias} categoria(s), {detalhe.counts.produtos} produto(s)) -- clonagem só é oferecida para catálogo vazio.
+            </p>
+          )}
+          {msgClone && <p style={{ fontSize: 12.5, marginTop: 6, fontWeight: 600, color: msgClone.tipo === 'ok' ? '#16A34A' : '#DC2626' }}>{msgClone.texto}</p>}
         </div>
 
         <div>
@@ -211,7 +328,7 @@ function DetalheTenant({ loja, onFechar, onMudou, onAbrirAdmin }) {
   );
 }
 
-function LinhaLoja({ loja, aberta, onAlternarDetalhe, onMudou, onAbrirAdmin }) {
+function LinhaLoja({ loja, todasAsLojas, aberta, onAlternarDetalhe, onMudou, onAbrirAdmin }) {
   const status = statusOperacional(loja);
   return (
     <div style={{ border: '1px solid var(--gray-200)', borderRadius: 10, padding: 14, marginBottom: 12 }} data-testid={`plataforma-linha-${loja.slug}`}>
@@ -239,7 +356,7 @@ function LinhaLoja({ loja, aberta, onAlternarDetalhe, onMudou, onAbrirAdmin }) {
           🔧 Abrir Admin
         </button>
       </div>
-      {aberta && <DetalheTenant loja={loja} onFechar={() => onAlternarDetalhe(loja.store_id)} onMudou={onMudou} onAbrirAdmin={onAbrirAdmin} />}
+      {aberta && <DetalheTenant loja={loja} todasAsLojas={todasAsLojas} onFechar={() => onAlternarDetalhe(loja.store_id)} onMudou={onMudou} onAbrirAdmin={onAbrirAdmin} />}
     </div>
   );
 }
@@ -310,6 +427,7 @@ export function PlatformTenants({ onAbrirAdmin }) {
           <LinhaLoja
             key={loja.store_id}
             loja={loja}
+            todasAsLojas={tenants}
             aberta={detalheAberto === loja.store_id}
             onAlternarDetalhe={(id) => setDetalheAberto((atual) => (atual === id ? null : id))}
             onMudou={carregar}
