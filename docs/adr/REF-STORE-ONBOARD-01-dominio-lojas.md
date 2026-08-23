@@ -1,6 +1,6 @@
 # ADR REF-STORE-ONBOARD-01 (Onda 2) — Padrão de domínio para lojas novas
 
-- **Status:** 🟡 **Wildcard (Opção C) ABANDONADO (bloqueio real do Registro.br, ver §5) — modelo ATIVO agora é domínio explícito por loja via CNAME, sem wildcard.** Código implementado, domínios adicionados na Vercel, DNS ativa assim que o dono criar os 2 CNAMEs (§9).
+- **Status:** 🟢 **Onda 2 = VERDE/FECHADA e Onda 3 = VERDE/FECHADA (2026-08-23, ver §12).** Wildcard (Opção C) ABANDONADO (bloqueio real do Registro.br, ver §5) — modelo ATIVO é domínio explícito por loja via CNAME, sem wildcard. Aquarios Bar validada de ponta a ponta em produção real.
 - **Escopo:** hostname de storefront/admin/convite da Aquarios Bar (segunda loja real da plataforma). Não altera o padrão da Encanto (congelado, ver §3). Arquitetura de domínio dedicado + wildcard pra onboarding zero-touch fica para avaliação futura separada — fora do escopo desta rodada.
 - **Data:** 2026-08-20, corrigido 2026-08-21 (topologia Vercel, §4), pivotado 2026-08-21 (wildcard abandonado, §5).
 - **Loja de referência**: renomeada em 2026-08-21 — identidade comercial correta é **Aquarios Bar** (slug `aquariosbar`), não "Bar da Sogra". Mesmo `store_id` (`776a01c8-f836-417a-a957-a0e1109f90a2`) o tempo todo. Auditoria do rename em `scripts/store-onboard-01-rename-aquariosbar.mjs`.
@@ -101,6 +101,29 @@ Auditoria prévia (read-only) identificou 4 pendências candidatas (P1-P4) a par
 
 **Testes**: `scripts/store-onboard-01-onda3-test.mjs`, 35/35 (grants das 2 RPCs, todos os caminhos de erro — não-super-admin/origem=destino/destino não-vazio/loja inexistente/domínio inválido/domínio duplicado —, clonagem real com verificação completa de integridade referencial incluindo uma categoria `tipo='collection'`, zero mutação líquida). Regressão: `onda1-config-status` 11/11, `onda2-dominio-lojas` 21/21, `saas01-onda8` 36/36, `saas02-onda1` 25/25 — idênticos à baseline, zero drift. Build admin+storefront ok.
 
-**Commits**: `ebdba14` (migration + `DataService.js`), `71d6a0e` (`PlatformTenants.jsx` + teste). Push não pedido nesta rodada.
+**Commits**: `ebdba14` (migration + `DataService.js`), `71d6a0e` (`PlatformTenants.jsx` + teste), `cead802` (esta doc). Push confirmado em `origin/main` 2026-08-23 (ver §12).
 
 **Pendências registradas, fora do escopo desta Onda**: P4 (PWA manifest por tenant — depende de REF-MOBILE-01/REF-SAAS-02); P5 (fallback hardcoded de horário/entrega sem aviso ao cliente final — depende de REF-BUSINESS-HOURS-0x/REF-DELIVERY-01).
+
+## 12. Fechamento formal (2026-08-23) — REF-STORE-ONBOARD-01 · Onda 3 = 🟢 VERDE / FECHADA
+
+**Push**: `origin/main` confirmado em `c7102b5..cead802` (fast-forward, só os 3 commits desta Onda — `ebdba14`, `71d6a0e`, `cead802`). Nenhum commit de outra REF/sessão foi incluído (confirmado via `git rev-list --left-right --count origin/main...main` = `0 3` antes do push).
+
+**Deploy**: confirmado com conteúdo real, não só status HTTP — o bundle Admin ao vivo (`admin.encanto.valionsistemas.com.br`) contém `platform_set_store_dominio`, `platform_clone_catalog` e a checagem `no-cors` da correção do P2.
+
+**CI do commit `cead802`**:
+| Check | Resultado |
+|---|---|
+| Build | ✅ success |
+| Lint + typecheck | ✅ success |
+| Lighthouse CI | ✅ success |
+| Testes de domínio | ✅ success |
+| E2E (Playwright · Chromium) | ⚠️ **CANCELLED** (não FAILED) por `concurrency: cancel-in-progress: true` — outro commit de outra sessão (`f978859`) iniciou 3s após o cancelamento |
+
+**Sobre o E2E — fato comprovado**: E2E possui falhas pré-existentes reproduzidas em commits consecutivos de REFs diferentes e não relacionadas às alterações da Onda 3. Evidência: os mesmos 5 testes (`admin-empresa-identidade-visual`, `admin-relatorios`, `platform-console` ×2, `checkout-logado`) já falhavam no E2E do commit imediatamente anterior (`c7102b5`, REF-PERF-02), executado e concluído mais de 30 minutos antes desta Onda sequer começar, e voltaram a falhar de forma idêntica no commit seguinte (`f978859`, REF-CI-02 — mudança só em config de Lighthouse CI). Nenhum dos testes afetados exercita `PlatformTenants.jsx`, `platform_set_store_dominio` ou `platform_clone_catalog` de forma que explique as falhas observadas (mensagens de erro são sobre contagens/valores de pedidos pré-existentes, não sobre domínio ou catálogo).
+
+**Sobre a causa raiz — hipótese técnica, não fechada**: o padrão dos sintomas (valores/contagens de pedidos maiores que o esperado, "Nenhum pedido" não aparecendo quando deveria) é consistente com contaminação de dados num banco de E2E compartilhado entre execuções concorrentes. Esta é uma hipótese forte, **não uma causa raiz definitivamente encerrada** — só a REF responsável pela infraestrutura de E2E (REF-E2E-01/E2E-03) pode confirmar. Não investigada mais a fundo nesta rodada, por instrução explícita do dono. Registrada como **dependência externa/pré-existente**, não como pendência desta REF.
+
+**Critério de fechamento (todos comprovados)**: P2 corrigido · P3 implementado · P1 implementado · RPCs validadas (35/35) · multi-tenancy preservada (`store_id`/`slug`/`dominio`/RLS/`get_store_by_domain()`/`resolve_store_from_origin()` intactos) · regressões funcionais verdes (93/93 nas 4 suites relacionadas) · builds verdes (admin+storefront) · Lighthouse CI verde · deploy confirmado por conteúdo real · Encanto e Aquarios Bar preservadas (nenhuma chamada real contra elas) · nenhum dado real alterado · nenhuma regressão atribuível à Onda 3.
+
+**REF-STORE-ONBOARD-01 — Onda 3 = 🟢 VERDE / FECHADA.**
