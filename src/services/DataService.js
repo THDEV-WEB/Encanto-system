@@ -337,6 +337,24 @@ export const DS = {
     }), { throwOnError: true });
     return r.data;
   },
+  /* REF-STORE-ONBOARD-01 · Onda 3 (P3): edita o dominio de uma loja pelo Platform Console -- antes so'
+     dava pra fazer via SQL manual. p_dominio vazio/null limpa o dominio personalizado (loja volta a
+     resolver so pelo padrao automatico {slug}.lojas.valionsistemas.com.br). */
+  async platformSetStoreDominio(storeId, dominio) {
+    const r = await this.run(d=>d.rpc('platform_set_store_dominio', {
+      p_store_id: storeId, p_dominio: dominio || null,
+    }), { throwOnError: true });
+    return r.data;
+  },
+  /* REF-STORE-ONBOARD-01 · Onda 3 (P1): clona categories/products/adicionais/product_collections de uma
+     loja de origem pra uma loja de destino com catalogo VAZIO (semeadura, nunca merge). Produtos nascem
+     com disponivel=false -- o dono revisa/ativa cada um antes de aparecer pro cliente final. */
+  async platformCloneCatalog(sourceStoreId, targetStoreId) {
+    const r = await this.run(d=>d.rpc('platform_clone_catalog', {
+      p_source_store_id: sourceStoreId, p_target_store_id: targetStoreId,
+    }), { throwOnError: true });
+    return r.data;
+  },
   /* REF-STORE-ONBOARD-01 · Onda 1: {tem_horario_config, tem_delivery_config} da loja ATIVA do Admin
      (buildStoreRpcParam) -- alimenta o banner "usando padrao" em AdminBusinessHours/AdminTaxaEntrega. */
   async getStoreConfigStatus() {
