@@ -41,7 +41,7 @@ Decisões de produto/arquitetura registradas como design, ainda **não implement
 | HARDEN-LEGACY | Remoção de legado (`DROP image_url`, `DROP destaque`) após estabilização — **extraído do NORM-06** | Reservado (fase própria) | — |
 | [REF-ADDRESS-02](REF-ADDRESS-02-arquitetura-profissional.md) | Arquitetura profissional do módulo de endereços: cadeia de fallback de geocoding, modelo estruturado persistido (reaproveita tabela `addresses` dormente + `orders.endereco_id`, achado já existente e não documentado), fuzzy search via `pg_trgm`, UX de número/complemento/referência uniforme, erros granulares, `create_order` ligado ao endereço estruturado. Diagnóstico ao vivo (Nominatim + Photon) achou a causa real dos 2 exemplos citados no pedido original: "João Schlay" era erro de grafia (rua real = "João Schlei", achada só pela busca fuzzy do Photon — solução grátis); "Rua Amazonas 533" tem o número descartado/confundido com CEP de outra cidade em 2 motores diferentes — confirma que número precisa ser campo próprio, nunca texto livre | ✅ **CONCLUÍDA (2026-07-27) — Ondas 1 a 6 implementadas/validadas (schema, repository+validator, waterfall Mapbox→Nominatim→Photon→gazetteer local, UX número/complemento/referência + erros granulares, `create_order` ligado ao endereço estruturado com 8/8 testes reais contra o banco). Encerramento formal aprovado pelo dono — ver §21. Integração real do Mapbox com a API PENDENTE (sem token neste ambiente — §17.0/§21.4); Onda 7 (`DeliveryAreaService`) reservada, sem implementação** | — |
 
-**Runbooks de execução:** [NORM-06 · F1A — Execution Plan](NORM-06-F1A-execution-plan.md) (estrutura; 11 etapas) · [NORM-06 · F1B — Execution Plan](NORM-06-F1B-execution-plan.md) (invariantes STI I1–I4; revisão adversarial, D-I4-ADIC, ledger de evidências, achado de colisão do F2). Procedimentos institucionais: pré-condições → etapas em ordem imutável → abort em qualquer falha; não alteram arquitetura.
+**Runbooks de execução:** [NORM-06 · F1A — Execution Plan](NORM-06-F1A-execution-plan.md) (estrutura; 11 etapas) · [NORM-06 · F1B — Execution Plan](NORM-06-F1B-execution-plan.md) (invariantes STI I1–I4; revisão adversarial, D-I4-ADIC, ledger de evidências, achado de colisão do F2) · [MERGE-F1 — ledger de integração à `main`](MERGE-F1-execution-plan.md) (merge `f25e7cb`, 2026-06-30, nova baseline oficial) · [REF-APP-01 · Onda 2 — Plano de Impacto](REF-APP-01-onda-2-plan.md) (`DataService.js`, EXECUTADA) · [REF-APP-01 · Onda 5 — Baseline do Checkout](REF-APP-01-onda-5-baseline.md) (congelamento pré-execução, subfase 5.0.5). Procedimentos institucionais: pré-condições → etapas em ordem imutável → abort em qualquer falha; não alteram arquitetura.
 
 **Erratas:** [NORM-06 · F1A — Errata-01 (slug)](NORM-06-F1A-errata-01-slug.md) — correção da expressão SQL de slug (bugfix de implementação descoberto na execução; **não** altera arquitetura/escopo/decisões; ADR permanece congelado). · [HARDEN-ORDERS-RLS — Errata-01 (re-baseline test:rls CK1)](HARDEN-ORDERS-RLS-errata-01.md) — inverte a asserção CK1 da NORM-06.1 (anon `INSERT customers` direto agora **negado 42501** pelo D-GRANTS; checkout migra para `test:orders-rls` AC1); **não** altera produção/arquitetura; restaura `test:rls` **PASS=15** (descoberta no baseline pré-merge do bloco F1).
 
@@ -192,6 +192,34 @@ total 38 produtos, 54,5MB→3,0MB (−95%), 0 falhas; validação ampla pós-cut
 confirmou 0 imagem quebrada. Lighthouse mobile final: **Performance 37→68/100**, LCP 5,9s→4,3s, TBT
 910ms→160ms, **payload total 23,6MB→1,6MB (−93%)**. `test:render`/`test:deps`/`test:domain`/`build`
 verdes em toda a execução — ver [progress](../ref/REF-PERF-01-progress.md).
+
+## Demais ADRs (Admin, testes E2E, CI/CD, marca, autenticação, WhatsApp, onboarding)
+
+ADRs de fases intermediárias, não listadas nas seções acima. Tabela adicionada para o índice refletir
+o conjunto real de documentos em `docs/adr/`; ver cada arquivo para o relatório completo da fase.
+
+| ADR | Tema | Status |
+|---|---|---|
+| [REF-ADMIN-ADDONS-02](REF-ADMIN-ADDONS-02-grupos-por-produto.md) | Grupos de adicionais configuráveis por produto no Admin | Implementada |
+| [REF-ORDER-01](REF-ORDER-01-fluxo-pedidos-profissional.md) | Fluxo profissional de pedidos: comanda, histórico, notificações, métricas | Implementado (frontend LIVE; envio WhatsApp preparado, pendente de credenciais Meta à época) |
+| [REF-ADMIN-01](REF-ADMIN-01-robustez-painel.md) | Robustez do Painel Administrativo (3 ondas) | Implementada e verificada |
+| [REF-ADMIN-02](REF-ADMIN-02-refinamentos-painel.md) | Refinamentos do Painel Administrativo | Implementada e verificada |
+| [REF-ADMIN-03](REF-ADMIN-03-robustez-escala.md) | Robustez, escalabilidade e preparação para SaaS do Admin | Implementada e verificada |
+| [REF-ADMIN-04 — análise](REF-ADMIN-04-analise-arquiteturas-acesso.md) | Análise comparativa de arquiteturas de acesso ao Admin (insumo do ADR irmão) | Análise técnica — nada implementado neste documento |
+| [REF-ADMIN-04](REF-ADMIN-04-redesenho-acesso-painel.md) | Redesenho do acesso ao Painel: subdomínio `admin.*` próprio | Aprovado — Ondas 0-5 concluídas e em produção |
+| [REF-E2E-01](REF-E2E-01-auditoria-playwright.md) | Auditoria e fundação da camada de testes E2E (Playwright) | Auditoria aprovada — Ondas 1-4 aplicadas |
+| [REF-E2E-02](REF-E2E-02-auditoria-cliente-autenticado.md) | Cobertura E2E do cliente autenticado | Auditoria aprovada — Ondas 1-4 aplicadas |
+| [REF-E2E-03](REF-E2E-03-auditoria-admin.md) | Cobertura E2E do Painel Administrativo | Fechada |
+| [REF-CI-01](REF-CI-01-pipeline.md) | Pipeline de Continuous Integration (GitHub Actions) | Implementada e verificada |
+| [REF-CI-02](REF-CI-02-lighthouse.md) | Lighthouse CI no pipeline | Fechada |
+| [REF-BRAND-01](REF-BRAND-01-dominio-institucional.md) | Domínio institucional Valion Sistemas + Encanto em `/encanto` | Implementada no código |
+| [REF-BRAND-02](REF-BRAND-02-assinatura-institucional.md) | Assinatura institucional da Valion Sistemas no rodapé | Implementada |
+| [REF-AUTH-03](REF-AUTH-03-smtp-profissional-resend.md) | SMTP profissional (Resend) para o Supabase Auth | Implementada |
+| [REF-WHATSAPP-01](REF-WHATSAPP-01-coexistence-arquitetura.md) | Coexistência de App oficial + bot + Cloud API no mesmo número de WhatsApp | Pesquisa e decisão concluídas; implementação adiada (depende de registro como Tech Provider da Meta) |
+| [REF-CHECKOUT-02](REF-CHECKOUT-02-confirmacao-automatica-whatsapp.md) | Confirmação automática via WhatsApp no checkout (fim da escolha manual) | Implementado |
+| [REF-CHECKOUT-03](REF-CHECKOUT-03-comanda-whatsapp-layout-comercial.md) | Layout comercial da mensagem de confirmação (WhatsApp) | Implementado |
+| [REF-DELIVERY-FEE-03](REF-DELIVERY-FEE-03-modelo-distancia-viaria.md) | Modelo de distância viária e política de tarifação (comparação de provedores) | Superado — provedor recomendado aqui foi trocado; decisão real no ledger de progresso |
+| [REF-STORE-ONBOARD-01](REF-STORE-ONBOARD-01-dominio-lojas.md) | Padrão de domínio para lojas novas (onboarding multi-loja) | Ondas 2 e 3 concluídas |
 
 ## Plataforma multi-tenant (REF-SAAS-01 — nova trilha, VALION SISTEMAS)
 
