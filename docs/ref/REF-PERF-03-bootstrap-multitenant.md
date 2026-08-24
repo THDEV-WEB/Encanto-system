@@ -226,5 +226,50 @@ nem do código alterado. A medição comparativa de Lighthouse fica para o CI re
   relacionada**: reproduzida de forma idêntica no baseline (código stashed, sem nenhuma mudança desta
   REF), via `git stash`. Fora do escopo desta REF, não corrigida aqui.
 - Contagem de requests de catálogo: medida diretamente (ver tabela acima), 7→4 confirmado.
-- Lighthouse: pendente de confirmação no CI real (ver commit/push desta REF) — bug de ambiente local
-  impediu medição múltipla nesta máquina, documentado acima.
+- Lighthouse: confirmado no CI real (commit `f8c2416`, run `32771180052`, 2 execuções completas —
+  attempt 1 e um re-run via API do mesmo commit, 3 sub-runs cada = **6 pontos de dado**). Ver seção
+  abaixo — resultado é honesto, não totalmente positivo.
+
+## Lighthouse no CI real — 2 execuções, 6 sub-runs (resultado completo, sem seleção)
+
+| Execução | Sub-run | Performance | CLS | LCP | Ordem/contagem de requests de catálogo |
+|---|---|---|---|---|---|
+| 1 (attempt 1) | 1 | 0.67 | 0,004 | 3101ms | `get_store_by_domain` → categories/products/adicionais, 1x cada |
+| 1 (attempt 1) | 2 | 0.86 | 0,003 | 3955ms | idem |
+| 1 (attempt 1) | 3 | 0.69 | **0,479** | 3498ms | idem |
+| 2 (re-run) | 1 | 0.60 | **0,527** | 3650ms | idem |
+| 2 (re-run) | 2 | 0.65 | **0,526** | 3826ms | idem |
+| 2 (re-run) | 3 | 0.87 | 0,051 | 3821ms | idem |
+
+**O que ficou confirmado (o que esta REF se propôs a corrigir):**
+- Em **nenhum** dos 6 sub-runs houve request de catálogo sem `store_id` — o wave sem filtro foi
+  eliminado de fato, confirmado nos dados reais de rede do próprio CI, não só localmente.
+- Em **nenhum** dos 6 sub-runs houve fetch duplicado de categoria/produto/adicional — sempre 1x cada,
+  sempre depois do `get_store_by_domain` resolver, exatamente a ordem tenant → catálogo pretendida.
+- Os 2 jobs (`e2e` e `lighthouse`) do CI passaram nas 2 execuções (5/5 jobs verdes cada vez).
+
+**O que NÃO ficou resolvido — leitura honesta, não superestimada:**
+- O CLS continua com variância forte: 3 dos 6 sub-runs ficaram acima de 0,47 (pior que o limite
+  "bom" de 0,1 do próprio Lighthouse), praticamente no mesmo patamar do pior caso já documentado antes
+  desta REF (0,477–0,556). A mediana/"representative run" escolhida pelo LHCI em cada execução (0,86 e
+  0,87) ficou acima do threshold de performance (0,80), então o job continuou verde — mas isso é a
+  MESMA razão pela qual o badge já tinha voltado a verde antes desta REF começar (variância favorável
+  no agregado de 3, não ausência do problema).
+- O timing das requests de catálogo NÃO explica a variância: nos 2 sub-runs de CLS mais alto da
+  execução 2, o `get_store_by_domain` resolveu tão rápido quanto no sub-run de CLS mais baixo (155ms e
+  157ms respectivamente) — ou seja, a causa do salto de layout não está no mecanismo que esta REF
+  mexeu. É consistente com o Achado 1 (já documentado antes desta REF, explicitamente fora do escopo
+  aprovado): o `layout-shifts` audit do Lighthouse (atribuição de causa raiz) errou de forma
+  consistente nos 6 sub-runs (`Cannot read properties of undefined (reading 'frame_sequence')` — bug
+  conhecido do trace engine desta versão do Lighthouse, não algo desta REF), então não foi possível
+  confirmar o elemento exato responsável nesta rodada.
+
+**Conclusão honesta**: esta REF eliminou de forma verificável (dado real de rede, não suposição) a
+causa arquitetural que se propôs a eliminar — o wave duplicado, a troca silenciosa sem `loading`, e a
+janela de exposição cross-tenant na falha. **Isso não é a mesma coisa que "resolver a intermitência do
+CLS"** — o CLS elevado persiste, em magnitude parecida à de antes, e por uma causa ainda não
+confirmada (provavelmente o Achado 1, timing de rede do único fetch restante, ou ruído do próprio
+runner do GitHub Actions — nenhuma das duas hipóteses foi tocada ou deveria ter sido tocada pelo
+escopo autorizado aqui). Fica registrado como pendência para uma REF futura de performance
+(sugestão: REF-PERF-04), assim como a Lighthouse/CLS original ficou registrada ao final da
+REF-CI-HARDENING-01.
