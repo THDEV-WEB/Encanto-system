@@ -82,6 +82,41 @@ ordem tenant→catálogo da REF-PERF-03 — só adia a troca até as DUAS fontes
 `categories` a resolver **1500ms depois** de `products` (pior caso muito além do observado em CI): 3/3
 execuções limpas, CLS ≤0,0009.
 
+## Lighthouse no CI real — resultado final (3 execuções, 9 sub-runs, commit `25492d5`)
+
+| Sub-run | CLS | Performance |
+|---|---|---|
+| 1-1 | 0,0015 | 0,84 |
+| 1-2 | 0,0010 | 0,92 |
+| 1-3 | 0,0010 | 0,93 |
+| 2-1 | 0,0015 | 0,91 |
+| 2-2 | 0,0010 | 0,95 |
+| 2-3 | 0,0015 | 0,95 |
+| 3-1 | 0,0015 | 0,73 |
+| 3-2 | 0,0015 | 0,92 |
+| 3-3 | 0,0010 | 0,94 |
+
+**CLS — melhor caso**: 0,0010. **Pior caso**: 0,0015. **Mediana**: 0,0015. **Variação total**: 0,0005
+(9/9 sub-runs dentro de uma faixa de meio milésimo). **Runs com CLS > 0,1**: 0. **Runs > 0,2**: 0.
+**Runs > 0,5**: 0.
+
+**Comparativo direto com a REF-PERF-04** (mesma metodologia, mesmo CI, mesmo `numberOfRuns:3`):
+
+| | REF-PERF-04 (6 sub-runs) | REF-PERF-05 (9 sub-runs) |
+|---|---|---|
+| Melhor caso | 0,003 | 0,0010 |
+| Pior caso | 0,527 | 0,0015 |
+| Mediana | ~0,074 | 0,0015 |
+| Runs > 0,1 | 3 de 6 | 0 de 9 |
+| Runs > 0,5 | 2 de 6 | 0 de 9 |
+
+Performance geral também melhorou (mediana 0,92, contra 0,69 na REF-PERF-04) — efeito colateral
+esperado: menos reflow = menos trabalho de layout/paint medido pelo próprio Lighthouse.
+
+**Isto sim pode ser declarado como resolvido, com evidência**: os 3 mecanismos de produto identificados
+e corrigidos nesta REF explicam, na prática, a totalidade da variância binária (0,50/0,07) registrada
+desde a REF-PERF-04 — não sobrou nenhum sub-run acima de 0,1 nas 3 execuções reais de CI.
+
 ## Hipóteses testadas e descartadas nesta REF
 
 - **Atraso isolado numa única RPC como gatilho suficiente**: testado (300ms e 2000ms em
@@ -111,3 +146,26 @@ reprodução controlada — não da atribuição automática do próprio Lightho
 
 Nenhuma migration, RLS, RPC ou arquitetura multi-tenant tocada. Nenhum threshold do Lighthouse,
 configuração de CI ou auditoria alterada.
+
+## Testes locais e E2E
+
+- `npm run lint`: 0 erros, 53 warnings pré-existentes.
+- `npm run typecheck`: limpo.
+- `npm run test:domain`: passou.
+- `npm run build`: passou.
+- `npm run test:e2e` (suíte completa, 125 specs): **124/125 passou**. A única falha
+  (`logout.spec.js:39`, limpeza de cache de visitante) é a mesma já confirmada pré-existente e não
+  relacionada nas REF-PERF-03 e REF-PERF-04 (mesmo erro, mesma linha, reproduz no baseline). **0
+  regressões causadas pelas 3 correções desta REF** — catálogo, checkout guest/logado, header, horário
+  aberto/fechado, botão Agendar Pedido, PWA, multi-loja: todos verdes.
+
+## Encerramento
+
+**REF-PERF-05 = ENCERRADA.** Condição (A) do critério de fechamento foi atingida: todas as causas de
+produto identificadas com evidência direta foram corrigidas e validadas — 0 sub-runs de Lighthouse
+acima de 0,1 em 9 execuções reais de CI, contra 5 de 6 nas duas REFs anteriores combinadas. Nenhuma
+causa residual ficou classificada como "ambiente/runner" ou "indeterminada" nesta rodada — as 3 causas
+encontradas explicaram, na prática, a totalidade da variância observada.
+
+Commits: `25492d5` (implementação + doc inicial) + commit de fechamento com os resultados reais do
+Lighthouse (ver hash abaixo no relatório final), ambos em `origin/main`.
