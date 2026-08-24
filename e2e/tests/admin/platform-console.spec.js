@@ -99,10 +99,14 @@ test.describe('Platform Console / provisionamento (Admin)', { tag: '@writes' }, 
     await platformConsole.abrirDetalhe(SLUG);
     await platformConsole.vincularAdmin(SLUG, ADMIN_B_FIXTURE.email);
     await expect(page.getByText(`${ADMIN_B_FIXTURE.email} agora é admin desta loja.`)).toBeVisible();
-    // O badge "aguardando administrador" some da lista assim que o vinculo e feito. Emoji no texto de
+    // O badge "aguardando administrador" some da LINHA DESTA LOJA assim que o vinculo e feito -- escopado
+    // a linhaLoja(SLUG), nunca a pagina inteira: o projeto E2E tem 2 fixtures permanentes e deliberadas
+    // sem admin (scripts/e2e-tenant-fixture-stores.mjs -- "Bar da Sogra"/"Loja Inativa", usadas pelos
+    // testes de tenant da REF-AUTH-TENANT-01), entao a pagina sempre mostra esse badge em algum lugar;
+    // uma busca global (page.getByText) sempre contaria essas 2, nunca chegando a 0. Emoji no texto de
     // busca de proposito: getByText e case-insensitive por padrao, e a mensagem de sucesso da criacao
     // ("Aguardando administrador — vincule...") colidiria com uma busca so pela frase, sem o emoji.
-    await expect(page.getByText('⚠️ aguardando administrador')).toHaveCount(0);
+    await expect(platformConsole.linhaLoja(SLUG).getByText('⚠️ aguardando administrador')).toHaveCount(0);
     await expect(platformConsole.statusLoja(SLUG)).toContainText('Operacional');
 
     // Pessoa A (Super Admin) continua vendo TODAS as lojas permitidas na lista do Platform Console --
