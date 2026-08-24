@@ -20,3 +20,6 @@ playwright/.cache
 
 .vercel
 .env*
+
+# Supabase CLI — cache/metadados locais (gerado por `supabase link`)
+supabase/.temp
