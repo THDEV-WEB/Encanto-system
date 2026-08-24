@@ -273,3 +273,23 @@ runner do GitHub Actions — nenhuma das duas hipóteses foi tocada ou deveria t
 escopo autorizado aqui). Fica registrado como pendência para uma REF futura de performance
 (sugestão: REF-PERF-04), assim como a Lighthouse/CLS original ficou registrada ao final da
 REF-CI-HARDENING-01.
+
+## Encerramento formal
+
+**REF-PERF-03 = ENCERRADA.** Escopo autorizado (bootstrap tenant → catálogo) cumprido e verificado
+com evidência real de rede, não suposição. **CLS residual = PENDÊNCIA SEPARADA**, não corrigida aqui
+por não ser a mesma causa — ver REF-PERF-04.
+
+Resolvido nesta REF: tenant resolvido antes do 1º fetch de catálogo · fetch sem `store_id` eliminado ·
+fetch duplicado eliminado · requests de catálogo 7→4 · zero fetch sem filtro/duplicação confirmado nos
+6 sub-runs de CI · ordem tenant → catálogo respeitada em 100% dos runs · fallback de falha/timeout cai
+em MOCK local, nunca em catálogo real sem filtro · exposição cross-tenant da falha fechada · RLS,
+migrations e RPCs não tocadas · arquitetura multi-tenant preservada.
+
+Fora do escopo, não corrigido aqui: CLS elevado intermitente (3 dos 6 sub-runs), causa ainda não
+confirmada — ver REF-PERF-04.
+
+Commits: `f8c2416` (implementação + doc inicial), `2222740` (doc com números reais do CI). Ambos em
+`origin/main` (`git log origin/main -1` confirma `2222740` como HEAD remoto). `git status` limpo em
+relação a esta REF — restam só os itens pré-existentes de outra sessão
+(`src/constants/privacyPolicy.js` modificado, `scripts/loadtest-e2e.mjs` untracked), intocados.
