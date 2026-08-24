@@ -62,13 +62,19 @@ test.describe('checkout — confirmação automática via WhatsApp (REF-CHECKOUT
     const texto = decodeURIComponent(new URL(url).searchParams.get('text') || '');
 
     // Conteúdo obrigatório (REF-CHECKOUT-03): cabeçalho comercial, nº do pedido (5 dígitos, sem
-    // hash/UUID), cliente/telefone, itens, obs, total, "Cobrar do cliente" (quem lê é a loja) —
-    // mesma estrutura da comanda do Admin (buildComanda/comandaTexto contexto:'cliente').
+    // hash/UUID), cliente/telefone, itens, total, "Cobrar do cliente" (quem lê é a loja) — mesma
+    // estrutura da comanda do Admin (buildComanda/comandaTexto contexto:'cliente').
+    // REF-LGPD-01 R09 (minimização de PII, comandaTexto.js): a mensagem automática do WhatsApp NUNCA
+    // inclui a observação geral livre do pedido nem o endereço completo — só ficam disponíveis para a
+    // loja via Admin (comandaTextoInterna/comandaHtml.js). A observação abaixo é preenchida de propósito
+    // ('Sem cebola por favor') para provar, por comportamento, que ela é capturada no checkout mas NUNCA
+    // vaza para a mensagem que trafega em texto claro na URL do wa.me.
     expect(texto.startsWith('*RETIRADA*')).toBe(true);
     expect(texto).toMatch(/\*Pedido \d{5}\*/);
     expect(texto).toContain(nome);
     expect(texto).toContain(telefone);
-    expect(texto).toContain('Sem cebola por favor');
+    expect(texto).not.toContain('Sem cebola por favor');
+    expect(texto).not.toContain('OBSERVAÇÕES');
     expect(texto).toContain('Subtotal');
     expect(texto).toContain('TOTAL');
     expect(texto).toContain('*Cobrar do cliente*');

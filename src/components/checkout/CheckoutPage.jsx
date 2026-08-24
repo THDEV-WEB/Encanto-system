@@ -150,10 +150,10 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
     /* Montagem do pedido no order-domain (Onda 5.2 · Trilha B): buildOrderArgs concentra a
        lógica pura que antes vivia inline aqui (precoUnitario por item, product_id uuid/null,
        contratos null). Σ(price*quantity) reconcilia com orders.total. */
-    const { customer, order, items } = buildOrderArgs(cart, form, enderecoEntrega, requestIdRef.current, enderecoId, resumo);
+    const { customer: customerPedido, order, items } = buildOrderArgs(cart, form, enderecoEntrega, requestIdRef.current, enderecoId, resumo);
     /* GATE (fonte única de verdade): a persistência bem-sucedida é o evento que autoriza TODAS as ações
        seguintes. savePedido devolve o order_id em sucesso, ou null em falha (validação/rollback/timeout). */
-    const orderId = await DS.savePedido(customer, order, items, requestIdRef.current);
+    const orderId = await DS.savePedido(customerPedido, order, items, requestIdRef.current);
     if (!orderId) {
       /* Falha de persistência: interrompe o fluxo. NÃO conta fidelidade, NÃO limpa carrinho,
          NÃO executa onSuccess, NÃO mostra sucesso. Preserva requestId (retry reusa a MESMA
@@ -179,7 +179,7 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
        mostrar rua/numero/complemento/bairro/referencia sem re-derivar de string livre.
        REF-GOLIVE-01: deliveryEta (prop, vem de StoreApp -> useDeliveryEta, mesma fonte da DeliveryBar/
        SuccessPage) elimina o "35 a 45 min" fixo que a mensagem de confirmacao tinha antes. */
-    const msg = buildOrderConfirmationMessage(customer, order, items, orderId, {
+    const msg = buildOrderConfirmationMessage(customerPedido, order, items, orderId, {
       companyInfo, troco: form.troco, enderecoEstruturado: retirada ? null : endereco,
       deliveryEtaMin: deliveryEta,
     });
