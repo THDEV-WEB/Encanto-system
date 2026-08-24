@@ -1,11 +1,12 @@
 # REF-CI-02 — Lighthouse CI
 
-**Status:** ✅ Causa raiz confirmada e corrigida (2026-08-23) — `.lighthouseci/` é um diretório OCULTO
-(nome começa com ponto) e `actions/upload-artifact@v4` ignora arquivos ocultos por padrão
-(`include-hidden-files: false`). Os relatórios sempre foram gerados corretamente pelo `lhci` — só
-nunca eram vistos pelo upload. Corrigido com `include-hidden-files: true` no step. Aguardando
-confirmação no próximo run antes de fechar formalmente. Achado à parte, não desta REF: o job
-`E2E (Playwright)` segue falhando em todos os runs observados — não investigado aqui.
+**Status:** 🟢 FECHADA (2026-08-23) — commit `2c09e49`, run `32659497692`. Job `lighthouse`: ✅ success;
+artifact `lighthouse-report` presente (1,48MB, os 13 arquivos do relatório). Causa raiz do artifact
+ausente era `.lighthouseci/` ser um diretório OCULTO (nome começa com ponto) que
+`actions/upload-artifact@v4` ignora por padrão (`include-hidden-files: false`) — corrigido com
+`include-hidden-files: true`. Todos os jobs desta REF verdes (lint, build, domain-tests, lighthouse).
+**Achado à parte, fora do escopo desta REF, não corrigido aqui**: o job `E2E (Playwright)` falha em
+todos os runs observados desde antes desta REF existir — registrado para investigação separada.
 **Depende de:** REF-CI-01 (pipeline existente, 4 jobs paralelos), REF-E2E-01 (projeto Supabase
 dedicado a testes e seus secrets, já cadastrados no repositório para o job `e2e`).
 **Escopo:** só o job de Lighthouse. A 2ª metade do item original do roadmap (levar `test:db-guards`
