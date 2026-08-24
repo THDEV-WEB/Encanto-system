@@ -1,6 +1,7 @@
 # Encanto — Plataforma de gestão e operação para alimentação
 
 [![CI](https://github.com/THDEV-WEB/Encanto-system/actions/workflows/ci.yml/badge.svg)](https://github.com/THDEV-WEB/Encanto-system/actions/workflows/ci.yml)
+![JavaScript](https://img.shields.io/badge/JavaScript-ES2022-F7DF1E?logo=javascript&logoColor=black)
 ![React](https://img.shields.io/badge/React-18.2-61DAFB?logo=react&logoColor=white)
 ![Vite](https://img.shields.io/badge/Vite-5.4-646CFF?logo=vite&logoColor=white)
 ![Supabase](https://img.shields.io/badge/Supabase-Postgres-3ECF8E?logo=supabase&logoColor=white)
