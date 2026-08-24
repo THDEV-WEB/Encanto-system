@@ -34,8 +34,9 @@ provisionamento de novas lojas sobre a mesma infraestrutura.
 
 - **Storefront** — catálogo por categorias, busca com tolerância a acentuação, carrinho,
   cálculo de taxa de entrega por distância viária e horário de funcionamento dinâmico por loja.
-- **Checkout e pedidos** — endereço estruturado com autocomplete, confirmação automática
-  via WhatsApp e acompanhamento de status do pedido.
+- **Checkout e pedidos** — endereço estruturado com autocomplete, envio automático do
+  resumo do pedido via WhatsApp do próprio cliente ao finalizar a compra, e
+  acompanhamento de status do pedido na área do cliente.
 - **Conta do cliente** — histórico de pedidos, recompra e programa de fidelidade.
 - **Painel administrativo** — gestão de catálogo, pedidos, comanda térmica e relatórios
   (faturamento, produtos mais vendidos, formas de pagamento, entrega x retirada).
@@ -47,46 +48,50 @@ provisionamento de novas lojas sobre a mesma infraestrutura.
 ## Arquitetura
 
 Cliente e administrador consomem bundles React separados, ambos falando com o mesmo
-projeto Supabase. Autenticação, isolamento por loja (RLS) e regras de negócio sensíveis
-ficam centralizadas no banco, acessadas via RPCs — o client não manipula tabelas
-diretamente. Notificações e rotinas de manutenção rodam de forma assíncrona no próprio
-Postgres (`pg_cron` + `Vault`), sem depender de um worker externo.
+projeto Supabase. Autenticação e isolamento por loja (Row Level Security) protegem o
+acesso aos dados; operações de negócio sensíveis — como criação de pedido, ajustes de
+fidelidade e exclusão de dados por LGPD — são centralizadas em RPCs no Postgres.
+Expurgo de dados e o processamento de uma fila de notificações via WhatsApp rodam de
+forma assíncrona no próprio banco (`pg_cron` + `Vault`), sem depender de um worker
+externo.
 
 ```mermaid
 flowchart TB
     Customer["Cliente"] --> Storefront["Storefront React"]
     Manager["Administrador"] --> AdminApp["Admin React"]
 
-    Storefront --> Auth
-    AdminApp --> Auth
-    Storefront --> RPCs
-    AdminApp --> RPCs
+    Storefront --> Supabase
+    AdminApp --> Supabase
 
-    subgraph Supabase["Supabase"]
+    subgraph Supabase["Backend — Supabase"]
         Auth["Auth + JWT com tenant_id"]
-        DB[("Postgres + RLS por tenant")]
+        DB[("PostgreSQL + RLS por tenant")]
         RPCs["RPCs de negócio"]
         EdgeFunctions["Edge Functions"]
         Jobs["pg_cron + Vault"]
+
+        Auth --> DB
+        RPCs --> DB
+        Jobs --> EdgeFunctions
     end
 
-    Auth --> DB
-    RPCs --> DB
-    Jobs --> EdgeFunctions
     EdgeFunctions --> WhatsApp["WhatsApp Cloud API"]
 
-    subgraph Pipeline["GitHub Actions"]
+    Repo["Push na main"]
+
+    subgraph CI["GitHub Actions"]
         direction LR
         Lint["Lint + Typecheck"] --> Build["Build"] --> Tests["Testes de domínio + E2E"] --> Perf["Lighthouse"]
     end
 
-    Repo["Push na main"] --> Pipeline
+    Repo --> CI
     Repo --> Deploy["Deploy automático via Vercel"]
 ```
 
-O CI valida código e roda contra ambiente de teste isolado — não acessa o Postgres de
-produção. Testes que dependem de um projeto Supabase real (RLS, schema) rodam à parte,
-fora do pipeline automático.
+GitHub Actions e Vercel são dois caminhos independentes disparados pelo mesmo push na
+`main` — o CI não aciona o deploy, e nenhum dos dois acessa o Postgres de produção: o
+CI roda contra um projeto Supabase dedicado a testes. Testes que dependem de um projeto
+Supabase real (RLS, schema) rodam à parte, fora do pipeline automático.
 
 ## Stack
 
@@ -95,7 +100,7 @@ fora do pipeline automático.
 | Frontend | React 18, Vite 5, service worker via `vite-plugin-pwa` |
 | Mobile | Capacitor 8, projeto Android nativo com plugin customizado de impressora térmica |
 | Backend | Supabase — Postgres, Auth, Row Level Security, RPCs, Edge Functions (Deno) |
-| Automação | `pg_cron` + `Vault` (disparo de notificações, expurgo de dados) |
+| Automação | `pg_cron` + `Vault` (fila de notificações, expurgo de dados) |
 | Observabilidade | Sentry (erros e performance) |
 | Testes | Testes de domínio em Node puro, Playwright (E2E) |
 | CI/CD | GitHub Actions, Lighthouse CI |
@@ -108,8 +113,8 @@ fora do pipeline automático.
   do token no momento do login, sem depender de um valor enviado pelo client.
 - **Row Level Security por tenant** nas tabelas sensíveis (pedidos, clientes, endereços,
   configurações de loja), garantindo isolamento de dados entre lojas no próprio banco.
-- **RPCs para operações de negócio** (ex.: criação de pedido, resolução de loja por
-  domínio) em vez de acesso direto às tabelas pelo client.
+- **RPCs para operações de negócio sensíveis** (ex.: criação de pedido, resolução de
+  loja por domínio, ajustes de fidelidade, exclusão de dados por LGPD).
 - **Rate limiting em nível de banco** protegendo endpoints públicos usados por usuários
   não autenticados.
 - **CSP e security headers** configurados no deploy.
@@ -167,8 +172,9 @@ encanto-react/
 - **Autorização centralizada no banco** — regras de negócio sensíveis (criação de
   pedido, vínculo de administrador a uma loja) ficam em RPCs no Postgres, não
   espalhadas pelo frontend.
-- **Automação assíncrona no próprio Postgres** — notificações via WhatsApp e expurgo de
-  dados rodam por `pg_cron`, sem um worker ou fila externa.
+- **Automação assíncrona no próprio Postgres** — expurgo de dados e o disparo de uma
+  fila de notificações via WhatsApp Cloud API (usando `pg_net`) rodam por
+  `pg_cron`/`Vault`, sem depender de um worker externo.
 
 ## Execução local
 
@@ -200,6 +206,11 @@ VITE_MAPBOX_TOKEN=
   separadamente do pipeline automático, pois exigem conexão a um banco dedicado.
 - O aplicativo Android é distribuído via APK direto, sem publicação em loja de
   aplicativos.
+- A fila de notificações de status via WhatsApp Cloud API (`pg_cron` + `Vault`) está
+  implementada e validada em ambiente de teste; a ativação do número oficial da loja
+  depende de uma etapa de coexistência com o WhatsApp Business App já em uso nele,
+  ainda não concluída. A confirmação automática do pedido pelo próprio WhatsApp do
+  cliente, no checkout, é independente disso e já está em produção.
 
 ## Autoria
 
