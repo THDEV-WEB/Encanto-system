@@ -265,10 +265,20 @@ img{display:block;max-width:100%}
 @media(min-width:1024px){.header{background-position:center 35%}}
 
 /* Coluna logo + status: logo acima, status abaixo, tudo centralizado */
+/* REF-PERF-04: min-width/min-height reservam o MESMO espaço do .header-brand-logo (linhas abaixo) —
+   companyInfo.logoUrl começa null (useCompanyInfo.js) e a <img> só entra no DOM depois da 1ª
+   sincronização (~700ms numa chamada fria, StoreApp.jsx). Sem reserva, a coluna nasce com largura 0
+   (flex vazio) e salta pro tamanho do logo quando ele chega, empurrando a coluna central (nome/status)
+   — CLS real, achado da auditoria REF-PERF-04. Reservando aqui, a geometria do header é idêntica antes
+   e depois do logo chegar (com ou sem logo configurado — loja sem logoUrl mantém o mesmo espaço vazio,
+   sem colapsar). Mesmos breakpoints do .header-brand-logo abaixo, de propósito. */
 .header-brand-col{
   display:flex;align-items:center;justify-content:center;
   flex-shrink:0;
+  min-width:112px;min-height:112px;
 }
+@media(max-width:768px){.header-brand-col{min-width:92px;min-height:92px}}
+@media(max-width:480px){.header-brand-col{min-width:80px;min-height:80px}}
 /* Logo já tem sua classe, apenas garantir que caiba */
 .header-brand-logo{
   /* Etiqueta orgânica sem distorção — object-fit:contain preserva nitidez */

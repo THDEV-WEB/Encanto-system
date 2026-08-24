@@ -46,6 +46,15 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link rel="dns-prefetch" href="https://hvbcdxsagkjtfjwvnslo.supabase.co">
+<!-- REF-PERF-04: a stylesheet do Google Fonts (link normal, sem preload) e' render-blocking por
+     especificacao -- o navegador so' pinta QUALQUER coisa depois dela resolver. A latencia real desse
+     round-trip externo (medida entre sub-runs identicos do Lighthouse: 58ms a 386ms) empurrava junto
+     TODO o resto do boot (RPCs de horario/entrega/empresa/tenant, depois o catalogo), que so' comecam
+     depois do 1o paint. Preload+onload torna a folha assincrona: o 1o paint (com a fonte de fallback
+     do proprio font-family, ja com display=swap) deixa de esperar essa rede externa, e o boot do app
+     para de herdar a variancia dela. display=swap continua trocando pra Poppins assim que os .woff2
+     chegarem -- mesmos pesos (400-800), mesma familia, zero mudanca de identidade visual depois de
+     carregada. <noscript> preserva o comportamento antigo (bloqueante) se JS estiver desativado. -->
 <!-- REF-PERF-01: images.unsplash.com preconnect removido — so' e' referenciado no fallback MOCK
      (src/data/mockCatalog.js, usado quando o Supabase esta' offline); no caminho normal (produtos reais
      no Supabase Storage) essa conexao nunca era usada, so' gastava tempo de boot com DNS/TCP/TLS a toa. -->
@@ -59,7 +68,8 @@
      e' so' um preload que nunca casa com a URL real dele, sem efeito (nem positivo nem negativo). Ajustar
      isso pra ser dinamico por tenant e' escopo maior (mesma familia do gap do manifest PWA), nao feito aqui. -->
 <link rel="preload" as="image" href="https://hvbcdxsagkjtfjwvnslo.supabase.co/storage/v1/object/public/products/stores/8604324d-0529-443d-aa79-4337057bfa01/branding/banner_1786889477851_migrado.webp" fetchpriority="high"/>
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'"/>
+<noscript><link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet"/></noscript>
 </head>
 <body>
 <div id="root">
