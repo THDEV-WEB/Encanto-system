@@ -418,15 +418,25 @@ img{display:block;max-width:100%}
 /* REF-UI-HERO-03: pilha vertical no bloco de status — 1a linha = status + horario; 2a linha = o CTA
    "Agendar Pedido" logo abaixo (hierarquia + CTA junto do operacional). Nao aumenta o Hero: continua
    dentro do min-height do header (o botao so aparece com a loja fechada). */
+/* REF-PERF-05: min-height reserva a altura do estado "fechado" (pill + detalhe + botao Agendar Pedido),
+   medida com Playwright (getBoundingClientRect) forcando cada estado -- 52,1875px em telas largas
+   (>480px, tudo numa linha) e 65,375px em mobile (≤480px, "detalhe" quebra linha antes do botao, medido
+   em 390px de largura, mesma largura que o Lighthouse mobile usa). Sem isto, .header-logo mudava de
+   101,375px pra 57,1875px quando a loja resolvia como aberta (get_store_mode real da Encanto = OPEN
+   forcado, cronograma real so abre 10h-15h as segundas — RPC lenta o suficiente pra esse salto ser
+   capturado como CLS, achado confirmado por PerformanceObserver na auditoria REF-PERF-05). Reservar aqui
+   mantem app-content/delivery-bar/header-cart-btn estaveis com a loja aberta OU fechada, com OU sem o
+   botao — mesmo padrao ja usado em .header-brand-col na REF-PERF-04. */
 .status-actions{
   display:flex;flex-direction:column;align-items:flex-start;gap:5px;
   margin-top:2px;
+  min-height:53px;
 }
 .status-line{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
 /* REF-UI-HERO-03: telas estreitas — compacta o bloco (gap + botao) p/ o CTA "Agendar Pedido", que agora
    fica ABAIXO do horario (so com a loja fechada), NAO empurrar a altura do header alem do min-height. */
 @media(max-width:480px){
-  .status-actions{gap:3px}
+  .status-actions{gap:3px;min-height:66px}
   .btn-agendar{padding:3px 8px;font-size:9.5px}
 }
 .header-cart-btn{

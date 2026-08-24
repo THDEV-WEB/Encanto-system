@@ -130,8 +130,20 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
     return { erro: false, add: adicionar.length, pulados };
   };
 
-  const { cats, src:catSrc }                    = useCategories();
-  const { prods:rawProds, loading, src:prodSrc }= useProducts(null, '');   // REF-UI-SEARCH-01: catalogo SEMPRE completo — a busca virou dropdown de sugestoes (nao filtra mais a lista)
+  const { cats, loading:catLoading, src:catSrc } = useCategories();
+  const { prods:rawProds, loading:prodLoading, src:prodSrc }= useProducts(null, '');   // REF-UI-SEARCH-01: catalogo SEMPRE completo — a busca virou dropdown de sugestoes (nao filtra mais a lista)
+  /* REF-PERF-05 (achado da auditoria de CLS residual): useCategories/useProducts sao 2 fetches
+     INDEPENDENTES (REF-PERF-03 — cada hook espera a resolucao do tenant e busca por conta propria).
+     O gate de renderizacao usava so' `prodLoading` -- se `categories` demorasse mais que `products`
+     pra resolver (ordem de rede nao garantida, mesmo host/latencia parecida), existia uma janela real
+     em que `loading=false` mas `cats` ainda vazio: `cats.map(...)` produzia ZERO secoes (colapsando o
+     catalogo por completo), ate' `cats` chegar um instante depois e as secoes reaparecerem -- 2 saltos
+     de layout medidos via PerformanceObserver (confirmado: ate 0,36 de CLS sozinho, elemento afetado
+     era tudo que vem depois do catalogo, ex. o rodape ValionCredit, empurrado e puxado de volta em
+     ~300ms). `loading` combinado espera as DUAS fontes, sem criar fetch novo nem tocar a ordem
+     tenant->catalogo da REF-PERF-03 -- so' adia a troca skeleton->grade real ate' os dois dados
+     realmente existirem juntos. */
+  const loading = catLoading || prodLoading;
   const adicionais = useAdicionais();
 
   const catMap = useMemo(()=>{ const m={}; cats.forEach(c=>{m[c.id]=c;}); return m; },[cats]);
