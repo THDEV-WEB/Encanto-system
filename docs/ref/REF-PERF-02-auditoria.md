@@ -136,3 +136,70 @@ na maioria dos casos reais. Se o CI acusar o `EPERM` do `chrome-launcher` també
 (improvável, mas não custa checar no primeiro push), a correção é trocar `chromeFlags` pra incluir
 `--disable-dev-shm-usage` (mitigação comum em containers) — não tentar reproduzir/debugar isso no
 Windows local, é perda de tempo dado que já é um bug documentado do próprio `chrome-launcher`.
+
+## Addendum (2026-08-24) — regressão de CLS/performance encontrada na REF-CI-HARDENING-01
+
+🟡 **PENDÊNCIA — REF FUTURA DE PERFORMANCE** (sugestão de título: REF-PERF-03 — otimização do
+bootstrap multi-tenant / CLS). Não corrigida aqui — só diagnosticada e registrada.
+
+### Achado
+
+Job `Lighthouse CI` do pipeline ficou vermelho de forma sustentada entre 2026-08-17 e 2026-08-24
+(run `32740291005`, commit `a30eea3`): performance **0,65 / 0,66 / 0,69** (mediana 0,69) contra
+threshold `minScore 0,8`, com **CLS 0,477** nos 3 runs — bem acima da faixa "boa" (<0,1) que esta
+própria REF-PERF-02 tinha estabelecido (baseline final: CLS 0,108, performance mediana 92/100).
+
+### Causa observada
+
+Rede capturada pelo próprio relatório Lighthouse (`network-requests` audit) mostra o catálogo do
+storefront sendo buscado em **três ondas** no boot:
+
+1. `categories`/`products`/`adicionais` **sem** `store_id` (~416ms) — dispara em paralelo a
+   `get_store_by_domain`;
+2. a MESMA leva de queries sem `store_id`, duplicada (~529ms) — indício de um efeito/hook rodando
+   2x;
+3. só depois de `get_store_by_domain` resolver (~757-766ms), a leva final **com**
+   `store_id=eq.be2efc10-...` (~767-916ms) — o catálogo troca de conteúdo nesse ponto.
+
+Essa troca de conteúdo em pleno carregamento é consistente com o CLS medido. Confirmado via
+`docs/ARCHITECTURE.md`/`REF-SAAS-01-onda6-1` que o mecanismo é `StorefrontProvider` resolvendo a
+loja por domínio (`get_store_by_domain`) e atualizando o singleton de `storefrontStore.js`
+(`buildStorefrontRpcParam`/`buildStorefrontColumn`) de forma assíncrona, sem gate de renderização
+até a resolução terminar — decisão original documentada como deliberada (não bloquear o 1º render,
+ver `services/storefrontStore.js` cabeçalho) mas cujo efeito colateral em CLS não tinha sido medido
+até agora.
+
+**Achado adicional (revalidação em 2026-08-24, run `32765615876`, mesmo código, sem nenhuma
+alteração de storefront/tenant):** o problema é **intermitente**, não constante. Os 3 runs dessa
+execução saíram performance 0,58 / 0,89 / 0,91 (mediana 0,89, passou no threshold) com **CLS 0,052**
+nos 3 — ou seja, o mesmíssimo código, sem nenhuma mudança, produziu CLS bom desta vez. Isso indica
+uma condição de corrida sensível a timing (provavelmente latência do runner do GitHub Actions
+naquele instante), não uma regressão determinística a cada boot — o que explica por que o CI ora
+falha ora passa no job Lighthouse sem nenhum código relacionado ter mudado entre os dois runs.
+
+### Contexto arquitetural
+
+A regressão apareceu depois da evolução da resolução multi-tenant por domínio (REF-SAAS-01 Onda
+6.1, `get_store_by_domain`) — a auditoria original desta REF-PERF-02 (CLS 0,108) foi validada ANTES
+dessa mudança entrar no storefront. Relação observada, não afirmada como única causa: pode haver
+fator adicional de latência de rede/CI contribuindo para a variância.
+
+### Decisão arquitetural registrada
+
+- A regressão de CLS/performance **não será corrigida como parte da REF-CI-HARDENING-01**.
+- O problema será tratado posteriormente numa REF própria de performance/arquitetura.
+- **Não** será reduzido o threshold do Lighthouse, desabilitada a auditoria, nem introduzido
+  workaround só para recuperar o status verde do CI.
+- A futura correção deve preservar a resolução correta de tenant e eliminar/reduzir o carregamento
+  duplicado sem comprometer o isolamento multi-tenant. Alternativas de design a avaliar (nenhuma
+  escolhida agora): gate de renderização até `store_id` resolver; evitar o 1º fetch sem tenant;
+  reorganizar a sequência de bootstrap; outra estratégia equivalente.
+
+### Evidência
+
+- Run vermelho: `32740291005` (commit `a30eea3`, 2026-08-24T14:41), 3/3 CLS 0,477, mediana perf 0,69.
+- Run verde/intermitente: `32765615876` (commit `d5c5f3e`, 2026-08-24T19:00), 3/3 CLS 0,052, mediana
+  perf 0,89 — código de storefront/tenant idêntico entre os dois runs.
+- Baseline anterior (esta própria REF-PERF-02): CLS 0,108, mediana perf 92/100.
+- Componentes envolvidos, identificados com segurança: `src/providers/StorefrontProvider.jsx`,
+  `src/services/storefrontStore.js`, hooks de catálogo (`useCategories`/`useProducts`/`useAdicionais`).
