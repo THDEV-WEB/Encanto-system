@@ -42,7 +42,7 @@ A loja precisa de **contas opcionais** para o cliente, sem obstruir a compra. Do
 
 Aplicado em produção via conexão Postgres direta (mesma infra do `test:rls`), na ordem segura:
 1. ✅ `migrations/AUTH-01-step1-fundacao.sql` (aditivo): `customers.auth_user_id`, tabela `admins`, `is_admin()`, policies de leitura própria, RPC `link_customer_to_auth`.
-2. ✅ Admin registrado: `INSERT INTO public.admins(user_id) VALUES ('b9dc7626-af9c-4ab5-95f7-3207e6469129')` (as992203620@gmail.com — único usuário). `is_admin()`: admin=true, cliente=false.
+2. ✅ Admin registrado: `INSERT INTO public.admins(user_id) VALUES ('b9dc7626-af9c-4ab5-95f7-3207e6469129')` (`<email-real-admin-encanto>` — redigido, único usuário). `is_admin()`: admin=true, cliente=false.
 3. ✅ `migrations/AUTH-01-step2-harden-rls.sql` (escrita de catálogo → `is_admin()`). Verificação imediata + auto-rollback armado: admin escreve (rc=1), cliente não (rc=0).
 4. ✅ **`migrations/AUTH-01-step3-harden-orders-rls.sql`** — **achado na ativação:** as policies `Auth all {orders,customers,order_items}` (`FOR ALL TO authenticated USING(true)`) davam a qualquer autenticado (inclusive cliente logado) leitura/escrita de **todos** os pedidos/clientes — vazamento (um cliente não-admin via os 43 pedidos). Restringidas a `is_admin()`; cliente comum fica só com a leitura própria. Guest checkout intocado (`create_order` SECURITY DEFINER).
 5. ⏳ **Supabase → Auth → Providers → Phone (SMS): habilitar + conectar provedor** (Twilio/etc.) e permitir signup de cliente. **PENDENTE** — config externa + conta SMS (custo) = decisão de negócio. Sem isso o OTP não envia código (o resto do fluxo já está pronto).

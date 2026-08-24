@@ -22,7 +22,7 @@ REF-E2E-01 fecha essa lacuna com Playwright, **sem tocar** a suíte de domínio 
 2. **Zero `data-testid` no código hoje.** A única exceção é `data-prod={id}` no `ProductCard` (já usado pelos próprios golden tests de render). Boa parte dos elementos clicáveis do Admin são `<div onClick>` sem `role`/`aria-label` (ex.: abas do `AdminPanel`), e vários inputs (`CheckoutPage`, busca de endereço) não têm `<label htmlFor>` associado — só `placeholder`/`className`.
 3. **Duas instâncias Supabase, duas sessões isoladas.** `db` (Admin, `signInWithPassword`, e-mail/senha reais) e `dbCliente` (loja, Google OAuth + e-mail OTP, `storageKey: 'encanto-cliente-auth'`). Nunca se misturam — o que **ajuda** o E2E (dá pra manipular a sessão do cliente sem afetar o Admin e vice-versa).
 4. **Login do cliente depende de terceiros não determinísticos:** Google OAuth (tela de consentimento real do Google) e e-mail OTP (código de 6 dígitos enviado por e-mail de verdade). Nenhum dos dois é automatizável de forma determinística sem infraestrutura extra.
-5. **Login do Admin é `signInWithPassword` contra um usuário real** (`as992203620@gmail.com` hoje, pré-preenchido no formulário) — não há ambiente de teste do Admin hoje.
+5. **Login do Admin é `signInWithPassword` contra um usuário real** (`<email-real-admin-encanto>` — redigido — hoje, pré-preenchido no formulário) — não há ambiente de teste do Admin hoje.
 6. **Um único backend Supabase conhecido** (produção). Não há projeto/branch de staging documentado nesta base. Qualquer pedido/cliente criado por um teste de checkout é um **registro real** no mesmo banco que serve a loja.
 7. **Notificação WhatsApp real no `create_order`** (REF-ORDER-01b, pg_net/pg_cron + Edge Function). Um pedido de teste criado contra o ambiente de produção **dispara uma notificação real** a menos que os secrets/outbox estejam neutralizados nesse ambiente.
 8. **Horário de funcionamento controla o checkout** (`useBusinessHours` bloqueia "Finalizar Pedido" fora do expediente), mas existe um **override oficial via Supabase** (`set_store_mode` RPC, HB-03) — dá pra forçar `OPEN` deterministicamente num teste, em vez de depender do relógio real.
@@ -110,7 +110,7 @@ Toda edição desta tabela é JSX-only (atributo a mais), não muda markup rende
 
 ### Admin
 
-- Login real via `signInWithPassword`, mas contra uma **conta de teste dedicada** (recomendação — nunca a conta real `as992203620@gmail.com`), com credenciais em variável de ambiente (`E2E_ADMIN_EMAIL`/`E2E_ADMIN_PASSWORD`), nunca hardcoded no repo.
+- Login real via `signInWithPassword`, mas contra uma **conta de teste dedicada** (recomendação — nunca a conta real, `<email-real-admin-encanto>` — redigido), com credenciais em variável de ambiente (`E2E_ADMIN_EMAIL`/`E2E_ADMIN_PASSWORD`), nunca hardcoded no repo.
 
 ## Estratégia de isolamento dos testes
 
@@ -184,7 +184,7 @@ Esta é a peça que **depende de uma decisão do dono** (§Decisões pendentes) 
 
 1. **Ambiente de dados:** **Caminho A** — projeto Supabase **dedicado** para E2E, schema aplicado a partir dos `migrations/*.sql` já versionados no repo. Nenhum teste de escrita roda contra produção.
 2. **Login Google:** **escopo reduzido** — só o disparo (`signInWithOAuth`) é testado; o pós-OAuth (sessão restaurada) é coberto via `storageState` injetado, sem automatizar a tela real do Google.
-3. **Admin de teste:** **conta separada**, isolada de `as992203620@gmail.com`.
+3. **Admin de teste:** **conta separada**, isolada da conta real (`<email-real-admin-encanto>` — redigido).
 4. **`data-testid`:** mantidos **sempre** no bundle (produção inclusa) — sem condicional de build.
 
 ## Como o app vai apontar para o Supabase de E2E (mecanismo concreto)

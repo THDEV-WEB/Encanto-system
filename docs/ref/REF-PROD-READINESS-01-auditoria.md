@@ -71,6 +71,12 @@ si só, uma tomada de conta.
 lido em runtime pelo app). Ordem recomendada: 1 → 3 (se decidido) → 2 (só isolado, sem sessões
 concorrentes).
 
+**Atualização (2026-08-24): camada 1 aplicada.** As 12 ocorrências nos 8 arquivos foram mascaradas
+(placeholder `<email-real-...>` nos docs; `scripts/store-onboard-01-onda2-validacao-final.mjs`
+passou a ler `ADMIN_REAL_EMAIL` de `process.env.ADMIN_REAL_EMAIL_AQUARIOS` em vez de hardcoded).
+Camada 2 (histórico do git) e camada 3 (rotação de e-mail de login) continuam **não feitas**,
+por decisão explícita do dono — permanecem como risco residual aceito nesta rodada.
+
 ## A6 — senha do admin da Aquarios Bar (análise, 2026-08-24)
 
 **O que existe:** `scripts/store-onboard-01-onda2-validacao-final.mjs` executa de verdade o fluxo de

@@ -34,7 +34,7 @@ Investigação em ordem, cada camada verificada com evidência real (nunca supos
    F1B: "DELETE/TRUNCATE não podem CRIAR inconsistência de tipo, só removem linhas"). CHECK constraints
    validam domínio de valor (`grupo`/`tipo`), não bloqueiam exclusão.
 5. **Identidade do admin**: confirmado que `public.admins.user_id` corresponde exatamente ao usuário
-   `as992203620@gmail.com` (único admin cadastrado), o mesmo usado no teste de RLS acima — sem
+   `<email-real-admin-encanto>` (redigido; único admin cadastrado), o mesmo usado no teste de RLS acima — sem
    ambiguidade sobre "qual admin" foi testado.
 
 ### Causa raiz

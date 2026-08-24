@@ -3,7 +3,7 @@
 // com.br / aquariosbar.admin.lojas.valionsistemas.com.br), agora que DNS+HTTPS estão confirmados verdes.
 //
 // Cobre: convite real (Edge Function, idempotência) + primeiro acesso real (token real via Admin API,
-// já que não há acesso à caixa de e-mail baraquarios806@gmail.com para abrir manualmente) + login real +
+// já que não há acesso à caixa de e-mail real do admin da Aquarios Bar para abrir manualmente) + login real +
 // isolamento tenant (sessão real, RLS) + checkout guest real (Origin real) + endereço guest real +
 // tentativa de forjar cross-tenant (p_store_id) + limpeza dos dados criados só para este teste.
 //
@@ -41,7 +41,9 @@ const pgClient = new pg.Client({
 
 const AQUARIOS_BAR_ID = '776a01c8-f836-417a-a957-a0e1109f90a2';
 const ENCANTO_ID = '8604324d-0529-443d-aa79-4337057bfa01';
-const ADMIN_REAL_EMAIL = 'baraquarios806@gmail.com';
+// REF-PROD-READINESS-01 (A2, 2026-08-24): e-mail pessoal real -- nunca hardcoded, sempre por env var.
+const ADMIN_REAL_EMAIL = process.env.ADMIN_REAL_EMAIL_AQUARIOS;
+if (!ADMIN_REAL_EMAIL) { console.error('ERRO: defina ADMIN_REAL_EMAIL_AQUARIOS no ambiente.'); process.exit(2); }
 const ADMIN_REAL_UID = 'f4c21e4c-e7cf-4172-9a6d-cf6aab08705a';
 const STOREFRONT_ORIGIN = 'https://aquariosbar.lojas.valionsistemas.com.br';
 const ADMIN_CONVITE_REDIRECT = 'https://aquariosbar.admin.lojas.valionsistemas.com.br/convite.html';

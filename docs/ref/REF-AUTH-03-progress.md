@@ -61,7 +61,7 @@ exige **string**, não number —, `smtp_user=resend`, `smtp_pass=<API key Resen
 `smtp_max_frequency=60`). Confirmado por releitura completa: nenhum outro campo (`uri_allow_list`,
 `site_url`, templates, Google OAuth) foi afetado.
 
-Validado ao vivo, e-mail real (`thiagoluiz.fullstack@gmail.com`):
+Validado ao vivo, e-mail real (`<email-real-dono>` — redigido):
 - OTP: pedido → e-mail chegou na caixa principal (não spam), remetente correto → código verificado →
   sessão real criada (`access_token`/`refresh_token`, `amr:[{"method":"otp"}]`).
 - Recuperação de senha (`/auth/v1/recover`): disparo confirmado, e-mail chegou.

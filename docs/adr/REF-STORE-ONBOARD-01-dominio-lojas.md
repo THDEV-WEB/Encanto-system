@@ -79,7 +79,7 @@ Nenhum NS, nenhuma troca de nameservers, nenhum registro existente tocado.
 
 1. ~~Dono cria os 2 CNAMEs acima no Registro.br.~~ Feito 2026-08-22.
 2. ~~Validar resolução DNS, status Vercel, certificado emitido, HTTPS.~~ Confirmado 2026-08-22 (cert Let's Encrypt real, HTTPS funcionando nos 2 hosts).
-3. ~~Convite real NOVO para `baraquarios806@gmail.com`.~~ Feito 2026-08-22.
+3. ~~Convite real NOVO para o e-mail real do admin da Aquarios Bar (`<email-real-admin-aquariosbar>` — redigido).~~ Feito 2026-08-22.
 4. ~~Validar primeiro acesso, login, guest checkout, isolamento.~~ 25/26 real (`scripts/store-onboard-01-onda2-validacao-final.mjs`), Onda 2 declarada VERDE em 2026-08-22.
 5. Item 5 (revisar auto-preenchimento de `dominio` em `provision_store()`) — **resolvido na Onda 3, §11 abaixo** (não da forma originalmente cogitada: em vez de mudar o autofill, o Console agora prova o status real em vez de confiar na string).
 

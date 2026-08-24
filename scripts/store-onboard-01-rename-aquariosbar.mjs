@@ -107,7 +107,7 @@ async function main() {
   check('nenhuma loja criada/removida (so 1 linha alterada)', totalLojas.rows[0].n >= 2, `total=${totalLojas.rows[0].n}`);
 
   const admins = await client.query('SELECT user_id FROM public.admins WHERE store_id=$1', [STORE_ID]);
-  check('vinculo do admin real preservado (baraquarios806@gmail.com)', admins.rows.some(r => r.user_id === 'f4c21e4c-e7cf-4172-9a6d-cf6aab08705a'));
+  check('vinculo do admin real preservado (<email-real-admin-aquariosbar> -- redigido)', admins.rows.some(r => r.user_id === 'f4c21e4c-e7cf-4172-9a6d-cf6aab08705a'));
 
   console.log(`\n${'='.repeat(60)}\n RESULTADO: ${pass} passes, ${fail} failures\n${'='.repeat(60)}`);
   await client.end();
