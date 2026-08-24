@@ -125,4 +125,70 @@ próprio arquivo.
   - **Conclusão: 0 regressões causadas pelas 3 correções desta REF.**
 - Teste objetivo de geometria do header (item 5 do pedido): ver tabela do Mecanismo 2 acima — salto de
   80px eliminado, confirmado com Playwright isolado.
-- Lighthouse (múltiplas execuções, CI real): ver seção de resultado abaixo.
+
+## Lighthouse no CI real — resultado honesto (2 execuções, 6 sub-runs, commit `f154d9e`)
+
+| Sub-run | CLS | Performance |
+|---|---|---|
+| 1-1 | 0,5010 | 0,63 |
+| 1-2 | 0,5010 | 0,72 |
+| 1-3 | 0,0736 | 0,93 |
+| 2-1 | 0,0736 | 0,72 |
+| 2-2 | 0,0736 | 0,88 |
+| 2-3 | 0,0736 | 0,88 |
+
+**Mediana**: 0,0736. **Pior caso**: 0,5010. **Threshold de performance (≥0,80)**: satisfeito pelo
+"representative run" escolhido pelo LHCI em ambas execuções — os 2 jobs de CI ficaram verdes.
+
+### Achado — o CLS residual é BINÁRIO, não ruído contínuo
+
+Só existem **2 valores possíveis** nos 6 sub-runs: 0,5010 (2x) ou 0,0736 (4x) — nunca um valor
+intermediário. Isso não é ruído aleatório disperso, é um evento determinístico que ou acontece por
+inteiro ou não acontece.
+
+**A hipótese do Mecanismo 1 (latência da fonte) foi testada e refutada como explicação completa**:
+comparando `r1-2` (RUIM, CLS 0,5010) com `r1-3` (BOM, CLS 0,0736) — dois sub-runs com timing de rede
+**quase idêntico** (fonte terminando em 132ms vs 136ms, 1ª RPC começando em 142ms vs 140ms) — o
+resultado diverge mesmo assim. A variável que realmente separa os dois grupos, olhando a comparação
+completa: a **duração** (não o início) das 5 RPCs paralelas de boot (`get_store_mode`,
+`get_business_hours_schedule`, `get_delivery_eta`, `get_company_info`, `get_store_by_domain`) — no
+sub-run ruim elas levam ~290-340ms pra terminar; no bom, ~125-145ms (praticamente metade), mesmo
+começando quase no mesmo instante nos dois casos. Isso é latência real de rede externa (o projeto
+Supabase E2E é um serviço externo, sujeito a variação de internet a partir do runner do GitHub
+Actions) — nenhuma das 3 correções desta REF atua sobre o tempo de resposta dessas RPCs.
+
+**Elemento exato que reage a essa latência não foi confirmado**: o audit `layout-shifts` do Lighthouse
+(atribuição de causa) errou nos 6/6 sub-runs (mesmo bug do trace engine já registrado na REF-PERF-03).
+Candidato mais plausível, não confirmado: o botão condicional "📅 Agendar Pedido" (`StoreApp.jsx`,
+`{!storeOpen && <button>...}`), que depende do resultado de `get_store_mode`/
+`get_business_hours_schedule` — `useBusinessHours()` pinta um valor IMEDIATO do cache local (que pode
+estar vazio/default num navegador novo do Lighthouse) e só confirma o valor real quando essas RPCs
+resolvem; quanto mais lenta a RPC, maior a chance de o valor "chutado" já ter sido pintado e depois
+trocado, dentro da janela que o Lighthouse mede.
+
+### Classificação final (Fase 2, revisitada com os dados reais pós-fix)
+
+| | Antes (REF-PERF-03) | Depois (REF-PERF-04) |
+|---|---|---|
+| Sub-runs bons (CLS < 0,1) | 3 de 6 | 4 de 6 |
+| Sub-runs ruins (CLS > 0,4) | 3 de 6 | 2 de 6 |
+| Valor do pior caso | 0,479–0,527 (disperso) | 0,5010 (fixo, repetido) |
+| Valor do melhor caso | 0,003–0,004 | 0,0736 |
+
+- **A) Produto/código — corrigido e confirmado**: os 3 mecanismos identificados na Fase 1 (fonte
+  bloqueante, logo sem espaço reservado, skeleton subdimensionado) foram eliminados, cada um com
+  evidência própria (geometria do header estável, fonte não-bloqueante, skeleton mais representativo).
+  A FREQUÊNCIA de sub-runs ruins caiu (50%→33%) e o MELHOR caso ficou mais estável.
+- **B) Ambiente/runner — não corrigido, não corrigível em código**: a variância de latência das RPCs
+  de boot contra o projeto Supabase E2E (rede externa, fora do controle do código) continua produzindo
+  um resultado binário quando a latência ultrapassa algum limiar. Não é mascarável nem contornável sem
+  workaround (não implementado, conforme instruído).
+- **D) Indeterminado**: o elemento exato que reage a essa latência (suspeita: botão "Agendar Pedido")
+  não foi confirmado por atribuição direta — ferramenta (Lighthouse `layout-shifts`) quebrada nos
+  12/12 sub-runs medidos entre as duas REFs.
+
+**Não declaro o CLS como resolvido.** As 3 correções tiveram efeito real e mensurável (frequência de
+runs ruins caiu, pior caso ficou mais previsível), mas o pior caso em si não melhorou de magnitude
+(~0,50 antes e depois) porque a causa dominante do pior caso é, com boa evidência, latência de rede
+externa — não um dos 3 mecanismos corrigidos aqui. Fica registrado como pendência para uma REF futura
+(sugestão REF-PERF-05), com o botão "Agendar Pedido" como hipótese prioritária a confirmar.
