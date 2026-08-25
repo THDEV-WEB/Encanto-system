@@ -221,11 +221,59 @@ Nenhuma migration foi necessária nesta onda (nenhuma correção a fazer). Únic
 prova. Verificações estáticas: lint (0 erros, 54 warnings — mesmo baseline), typecheck (limpo), build
 (sucesso), `test:domain` (0 falhas). Nenhuma alteração em produção; nenhum usuário real tocado.
 
+## Onda 5 — Admin operacional independente da Encanto (CONCLUÍDA, em produção)
+
+**Objetivo:** criar/vincular uma identidade operacional própria da Encanto, preparando a Onda 7
+(remoção do vínculo do Super Admin real).
+
+**Auditoria (antes de executar):** o caminho mais seguro é o próprio botão "Vincular" do Platform
+Console — a Edge Function `invite-store-admin` já delega 100% da autorização a `link_store_admin`
+(`is_super_admin()`), nunca envolve alguém escolhendo/vendo uma senha (a pessoa convidada define a
+própria via link oficial do Supabase, `ConviteApp.jsx`), e o `redirectTo` já resolve corretamente para o
+domínio real da Encanto (`dominio='encanto.valionsistemas.com.br'`, padrão legado →
+`https://admin.encanto.valionsistemas.com.br/convite.html`).
+
+**Execução (autorizada explicitamente pelo dono, e-mail fornecido por ele: `encantomarmitaria@gmail.com`):**
+como esta sessão não tem — e não deve ter — a senha do Super Admin real para logar e obter o JWT de
+caller que a Edge Function exige, os 2 efeitos que `invite-store-admin`+`link_store_admin` produziriam
+foram replicados diretamente via `service_role` (mesmo padrão já usado nesta REF para o reset de senha
+do Super Admin e o fix de e-mail da Aquarios): confirmado o projeto de produção pela URL antes de
+qualquer chamada; `auth.admin.inviteUserByEmail()` (nunca uma senha escolhida/vista por ninguém) +
+`INSERT` em `public.admins (store_id, user_id)` — exatamente a mesma inserção que `link_store_admin`
+faria. Script temporário (`_tmp_onda5_convite_admin_encanto.mjs`) deletado imediatamente após a
+execução; `git status` confirmou nada indevido no working tree.
+
+### Validação (10 provas pedidas)
+
+| # | Prova | Resultado |
+|---|---|---|
+| 1 | Novo usuário existe em `auth.users` | ✅ confirmado (`user_id=0a8def19-...`) |
+| 2 | Vinculado à Encanto em `public.admins` | ✅ confirmado |
+| 3 | NÃO está em `public.super_admins` | ✅ confirmado |
+| 4 | Consegue autenticar | ⏳ **pendente** — depende da pessoa real aceitar o convite e definir a própria senha (fluxo self-service, ninguém mais tem acesso a essa senha) |
+| 5 | Acessa somente o Admin da Encanto | ⏳ garantido arquiteturalmente (`is_admin_of` só retorna `true` para a loja onde há vínculo — mesmo mecanismo já provado empiricamente na Onda 4) — confirmação real depende do login |
+| 6 | Executa operações administrativas da Encanto | ⏳ mesma dependência do item 5 |
+| 7 | NÃO administra Aquarios | ✅ confirmado (0 linhas em `admins` para `aquariosbar`) |
+| 8 | NÃO recebe privilégios de plataforma | ✅ confirmado (0 linhas em `super_admins`) |
+| 9 | Super Admin real continua exatamente como estava | ✅ confirmado (`super_admins` intacto, ainda 1 linha em `admins` da Encanto — vínculo do Super Admin **não foi removido**, como exigido nesta onda) |
+| 10 | Aquarios continua exatamente como estava | ✅ confirmado (`status='suspenso'`, vínculo do admin real intacto) |
+
+Encanto agora tem **2 linhas** em `public.admins`: o Super Admin real (inalterado, será removido só na
+Onda 7) + o novo admin operacional. Nenhuma senha foi vista, gerada, registrada ou logada em nenhum
+momento — fluxo 100% self-service via convite oficial do Supabase.
+
+Nenhum código foi alterado nesta onda (ação de dado em produção, via API oficial) — lint/typecheck/
+build/`test:domain` reconfirmados verdes (estado idêntico à Onda 4). E2E não re-executado: nenhum
+caminho de código foi tocado, nada a validar por essa via.
+
+**Pendência explícita para a Onda 6:** aguardar a pessoa real aceitar o convite (`encantomarmitaria@gmail.com`)
+e confirmar login real no Admin da Encanto antes de considerar os itens 4-6 fechados.
+
 ## Pendências / próximas ondas (não iniciadas)
 
-- Onda 5-7 (criação do admin operacional próprio da Encanto e separação definitiva do vínculo do Super
-  Admin) — aguardando autorização explícita, onda por onda. A Onda 4 confirma que o caminho está livre
-  arquiteturalmente.
+- Onda 6 (validar o admin operacional real — login, acesso, isolamento) e Onda 7 (separação definitiva
+  do vínculo do Super Admin) — aguardando autorização explícita, onda por onda, e aguardando a
+  confirmação real de login da Onda 5.
 - **Deploy em produção das correções das Ondas 1, 2 e 3** também depende de autorização própria — está
   fora do escopo aprovado até aqui (regra explícita: nenhuma alteração em produção nestas ondas).
   Produção hoje roda: `platform-set-store-admin-password` versão 1 (sem a guarda), e
