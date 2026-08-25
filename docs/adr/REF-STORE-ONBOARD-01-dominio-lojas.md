@@ -127,3 +127,39 @@ Auditoria prévia (read-only) identificou 4 pendências candidatas (P1-P4) a par
 **Critério de fechamento (todos comprovados)**: P2 corrigido · P3 implementado · P1 implementado · RPCs validadas (35/35) · multi-tenancy preservada (`store_id`/`slug`/`dominio`/RLS/`get_store_by_domain()`/`resolve_store_from_origin()` intactos) · regressões funcionais verdes (93/93 nas 4 suites relacionadas) · builds verdes (admin+storefront) · Lighthouse CI verde · deploy confirmado por conteúdo real · Encanto e Aquarios Bar preservadas (nenhuma chamada real contra elas) · nenhum dado real alterado · nenhuma regressão atribuível à Onda 3.
 
 **REF-STORE-ONBOARD-01 — Onda 3 = 🟢 VERDE / FECHADA.**
+
+## 13. Addendum (2026-08-25) — falso-negativo de CSP na checagem `hostResponde()` do P2
+
+Achado pós-fechamento: o Platform Console mostrava `❌ não responde ainda (configure o CNAME no
+Registro.br)` para os 2 domínios reais da Aquarios Bar (`aquariosbar.lojas.valionsistemas.com.br` e
+`aquariosbar.admin.lojas.valionsistemas.com.br`), mesmo já configurados.
+
+**Auditoria confirmou, camada por camada:**
+- **DNS**: ✅ correto — os 2 CNAMEs resolvem exatamente como documentado no §9 desta ADR
+  (`6b42aaefa3930841.vercel-dns-017.com`/`7e0ee76337724a8d.vercel-dns-017.com`).
+- **Vercel**: ✅ reconhece os 2 domínios — resolução aponta para os IPs anycast da própria Vercel,
+  respostas vêm da aplicação real, nunca de uma página de erro genérica de domínio não vinculado.
+- **HTTPS**: ✅ os 2 hosts respondem de verdade (`curl` real: storefront 307→`/encanto`, admin 200) —
+  certificado válido, sem erro de conexão.
+- **Causa raiz — Platform Console (CSP), não infraestrutura**: `hostResponde()` (`PlatformTenants.jsx`,
+  introduzida neste mesmo P2) roda `fetch()` no navegador do super admin. O `connect-src` da CSP
+  (`vercel.json`, header global, aplicado a todas as rotas/hosts) não incluía nenhum padrão para
+  `*.valionsistemas.com.br` — o navegador bloqueava a própria checagem antes de sair, e o
+  `catch`/`return false` de `hostResponde()` interpretava isso como "não responde", mascarando 2
+  domínios saudáveis. Nunca apareceu com a Encanto porque seu domínio usa o padrão legado, fora do
+  caminho real exercitado por este P2 até agora.
+
+**Correção aplicada** (autorização explícita e escopo único: só `vercel.json`): adicionado
+`https://*.valionsistemas.com.br` ao `connect-src` já existente. Nenhuma outra diretiva CSP tocada
+(`script-src`/`style-src`/`img-src`/`font-src`/`frame-ancestors`/`base-uri`/`form-action`/`object-src`
+idênticas), nenhuma origem removida.
+
+**Validação pós-deploy:**
+- Header CSP ao vivo em `admin.valionsistemas.com.br` confirmado com o novo `connect-src`.
+- Teste real em navegador (Playwright, headers de produção reais, sem simulação): os 2
+  `fetch()`/`hostResponde()` da Aquarios Bar retornaram `{"ok":true}` — zero violação de CSP.
+- CI completo (commit `7d4f129`): **5/5 jobs verdes** — Lighthouse CI, E2E (125/125), Lint + typecheck,
+  Build, Testes de domínio. Nenhuma regressão.
+
+**Commit**: `7d4f129` (`fix(security): permite dominios dinamicos de loja no connect-src da CSP`),
+push confirmado em `origin/main`.
