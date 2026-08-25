@@ -120,8 +120,30 @@ Reset da senha real da Aquarios Bar (a ação operacional em si) ainda depende d
 dono sobre quando e como comunicar a nova senha ao admin real da loja — não executado
 unilateralmente por este commit.
 
+**Atualização (2026-08-25): reset feito, login falhava, causa raiz achada e corrigida.** O dono usou
+"Definir senha" para o e-mail correto do admin real (`aquariosbar806@gmail.com`, user_id
+`c3d3dbe9-b454-4c42-869e-7731cd7a2fd6`, vinculado a `public.admins` da Aquarios Bar) — mas o login em
+`admin.valionsistemas.com.br` continuava recusando com "Invalid login credentials". Investigação
+(somente leitura) achou a causa raiz **confirmada**: esta conta nunca teve o e-mail confirmado
+(`confirmed_at`/`email_confirmed_at = null`, `last_sign_in_at = null` — nunca logou nem uma vez) e o
+projeto de produção exige confirmação de e-mail para login (`MAILER_AUTOCONFIRM: false`, confirmado
+via Management API) — o Supabase Auth recusa `signInWithPassword` para e-mail não confirmado
+**independente da senha estar certa**. Não é bug de código (a Edge Function `platform-set-store-admin-
+password` e o fluxo de vínculo funcionaram exatamente como desenhado) — é um estado de dado que a
+própria conta ficou sem confirmar (criada sem passar pelo fluxo de convite por e-mail, que teria
+enviado a confirmação).
+
+**Correção aplicada (autorizada pelo dono, escopo único e explícito):** `email_confirmed_at` definido
+administrativamente via UPDATE direto e cirúrgico (`WHERE id = ... AND email = ... AND
+email_confirmed_at IS NULL`, 1 linha afetada, confirmada por reconsulta) — `confirmed_at` (coluna
+gerada, `LEAST(email_confirmed_at, phone_confirmed_at)`) se propagou automaticamente. Revalidado
+depois: mesmo `user_id`, mesmo e-mail, mesmo vínculo com a Aquarios Bar em `public.admins` — nada mais
+foi tocado (senha, vínculo, código, RLS, RPCs, Edge Functions e qualquer outro usuário permaneceram
+intactos). **Login real no Admin de produção ainda não foi confirmado nesta sessão** (a senha nunca
+foi conhecida por esta sessão — só o dono/quem definiu a senha pode testar).
+
 ## Pendências
 
-A2 camada 2 (histórico do git) permanece **aberta**, por decisão explícita do dono. A6 ganhou a
-capacidade técnica (camada acima) — a ação de resetar a senha real da Aquarios Bar em si continua
-aguardando o dono.
+A2 camada 2 (histórico do git) permanece **aberta**, por decisão explícita do dono. A6: capacidade
+técnica pronta, senha redefinida, causa do login corrigida (e-mail confirmado) — **aguardando
+confirmação do dono de que o login real funcionou** para declarar esta pendência encerrada de fato.
