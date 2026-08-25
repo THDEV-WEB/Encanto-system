@@ -166,10 +166,66 @@ Migration aplicada **exclusivamente no projeto E2E**. **Nenhuma alteração em p
 Verificações estáticas: lint (0 erros, 54 warnings — mesmo baseline), typecheck (limpo), build
 (sucesso), `test:domain` (0 falhas).
 
+## Onda 4 — Auditoria do modelo de onboarding (CONCLUÍDA — modelo confirmado correto, nenhum problema encontrado)
+
+**Objetivo:** prova técnica, antes de autorizar a separação definitiva (Onda 5-7), de que criar uma loja
+nova nunca depende de criar outro Super Admin, e de que o Super Admin continua conseguindo administrar
+qualquer loja pelo Platform Console **sem precisar ser admin operacional dela**.
+
+Auditoria somente-leitura confirmou as 9 alegações pedidas:
+
+| # | Alegação | Confirmado por |
+|---|---|---|
+| 1 | Nova loja NÃO exige novo Super Admin | `provision_store()` (`migrations/REF-SAAS-01-onda8-provisionamento.sql`) nunca insere em `super_admins`, só em `stores`/`store_settings`/`admins` |
+| 2 | Nova loja pode receber admin operacional independente | `link_store_admin()` vincula qualquer `auth.users` existente a qualquer `store_id`, sem exigir `super_admins` |
+| 3 | Admin operacional não precisa estar em `super_admins` | mesma evidência — nenhuma FK/checagem liga as 2 tabelas |
+| 4 | **Super Admin administra a loja sem ser admin operacional dela** | `is_admin_of(store_id) = is_super_admin() OR EXISTS(admins...)` — o `OR` sozinho já basta. **Provado empiricamente** (não só por leitura de código) contra o projeto E2E: ver abaixo |
+| 5 | Nova loja não exige novo projeto Supabase | `provision_store()` só grava linhas no mesmo banco — nenhuma chamada à Management API |
+| 6 | Nova loja não exige novo projeto Vercel | `vercel.json` roteia por host (`rewrites`/`redirects`) — mesmo deploy atende qualquer slug/domínio |
+| 7 | Modelo suporta múltiplos tenants na mesma aplicação/projeto | Já em produção: Encanto + Aquarios Bar, 1 projeto Supabase, 1 deploy Vercel |
+| 8 | Vínculo de admin é específico por `store_id` | `UNIQUE(store_id, user_id)` em `public.admins` desde `REF-SAAS-01-onda1-autorizacao.sql` |
+| 9 | Isolamento do admin operacional continua protegido por RLS/autorização | `is_admin_of(store_id)` usado tanto nas RLS de `products`/`categories`/`adicionais`/`product_collections`/`orders`/`customers`/`order_items` quanto nas RPCs `admin_orders_*` (SECURITY DEFINER) — nenhuma tabela de tenant ficou no `is_admin()` legado (Encanto-only) |
+
+**Achado importante sobre os testes existentes**: em todos os testes anteriores desta REF, o caller
+"super admin" usado (`ADMIN_FIXTURE`) **também** tinha uma linha real em `public.admins` da Encanto no
+projeto E2E — ou seja, a alegação 4 (a mais crítica, pois é a premissa de toda a Onda 5-7) **nunca havia
+sido provada empiricamente** para o caso "Super Admin SEM absolutamente nenhum vínculo administrativo na
+loja alvo", que é exatamente o estado em que o Super Admin real ficará em relação à Encanto após a
+Onda 7.
+
+### Prova nova (`scripts/auth-platform-isolation-01-onda4-audit-proof.mjs`)
+
+Fecha essa lacuna objetiva. Reaproveita os 2 fixtures **permanentes** do projeto E2E deliberadamente sem
+nenhum admin (`bar-da-sogra-e2e`/`loja-inativa-e2e`, criados pela REF-AUTH-TENANT-01 Onda 4) — **nenhum
+dado novo foi criado ou destruído**, só promoção/revogação temporária de `ADMIN_FIXTURE` em
+`super_admins` (mesmo padrão já usado nos scripts anteriores).
+
+| Prova | Resultado |
+|---|---|
+| Confirma a premissa: `bar-da-sogra-e2e` com `admin_count=0` e `ADMIN_FIXTURE` sem nenhuma linha em `admins` para essa loja | ✅ PASS |
+| `platform_tenant_detail` funciona para essa loja sem nenhum vínculo (Platform Console) | ✅ PASS |
+| `admin_orders_stats`/`admin_orders_search` (gate `is_admin_of`) funcionam sem nenhum vínculo — só por ser super admin (Admin operacional) | ✅ PASS |
+| Controle negativo: cliente comum (não admin, não super admin) continua **bloqueado** na mesma loja | ✅ PASS |
+
+**10/10 PASS.** Limpeza confirmada: `super_admins` do E2E de volta a vazio, nenhum outro dado tocado.
+
+### Conclusão
+
+**O modelo já está correto — nenhum problema encontrado.** As 9 alegações estão confirmadas por código
+e, na mais crítica (#4/#9), também por prova empírica ao vivo. A separação planejada para a Onda 5-7
+(remover o vínculo do Super Admin real em `admins` da Encanto, mantendo-o em `super_admins`) é segura
+pela arquitetura já existente — o Super Admin continuará administrando a Encanto inteira (Platform
+Console e Admin operacional) exatamente como administra hoje `bar-da-sogra-e2e`/`loja-inativa-e2e`.
+
+Nenhuma migration foi necessária nesta onda (nenhuma correção a fazer). Único arquivo novo: o script de
+prova. Verificações estáticas: lint (0 erros, 54 warnings — mesmo baseline), typecheck (limpo), build
+(sucesso), `test:domain` (0 falhas). Nenhuma alteração em produção; nenhum usuário real tocado.
+
 ## Pendências / próximas ondas (não iniciadas)
 
-- Onda 4 (auditoria do onboarding), Onda 5-7 (criação do admin operacional próprio da Encanto e
-  separação definitiva do vínculo do Super Admin) — aguardando autorização explícita, onda por onda.
+- Onda 5-7 (criação do admin operacional próprio da Encanto e separação definitiva do vínculo do Super
+  Admin) — aguardando autorização explícita, onda por onda. A Onda 4 confirma que o caminho está livre
+  arquiteturalmente.
 - **Deploy em produção das correções das Ondas 1, 2 e 3** também depende de autorização própria — está
   fora do escopo aprovado até aqui (regra explícita: nenhuma alteração em produção nestas ondas).
   Produção hoje roda: `platform-set-store-admin-password` versão 1 (sem a guarda), e
