@@ -19,7 +19,7 @@
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self' https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com; img-src 'self' data: blob: https://hvbcdxsagkjtfjwvnslo.supabase.co https://images.unsplash.com https://*.tile.openstreetmap.org https://*.googleusercontent.com https://unpkg.com; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://hvbcdxsagkjtfjwvnslo.supabase.co https://o4511791896002560.ingest.de.sentry.io https://api.mapbox.com https://nominatim.openstreetmap.org https://photon.komoot.io https://viacep.com.br; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'" },
+        { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self' https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com; img-src 'self' data: blob: https://hvbcdxsagkjtfjwvnslo.supabase.co https://images.unsplash.com https://*.tile.openstreetmap.org https://*.googleusercontent.com https://unpkg.com; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://hvbcdxsagkjtfjwvnslo.supabase.co https://o4511791896002560.ingest.de.sentry.io https://api.mapbox.com https://nominatim.openstreetmap.org https://photon.komoot.io https://viacep.com.br https://*.valionsistemas.com.br; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'" },
         { "key": "X-Content-Type-Options", "value": "nosniff" },
         { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
         { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
