@@ -307,6 +307,16 @@ export const DS = {
     }), { throwOnError: true });
     return r.data;
   },
+  /* REF-PROD-READINESS-01 (A6): super admin define a senha de um admin de loja JA vinculado --
+     supabase/functions/platform-set-store-admin-password/index.ts (service_role, unico outro ponto do
+     sistema que a usa alem de invite-store-admin), autorizado via is_super_admin() com o JWT do caller.
+     Substitui o padrao anterior (script ad-hoc que imprimia a senha gerada no console). */
+  async platformSetStoreAdminPassword(userId, newPassword) {
+    const r = await this.run(d=>d.functions.invoke('platform-set-store-admin-password', {
+      body: { userId, newPassword },
+    }), { throwOnError: true });
+    return r.data;
+  },
   /* REF-SAAS-02 · Onda 1: Platform Console -- visao de gestao de tenants, separada do Admin da loja. */
   async platformListTenants() {
     const r = await this.run(d=>d.rpc('platform_list_tenants'), { throwOnError: true });

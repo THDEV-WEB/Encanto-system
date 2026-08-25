@@ -107,15 +107,58 @@ function LinhaAdmin({ admin, storeId, onDesvinculado }) {
       setEnviando(false);
     }
   };
+
+  // REF-PROD-READINESS-01 (A6): super admin define a senha deste admin direto pelo Console -- nunca
+  // mais um script que gera e imprime a senha no console. A senha digitada aqui nunca é logada em
+  // lugar nenhum (nem console, nem rede fora desta chamada, nem no estado depois de confirmar).
+  const [mostrarSenha, setMostrarSenha] = useState(false);
+  const [novaSenha, setNovaSenha] = useState('');
+  const [definindo, setDefinindo] = useState(false);
+  const [msgSenha, setMsgSenha] = useState(null);
+  const definirSenha = async () => {
+    if (definindo || novaSenha.length < 8) return;
+    if (!window.confirm(`Definir uma nova senha para ${admin.email}? A senha atual dela deixa de funcionar.`)) return;
+    setDefinindo(true); setMsgSenha(null);
+    try {
+      const r = await DS.platformSetStoreAdminPassword(admin.user_id, novaSenha);
+      if (r?.error) { setMsgSenha({ tipo: 'erro', texto: r.reason || 'Não foi possível definir a senha.' }); return; }
+      setMsgSenha({ tipo: 'ok', texto: 'Senha definida.' });
+      setNovaSenha(''); setMostrarSenha(false);
+    } catch (e) {
+      setMsgSenha({ tipo: 'erro', texto: e?.message || 'Não foi possível definir a senha.' });
+    } finally {
+      setDefinindo(false);
+    }
+  };
+
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--gray-100)' }}>
-      <div>
-        <div style={{ fontSize: 13.5, fontWeight: 600 }}>{admin.email}</div>
-        <div style={{ fontSize: 11.5, color: 'var(--gray-400)' }}>vinculado em {fmtDataHoraLoja(admin.created_at)}</div>
+    <div style={{ padding: '8px 0', borderBottom: '1px solid var(--gray-100)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <div style={{ fontSize: 13.5, fontWeight: 600 }}>{admin.email}</div>
+          <div style={{ fontSize: 11.5, color: 'var(--gray-400)' }}>vinculado em {fmtDataHoraLoja(admin.created_at)}</div>
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button className="btn-secondary" onClick={() => { setMostrarSenha((v) => !v); setMsgSenha(null); }} data-testid={`plataforma-definir-senha-toggle-${admin.user_id}`}>
+            🔑 Definir senha
+          </button>
+          <button className="btn-secondary" onClick={desvincular} disabled={enviando} data-testid={`plataforma-desvincular-${admin.user_id}`}>
+            {enviando ? 'Removendo…' : 'Desvincular'}
+          </button>
+        </div>
       </div>
-      <button className="btn-secondary" onClick={desvincular} disabled={enviando} data-testid={`plataforma-desvincular-${admin.user_id}`}>
-        {enviando ? 'Removendo…' : 'Desvincular'}
-      </button>
+      {mostrarSenha && (
+        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+          <input type="password" className="form-input" placeholder="nova senha (mínimo 8 caracteres)"
+            value={novaSenha} onChange={(e) => { setNovaSenha(e.target.value); setMsgSenha(null); }}
+            data-testid={`plataforma-nova-senha-${admin.user_id}`} style={{ flex: 1 }} />
+          <button className="btn-primary" onClick={definirSenha} disabled={definindo || novaSenha.length < 8}
+            data-testid={`plataforma-definir-senha-btn-${admin.user_id}`}>
+            {definindo ? 'Definindo…' : 'Confirmar'}
+          </button>
+        </div>
+      )}
+      {msgSenha && <p style={{ fontSize: 12, marginTop: 6, fontWeight: 600, color: msgSenha.tipo === 'ok' ? '#16A34A' : '#DC2626' }}>{msgSenha.texto}</p>}
     </div>
   );
 }

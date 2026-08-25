@@ -105,7 +105,23 @@ só uma ação operacional no Supabase Auth. **Não quebra a Encanto** (tenant c
 hoje suspenso). Requer coordenação com o dono real da Aquarios Bar — por isso é decisão dele, não
 técnica.
 
+**Atualização (2026-08-25): capacidade nova construída, dono autorizou puxar a frente.** Nova Edge
+Function `supabase/functions/platform-set-store-admin-password/` (segundo ponto do sistema que usa
+`service_role`, mesmo desenho de `invite-store-admin`: autorização 100% delegada a `is_super_admin()`
+com o JWT do caller, alvo restrito a quem já está em `public.admins`, senha nunca logada em lugar
+nenhum) — substitui o padrão antigo (script que gerava e imprimia a senha no console) por um botão
+"🔑 Definir senha" no detalhe da loja no Platform Console (`PlatformTenants.jsx`). Testada de ponta a
+ponta contra o projeto E2E com dados 100% descartáveis (`scripts/prod-readiness-01-a6-set-password-
+test.mjs`, 8/8 cenários: sem autenticação, não-super-admin, senha curta, alvo não-admin, sucesso real +
+verificação de login com a senha nova) — nunca tocou `ADMIN_FIXTURE`/`ADMIN_B_FIXTURE` nem qualquer
+fixture compartilhada.
+
+Reset da senha real da Aquarios Bar (a ação operacional em si) ainda depende de decisão/coordenação do
+dono sobre quando e como comunicar a nova senha ao admin real da loja — não executado
+unilateralmente por este commit.
+
 ## Pendências
 
-Ambos os itens (A2, A6) permanecem **abertos, aguardando decisão do dono** — nenhuma correção foi
-aplicada por este documento, conforme escopo desta rodada (investigação, não implementação).
+A2 camada 2 (histórico do git) permanece **aberta**, por decisão explícita do dono. A6 ganhou a
+capacidade técnica (camada acima) — a ação de resetar a senha real da Aquarios Bar em si continua
+aguardando o dono.
