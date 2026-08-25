@@ -17,6 +17,10 @@
 //   2) Confirma (via serviceClient, leitura) que o userId alvo esta em public.admins -- guarda extra
 //      pra esta funcao nunca virar um "resetar senha de QUALQUER usuario" caso o payload seja
 //      adulterado direto (sem passar pela UI, que so' oferece o botao pra admins ja vinculados).
+//   2.5) REF-AUTH-PLATFORM-ISOLATION-01 (Onda 1): recusa se o userId alvo estiver em public.super_admins,
+//      mesmo estando (tambem) em public.admins -- caso real encontrado na auditoria: o proprio Super
+//      Admin da plataforma aparecia vinculado como admin da Encanto, e nada nesta funcao o distinguia de
+//      um admin comum. Credencial de Super Admin nao e' gerida por este fluxo.
 //   3) SO' entao service_role: auth.admin.updateUserById(userId, {password}).
 //
 // NUNCA loga a senha (nem em console.log, nem no corpo da resposta de erro) -- exatamente o problema
@@ -113,6 +117,17 @@ Deno.serve(async (req) => {
     .from("admins").select("user_id").eq("user_id", userId).limit(1).maybeSingle();
   if (vinculoErr) return jsonResponse({ error: true, reason: vinculoErr.message });
   if (!vinculo) return jsonResponse({ error: true, reason: "usuario_nao_e_admin_de_nenhuma_loja" });
+
+  // Passo 2.5 (REF-AUTH-PLATFORM-ISOLATION-01 · Onda 1): um Super Admin NUNCA e' alvo valido desta
+  // operacao, mesmo que esteja (tambem) vinculado como admin de alguma loja -- caso real: o proprio
+  // Super Admin aparece hoje em public.admins da Encanto. Credencial de Super Admin e' gerida fora do
+  // fluxo de tenant (Supabase Admin API direta, fora do app) -- nunca por este caminho.
+  const { data: ehSuperAdmin, error: superErr } = await serviceClient
+    .from("super_admins").select("user_id").eq("user_id", userId).limit(1).maybeSingle();
+  if (superErr) return jsonResponse({ error: true, reason: superErr.message });
+  if (ehSuperAdmin) {
+    return jsonResponse({ error: true, reason: "nao_e_possivel_alterar_senha_de_super_admin_por_este_fluxo" });
+  }
 
   // Passo 3: SO' AQUI a senha e' de fato alterada. Nunca logada -- nem aqui, nem no corpo de erro.
   const { error: updErr } = await serviceClient.auth.admin.updateUserById(userId, { password: newPassword });
