@@ -79,10 +79,61 @@ esta correção também a produção.
 Verificações estáticas: lint (0 erros, warnings pré-existentes não relacionados), typecheck (limpo),
 build (sucesso), `test:domain` (0 falhas — esta onda não toca módulos de domínio).
 
+## Onda 2 — Hardening do desvincular (CONCLUÍDA)
+
+**Objetivo:** um Super Admin nunca pode ser desvinculado (`DELETE` de `public.admins`) por um fluxo
+destinado a admin de tenant — mesma sobreposição da Onda 1, agora fechada também no desvincular.
+
+**Migration nova** (`migrations/REF-AUTH-PLATFORM-ISOLATION-01-onda2-bloqueia-desvincular-super-admin.sql`
++ rollback) — `platform_unlink_store_admin(p_store_id, p_user_id)` ganha uma guarda entre a checagem de
+autorização do caller (`is_super_admin()`, pré-existente, inalterada) e o `DELETE`: se `p_user_id`
+estiver em `public.super_admins`, `RAISE EXCEPTION` (`ERRCODE 42501`) antes de tocar `public.admins`.
+Admins normais continuam desvinculados exatamente como antes (idempotente — `DELETE` de 0 linhas
+continua sendo `desvinculado:false`, nunca erro).
+
+**Auditoria do teste pré-existente** (`scripts/saas02-onda1-platform-console-test.mjs`, ITEM 4, roda
+contra produção dentro de `BEGIN...ROLLBACK`): confirmado que os 3 casos (`ITEM4-desvincula`,
+`ITEM4-idempotente`, `ITEM4-admin-comum-N`) usam como alvo `ADMIN_B` (admin real de outra loja, não
+super admin) ou testam a recusa pelo lado do *caller* — nenhum deles aponta a um super admin como
+*alvo* da desvinculação, então a guarda nova não quebra nenhuma asserção existente. Não foi executado
+nesta onda (tocaria produção, fora do escopo autorizado) — permanece válido para quando a migration for
+aplicada em produção.
+
+**`src/components/admin/PlatformTenants.jsx`** — `LinhaAdmin.desvincular()` ganhou `try/catch` +
+mensagem de erro visível (`msgDesvincular`). Antes desta onda a RPC nunca lançava exceção para um caller
+já autorizado, então a chamada nunca precisou de tratamento de erro; a guarda nova torna isso alcançável
+pela UI (até a Onda 3 esconder o botão para linhas de Super Admin).
+
+### Testes (`scripts/auth-platform-isolation-01-onda2-test.mjs`, novo)
+
+100% dados descartáveis, 100% projeto E2E — nunca o Super Admin real, nunca o admin real da Aquarios
+Bar. 3 lojas descartáveis + 2 admins normais descartáveis + 1 "Super Admin" descartável (vinculado a
+`super_admins` **e** `admins`, replicando a sobreposição real) + 1 usuário sem nenhum vínculo.
+
+| Cenário | Resultado esperado | Resultado obtido |
+|---|---|---|
+| A) Super Admin (descartável) como alvo | BLOQUEADO, linha em `admins` preservada | ✅ PASS (3/3) |
+| B) Admin normal descartável | DESVINCULAÇÃO PERMITIDA | ✅ PASS (2/2) |
+| C) Admin de outro tenant descartável | comportamento preservado (mesmo caminho de B) | ✅ PASS (2/2) |
+| D) Usuário sem vínculo de admin | idempotente, `desvinculado:false`, sem erro (regra pré-existente) | ✅ PASS (1/1) |
+| Regressão (caller não-super-admin) | BLOQUEADO (autorização pré-existente, inalterada) | ✅ PASS (2/2) |
+
+**11/11 PASS.** Limpeza confirmada por consulta somente-leitura ao projeto E2E: 0 stores/auth.users
+órfãos com o prefixo de teste; `public.super_admins` do E2E voltou ao estado vazio.
+
+Migration aplicada **exclusivamente no projeto E2E** — confirmado por leitura direta de `pg_proc` que a
+função contém a guarda nova. **Nenhuma alteração em produção nesta onda** — produção continua com a
+versão anterior de `platform_unlink_store_admin` até autorização explícita de uma onda futura.
+
+Verificações estáticas: lint (0 erros, 54 warnings pré-existentes — mesmo baseline da Onda 1), typecheck
+(limpo), build (sucesso), `test:domain` (0 falhas).
+
 ## Pendências / próximas ondas (não iniciadas)
 
-- Onda 2 (hardening de `platform_unlink_store_admin`), Onda 3 (proteção visual do Platform Console),
-  Onda 4 (auditoria do onboarding), Onda 5-7 (criação do admin operacional próprio da Encanto e
-  separação definitiva do vínculo do Super Admin) — aguardando autorização explícita, onda por onda.
-- **Deploy em produção da correção desta Onda 1** também depende de autorização própria — está fora do
-  escopo aprovado até aqui (regra explícita: nenhuma alteração em produção nesta onda).
+- Onda 3 (proteção visual do Platform Console), Onda 4 (auditoria do onboarding), Onda 5-7 (criação do
+  admin operacional próprio da Encanto e separação definitiva do vínculo do Super Admin) — aguardando
+  autorização explícita, onda por onda.
+- **Deploy em produção das correções das Ondas 1 e 2** também depende de autorização própria — está
+  fora do escopo aprovado até aqui (regra explícita: nenhuma alteração em produção nestas ondas).
+  Produção hoje roda: `platform-set-store-admin-password` versão 1 (sem a guarda) e
+  `platform_unlink_store_admin` sem a guarda de super_admins.

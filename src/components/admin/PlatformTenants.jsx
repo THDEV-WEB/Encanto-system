@@ -97,12 +97,18 @@ function RotuloVerificacao({ estado }) {
 
 function LinhaAdmin({ admin, storeId, onDesvinculado }) {
   const [enviando, setEnviando] = useState(false);
+  const [msgDesvincular, setMsgDesvincular] = useState(null);
   const desvincular = async () => {
     if (enviando || !window.confirm(`Desvincular ${admin.email} desta loja?`)) return;
-    setEnviando(true);
+    setEnviando(true); setMsgDesvincular(null);
     try {
       await DS.platformUnlinkStoreAdmin(storeId, admin.user_id);
       onDesvinculado?.();
+    } catch (e) {
+      // REF-AUTH-PLATFORM-ISOLATION-01 (Onda 2): platform_unlink_store_admin agora recusa (42501) alvo
+      // em public.super_admins -- antes disso nunca lancava excecao pra um caller ja autorizado, entao
+      // esta chamada nunca precisou de catch.
+      setMsgDesvincular({ tipo: 'erro', texto: e?.message || 'Não foi possível desvincular.' });
     } finally {
       setEnviando(false);
     }
@@ -159,6 +165,7 @@ function LinhaAdmin({ admin, storeId, onDesvinculado }) {
         </div>
       )}
       {msgSenha && <p style={{ fontSize: 12, marginTop: 6, fontWeight: 600, color: msgSenha.tipo === 'ok' ? '#16A34A' : '#DC2626' }}>{msgSenha.texto}</p>}
+      {msgDesvincular && <p style={{ fontSize: 12, marginTop: 6, fontWeight: 600, color: '#DC2626' }}>{msgDesvincular.texto}</p>}
     </div>
   );
 }
