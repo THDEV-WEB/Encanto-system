@@ -137,6 +137,11 @@ function LinhaAdmin({ admin, storeId, onDesvinculado }) {
     }
   };
 
+  // REF-AUTH-PLATFORM-ISOLATION-01 (Onda 3): defesa de INTERFACE -- a protecao real ja e' do backend
+  // (Ondas 1/2, platform-set-store-admin-password e platform_unlink_store_admin recusam o alvo). Aqui
+  // so' refletimos o papel: uma linha de Super Admin nunca oferece os botoes de credencial de tenant.
+  const ehSuperAdmin = admin.is_super_admin === true;
+
   return (
     <div style={{ padding: '8px 0', borderBottom: '1px solid var(--gray-100)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -144,16 +149,25 @@ function LinhaAdmin({ admin, storeId, onDesvinculado }) {
           <div style={{ fontSize: 13.5, fontWeight: 600 }}>{admin.email}</div>
           <div style={{ fontSize: 11.5, color: 'var(--gray-400)' }}>vinculado em {fmtDataHoraLoja(admin.created_at)}</div>
         </div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button className="btn-secondary" onClick={() => { setMostrarSenha((v) => !v); setMsgSenha(null); }} data-testid={`plataforma-definir-senha-toggle-${admin.user_id}`}>
-            🔑 Definir senha
-          </button>
-          <button className="btn-secondary" onClick={desvincular} disabled={enviando} data-testid={`plataforma-desvincular-${admin.user_id}`}>
-            {enviando ? 'Removendo…' : 'Desvincular'}
-          </button>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {ehSuperAdmin ? (
+            <span data-testid={`plataforma-super-admin-selo-${admin.user_id}`}
+              style={{ fontSize: 11.5, fontWeight: 700, color: '#92400E', background: '#FEF3C7', padding: '3px 10px', borderRadius: 20 }}>
+              👑 Super Admin da plataforma
+            </span>
+          ) : (
+            <>
+              <button className="btn-secondary" onClick={() => { setMostrarSenha((v) => !v); setMsgSenha(null); }} data-testid={`plataforma-definir-senha-toggle-${admin.user_id}`}>
+                🔑 Definir senha
+              </button>
+              <button className="btn-secondary" onClick={desvincular} disabled={enviando} data-testid={`plataforma-desvincular-${admin.user_id}`}>
+                {enviando ? 'Removendo…' : 'Desvincular'}
+              </button>
+            </>
+          )}
         </div>
       </div>
-      {mostrarSenha && (
+      {!ehSuperAdmin && mostrarSenha && (
         <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
           <input type="password" className="form-input" placeholder="nova senha (mínimo 8 caracteres)"
             value={novaSenha} onChange={(e) => { setNovaSenha(e.target.value); setMsgSenha(null); }}
@@ -164,8 +178,8 @@ function LinhaAdmin({ admin, storeId, onDesvinculado }) {
           </button>
         </div>
       )}
-      {msgSenha && <p style={{ fontSize: 12, marginTop: 6, fontWeight: 600, color: msgSenha.tipo === 'ok' ? '#16A34A' : '#DC2626' }}>{msgSenha.texto}</p>}
-      {msgDesvincular && <p style={{ fontSize: 12, marginTop: 6, fontWeight: 600, color: '#DC2626' }}>{msgDesvincular.texto}</p>}
+      {!ehSuperAdmin && msgSenha && <p style={{ fontSize: 12, marginTop: 6, fontWeight: 600, color: msgSenha.tipo === 'ok' ? '#16A34A' : '#DC2626' }}>{msgSenha.texto}</p>}
+      {!ehSuperAdmin && msgDesvincular && <p style={{ fontSize: 12, marginTop: 6, fontWeight: 600, color: '#DC2626' }}>{msgDesvincular.texto}</p>}
     </div>
   );
 }

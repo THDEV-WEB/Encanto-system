@@ -65,6 +65,13 @@ test.describe('Platform Console / provisionamento (Admin)', { tag: '@writes' }, 
     await platformConsole.vincularAdmin(SLUG, ADMIN_FIXTURE.email);
     await expect(page.getByText(`${ADMIN_FIXTURE.email} agora é admin desta loja.`)).toBeVisible();
 
+    // REF-AUTH-PLATFORM-ISOLATION-01 (Onda 3): a linha do proprio Super Admin (ADMIN_FIXTURE, promovido
+    // a super_admins so' nesta janela de teste) mostra o selo e NUNCA os botoes de credencial de tenant
+    // -- defesa de interface; a protecao real ja e' do backend (Ondas 1/2).
+    await expect(page.getByTestId(`plataforma-super-admin-selo-${adminUserId}`)).toBeVisible();
+    await expect(page.getByTestId(`plataforma-definir-senha-toggle-${adminUserId}`)).toHaveCount(0);
+    await expect(page.getByTestId(`plataforma-desvincular-${adminUserId}`)).toHaveCount(0);
+
     // "Abrir Admin da loja" troca a loja ativa e entra no Admin normal daquela loja -- sem duplicar tela.
     await page.getByTestId(`plataforma-abrir-admin-${SLUG}`).click();
     await expect(adminPanel.tab('dashboard')).toBeVisible();
@@ -85,7 +92,7 @@ test.describe('Platform Console / provisionamento (Admin)', { tag: '@writes' }, 
      reaproveitada de outro teste) pra provar o cenario real: Pessoa A (Super Admin) cria a loja e
      vincula Pessoa B; so Pessoa B loga como admin da loja nova, num browser context SEPARADO. */
   test('super admin vincula um ADMIN DISTINTO (pessoa B) — pessoa B ve só a loja dela, nunca o Platform Console nem a Encanto', async ({ adminLoginPage, platformConsole, page, browser }) => {
-    await garantirUsuarioAuth(ADMIN_B_FIXTURE);
+    const adminBId = await garantirUsuarioAuth(ADMIN_B_FIXTURE);
 
     await adminLoginPage.goto();
     await adminLoginPage.login(ADMIN_FIXTURE.email, ADMIN_FIXTURE.senha);
@@ -108,6 +115,12 @@ test.describe('Platform Console / provisionamento (Admin)', { tag: '@writes' }, 
     // ("Aguardando administrador — vincule...") colidiria com uma busca so pela frase, sem o emoji.
     await expect(platformConsole.linhaLoja(SLUG).getByText('⚠️ aguardando administrador')).toHaveCount(0);
     await expect(platformConsole.statusLoja(SLUG)).toContainText('Operacional');
+
+    // REF-AUTH-PLATFORM-ISOLATION-01 (Onda 3): Pessoa B NAO e' super admin -- a linha dela continua
+    // mostrando os botoes de credencial de tenant normalmente, sem selo nenhum.
+    await expect(page.getByTestId(`plataforma-super-admin-selo-${adminBId}`)).toHaveCount(0);
+    await expect(page.getByTestId(`plataforma-definir-senha-toggle-${adminBId}`)).toBeVisible();
+    await expect(page.getByTestId(`plataforma-desvincular-${adminBId}`)).toBeVisible();
 
     // Pessoa A (Super Admin) continua vendo TODAS as lojas permitidas na lista do Platform Console --
     // Encanto (vinculo pessoal em `admins`) E Bar da Sogra (so por ser super admin, sem NENHUM vinculo

@@ -128,12 +128,51 @@ versão anterior de `platform_unlink_store_admin` até autorização explícita 
 Verificações estáticas: lint (0 erros, 54 warnings pré-existentes — mesmo baseline da Onda 1), typecheck
 (limpo), build (sucesso), `test:domain` (0 falhas).
 
+## Onda 3 — Proteção visual do Platform Console (CONCLUÍDA)
+
+**Objetivo:** a interface deve refletir a separação de papéis — defesa de INTERFACE apenas; as
+proteções reais continuam sendo o backend das Ondas 1/2.
+
+**Migration nova** (`migrations/REF-AUTH-PLATFORM-ISOLATION-01-onda3-flag-super-admin-detalhe.sql` +
+rollback) — `platform_tenant_detail(p_store_id)` ganha 1 campo por administrador no array `admins`:
+`is_super_admin` (`EXISTS (SELECT 1 FROM public.super_admins WHERE user_id = a.user_id)`). Aditivo puro
+— a informação já existia em `public.super_admins`, esta migration só a expõe; nenhuma autorização nova
+foi criada, `RETURNS jsonb` não muda de assinatura.
+
+**`src/components/admin/PlatformTenants.jsx`** — `LinhaAdmin` agora lê `admin.is_super_admin`: quando
+`true`, renderiza o selo `👑 Super Admin da plataforma` (`data-testid="plataforma-super-admin-selo-*"`)
+no lugar dos botões `🔑 Definir senha`/`Desvincular` — eles simplesmente não são renderizados nessa
+linha (não apenas desabilitados). Para admins normais (`is_super_admin` ausente/`false`), o
+comportamento é 100% preservado.
+
+### Testes (`e2e/tests/admin/platform-console.spec.js`, ajustado — sem novo arquivo/fixture)
+
+Reaproveitados os 2 testes já existentes desta suíte, que já exercitavam exatamente os 2 papéis
+necessários:
+
+| Cenário | Onde | Resultado |
+|---|---|---|
+| A) Linha de Super Admin (o próprio `ADMIN_FIXTURE`, promovido a `super_admins` só na janela do teste) — selo visível, `Definir senha`/`Desvincular` ausentes | Teste 1 (vincula o próprio e-mail) | ✅ PASS |
+| B) Linha de admin normal (`ADMIN_B_FIXTURE`, pessoa distinta, nunca super admin) — selo ausente, `Definir senha`/`Desvincular` visíveis | Teste 2 (vincula Pessoa B) | ✅ PASS |
+| C) Regressão do restante de ambos os testes (provisionamento, troca de contexto "Abrir Admin", isolamento entre Pessoa A/B) | Testes 1 e 2 | ✅ PASS |
+
+**2/2 testes PASS** (`npx playwright test e2e/tests/admin/platform-console.spec.js`, projeto E2E).
+Rodado também `admin-empresa-identidade-visual.spec.js` (usa a mesma tela de detalhe) — **1/1 PASS**,
+sem regressão. Limpeza confirmada por consulta somente-leitura: 0 stores órfãs, `super_admins` do E2E
+de volta a vazio.
+
+Migration aplicada **exclusivamente no projeto E2E**. **Nenhuma alteração em produção nesta onda.**
+
+Verificações estáticas: lint (0 erros, 54 warnings — mesmo baseline), typecheck (limpo), build
+(sucesso), `test:domain` (0 falhas).
+
 ## Pendências / próximas ondas (não iniciadas)
 
-- Onda 3 (proteção visual do Platform Console), Onda 4 (auditoria do onboarding), Onda 5-7 (criação do
-  admin operacional próprio da Encanto e separação definitiva do vínculo do Super Admin) — aguardando
-  autorização explícita, onda por onda.
-- **Deploy em produção das correções das Ondas 1 e 2** também depende de autorização própria — está
+- Onda 4 (auditoria do onboarding), Onda 5-7 (criação do admin operacional próprio da Encanto e
+  separação definitiva do vínculo do Super Admin) — aguardando autorização explícita, onda por onda.
+- **Deploy em produção das correções das Ondas 1, 2 e 3** também depende de autorização própria — está
   fora do escopo aprovado até aqui (regra explícita: nenhuma alteração em produção nestas ondas).
-  Produção hoje roda: `platform-set-store-admin-password` versão 1 (sem a guarda) e
-  `platform_unlink_store_admin` sem a guarda de super_admins.
+  Produção hoje roda: `platform-set-store-admin-password` versão 1 (sem a guarda), e
+  `platform_unlink_store_admin`/`platform_tenant_detail` sem as guardas/campo novos — ou seja, hoje em
+  produção o Platform Console **ainda não mostra** o selo de Super Admin (o campo não existe na resposta
+  da RPC em produção até a migration ser aplicada lá).
