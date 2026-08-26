@@ -269,6 +269,13 @@ caminho de código foi tocado, nada a validar por essa via.
 **Pendência explícita para a Onda 6:** aguardar a pessoa real aceitar o convite (`encantomarmitaria@gmail.com`)
 e confirmar login real no Admin da Encanto antes de considerar os itens 4-6 fechados.
 
+**Achado de CI investigado e resolvido**: o commit da documentação (`4920a2e`) veio com o job E2E
+vermelho (`admin-adicionais.spec.js:52`/`:88` por timeout puro, `admin-categorias.spec.js:29` flaky).
+Investigação: `git diff --stat 60b880b 4920a2e` mostra **zero arquivos de código/teste alterados** entre
+o último CI verde e este — nenhuma onda desta REF tocou `admin-adicionais.spec.js`, `admin-categorias.
+spec.js` ou `AdminPanel.page.js`/`AdminPanel.jsx`. Confirmado flakiness de runner (não regressão) por
+retrigger (`e49e6d3`, commit vazio) — **CI verde na reexecução**.
+
 ## Pendências / próximas ondas (não iniciadas)
 
 - Onda 6 (validar o admin operacional real — login, acesso, isolamento) e Onda 7 (separação definitiva
