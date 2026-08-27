@@ -797,8 +797,7 @@ mudança que o afetaria).
 
 ### Commit / CI
 
-Pendente desta sessão — commit único cobrindo o teste novo + este registro de documentação, push
-para `origin/main`, aguardar CI.
+Commit `0c6335a`, pushed em `origin/main`. **CI verde** (run `33108517418`, `conclusion: success`).
 
 ### Pendências
 
