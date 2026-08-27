@@ -196,8 +196,9 @@ try {
   out('— CHECKOUT-P1: create_order (anon) SEM p_store_id cria pedido/cliente/fidelidade com store_id=encanto (regressao) —');
   // loyalty_enabled esta 'false' em producao agora (config operacional real, nao bug) -- forcado a
   // 'true' SO dentro desta transacao (ROLLBACK desfaz) pra exercitar o caminho de concessao de selo
-  // de forma deterministica, sem depender do toggle real do dono.
-  await tx('anon', null, [`INSERT INTO public.settings (chave, valor) VALUES ('loyalty_enabled','true') ON CONFLICT (chave) DO UPDATE SET valor='true'`], async () => {
+  // de forma deterministica, sem depender do toggle real do dono. Fonte = store_settings (por loja)
+  // desde REF-LOYALTY-AUDIT-01 · Onda 1 -- antes era settings global.
+  await tx('anon', null, [`INSERT INTO public.store_settings (store_id, chave, valor) VALUES ('${encantoId}','loyalty_enabled','true') ON CONFLICT (store_id, chave) DO UPDATE SET valor='true'`], async () => {
     const payload = { p_customer: { name: 'Cliente Checkout Onda41', phone: '47977770001' },
       p_order: { total: 33.0, payment_method: 'pix', address: 'Rua Checkout, 1' },
       p_items: [{ nome_produto: 'Item Checkout', quantity: 1, price: 33.0 }] };

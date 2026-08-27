@@ -82,20 +82,20 @@ export async function adminResgatar(customerId) {
   } catch (e) { return { ok: false, error: e?.message || 'falha' }; }
 }
 export async function adminLerConfig() {
-  if (!db) return { required: 10, discount: 50, enabled: true };
-  const um = async (chave, def) => {
-    try { const { data } = await db.rpc('get_setting', { p_chave: chave, p_default: def }); return data; }
-    catch { return def; }
-  };
-  const [req, dis, en] = await Promise.all([
-    um('loyalty_required', '10'), um('loyalty_discount', '50'), um('loyalty_enabled', 'true'),
-  ]);
-  return { required: parseInt(req, 10) || 10, discount: parseInt(dis, 10) || 50, enabled: String(en) !== 'false' };
+  if (!db) return { required: 10, discount: 50, enabled: false };
+  try {
+    const { data } = await db.rpc('get_loyalty_config', { ...buildStoreRpcParam() });
+    return {
+      required: parseInt(data?.required, 10) || 10,
+      discount: parseInt(data?.discount, 10) || 50,
+      enabled: data?.enabled === true,
+    };
+  } catch { return { required: 10, discount: 50, enabled: false }; }
 }
 export async function adminSalvarConfig(required, discount, enabled) {
   if (!db) return { ok: false, error: 'offline' };
   try {
-    const { data, error } = await db.rpc('set_loyalty_config', { p_required: required, p_discount: discount, p_enabled: enabled });
+    const { data, error } = await db.rpc('set_loyalty_config', { p_required: required, p_discount: discount, p_enabled: enabled, ...buildStoreRpcParam() });
     if (error) return { ok: false, error: error.message };
     return data || { ok: false, error: 'sem resposta' };
   } catch (e) { return { ok: false, error: e?.message || 'falha' }; }

@@ -1,8 +1,9 @@
-/* components/admin/AdminFidelidade.jsx — REF-LOYALTY-01.
+/* components/admin/AdminFidelidade.jsx — REF-LOYALTY-01 (+ REF-LOYALTY-AUDIT-01 · Onda 1).
    Painel de fidelidade POR CLIENTE (a fonte unica e o Supabase; nao ha mais contador global no
-   navegador). Config do programa (required/discount/enabled) e persistida em settings via
-   set_loyalty_config; a consulta/ajuste/resgate de um cliente usa admin_find_loyalty /
-   admin_adjust_loyalty / redeem_reward. Toda escrita e validada no servidor por is_admin(). */
+   navegador). Config do programa (required/discount/enabled) e POR LOJA desde a Onda 1, persistida
+   em store_settings via get_loyalty_config/set_loyalty_config (mesma loja ativa da sessao do Admin,
+   ver adminStore.js); a consulta/ajuste/resgate de um cliente usa admin_find_loyalty /
+   admin_adjust_loyalty / redeem_reward. Toda escrita e validada no servidor por is_admin_of(loja). */
 import { useState, useEffect } from 'react';
 import {
   adminLerConfig, adminSalvarConfig, adminBuscar, adminAjustar, adminResgatar,

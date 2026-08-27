@@ -2,9 +2,10 @@
    AdminFidelidade.jsx: visão do OPERADOR (complementa, não duplica, a fidelidade do CLIENTE já testada
    na E2E-02 — aqui o ângulo é o admin consultando/ajustando a conta de outro cliente). 3 sub-painéis:
    (a) toggle Ativo/Desativado do programa; (b) busca + ajuste manual (±1 selo) + resgate administrativo
-   de UM cliente (admin_find_loyalty/admin_adjust_loyalty/redeem_reward); (c) config global
-   (required/discount via set_loyalty_config) — GLOBAL como store_mode/delivery_eta_min, então o
-   baseline observado no início (não um valor fixo assumido) é restaurado ao final. Reaproveita
+   de UM cliente (admin_find_loyalty/admin_adjust_loyalty/redeem_reward); (c) config POR LOJA
+   (required/discount via set_loyalty_config, `store_settings` desde REF-LOYALTY-AUDIT-01 · Onda 1 —
+   antes era `settings.loyalty_*`, global à plataforma) — o baseline observado no início (não um valor
+   fixo assumido) é restaurado ao final, mesmo já sendo por loja (evita colisão entre execuções). Reaproveita
    CLIENTE_FIXTURE (E2E-02) — cria 1 pedido real via `criarPedidoFixture()` para garantir 1 selo
    determinístico (não depende de estado ambiente). */
 import { test, expect } from '../../fixtures/index.js';
@@ -15,7 +16,7 @@ import { limparPedidosDoFixture } from '../../support/cleanup.js';
 import { E2E_ENV_PRONTO, supabaseAdmin } from '../../support/supabaseAdmin.js';
 
 test.describe('Fidelidade — visão do Admin', { tag: '@writes' }, () => {
-  test.describe.configure({ mode: 'serial' }); // config do programa (required/discount) é GLOBAL
+  test.describe.configure({ mode: 'serial' }); // config do programa (required/discount) e' por loja, mas as 2 specs aqui miram a MESMA loja (encanto)
 
   test.beforeAll(async () => { await garantirClienteFixtureVinculado(); });
   test.afterEach(async () => { await limparPedidosDoFixture(); });
@@ -45,7 +46,7 @@ test.describe('Fidelidade — visão do Admin', { tag: '@writes' }, () => {
 
     // ── Config: abaixa "Pedidos p/ recompensa" para 1 (temporário) -> recompensa fica disponível.
     //    `cliente.required` fica congelado no momento da BUSCA (admin_find_loyalty) — mudar a config
-    //    global não atualiza retroativamente o resultado já exibido; refazer a busca é o que reflete
+    //    não atualiza retroativamente o resultado já exibido; refazer a busca é o que reflete
     //    o novo threshold (achado real, não assunção). ──
     await adminFidelidadePage.salvarConfig({ required: 1 });
     await expect(page.getByText('✓ Salvo com sucesso!')).toBeVisible();
@@ -68,12 +69,15 @@ test.describe('Fidelidade — visão do Admin', { tag: '@writes' }, () => {
     await adminLoginPage.login(ADMIN_FIXTURE.email, ADMIN_FIXTURE.senha);
     await adminPanel.abrirAba('fidelidade');
 
-    // Lê o valor REAL persistido (settings.loyalty_enabled), não só o rótulo da UI — achado real
-    // (REF-CI-01, ver docs/ref/REF-CI-01-progress.md): a UI atualizava o rótulo de forma otimista
-    // mesmo quando o `set_loyalty_config` falhava, deixando o programa preso em "false" no banco
-    // enquanto a suíte inteira reportava verde. Cada asserção abaixo confirma o banco, não a tela.
+    // Lê o valor REAL persistido (store_settings.loyalty_enabled DA LOJA ENCANTO, desde
+    // REF-LOYALTY-AUDIT-01 · Onda 1 — antes era settings.loyalty_enabled, global), não só o rótulo da
+    // UI — achado real (REF-CI-01, ver docs/ref/REF-CI-01-progress.md): a UI atualizava o rótulo de
+    // forma otimista mesmo quando o `set_loyalty_config` falhava, deixando o programa preso em "false"
+    // no banco enquanto a suíte inteira reportava verde. Cada asserção abaixo confirma o banco, não a tela.
+    const admin = supabaseAdmin();
+    const { data: loja } = await admin.from('stores').select('id').eq('slug', 'encanto').single();
     const lerValorReal = async () => {
-      const { data } = await supabaseAdmin().from('settings').select('valor').eq('chave', 'loyalty_enabled').single();
+      const { data } = await admin.from('store_settings').select('valor').eq('store_id', loja.id).eq('chave', 'loyalty_enabled').single();
       return data.valor !== 'false';
     };
 

@@ -79,9 +79,13 @@ function setupSql(encantoId) {
   return [
     // valores forcados SO dentro desta transacao (ROLLBACK desfaz) pra tornar os testes deterministicos,
     // independente do toggle real (loyalty_enabled esta 'false' em producao agora, achado da Onda 4.1).
-    `INSERT INTO public.settings (chave, valor) VALUES ('loyalty_enabled','true') ON CONFLICT (chave) DO UPDATE SET valor='true'`,
-    `INSERT INTO public.settings (chave, valor) VALUES ('loyalty_required','${REQUIRED}') ON CONFLICT (chave) DO UPDATE SET valor='${REQUIRED}'`,
+    // Fonte = store_settings (por loja) desde REF-LOYALTY-AUDIT-01 · Onda 1 -- ANTES era settings global;
+    // loja B tambem precisa da sua propria linha (loja nova sem config nasce DESATIVADA, default seguro).
+    `INSERT INTO public.store_settings (store_id, chave, valor) VALUES ('${encantoId}','loyalty_enabled','true') ON CONFLICT (store_id, chave) DO UPDATE SET valor='true'`,
+    `INSERT INTO public.store_settings (store_id, chave, valor) VALUES ('${encantoId}','loyalty_required','${REQUIRED}') ON CONFLICT (store_id, chave) DO UPDATE SET valor='${REQUIRED}'`,
     `INSERT INTO public.stores (id, slug, nome, dominio, status) VALUES ('${STORE_B_ID}', 'loja-b-teste-onda42', 'Loja B (fake, teste Onda 4.2)', NULL, 'ativo')`,
+    `INSERT INTO public.store_settings (store_id, chave, valor) VALUES ('${STORE_B_ID}','loyalty_enabled','true')`,
+    `INSERT INTO public.store_settings (store_id, chave, valor) VALUES ('${STORE_B_ID}','loyalty_required','${REQUIRED}')`,
     `INSERT INTO public.admins (user_id, store_id) VALUES ('${ADMIN_B}', '${STORE_B_ID}')`,
     `INSERT INTO public.customers (id, name, phone, auth_user_id, store_id) VALUES ('${CUSTOMER_A_ID}', 'Pessoa X (fake onda42)', '47966660001', '${SAME_PERSON}', '${encantoId}')`,
     `INSERT INTO public.customers (id, name, phone, auth_user_id, store_id) VALUES ('${CUSTOMER_B_ID}', 'Pessoa X (fake onda42, loja B)', '47966660002', '${SAME_PERSON}', '${STORE_B_ID}')`,
@@ -225,7 +229,7 @@ try {
         (SELECT count(*)::int FROM public.stores WHERE id = '${STORE_B_ID}') AS loja_b,
         (SELECT count(*)::int FROM public.admins WHERE store_id = '${STORE_B_ID}') AS admin_b,
         (SELECT count(*)::int FROM public.customers WHERE id IN ('${CUSTOMER_A_ID}','${CUSTOMER_B_ID}','${CUSTOMER_C_ID}')) AS clientes_fake,
-        (SELECT valor FROM public.settings WHERE chave = 'loyalty_required') AS loyalty_required_real`);
+        (SELECT valor FROM public.store_settings WHERE store_id = '${encantoId}' AND chave = 'loyalty_required') AS loyalty_required_real`);
     const row = r.rows[0];
     const ok = row.loja_b === 0 && row.admin_b === 0 && row.clientes_fake === 0;
     if (ok) passes++; else failures++;
