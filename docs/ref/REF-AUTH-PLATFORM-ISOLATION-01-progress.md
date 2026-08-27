@@ -415,13 +415,135 @@ Admin real e Aquarios Bar confirmados inalterados.
 **Deploy em produção desta correção**: pendente de autorização explícita separada (regra do projeto —
 nenhum deploy de produção sem pedido específico).
 
+## Onda 6-D — Deploy em produção e validação pós-deploy (CONCLUÍDA)
+
+Deploy automático (push → Vercel) do commit `925c235` confirmado ao vivo: `sw-admin.js` de produção
+contém `denylist:[/\/convite\.html$/]`. `/convite.html`, `/admin.html` e `/` confirmados via `curl`
+servindo os documentos corretos (títulos distintos, sem cruzamento).
+
+**Prova decisiva, reproduzindo o mecanismo exato do incidente em produção real** (Playwright, sem
+nenhum token de convite, sem tocar a conta real): visitou `admin.html`, registrou o Service Worker de
+verdade (`navigator.serviceWorker.register('/sw-admin.js')`), confirmou-o **controlando a página**, e
+só então navegou para `/convite.html` — carregou o documento correto (`<title>Definir senha — Encanto
+Admin</title>`), não interceptado. Voltou para `/admin.html` com o mesmo SW ainda controlando — continua
+funcionando normalmente. Nenhuma regressão nas demais rotas do Admin/Platform Console (só `/convite.html`
+foi excluído do `navigateFallback`). CI verde desde `925c235`, nenhum commit novo necessário (turno
+somente de validação).
+
+## Onda 6-E — 3º convite (FALHOU — diagnóstico, não é bug)
+
+`auth.admin.inviteUserByEmail('encantomarmitaria@gmail.com', ...)` recusado pelo GoTrue: *"A user with
+this email address has already been registered"*. Nenhuma mutação ocorreu (confirmado por leitura:
+`confirmation_sent_at`/`invited_at` continuaram com o timestamp do 2º convite).
+
+**Causa**: o 2º convite (Onda 6-C) já havia confirmado o e-mail de verdade no `/verify` do GoTrue
+(`email_confirmed_at` preenchido) antes do bug do Service Worker desviar o navegador — só que o usuário
+nunca chegou à tela "Defina sua senha" e nunca chamou `updateUser(password)`. A conta ficou no estado
+"e-mail confirmado, sem senha utilizável", e o GoTrue trata `invite` como mecanismo exclusivo de primeiro
+contato — recusa reenviar para um e-mail já confirmado.
+
+## Onda 6-F — Link de recuperação de senha (CONCLUÍDA — envio; aceite pendente do destinatário)
+
+Substituiu o 3º convite pelo fluxo oficial de recuperação de senha: `auth.resetPasswordForEmail(
+'encantomarmitaria@gmail.com', {redirectTo: '.../convite.html'})`, com a chave anon (mesmo mecanismo que
+um "esqueci minha senha" real usaria — não `service_role`/`inviteUserByEmail`). `ConviteApp.jsx` não
+distingue `type=invite` de `type=recovery`: só espera `onAuthStateChange` disparar com sessão e chama
+`updateUser({password})` — funciona sem nenhuma alteração de código.
+
+Pré-checagens (leitura) confirmaram: `user_id` correto, `email_confirmed_at` preenchido, vínculo com
+Encanto presente, fora de `super_admins`, Super Admin real e Aquarios inalterados. Único item não
+confirmado por leitura direta: `uri_allow_list` de produção via Management API (o PAT salvo localmente
+está expirado/revogado, `401` até para listar projetos) — usada evidência equivalente e mais recente no
+lugar (o mesmo redirect já funcionou no 2º convite e foi revalidado ao vivo na Onda 6-D).
+
+Pós-envio (leitura): `recovery_sent_at` preenchido; todo o resto (`email_confirmed_at`, `last_sign_in_at`,
+`invited_at`, `confirmation_sent_at`, vínculo com Encanto, ausência de `super_admins`) idêntico a antes.
+**Aceite pelo destinatário ainda pendente** — este item da Onda 6 (convite → aceite → confirmação →
+senha → login → acesso) continua em aberto, de forma independente da Onda 7 abaixo.
+
+## Onda 7 — Separação definitiva do Super Admin e do Admin Operacional (CONCLUÍDA)
+
+**Objetivo**: eliminar a sobreposição de identidade em `public.admins` da Encanto — o Super Admin real
+tinha uma linha de admin operacional lá desde antes desta REF, além de estar em `public.super_admins`.
+
+**Fase 1-3 (pré-checagem + validação do mecanismo, somente leitura)**: confirmado por leitura direta em
+produção que `is_super_admin()` consulta exclusivamente `public.super_admins` e `is_admin_of(store_id)`
+retorna `is_super_admin() OR EXISTS(...admins...)` — ou seja, um Super Admin nunca depende de uma linha em
+`admins` para ser autorizado. `platform_tenant_detail` guarda por `is_super_admin()`;
+`admin_orders_stats`/`admin_orders_search` guardam por `is_admin_of(store_id)`. Nenhuma dessas funções foi
+alterada nesta onda — apenas lidas e confirmadas.
+
+Estado antes da escrita: 3 linhas em `public.admins` no total — Super Admin+Encanto (`b0278a21-...`,
+desde 2026-07-11), admin operacional+Encanto (`04061ac2-...`, desde 2026-08-25) e Aquarios+seu próprio
+admin (`71c6ac83-...`, inalterada). Super Admin presente em `super_admins` (1 linha). Admin operacional
+ausente de `super_admins`.
+
+**Fase 4 (remoção controlada)**: `DELETE FROM public.admins WHERE id='b0278a21-...' AND
+user_id='b9dc7626-...' AND store_id=<Encanto>` — restrito ao trio id+user_id+store_id, não por e-mail.
+**1 linha removida**, exatamente a esperada.
+
+**Fase 5 (validação imediata, leitura)**:
+
+| Checagem | Resultado |
+|---|---|
+| Super Admin fora de `admins`/Encanto | ✅ (0 linhas) |
+| Super Admin continua em `super_admins` | ✅ (1 linha) |
+| Admin operacional continua em `admins`/Encanto | ✅ (1 linha) |
+| Admin operacional fora de `super_admins` | ✅ (0 linhas) |
+| Admin da Aquarios intacto | ✅ (mesma linha, mesmo `user_id`) |
+| Aquarios (loja) inalterada | ✅ (`status=suspenso`) |
+| Total `admins`/Encanto depois | 1 (era 2) |
+| Total `admins` geral depois | 2 (era 3) |
+| Total `super_admins` | 1 (inalterado) |
+
+**Fase 6-7 (prova empírica de acesso, `BEGIN...ROLLBACK`, líquido zero)**: simulado `auth.uid()` via
+`SET LOCAL ROLE authenticated` + `set_config('request.jwt.claims', ...)` — o mesmo padrão já usado pelos
+scripts de teste do próprio projeto — chamando as RPCs reais como cada identidade, **com a linha do Super
+Admin já removida**:
+
+| Contexto | Teste | Resultado |
+|---|---|---|
+| Super Admin (sem linha em `admins`) | `is_super_admin()` | `true` |
+| Super Admin (sem linha em `admins`) | `is_admin_of(Encanto)` | `true` |
+| Super Admin (sem linha em `admins`) | `platform_tenant_detail(Encanto)` | funcionou |
+| Super Admin (sem linha em `admins`) | `admin_orders_stats(Encanto)` | funcionou |
+| Super Admin (sem linha em `admins`) | `admin_orders_search(Encanto)` | funcionou (5 pedidos) |
+| Admin operacional | `is_super_admin()` | `false` |
+| Admin operacional | `is_admin_of(Encanto)` | `true` |
+| Admin operacional | `is_admin_of(Aquarios)` | `false` |
+| Admin operacional | `admin_orders_stats(Encanto)` | funcionou |
+| Admin operacional | `platform_tenant_detail(Encanto)` | **bloqueado** — `apenas o super admin da plataforma pode ver o detalhe de um tenant` |
+
+**Fase 8 (prova da separação) — confirmada**:
+
+```
+SUPER ADMIN            ADMIN OPERACIONAL ENCANTO
+super_admins    = SIM   super_admins    = NAO
+admins/Encanto  = NAO   admins/Encanto  = SIM
+acesso plataforma = SIM acesso plataforma = NAO
+acesso Encanto  = SIM (via papel)   acesso Encanto = SIM (via vínculo)
+```
+
+**Fase 9-10 (não tocar + integridade)**: nenhuma outra tabela, RLS, RPC, Edge Function, Service Worker ou
+frontend alterado. Único arquivo modificado neste onda foi esta documentação (nenhuma alteração de
+código foi necessária ou feita).
+
+## REF-AUTH-PLATFORM-ISOLATION-01 — estruturalmente concluída
+
+A arquitetura de identidade agora reflete exatamente o desenho original: **Super Admin** administra a
+plataforma inteira através de `public.super_admins` (sem depender de nenhum vínculo por loja); **Admin
+Operacional** administra somente a Encanto através de `public.admins` (sem nenhum privilégio de
+plataforma). Não há mais sobreposição da mesma identidade nas duas funções para a Encanto.
+
+**Item ainda em aberto, independente da conclusão estrutural acima**: a Onda 6 (`convite → aceite →
+confirmação → senha → login → acesso`) só fecha quando `encantomarmitaria@gmail.com` confirmar que abriu
+o link de recuperação da Onda 6-F, definiu a senha e conseguiu logar. Isso depende do destinatário, não
+bloqueia a conclusão estrutural da REF, e será validado por leitura assim que o destinatário confirmar.
+
 ## Pendências / próximas ondas (não iniciadas)
 
-- Deploy em produção da correção do Service Worker (Onda 6-D) — aguardando autorização explícita.
-- 3º convite real para `encantomarmitaria@gmail.com`, só depois do deploy acima — aguardando autorização.
-- Confirmação real de login de `encantomarmitaria@gmail.com` — depende do destinatário, após o convite acima.
-- Onda 7 (separação definitiva do vínculo do Super Admin) — só após a confirmação acima, aguardando
-  autorização explícita.
+- Confirmação real de login de `encantomarmitaria@gmail.com` (Onda 6-F) — depende do destinatário; a
+  validação final por leitura só será feita após essa confirmação.
 - **Deploy em produção das correções das Ondas 1, 2 e 3** (hardening de credenciais/desvincular/selo do
   Platform Console) também depende de autorização própria — está fora do escopo aprovado até aqui.
   Produção hoje roda: `platform-set-store-admin-password` versão 1 (sem a guarda), e
