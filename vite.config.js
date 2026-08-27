@@ -61,7 +61,7 @@ const sentryUploadPronto = !!(process.env.SENTRY_AUTH_TOKEN && process.env.SENTR
    instância deste MESMO plugin pro bundle do admin (Onda 2 liga de vez, com manifest/nome próprios) —
    assinatura por posição preservada pros dois chamadores que já existiam (web e capacitor continuam
    passando só o 1o argumento, pegando os defaults de sempre). */
-const buildPwaPlugin = (desativado, filename = 'sw.js', navigateFallback = 'index.html', globIgnores = []) => VitePWA({
+const buildPwaPlugin = (desativado, filename = 'sw.js', navigateFallback = 'index.html', globIgnores = [], navigateFallbackDenylist = []) => VitePWA({
   disable: desativado,
   registerType: 'prompt',
   injectRegister: false,
@@ -73,6 +73,9 @@ const buildPwaPlugin = (desativado, filename = 'sw.js', navigateFallback = 'inde
     globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,jpeg,webmanifest,json}'],
     globIgnores, // REF-ADMIN-04 Onda 3: admin usa isto pra nunca precachear dist/encanto|capacitor (outDir agora e' a raiz compartilhada 'dist/')
     navigateFallback,
+    // REF-AUTH-PLATFORM-ISOLATION-01 (Onda 6-D): so o admin passa algo aqui (convite.html) -- web/
+    // capacitor continuam com [] (comportamento IDENTICO a antes desta onda).
+    navigateFallbackDenylist,
     cleanupOutdatedCaches: true,
     clientsClaim: true,
   },
@@ -136,7 +139,15 @@ export default defineConfig(({ mode }) => {
         // REF-ADMIN-04 Onda 2/3: manifest próprio + nunca precacheia saída da loja/Capacitor que possa
         // coexistir em dist/. REF-STORE-ONBOARD-01 Onda 2: idem para convite.html (página de 1 uso só,
         // sem SW/manifest próprio, nunca deve entrar no precache do PWA do admin).
-        ? buildPwaPlugin(false, 'sw-admin.js', 'admin.html', ['encanto/**', 'capacitor/**', 'convite.html', 'assets/convite-*'])
+        // REF-AUTH-PLATFORM-ISOLATION-01 (Onda 6-D, achado real): excluir convite.html do PRECACHE
+        // (globIgnores, acima) nunca bastou sozinho -- o navigateFallback:'admin.html' do Workbox
+        // intercepta TODA navegação que não bata com o precache, sem denylist nenhuma configurada. Um
+        // Service Worker já ativo no navegador (de uma visita anterior a admin.{slug}.valionsistemas.
+        // com.br) respondia a /convite.html com o shell do admin.html (tela de login) em vez de deixar a
+        // requisição alcançar a rede -- o token do convite ficava no fragmento da URL sem que
+        // ConviteApp.jsx chegasse a rodar. navigateFallbackDenylist exclui exclusivamente esta rota do
+        // fallback; nenhum outro comportamento do SW (precache/offline das demais páginas) muda.
+        ? buildPwaPlugin(false, 'sw-admin.js', 'admin.html', ['encanto/**', 'capacitor/**', 'convite.html', 'assets/convite-*'], [/\/convite\.html$/])
         : buildPwaPlugin(isCapacitor),
       ...(sentryUploadPronto ? [sentryVitePlugin({
         org: process.env.SENTRY_ORG,

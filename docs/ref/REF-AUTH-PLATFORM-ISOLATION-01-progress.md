@@ -343,10 +343,83 @@ mudou).
 convite (agora com 1h de validade) e confirmar login real antes de fechar a validação do admin
 operacional e cogitar a Onda 7.
 
+## Onda 6-C — Investigação do redirecionamento (2º convite também falhou)
+
+Mesmo com o TTL corrigido, o 2º convite real também falhou: usuário clicou "Aceitar convite" e caiu
+**direto na tela de login normal** (não na tela "Defina sua senha"), depois "Invalid login credentials".
+
+**Evidência decisiva** (leitura de produção): `email_confirmed_at` e `last_sign_in_at` da conta real
+ficaram preenchidos com **41 milissegundos de diferença** — prova que o `/verify` do Supabase **funcionou**
+e criou uma sessão real (o convite não estava mais expirado). O problema estava depois disso.
+
+**Causa raiz identificada**: o build do Admin (`vite.config.js`, `buildPwaPlugin(false, 'sw-admin.js',
+'admin.html', [...])`) configura o Workbox com `navigateFallback: 'admin.html'` **sem nenhum
+`navigateFallbackDenylist`**. `convite.html` é deliberadamente excluído do *precache* (`globIgnores`),
+mas isso nunca protegeu contra o *fallback*: qualquer navegação que não bata com o precache é
+interceptada pelo Service Worker e recebe `admin.html` de volta. Se esse Service Worker já estava ativo
+no navegador usado (de uma visita anterior a `admin.encanto.valionsistemas.com.br`), a navegação para
+`/convite.html` nunca chegava à rede — o navegador mostrava a tela de login normal, com o token do
+convite ignorado no fragmento da URL.
+
+Reprodução com navegador real (Playwright/Chromium) confirmou **por título de página**: build antigo →
+`<title>` renderizado = "Encanto Admin" (errado, veio do `admin.html` cacheado); build com a correção →
+`<title>` = "Definir senha — Encanto Admin" (correto). Investigação 100% somente-leitura em produção;
+reprodução 100% em dados descartáveis no E2E, revertendo toda config temporária ao final.
+
+## Onda 6-D — Correção do Service Worker (CONCLUÍDA, deploy pendente de autorização)
+
+**Arquivo alterado**: `vite.config.js`.
+
+**Correção exata**: `buildPwaPlugin` ganhou um 5º parâmetro `navigateFallbackDenylist` (default `[]` —
+web/capacitor continuam idênticos a antes), repassado para `workbox.navigateFallbackDenylist`. A chamada
+do build `admin` passa `[/\/convite\.html$/]` — exclui **exclusivamente** essa rota do fallback do
+Service Worker; nenhum outro comportamento (precache, offline das demais páginas, `clientsClaim`) muda.
+
+**Validação da configuração compilada**: inspecionado o `dist/sw-admin.js` gerado byte a byte —
+`e.registerRoute(new e.NavigationRoute(e.createHandlerBoundToURL("admin.html"),{denylist:[/\/convite\.html$/]}))`
+— denylist presente e correta. Build web (`dist/encanto/sw.js`) confirmado com `{denylist:[]}` (default
+vazio, comportamento idêntico a antes — Workbox trata array vazio exatamente como ausência da opção).
+
+**Teste que reproduziu o problema** (antes da correção, navegador real com Service Worker já ativo):
+`<title>` renderizado = "Encanto Admin" ao navegar para `/convite.html` — bug confirmado.
+
+**Teste que comprovou a correção** (`scripts/auth-platform-isolation-01-onda6d-sw-fix-test.mjs`, build
+real `vite build --mode admin` + `vite preview` + Playwright/Chromium, projeto E2E, e-mail 100%
+descartável, Service Worker registrado ANTES do convite para replicar exatamente o cenário do bug):
+
+| Passo | Resultado |
+|---|---|
+| Service Worker ativo/controlando a página antes do convite | ✅ |
+| `convite.html` carrega o documento correto (não o shell do `admin.html`) | ✅ |
+| Tela "Defina sua senha" aparece (ConviteApp processa a sessão) | ✅ |
+| Senha definida com sucesso | ✅ |
+| Login normal funciona | ✅ |
+| `email_confirmed_at`/`last_sign_in_at` preenchidos | ✅ |
+
+**8/8 PASS.** Achado colateral do próprio teste (não é bug do produto): o bundle do Admin precisa ser
+buildado com as credenciais do MESMO projeto Supabase que emitiu o token sendo testado — buildar com
+`.env` de produção para testar um token do E2E produz um 403 na API de Auth (checagem cruzada de
+projeto), o que inicialmente mascarou o resultado do teste. Corrigido no próprio script (env vars do
+E2E injetadas só no build de teste).
+
+Limpeza confirmada: allow-list temporária do E2E revertida (`""`), 0 usuários órfãos. Regressão
+verificada: `platform-console.spec.js` (2/2 PASS, sem relação com este fix, mas toca o mesmo
+`vite.config.js`). Verificações estáticas: lint (0 erros, 54 warnings — baseline), typecheck (limpo),
+build web e admin (sucesso), `test:domain` (0 falhas).
+
+**Nenhum convite foi reenviado nesta onda.** Estado da conta real inalterado desde a Onda 6-C:
+`email_confirmed_at`/`last_sign_in_at` preenchidos (sessão do 2º convite, agora expirado/consumido),
+senha ainda não considerada validada, vínculo com Encanto preservado, fora de `super_admins`. Super
+Admin real e Aquarios Bar confirmados inalterados.
+
+**Deploy em produção desta correção**: pendente de autorização explícita separada (regra do projeto —
+nenhum deploy de produção sem pedido específico).
+
 ## Pendências / próximas ondas (não iniciadas)
 
-- Confirmação real de login de `encantomarmitaria@gmail.com` (novo convite, TTL corrigido) — depende do
-  destinatário.
+- Deploy em produção da correção do Service Worker (Onda 6-D) — aguardando autorização explícita.
+- 3º convite real para `encantomarmitaria@gmail.com`, só depois do deploy acima — aguardando autorização.
+- Confirmação real de login de `encantomarmitaria@gmail.com` — depende do destinatário, após o convite acima.
 - Onda 7 (separação definitiva do vínculo do Super Admin) — só após a confirmação acima, aguardando
   autorização explícita.
 - **Deploy em produção das correções das Ondas 1, 2 e 3** (hardening de credenciais/desvincular/selo do
