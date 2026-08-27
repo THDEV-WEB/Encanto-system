@@ -1,7 +1,11 @@
-# REF-LOYALTY-AUDIT-01 — Onda 0: Auditoria completa do Programa de Fidelidade (somente leitura)
+# REF-LOYALTY-AUDIT-01 — Programa de Fidelidade: auditoria + configuração por loja
 
-**Status: ONDA 0 CONCLUÍDA — auditoria pura, zero mudança de código/banco/config.** Aguardando
-autorização explícita do dono para qualquer Onda 1 (implementação).
+**Status: ONDA 0 (auditoria) + ONDA 1 (configuração por loja) CONCLUÍDAS, aplicadas em produção e
+no projeto E2E, commit `fb2a2e7`.** Ver §Onda 1 abaixo para o relatório final da implementação.
+
+## Onda 0 — Auditoria completa do Programa de Fidelidade (somente leitura)
+
+**Status: ONDA 0 CONCLUÍDA — auditoria pura, zero mudança de código/banco/config.**
 
 **Metodologia:** leitura de 100% do código-fonte relevante (migrations, RPCs, RLS, frontend,
 serviços, hooks, testes) + 16 queries somente-leitura direto em produção (contagens/agregados,
@@ -486,8 +490,210 @@ chaves que ficaram para trás.
 
 ---
 
-## Gate final desta onda
+## Gate final da Onda 0
 
-Auditoria concluída. **Nenhuma alteração foi feita em código, banco, configuração ou dado real.**
-Nenhuma Onda 1 foi iniciada. Aguardando autorização explícita do dono para prosseguir com qualquer
-correção listada no §17.
+Auditoria concluída. Nenhuma alteração foi feita em código, banco, configuração ou dado real nesta
+onda. Autorização explícita do dono recebida em seguida para a Onda 1 (§17, item 1).
+
+---
+
+## Onda 1 — Configuração da fidelidade por loja (implementação)
+
+**Status: CONCLUÍDA. Aplicada em produção e no projeto E2E. Commits `fb2a2e7` + `<próximo, este
+mesmo>` (doc). Push pendente de confirmação final abaixo.**
+
+### 1. Configuração antiga
+
+`loyalty_enabled`/`loyalty_required`/`loyalty_discount` em `public.settings` — key-value **global à
+plataforma inteira** (sem `store_id`), lida via `get_setting(p_chave, p_default)`. Todas as 7
+RPCs de fidelidade liam dali. `set_loyalty_config` autorizava via `is_admin()`, que — desde
+REF-SAAS-01 Onda 1 — é um shim fixo `is_admin_of(stores.slug='encanto')`, ou seja, só quem
+administra a Encanto conseguia configurar, e o valor configurado valeria pra qualquer loja.
+
+Estado real capturado antes da migration (2026-08-27): `loyalty_enabled='false'` ·
+`loyalty_required='10'` · `loyalty_discount='50'`.
+
+### 2. Configuração nova
+
+`public.store_settings` (tabela já existente desde REF-SAAS-01 Onda 4.3, `UNIQUE(store_id,
+chave)`, RLS trancada sem policy — só RPC `SECURITY DEFINER` acessa), com as mesmas 3 chaves agora
+por `store_id`. Mesmo padrão exato de `business_hours_schedule`/`delivery_fee_config`/
+`delivery_eta_min`/`store_mode`.
+
+**Default seguro para loja sem configuração própria (decisão documentada desta onda):**
+`enabled=false` · `required=10` · `discount=50`. Uma loja nova nasce com fidelidade **desligada** —
+nunca herda silenciosamente de outra loja. Confirmado por teste (`DEFAULT-P1/P2/P3`, ver §9).
+
+### 3. Migration realizada
+
+`migrations/REF-LOYALTY-AUDIT-01-onda1-config-por-loja.sql` (+ `-rollback.sql`):
+
+1. Backfill: copia as 3 chaves de `settings` para `store_settings` da Encanto (preserva o valor
+   real, `enabled=false` incluso — **não ativa nada**).
+2. `loyalty_grant`, `loyalty_void_on_cancel`, `get_my_loyalty`, `redeem_reward`,
+   `admin_find_loyalty`, `admin_adjust_loyalty` — mesma assinatura, só troca a fonte de leitura pra
+   `store_settings` escopado pela loja já resolvida em cada função (nenhuma delas precisou de novo
+   parâmetro — todas já resolviam `store_id`/recebiam `p_store_id` desde as Ondas 4.1/4.2).
+3. `set_loyalty_config` ganha `p_store_id DEFAULT default_store_id()` (troca de assinatura → `DROP
+   FUNCTION` explícito antes, lição da Onda 3/4.x) e troca `is_admin()` por `is_admin_of(p_store_id)`.
+   ACL customizado (REVOKE de anon/PUBLIC) reaplicado explicitamente após o DROP+CREATE — lição do
+   addendum da Onda 4.1 (DROP reseta ACL pros defaults do schema).
+4. Nova RPC `get_loyalty_config(p_store_id)` — pública (mesmo papel de
+   `get_delivery_fee_config`/etc.), substitui as 3 chamadas a `get_setting()` que o Admin fazia
+   direto do frontend.
+5. `DELETE FROM settings WHERE chave IN (...)` — remove as 3 chaves globais (nada mais as lê).
+
+Aplicada via `node run.mjs --file ...` em **produção** (projeto `hvbcdxsagkjtfjwvnslo`) e depois no
+**projeto E2E** (`bgzcrovskjbktdxkhemd`, via `run-e2e.mjs`) — necessário para os testes E2E
+(Playwright) funcionarem, já que é um banco Supabase separado.
+
+### 4. Padrão SaaS reutilizado
+
+Nenhuma arquitetura nova. Mesma tabela (`store_settings`), mesmo padrão de RPC (`get_x(p_store_id)`
+público + `set_x(..., p_store_id)` com `is_admin_of`), mesma lição de `DROP FUNCTION` antes de trocar
+assinatura, mesmo padrão de backfill preservando o dado real. Copiado ponto a ponto de
+`REF-SAAS-01-onda4-3-config-operacional.sql`.
+
+### 5. Estado final da Encanto
+
+Confirmado por leitura direta pós-migration: `store_settings` da Encanto tem
+`loyalty_enabled='false'` · `loyalty_required='10'` · `loyalty_discount='50'` — **idêntico** ao
+estado pré-migration. `loyalty_accounts` (5 contas) e `loyalty_events` (18 eventos) — **contagens
+idênticas** antes/depois, zero linha perdida ou duplicada. `get_loyalty_config()` (chamado sem
+argumento, como o app real) devolve exatamente esse estado.
+
+### 6. Comportamento do kill switch
+
+- Bloqueia de verdade no backend: `loyalty_grant` (concessão automática) e o ramo **cliente final**
+  de `redeem_reward` checam `enabled` da loja resolvida e recusam quando desligado — provado com
+  `loyalty_grant()` chamado direto contra um pedido real da Encanto (que está `enabled=false` agora
+  mesmo em produção): roda sem erro, zero selo concedido.
+- **Decisão explícita do dono (2026-08-27, pergunta feita antes de implementar, per instrução desta
+  onda):** o bypass do admin (`redeem_reward` ramo administrativo, `admin_adjust_loyalty`) **é
+  mantido como estava** — INATIVO bloqueia só o caminho automático/cliente, não as ações manuais do
+  admin. Nenhuma dessas 2 funções ganhou checagem de `enabled` nesta onda (decisão registrada, não
+  silenciosa).
+- Tentativa direta via RPC (bypassando a UI) continua bloqueada por `EXECUTE` revogado em
+  `loyalty_grant`/`loyalty_void_on_cancel` para `anon`/`authenticated` — confirmado ao vivo
+  (`permission denied for function loyalty_grant`).
+
+### 7. Isolamento por tenant
+
+Provado com uma loja B fictícia (dados descartáveis, `BEGIN...ROLLBACK` contra produção):
+- Loja B com config própria (`enabled=true`, `required=5`) concede selo normalmente enquanto a
+  Encanto real (`enabled=false`) não concede — mesma transação de teste, os dois lados provados
+  juntos.
+- `set_loyalty_config` de um admin da loja B não altera a config real da Encanto (lido de volta
+  **fora** da transação de teste — igual antes/depois).
+- Admin da loja B não configura a Encanto; admin da Encanto não configura a loja B; usuário
+  autenticado sem nenhum vínculo de admin não configura loja nenhuma — 3 checagens, ambos os
+  sentidos.
+- Reativação (`false`→`true`) na loja B: pedido enquanto desligado não conta; pedido novo após ligar
+  volta a contar — sem duplicar, sem afetar o saldo anterior.
+
+### 8. Impacto no núcleo de contabilização
+
+**Nenhum.** `create_order`, o índice único parcial de idempotência, o trigger de
+cancelamento/reversão e a resolução de identidade do cliente (`auth.uid()`→`customers`) não foram
+tocados — só a *fonte* dos 3 parâmetros de configuração mudou dentro de `loyalty_grant`/
+`loyalty_void_on_cancel`/etc., preservando 100% da lógica de negócio já validada na Onda 0.
+
+### 9. Testes realizados
+
+`scripts/loyalty-audit-01-onda1-test.mjs` (novo, mesmo estilo dos scripts `saas01-onda4-*`) — rodado
+contra **produção**, `BEGIN...ROLLBACK`, **28/28 PASS**, zero mutação líquida confirmada
+(`loyalty_accounts`/`loyalty_events` com a mesma contagem antes/depois; nenhuma loja/admin fictício
+sobrevive). Cobre: 4 checks estruturais (schema/assinatura/grants) + default seguro (loja nunca
+configurada) + cenários A, B, C/D, E, F/G, H, I, J, K pedidos na Fase 8 do escopo desta onda — todos
+com evidência real, não assumida.
+
+Também corrigidos 2 scripts de teste **pré-existentes** cujo `setupSql()` forçava a config antiga via
+`INSERT INTO settings` (sem efeito algum após a migration, pois as RPCs não leem mais aquela tabela):
+`scripts/saas01-onda4-1-pedidos-test.mjs` (`CHECKOUT-P1`) e `scripts/saas01-onda4-2-fidelidade-test.mjs`
+(`setupSql`, `REGRESSAO-01`) — ambos ajustados pra escrever/ler `store_settings` da loja correta.
+`test:saas01-onda4-2-fidelidade`: **17/17 PASS** após o ajuste (era 13/17 antes, quebrado pela
+migration).
+
+**Achado incidental, fora do escopo, não corrigido:** `test:saas01-onda4-1-pedidos` ficou em
+**50/52** (2 falhas: `CHECKOUT-P1`/`CHECKOUT-P2`). Causa raiz confirmada por leitura direta do
+`create_order` ao vivo: desde `REF-PROD-GOLIVE-01` (commit `2c86e73`, 2026-08-23 — **antes** desta
+onda, não relacionado a ela), `create_order` chamado por `anon` sem `tenant_id` no JWT ignora
+`p_store_id` do payload e resolve a loja via `resolve_store_from_origin()` (precisa de um header
+HTTP `Origin` real). O harness desses 2 scripts simula sessões via SQL puro (`SET LOCAL ROLE` +
+`request.jwt.claims`), sem nenhuma camada HTTP — não tem como fornecer esse header. O script
+`scripts/saas01-onda4-1-pedidos-test.mjs` é de 2026-08-17 (confirmado por `git log`), **anterior**
+à mudança que o quebrou; ninguém rodou esse teste específico entre 23/08 e hoje pra notar. Não é uma
+regressão desta onda (a correção do `setupSql` de `CHECKOUT-P1`, feita aqui, é necessária mas não
+suficiente — o teste só voltará a passar quando o harness ganhar uma forma de simular o header
+`Origin`, ou `create_order` ganhar um caminho de teste alternativo; nenhuma das duas coisas é escopo
+desta REF). Registrado como pendência para o dono decidir (§ Pendências).
+
+`npm run test:loyalty` / `npm run test:loyalty-guard` / `npm run test:domain` — verdes, sem
+alteração de comportamento (núcleo puro intocado).
+
+### 10. E2E (Playwright, projeto E2E dedicado)
+
+- `e2e/tests/admin/admin-fidelidade.spec.js` — **2/2 PASS**. Ajustado: a leitura do valor real
+  persistido (`lerValorReal`, usada pra confirmar que o toggle grava de verdade, não só otimista na
+  UI) agora lê `store_settings` da loja Encanto **do projeto E2E**, não mais `settings` global —
+  mesmo padrão já usado por `admin-status.spec.js`/`admin-taxa-entrega.spec.js` pra `store_mode`/
+  `company_info`.
+- `e2e/tests/cliente/fidelidade.spec.js` — **2/2 PASS**, sem nenhuma alteração necessária (usa
+  `get_my_loyalty`/`redeem_reward` sem args, exatamente como o app real chama).
+
+### 11. lint / typecheck / build / test:domain
+
+Todos verdes antes de tocar produção: `lint` (0 erros, 56 warnings pré-existentes, nenhum nos
+arquivos tocados), `typecheck` (limpo), `build` (sucesso), `test:domain` (inclui `test:loyalty` e
+`test:loyalty-guard`, ambos verdes).
+
+### 12. Diff
+
+`git diff --check` limpo (sem problema de whitespace). Varredura manual do diff staged por
+`password|secret|token|api_key|PGPASSWORD|sbp_|service_role` — únicos hits são o boilerplate já
+existente de leitura de `db.env` (fora do repo) copiado do padrão já commitado em
+`scripts/saas01-onda4-2-fidelidade-test.mjs`; nenhum valor de credencial real no diff. `git add`
+explícito por caminho (nunca `-A`/`.`) — confirmado que 2 arquivos de outra sessão em andamento no
+mesmo working directory (`src/constants/privacyPolicy.js` modificado, `scripts/loadtest-e2e.mjs`
+novo) **não** entraram neste commit.
+
+### 13. Commit
+
+`fb2a2e7` — `feat(loyalty): REF-LOYALTY-AUDIT-01 Onda 1 -- configuracao de fidelidade por loja` (10
+arquivos). Este documento é comitado separadamente logo em seguida (mesma sessão, sem re-abrir o
+commit anterior — política de nunca dar `--amend`).
+
+### 14. CI
+
+Aguardando push + execução. `test:db-guards` (onde os scripts de banco desta onda vivem) **não roda
+no CI** por desenho (precisa de credenciais de produção, deliberadamente fora do workflow — ver
+`.github/workflows/ci.yml`); o CI cobre lint/typecheck/build/`test:domain`/E2E chromium, todos já
+confirmados verdes localmente antes do push.
+
+### 15. Pendências
+
+1. **`test:saas01-onda4-1-pedidos` com 2 falhas pré-existentes** (`CHECKOUT-P1`/`CHECKOUT-P2`,
+   causa raiz no `create_order` da REF-PROD-GOLIVE-01, não desta onda) — decisão do dono se quer
+   abrir uma frente pra dar ao harness de teste uma forma de simular o header `Origin`, ou aceitar
+   como limitação conhecida do ambiente de teste (a Onda 0/Onda 4.1 já provaram o comportamento real
+   via chamada REST real com Origin de verdade).
+2. **Bypass do admin no kill switch** — decisão tomada (mantido), não é mais pendência, mas fica
+   registrado que foi uma escolha explícita, não uma omissão.
+3. Lacunas de teste já registradas na Onda 0 (§13: isolamento explícito entre 2 clientes da mesma
+   loja, reativação real fora de transação) continuam válidas — não cobertas nem por esta onda.
+4. **UI do Admin:** o toggle Ativo/Desativado e os campos required/discount já existiam
+   (`AdminFidelidade.jsx`) e foram adaptados pra trabalhar com `store_id` (via `buildStoreRpcParam()`,
+   mesmo padrão de todo o resto do Admin) — nenhuma UI nova foi criada nesta onda, conforme pedido
+   (Fase 7: "não criar UI complexa sem necessidade").
+
+---
+
+## Gate final da Onda 1
+
+Implementação concluída e validada (produção + E2E + testes + build). **Não iniciar a Onda 2
+automaticamente.** Nenhuma loja nova foi criada em produção. Fidelidade da Encanto não foi ativada
+automaticamente — continua `enabled=false`, exatamente como estava. Nenhum dado histórico foi
+alterado. Nenhuma outra funcionalidade fora do escopo desta REF foi tocada, exceto os 2 scripts de
+teste pré-existentes cuja correção era estritamente necessária (setup que forçava a config antiga,
+agora sem efeito). Aguardando confirmação de push + CI e autorização explícita do dono para
+qualquer onda futura.
