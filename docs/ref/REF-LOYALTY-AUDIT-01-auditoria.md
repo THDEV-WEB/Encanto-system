@@ -499,8 +499,8 @@ onda. Autorização explícita do dono recebida em seguida para a Onda 1 (§17, 
 
 ## Onda 1 — Configuração da fidelidade por loja (implementação)
 
-**Status: CONCLUÍDA. Aplicada em produção e no projeto E2E. Commits `fb2a2e7` + `<próximo, este
-mesmo>` (doc). Push pendente de confirmação final abaixo.**
+**Status: CONCLUÍDA. Aplicada em produção e no projeto E2E. Commits `fb2a2e7` (implementação) +
+`652b53f` (documentação), pushed em `origin/main`, CI verde (run `33098077670`).**
 
 ### 1. Configuração antiga
 
@@ -665,10 +665,11 @@ commit anterior — política de nunca dar `--amend`).
 
 ### 14. CI
 
-Aguardando push + execução. `test:db-guards` (onde os scripts de banco desta onda vivem) **não roda
-no CI** por desenho (precisa de credenciais de produção, deliberadamente fora do workflow — ver
-`.github/workflows/ci.yml`); o CI cobre lint/typecheck/build/`test:domain`/E2E chromium, todos já
-confirmados verdes localmente antes do push.
+**Verde.** Run `33098077670` (commit `652b53f`, gatilho `push` em `main`) — `conclusion: success`.
+`test:db-guards` (onde os scripts de banco desta onda vivem) **não roda no CI** por desenho (precisa
+de credenciais de produção, deliberadamente fora do workflow — ver `.github/workflows/ci.yml`); o CI
+cobre lint/typecheck/build/`test:domain`/E2E chromium — todos verdes, confirmando em ambiente limpo
+o que já havia sido validado localmente antes do push.
 
 ### 15. Pendências
 
