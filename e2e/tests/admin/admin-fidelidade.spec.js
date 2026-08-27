@@ -13,7 +13,7 @@ import { ADMIN_FIXTURE, CLIENTE_FIXTURE } from '../../support/fixture-accounts.j
 import { garantirClienteFixtureVinculado } from '../../support/fixture-customer.js';
 import { criarPedidoFixture } from '../../support/fixture-order.js';
 import { limparPedidosDoFixture } from '../../support/cleanup.js';
-import { E2E_ENV_PRONTO, supabaseAdmin } from '../../support/supabaseAdmin.js';
+import { E2E_ENV_PRONTO, supabaseAdmin, idDoAdminFixture } from '../../support/supabaseAdmin.js';
 
 test.describe('Fidelidade — visão do Admin', { tag: '@writes' }, () => {
   test.describe.configure({ mode: 'serial' }); // config do programa (required/discount) e' por loja, mas as 2 specs aqui miram a MESMA loja (encanto)
@@ -99,5 +99,130 @@ test.describe('Fidelidade — visão do Admin', { tag: '@writes' }, () => {
     await expect(page.getByText('✓ Salvo com sucesso!')).toBeVisible();
     await expect(page.getByText(estavaAtivo ? '● Ativo' : '○ Desativado')).toBeVisible();
     await expect.poll(lerValorReal).toBe(estavaAtivo);
+  });
+});
+
+/* REF-LOYALTY-AUDIT-01 · Onda 2 — prova E2E, pela UI REAL (nao so RPC direto como a Onda 1 ja fez em
+   scripts/loyalty-audit-01-onda1-test.mjs), de que trocar de loja no seletor do Admin (Onda 5 da
+   REF-SAAS-01) reflete a config de fidelidade DA LOJA CERTA, e que configurar uma loja nunca vaza pra
+   outra. Mesmo mecanismo de provisionamento/troca de e2e/tests/admin/platform-console.spec.js (super
+   admin cria loja descartavel via Platform Console, "Abrir Admin" troca de contexto, seletor
+   `admin-store-selector` alterna entre as lojas que o admin de fato administra). */
+test.describe('Fidelidade — isolamento por loja via troca real de contexto no Admin', { tag: '@writes' }, () => {
+  const SLUG = 'loja-fidelidade-onda2-e2e';
+  const NOME = 'Loja Fidelidade Onda 2 (E2E)';
+  let adminUserId = null;
+
+  async function limparLojaDeTeste(admin) {
+    const { data: loja } = await admin.from('stores').select('id').eq('slug', SLUG).maybeSingle();
+    if (loja) {
+      await admin.from('admins').delete().eq('store_id', loja.id);
+      await admin.from('store_settings').delete().eq('store_id', loja.id);
+      await admin.from('stores').delete().eq('id', loja.id);
+    }
+  }
+
+  test.beforeEach(async () => {
+    test.skip(!E2E_ENV_PRONTO, 'ambiente de E2E não configurado (.env.e2e)');
+    const admin = supabaseAdmin();
+    adminUserId = await idDoAdminFixture();
+    await limparLojaDeTeste(admin); // sobra de uma run anterior interrompida, se houver
+    // super_admins TEMPORARIO -- so no projeto de E2E, nunca em producao (mesmo padrao de platform-console.spec.js).
+    await admin.from('super_admins').upsert({ user_id: adminUserId }, { onConflict: 'user_id' });
+  });
+
+  test.afterEach(async () => {
+    if (!E2E_ENV_PRONTO) return;
+    const admin = supabaseAdmin();
+    await limparLojaDeTeste(admin);
+    if (adminUserId) await admin.from('super_admins').delete().eq('user_id', adminUserId);
+  });
+
+  test('loja nova nasce com fidelidade desativada (default seguro); configurar ela nao afeta a Encanto; trocar de loja pela UI mostra sempre o valor certo', async ({ adminLoginPage, platformConsole, adminPanel, adminFidelidadePage, page }) => {
+    const admin = supabaseAdmin();
+
+    await adminLoginPage.goto();
+    await adminLoginPage.login(ADMIN_FIXTURE.email, ADMIN_FIXTURE.senha);
+    await platformConsole.abrirAba('lojas');
+    await platformConsole.preencherNovaLoja({ nome: NOME, slug: SLUG });
+    await platformConsole.criarLoja();
+    await expect(page.getByText(`Loja "${NOME}" criada.`)).toBeVisible();
+    await platformConsole.abrirDetalhe(SLUG);
+    await platformConsole.vincularAdmin(SLUG, ADMIN_FIXTURE.email);
+    await expect(page.getByText(`${ADMIN_FIXTURE.email} agora é admin desta loja.`)).toBeVisible();
+
+    const { data: lojaNova } = await admin.from('stores').select('id').eq('slug', SLUG).single();
+    const { data: encanto } = await admin.from('stores').select('id').eq('slug', 'encanto').single();
+
+    // "Abrir Admin da loja" entra direto no Admin da loja NOVA (contexto ja trocado).
+    await page.getByTestId(`plataforma-abrir-admin-${SLUG}`).click();
+    await expect(adminPanel.tab('dashboard')).toBeVisible();
+
+    const lerStatus = async () => (await page.getByText('● Ativo').isVisible()) ? '● Ativo' : '○ Desativado';
+    const lerRegra = async () => (await page.getByText(/^Regra: \d+ pedidos = \d+% de desconto/).textContent()).trim();
+    // adminLerConfig() e assincrono (fetch da config POR LOJA no mount) -- cada troca de loja remonta
+    // AdminFidelidade (key={activeStoreId}) e reinicia com os defaults 10/50/enabled ate a resposta
+    // chegar. Ler/editar ANTES disso resolver corre risco real de sobrescrever com o default (leitura)
+    // ou de o fetch tardio pisar por cima do que acabou de ser digitado (escrita) -- esperar o botao
+    // "Salvar configuracoes" ficar habilitado (disabled={cfgLoad}) fecha essa corrida nos dois sentidos.
+    const aguardarConfigCarregada = () => expect(adminFidelidadePage.salvarConfigButton).toBeEnabled();
+
+    // Loja nunca configurada -- default seguro (REF-LOYALTY-AUDIT-01 · Onda 1): DESATIVADA, 10/50%.
+    await adminPanel.abrirAba('fidelidade');
+    await aguardarConfigCarregada();
+    await expect(page.getByText('○ Desativado')).toBeVisible();
+    await expect(page.getByText(/^Regra: 10 pedidos = 50% de desconto/)).toBeVisible();
+
+    // Seletor aparece (2 vinculos reais agora: encanto + loja nova) -- captura o baseline REAL da
+    // Encanto, sem assumir valor (outras specs deste arquivo mexem nele).
+    const seletor = page.getByTestId('admin-store-selector');
+    await expect(seletor).toBeVisible();
+    await seletor.selectOption({ value: encanto.id });
+    await adminPanel.abrirAba('fidelidade');
+    await aguardarConfigCarregada();
+    const statusEncantoAntes = await lerStatus();
+    const regraEncantoAntes = await lerRegra();
+
+    // Volta pra loja nova, liga o programa com valores BEM diferentes de qualquer coisa plausivel na Encanto.
+    await seletor.selectOption({ value: lojaNova.id });
+    await adminPanel.abrirAba('fidelidade');
+    await aguardarConfigCarregada();
+    // 2 saves em sequencia (required/discount, depois o toggle) -- espera o 1o RPC assentar antes do
+    // 2o clique, senao as 2 chamadas a set_loyalty_config podem resolver fora de ordem e o 2o (que so
+    // muda `enabled`) chegar ANTES do 1o, que o sobrescreveria de volta pra `enabled:false`.
+    await adminFidelidadePage.salvarConfig({ required: 3, discount: 77 });
+    await expect(page.getByText('✓ Salvo com sucesso!')).toBeVisible();
+    await adminFidelidadePage.enabledToggleClicavel.click();
+    await expect(page.getByText('✓ Salvo com sucesso!')).toBeVisible();
+    await expect(page.getByText('● Ativo')).toBeVisible();
+    await expect(page.getByText(/^Regra: 3 pedidos = 77% de desconto/)).toBeVisible();
+
+    // Confirma no BANCO (nao so na tela) que gravou store_settings da loja CERTA. O rotulo muda
+    // OTIMISTA no clique, mas o RPC de save e assincrono (mesmo achado documentado no teste de toggle
+    // acima) -- expect.poll fecha essa corrida sem depender de timeout fixo.
+    const lerConfigReal = async () => {
+      const { data } = await admin.from('store_settings').select('chave, valor')
+        .eq('store_id', lojaNova.id).in('chave', ['loyalty_enabled', 'loyalty_required', 'loyalty_discount']);
+      return Object.fromEntries(data.map((r) => [r.chave, r.valor]));
+    };
+    await expect.poll(async () => (await lerConfigReal()).loyalty_enabled).toBe('true');
+    const mapa = await lerConfigReal();
+    expect(mapa.loyalty_required).toBe('3');
+    expect(mapa.loyalty_discount).toBe('77');
+
+    // Troca pra Encanto pela UI -- tem que mostrar o baseline ORIGINAL, NUNCA o 3/77%/Ativo da loja nova.
+    await seletor.selectOption({ value: encanto.id });
+    await adminPanel.abrirAba('fidelidade');
+    await aguardarConfigCarregada();
+    await expect(page.getByText(/^Regra: 3 pedidos = 77% de desconto/)).toHaveCount(0);
+    expect(await lerStatus()).toBe(statusEncantoAntes);
+    expect(await lerRegra()).toBe(regraEncantoAntes);
+
+    // Volta pra loja nova -- o valor configurado la CONTINUA intacto (a troca de contexto nunca reseta).
+    await seletor.selectOption({ value: lojaNova.id });
+    await adminPanel.abrirAba('fidelidade');
+    await aguardarConfigCarregada();
+    await expect(page.getByText(/^Regra: 3 pedidos = 77% de desconto/)).toBeVisible();
+    await expect(page.getByText('● Ativo')).toBeVisible();
   });
 });

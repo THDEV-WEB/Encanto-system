@@ -698,3 +698,122 @@ alterado. Nenhuma outra funcionalidade fora do escopo desta REF foi tocada, exce
 teste pré-existentes cuja correção era estritamente necessária (setup que forçava a config antiga,
 agora sem efeito). Aguardando confirmação de push + CI e autorização explícita do dono para
 qualquer onda futura.
+
+---
+
+## Onda 2 — Camada administrativa/operacional (verificação + prova E2E real)
+
+**Status: CONCLUÍDA.** Escopo pedido pelo dono: adaptar o Admin pra trabalhar com a config por loja,
+com 11 objetivos específicos (visualizar/ativar-desativar por loja, persistência real, isolamento
+cross-tenant, estado exibido = estado real, INATIVO bloqueando automação, histórico preservado,
+investigar o bypass sem mudar silenciosamente, seguir o padrão do SaaS, núcleo intocado, testes de
+ATIVO/INATIVO/isolamento/autorização/reativação).
+
+### Achado principal desta onda
+
+**10 dos 11 objetivos já estavam 100% entregues pela Onda 1** — `AdminFidelidade.jsx`/
+`loyaltyService.js` já chamam `get_loyalty_config`/`set_loyalty_config` com `buildStoreRpcParam()`
+(mesma loja ativa da sessão do Admin, mecanismo que já existe desde REF-SAAS-01 Onda 5), e o backend
+já impõe `is_admin_of(p_store_id)`. **Nenhuma migration nova, nenhuma RPC nova, nenhuma mudança em
+`src/` foi necessária nesta onda** — re-verifiquei cada objetivo contra o código/produção atuais
+(não só reafirmei o que a Onda 1 já tinha dito) e, em vez de reimplementar algo que já existe, usei o
+esforço desta onda pra fechar a única lacuna real: **prova end-to-end, pela UI de verdade** (não só
+RPC direto como a suíte da Onda 1 fez) — trocando de loja no seletor real do Admin e confirmando que
+a tela e o banco sempre concordam, para as 2 lojas, nos 2 sentidos.
+
+### 1–8, 10, 11 — Objetivos já satisfeitos pela Onda 1 (reconfirmados, não implementados de novo)
+
+| # | Objetivo | Evidência (reconfirmada nesta onda) |
+|---|---|---|
+| 1 | Cada loja tem config própria | `store_settings` por `store_id` (migration da Onda 1); novo teste E2E prova 2 lojas com valores diferentes simultâneos |
+| 2 | Admin visualiza a config da loja selecionada | `AdminFidelidade` chama `adminLerConfig()` a cada mount; o seletor de loja (`admin-store-selector`, Onda 5 REF-SAAS-01) força remount (`key={activeStoreId}`) — novo teste prova que a tela sempre mostra o valor da loja ativa |
+| 3 | Ativar/desativar por loja | `set_loyalty_config(..., p_store_id)`; toggle já existente na UI, testado por loja no novo E2E |
+| 4 | Persiste no backend, não só visual | `expect.poll` direto em `store_settings` no novo teste — não confia só no rótulo otimista da tela |
+| 5 | Admin de uma loja não altera outra | `is_admin_of(p_store_id)` (Onda 1) + `CROSS-N1/N2/N3` (script da Onda 1, RPC direto) + novo E2E (configurar a loja nova nunca mudou a Encanto, banco conferido antes/depois) |
+| 6 | Estado exibido = estado real do backend | Mesmo mecanismo do item 2; novo E2E compara texto da tela com leitura direta do banco |
+| 7 | INATIVO bloqueia operações automáticas | `loyalty_grant` checa `enabled` por loja (Onda 1, intocado nesta onda) |
+| 8 | Desligar não apaga histórico | Config (`store_settings`) e dado (`loyalty_accounts`/`loyalty_events`) são tabelas/RPCs completamente separados — nenhuma RPC de config toca dado, no código de nenhuma das 2 ondas |
+| 10 | Seguir o padrão do SaaS | Migration da Onda 1 copiou `get_x(p_store_id)`/`set_x(...,p_store_id)` da Onda 4.3; o novo teste E2E reusa literalmente o mesmo mecanismo de `platform-console.spec.js` (criar loja descartável, "Abrir Admin", seletor) — nenhuma peça de infraestrutura nova |
+| 11 | Núcleo intocado | Zero arquivo em `migrations/`/`supabase/` alterado nesta onda; único arquivo de produção tocado nesta onda: nenhum (só teste) |
+
+### 9. Operações manuais de resgate/ajuste — não alterado silenciosamente
+
+**Decisão já tomada explicitamente na Onda 1** (pergunta feita ao dono antes de qualquer
+implementação): manter o bypass do admin — `redeem_reward` (ramo administrativo) e
+`admin_adjust_loyalty` continuam sem checar `enabled`, permitindo que o admin honre uma exceção
+manual mesmo com o programa desligado para o público. Reconfirmado nesta onda que o código em
+produção ainda reflete exatamente essa decisão (nenhuma dessas 2 funções foi tocada por nenhuma
+onda desde a Onda 1). Não foi reaberta nem alterada nesta onda.
+
+### 12. Testes (ATIVO/INATIVO, isolamento entre lojas, autorização, reativação)
+
+- **Onda 1** já cobria os 4 (RPC direto, produção, `BEGIN...ROLLBACK`, 28/28) — não repetido aqui.
+- **Novo nesta onda:** `e2e/tests/admin/admin-fidelidade.spec.js`, 3º teste (novo `describe`,
+  projeto E2E, dados 100% descartáveis, nunca a Encanto real): cria uma loja via Platform Console,
+  confirma que ela nasce com fidelidade **desativada** (default seguro), ativa com `required=3`/
+  `discount=77`, confirma no banco (`expect.poll`), troca para a Encanto pelo seletor real do Admin
+  e confirma que o baseline dela (capturado no início, não assumido) continua intacto, volta pra
+  loja nova e confirma que a config configurada lá sobrevive à troca de contexto. Rodado 2x
+  seguidas para confirmar estabilidade (não flaky) — **3/3 PASS** nas 2 execuções. Limpeza
+  confirmada por leitura direta pós-suite: 0 loja/admin/`super_admins` remanescente.
+
+### Achado incidental (corrigido nesta onda): corrida entre 2 saves consecutivos
+
+Ao escrever o novo teste, encontrei uma corrida **real no produto**, não só no teste: a tela separa
+"Salvar configurações" (required/discount, botão explícito) do toggle Ativo/Desativado (salva
+sozinho ao clicar) — são 2 chamadas independentes a `set_loyalty_config`. Se a 2ª (toggle) for
+disparada antes da 1ª terminar, as respostas podem chegar **fora de ordem**: a resposta da 1ª
+chamada, mais lenta, chega por último e sobrescreve o `enabled` que a 2ª acabara de gravar — a tela
+mostra "● Ativo" (otimista), mas o banco fica com o valor antigo. Reproduzi isso automatizando os 2
+cliques em sequência rápida (exatamente o que um admin apressado, ou uma conexão lenta, pode
+produzir). **Corrigido só no teste** (esperar a confirmação da 1ª chamada antes de disparar a 2ª) —
+**não é uma correção de produto nesta onda**, porque não foi pedido e alteraria
+`AdminFidelidade.jsx` além do escopo aprovado. Fica registrado como pendência (§ abaixo) — a
+correção de produto mais simples seria desabilitar o toggle enquanto uma chamada anterior ainda
+está em voo (mesmo princípio já usado em `cfgLoad`).
+
+### Arquivos alterados
+
+Só teste — nenhum código de produção, nenhuma migration, nenhuma RPC:
+- `e2e/tests/admin/admin-fidelidade.spec.js` — 1 novo `test.describe` (+ 1 import,
+  `idDoAdminFixture`).
+
+### Migrations/RPCs
+
+Nenhuma. A infraestrutura da Onda 1 já era suficiente.
+
+### Validações
+
+`npx eslint e2e/tests/admin/admin-fidelidade.spec.js` — limpo. `npm run lint` (geral) — 0 erros, 54
+warnings pré-existentes (nenhum no arquivo tocado). `typecheck`/`build`/`test:domain` não
+re-executados nesta onda por não terem sido tocados (zero arquivo em `src/`/`migrations/` alterado);
+seguem no estado verde confirmado pela Onda 1 e pelo CI.
+
+### E2E
+
+`e2e/tests/admin/admin-fidelidade.spec.js` — **3/3 PASS**, 2 execuções seguidas (projeto E2E
+dedicado). `e2e/tests/cliente/fidelidade.spec.js` — não tocado, não re-executado nesta onda (nenhuma
+mudança que o afetaria).
+
+### Commit / CI
+
+Pendente desta sessão — commit único cobrindo o teste novo + este registro de documentação, push
+para `origin/main`, aguardar CI.
+
+### Pendências
+
+1. **Corrida de 2 saves em sequência no toggle/config de fidelidade** (achado incidental acima) —
+   correção de produto simples (desabilitar o toggle durante uma chamada em voo) fica registrada
+   para autorização explícita do dono, não implementada nesta onda por estar fora do escopo pedido.
+2. Pendências já registradas nas Ondas 0/1 (isolamento explícito entre 2 clientes da mesma loja;
+   `create_order`/Origin HTTP do harness de teste antigo) continuam sem mudança — não fazem parte
+   do escopo desta onda.
+
+---
+
+## Gate final da Onda 2
+
+Verificação + prova E2E concluídas. **Não iniciar a Onda 3 automaticamente.** Nenhuma migration
+nova, nenhuma mudança de código de produção. Fidelidade da Encanto não foi ativada. Nenhum outro
+comportamento fora do escopo desta onda foi alterado. Aguardando push + CI e autorização explícita
+do dono para qualquer onda futura (inclusive a correção da corrida de saves registrada acima).
