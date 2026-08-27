@@ -276,13 +276,81 @@ o último CI verde e este — nenhuma onda desta REF tocou `admin-adicionais.spe
 spec.js` ou `AdminPanel.page.js`/`AdminPanel.jsx`. Confirmado flakiness de runner (não regressão) por
 retrigger (`e49e6d3`, commit vazio) — **CI verde na reexecução**.
 
+## Onda 6-A — Investigação: login real falhou ("Invalid login credentials")
+
+Ao tentar o primeiro login real, `encantomarmitaria@gmail.com` continuava com `email_confirmed_at=NULL`
+e `last_sign_in_at=NULL` em produção — o mesmo padrão do incidente anterior da Aquarios Bar. Investigação
+somente-leitura (produção) + reprodução em dados descartáveis (E2E):
+
+| Item auditado | Resultado |
+|---|---|
+| `ConviteApp.jsx` | Depende 100% de `detectSessionInUrl` + `onAuthStateChange`; **nunca lê `error`/`error_code` do fragmento** — timeout genérico de 6s cai em "Link inválido ou expirado" sem revelar o motivo real |
+| `convite.html` | Entry point real do build (`vite.config.js`), existe na raiz do repo — sem problema |
+| `invite-store-admin` | Sem TTL próprio — herda 100% da config global do projeto |
+| `vercel.json` | Nenhum rewrite toca `/convite.html` (só `/` é reescrito por host) — **descartado** |
+| Redirect URLs (produção) | `https://admin.encanto.valionsistemas.com.br/convite.html` explicitamente na allow-list — **descartado** |
+| **`mailer_otp_exp` (produção)** | **600 segundos (10 minutos)** — E2E usa 3600s. Achado central. |
+
+**Reprodução E2E** (`scripts/auth-platform-isolation-01-onda6a-ttl-test.mjs`, dados descartáveis): fluxo
+completo (`generateLink → verify HTTPS → fragmento → setSession → updateUser(senha) → signInWithPassword`)
+— **7/7 PASS** quando o link é usado fresco, confirmando que o mecanismo em si não tem bug estrutural.
+
+**Conclusão**: causa **PROVÁVEL** (não confirmável sem gravar em produção, fora do escopo daquela onda) —
+o convite caiu em spam, o token expirou em 10 minutos antes de ser aberto, e `ConviteApp.jsx` nunca
+revela esse motivo ao usuário. Nenhuma correção foi feita nesta onda (investigação pura).
+
+## Onda 6-B — Correção do TTL + novo convite (CONCLUÍDA)
+
+**Fase 1 (gate E2E)**: `scripts/auth-platform-isolation-01-onda6b-fase1-e2e-test.mjs` — fluxo completo
+(convite → abertura → confirmação → sessão → senha → logout → login normal → `email_confirmed_at` →
+`last_sign_in_at`) contra o projeto E2E (que já usa `mailer_otp_exp=3600s`). **10/10 PASS.** Limpeza
+confirmada (0 usuários órfãos).
+
+**Fase 2 (produção, config)**: `mailer_otp_exp` alterado via Supabase Management API —
+
+```
+ANTES:  600 segundos (10 minutos)
+DEPOIS: 3600 segundos (1 hora)
+```
+
+Confirmado por leitura antes/depois. Nenhum outro campo de Auth mudou (allow-list, `mailer_autoconfirm`,
+`smtp_host`, `site_url`, `sms_otp_exp`, `disable_signup` — todos reconferidos idênticos).
+
+**Fase 3 (produção, novo convite real)**: `auth.admin.inviteUserByEmail('encantomarmitaria@gmail.com',
+{redirectTo: 'https://admin.encanto.valionsistemas.com.br/convite.html'})` chamado diretamente via
+`service_role` (mesmo padrão desta REF — sem sessão do Super Admin real disponível). Confirmado: **mesmo
+`user_id`** de antes (`0a8def19-...`, nenhum usuário novo criado), `invited_at` atualizado para um
+timestamp fresco, vínculo com Encanto em `public.admins` preservado, `email_confirmed_at` continua NULL
+(esperado — só muda quando o convite for de fato aceito).
+
+**Fase 4**: parado após o envio, conforme instruído — nenhuma tentativa de aceitar o convite, definir
+senha ou confirmar e-mail em nome do destinatário.
+
+**Estado final confirmado (leitura)**:
+
+| Conta | Estado |
+|---|---|
+| Super Admin real (`b9dc7626-...`) | Inalterado — continua em `super_admins`, vínculo com Encanto preservado |
+| Aquarios Bar (`c3d3dbe9-...`) | Inalterada — `status=suspenso`, vínculo intacto |
+| `encantomarmitaria@gmail.com` | Convite reenviado com TTL corrigido, aguardando aceite real |
+| `public.admins` da Encanto | 2 linhas (Super Admin + novo admin) — nenhum vínculo removido |
+
+Nenhuma alteração de código nesta onda (config de produção via API oficial + ação de dado via API
+oficial). Verificações estáticas não se aplicam (nada em `src/`/`supabase/functions/`/`migrations/`
+mudou).
+
+**Pendência explícita para a Onda 6 (continuação)**: aguardar `encantomarmitaria@gmail.com` abrir o novo
+convite (agora com 1h de validade) e confirmar login real antes de fechar a validação do admin
+operacional e cogitar a Onda 7.
+
 ## Pendências / próximas ondas (não iniciadas)
 
-- Onda 6 (validar o admin operacional real — login, acesso, isolamento) e Onda 7 (separação definitiva
-  do vínculo do Super Admin) — aguardando autorização explícita, onda por onda, e aguardando a
-  confirmação real de login da Onda 5.
-- **Deploy em produção das correções das Ondas 1, 2 e 3** também depende de autorização própria — está
-  fora do escopo aprovado até aqui (regra explícita: nenhuma alteração em produção nestas ondas).
+- Confirmação real de login de `encantomarmitaria@gmail.com` (novo convite, TTL corrigido) — depende do
+  destinatário.
+- Onda 7 (separação definitiva do vínculo do Super Admin) — só após a confirmação acima, aguardando
+  autorização explícita.
+- **Deploy em produção das correções das Ondas 1, 2 e 3** (hardening de credenciais/desvincular/selo do
+  Platform Console) também depende de autorização própria — está fora do escopo aprovado até aqui.
   Produção hoje roda: `platform-set-store-admin-password` versão 1 (sem a guarda), e
   `platform_unlink_store_admin`/`platform_tenant_detail` sem as guardas/campo novos — ou seja, hoje em
   produção o Platform Console **ainda não mostra** o selo de Super Admin (o campo não existe na resposta
