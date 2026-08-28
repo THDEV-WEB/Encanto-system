@@ -287,7 +287,7 @@ export function AdminFidelidade() {
           {[
             ['Elegibilidade','Para participar, o cliente deve possuir cadastro ativo. Em caso de uso indevido ou fraude, a loja pode cancelar os benefícios.'],
             ['Contabilização','O selo é concedido no backend a cada pedido válido. Pedidos cancelados revertem o selo. O valor do frete não é contabilizado.'],
-            ['Recompensa','Peça 10 vezes e ganhe 50% de desconto no próximo pedido. O resgate só pode ser feito pelo próprio participante (ou pela loja).'],
+            ['Recompensa',`Peça ${required} vezes e ganhe ${discount}% de desconto no próximo pedido. O resgate só pode ser feito pelo próprio participante (ou pela loja).`],
             ['Validade','O programa é válido por tempo indeterminado. A loja pode alterar regras, duração ou benefícios a qualquer momento.'],
             ['Encerramento','Em caso de encerramento, pontos e recompensas poderão ser zerados.'],
           ].map(([t,d])=>(

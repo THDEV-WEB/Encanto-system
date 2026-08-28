@@ -60,7 +60,10 @@ test.describe('Fidelidade (cliente autenticado)', { tag: '@writes' }, () => {
     const storePage = new StorePage(page);
     await storePage.goto();
 
-    await page.getByText('Você ganhou 50% de desconto! Clique para resgatar.').click();
+    // REF-LOYALTY-AUDIT-01 (achado do dono): o "% de desconto" era hardcoded ("50%") em 3 lugares,
+    // ignorando o valor REAL configurado pela loja -- corrigido pra usar config.discount (dinamico,
+    // como o resto da tela ja fazia). Leitura real, nao valor assumido.
+    await page.getByText(`Você ganhou ${config.discount}% de desconto! Clique para resgatar.`).click();
     await expect(page.getByRole('heading', { name: 'Parabéns!' })).toBeVisible();
 
     await page.getByRole('button', { name: /Usar desconto agora/ }).click();

@@ -414,7 +414,7 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
           }}>
           <span style={{fontSize:16}}>🎁</span>
           <span style={{fontSize:12,fontWeight:700,color:'#78350F',flex:1}}>
-            Você ganhou 50% de desconto! Clique para resgatar.
+            Você ganhou {loyaltyConfig.discount}% de desconto! Clique para resgatar.
           </span>
           <span style={{fontSize:11,color:'#92400E',fontWeight:700}}>→</span>
         </div>
@@ -679,7 +679,7 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
                 📋 Regras do Programa
               </p>
               {[
-                'Peça 10 vezes e ganhe 50% de desconto no próximo pedido.',
+                `Peça ${loyaltyConfig.required} vezes e ganhe ${loyaltyConfig.discount}% de desconto no próximo pedido.`,
                 'O pedido só contabiliza após ser aprovado ou finalizado pela loja.',
                 'O valor do frete não é contabilizado — somente os products.',
                 'Após o resgate, a pontuação é zerada e o acúmulo reinicia.',
