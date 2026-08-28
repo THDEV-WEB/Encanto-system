@@ -23,7 +23,11 @@ export class AdminFidelidadePage {
 
   get requiredInput() { return this.page.locator('[data-testid="fid-form-required"]'); }
   get discountInput() { return this.page.locator('[data-testid="fid-form-discount"]'); }
-  get salvarConfigButton() { return this.page.getByRole('button', { name: /Salvar configurações/ }); }
+  /* REF-LOYALTY-AUDIT-01 · Onda 3: testid estavel (nao mais texto/role) -- o rotulo do botao muda pra
+     "Salvando…"/"✓ Salvo!" durante e apos o save (guarda de reentrancia cfgSaving), entao um locator
+     por nome ("Salvar configurações") deixa de casar exatamente durante a janela que os testes de
+     corrida precisam observar. */
+  get salvarConfigButton() { return this.page.locator('[data-testid="fid-form-salvar"]'); }
   async salvarConfig({ required, discount } = {}) {
     if (required != null) await this.requiredInput.fill(String(required));
     if (discount != null) await this.discountInput.fill(String(discount));

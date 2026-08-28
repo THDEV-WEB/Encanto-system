@@ -816,3 +816,180 @@ Verificação + prova E2E concluídas. **Não iniciar a Onda 3 automaticamente.*
 nova, nenhuma mudança de código de produção. Fidelidade da Encanto não foi ativada. Nenhum outro
 comportamento fora do escopo desta onda foi alterado. Aguardando push + CI e autorização explícita
 do dono para qualquer onda futura (inclusive a correção da corrida de saves registrada acima).
+
+---
+
+## Onda 3 — Corrida de saves + validação final (autorizada explicitamente pelo dono)
+
+**Status: CONCLUÍDA.** Objetivo: investigar/reproduzir a corrida de saves registrada como pendência
+na Onda 2 e, se confirmada, corrigir de forma mínima; validar de novo o controle ATIVO/INATIVO por
+tenant. Regra seguida: não presumir bug sem reproduzir primeiro.
+
+### 1. Race condition — reproduzida e caracterizada
+
+**A) Reproduzível? SIM.** Reproduzida de 2 formas: (1) na Onda 2, disparando os 2 cliques em
+sequência real sem esperar o primeiro assentar — o banco ficou com `enabled=false` mesmo a tela
+mostrando "● Ativo". (2) Nesta onda, de forma controlada e determinística: `page.route()` atrasa
+propositalmente a resposta do 1º `POST .../rpc/set_loyalty_config`, abrindo uma janela real onde o
+2º clique dispararia um request concorrente.
+
+**B) Em quais condições?** Sempre que os 2 controles independentes da tela — botão "Salvar
+configurações" (required/discount) e o toggle Ativo/Desativado (onChange auto-save) — são acionados
+em sequência **antes** da resposta do primeiro chegar. Cada um chama `set_loyalty_config` de forma
+independente, sem qualquer coordenação entre si.
+
+**Causa raiz:** `salvarConfig()` (`AdminFidelidade.jsx`) não tinha nenhuma guarda de reentrância —
+nada impedia 2 chamadas concorrentes. Como cada chamada envia o objeto de config **completo**
+(`required`, `discount`, `enabled`), a resposta que chega **por último** (não necessariamente a que
+foi enviada por último) vence e sobrescreve o que a outra acabara de gravar.
+
+**C) Pode persistir estado incorreto? SIM**, confirmado: a tela mostrava "● Ativo" (otimista) enquanto
+`store_settings.loyalty_enabled` permanecia `'false'` no banco — divergência real, não só teórica.
+
+**D) Pode afetar outra loja? NÃO.** Cada chamada já carrega o `p_store_id` da loja ativa da sessão no
+momento do clique (`buildStoreRpcParam()`); a corrida só corrompe campos **dentro da mesma loja**
+entre si — nunca atravessa para outra loja (isolamento por tenant, já garantido desde a Onda 1,
+permanece intacto).
+
+**E) Pode deixar UI e backend divergentes? SIM** — exatamente o achado acima: rótulo "Ativo" na tela,
+`false` persistido.
+
+### 2. Correção aplicada
+
+**Menor correção possível, mecanismo já existente no projeto** (opção explicitamente sugerida pelo
+dono: "desabilitação temporária do controle durante persistência" — mesmo princípio que `cfgLoad` já
+usava pro carregamento inicial, só estendido pro salvar):
+
+- Novo estado `cfgSaving`. `salvarConfig()` ganha guarda de reentrância no topo
+  (`if (cfgSaving) return false`) e `try/finally` em torno da chamada RPC.
+- Os 2 controles (`checkbox` do toggle e `button` "Salvar configurações") ganham
+  `disabled={cfgLoad || cfgSaving}` — nenhum dos 2 pode disparar um novo save enquanto o anterior
+  está em voo. Com isso, **nunca existe mais de 1 request de `set_loyalty_config` em voo ao mesmo
+  tempo** — elimina a precondição da corrida por construção (não é uma correção "estatística", é
+  estrutural).
+- Botão ganha rótulo "Salvando…" durante a espera (feedback visual, efeito colateral da mesma
+  guarda).
+
+**Não alterado:** núcleo de contabilização, regra de negócio, modelo multi-tenant (Ondas 0/1) —
+mudança 100% contida em `AdminFidelidade.jsx` (frontend, camada de apresentação/controle de UI).
+
+**Arquivo à parte, só de teste:** `getByRole('button', {name: /Salvar configurações/})` (locator
+antigo) deixa de casar durante o estado "Salvando…" (o texto muda) — por isso os testes precisavam de
+um locator estável. Adicionado `data-testid="fid-form-salvar"` ao botão (mesmo padrão já usado nos
+outros 3 campos do formulário) e `AdminFidelidadePage.page.js` atualizado para usá-lo.
+
+### 3. Testes do toggle (A–F)
+
+| # | Cenário | Cobertura |
+|---|---|---|
+| A | ATIVO → INATIVO | `toggle Ativo/Desativado grava e reflete no rótulo` (existente, reconfirmado) |
+| B | INATIVO → ATIVO | idem |
+| C | múltiplas mudanças rápidas → última intenção válida | **novo teste** de corrida: 2 ações reais em sequência (Salvar + toggle), ambas corretas no final |
+| D | respostas fora de ordem → obsoleta não sobrescreve | **novo teste**: `page.route()` atrasa a 1ª resposta de propósito; guarda impede a 2ª chamada de sequer existir — elimina a precondição, não só mitiga |
+| E | recarregar página → UI mostra estado persistido | **novo check** adicionado ao teste de toggle: `page.reload()` + `entrarReaproveitandoSessao()` + confirma que o rótulo reflete o backend, não um cache perdido no reload |
+| F | trocar de loja → config da loja selecionada | já coberto pelo teste de isolamento da Onda 2, reconfirmado (3/3 → 4/4 rodando junto) |
+
+Suite completa (`e2e/tests/admin/admin-fidelidade.spec.js`, agora 4 testes) rodada **3x seguidas**:
+4/4 PASS em 2 das 3 rodadas; 1 falha isolada na 1ª rodada foi um timeout de navegação no teste #1 (não
+relacionado a esta mudança — recuperou sozinho nas 2 rodadas seguintes, sem qualquer alteração de
+código entre elas — flakiness de ambiente, não regressão).
+
+### 4. Isolamento por tenant — reconfirmado
+
+Provado de novo nesta onda, sem alteração de código de backend: o teste de corrida (item C/D acima)
+já é, ele mesmo, uma prova de isolamento — ele opera inteiramente dentro de 1 loja descartável, e o
+teste de isolamento da Onda 2 (loja A com valor X, Encanto com baseline Y, trocar uma nunca afeta a
+outra) continua passando sem nenhuma mudança. RLS/`is_admin_of(p_store_id)` (Onda 1) intocados.
+
+### 5. Kill switch — reconfirmado (regressão)
+
+Nenhum código de backend tocado nesta onda. Re-executado `scripts/loyalty-audit-01-onda1-test.mjs`
+(suíte comportamental da Onda 1, `BEGIN...ROLLBACK` contra produção) — **28/28 PASS**, incluindo os
+cenários de kill switch (pedido elegível não contabiliza quando `enabled=false`, tentativa direta via
+RPC bloqueada por `EXECUTE` revogado, reativação volta a contabilizar).
+
+**Achado incidental, não relacionado a esta onda:** ao re-executar, `loyalty_enabled` **real da
+Encanto em produção mudou de `false` para `true`** (e `loyalty_discount` de `50` para `30`) desde a
+última leitura (Onda 1/2). Confirmado que **não foi esta sessão** — nenhum script desta REF escreve
+fora de transações revertidas (produção) ou fora do projeto E2E separado; as contagens de
+`loyalty_accounts`/`loyalty_events` (5/18) permanecem idênticas em toda leitura desde a Onda 0, e o
+teste `ENCANTO-INATIVA` (que assumia `enabled=false` real) só passou a falhar por causa dessa
+mudança externa — confirmado por leitura direta antes de qualquer ajuste. Consistente com uma ação
+real do dono no Admin de produção (o mecanismo que a Onda 1/2 construíram e validaram sendo usado de
+verdade). **Nada foi revertido nem alterado** — a instrução desta onda foi "manter o estado atual",
+e o estado atual passou a ser `enabled=true`/`discount=30`, então isso foi respeitado como está.
+`scripts/loyalty-audit-01-onda1-test.mjs` foi ajustado pra não depender mais do valor real ambiente
+(forca `enabled=false` **só dentro da própria transação revertida** do cenário `ENCANTO-INATIVA`,
+mesmo padrão já usado nos scripts da REF-SAAS-01) — evita que o teste quebre toda vez que o dono
+operar o toggle de verdade.
+
+### 6. Histórico
+
+Confirmado pela mesma suíte (28/28): `loyalty_accounts`/`loyalty_events` reais **inalterados** em
+contagem antes/depois de toda a suíte (checagem `I) HISTORICO/REGRESSAO`). Desativar não apaga
+histórico; reativar não duplica (cenário H, `REATIVA-P1..P4`, reconfirmado).
+
+### 7. Idempotência e cancelamento
+
+Reconfirmado pela mesma suíte: cenário `J) IDEMPOTENCIA` (2 chamadas a `loyalty_grant` pro mesmo
+pedido → 1 único evento `earned`) e `K) CANCELAMENTO/REVERSAO` (cancelar reverte, reabrir restaura,
+respeitando o teto por loja) — **PASS**, sem nenhuma alteração nesses mecanismos.
+
+### 8. Operações manuais — comportamento final confirmado, sem contradição
+
+Retomado o achado da Onda 0. Decisão já tomada explicitamente pelo dono na Onda 1 (pergunta feita
+antes de qualquer implementação): **manter o bypass** — `redeem_reward` (ramo administrativo) e
+`admin_adjust_loyalty` continuam sem checar `enabled`. Nenhum dos dois foi tocado por nenhuma onda
+desde então (confirmado: zero migration/RPC alterada nesta onda). Comportamento está **de acordo com
+a regra definida** — documentado, não contraditório, não reaberto.
+
+### 9. Testes E2E
+
+`e2e/tests/admin/admin-fidelidade.spec.js`: 2 testes existentes (reconfirmados, 1 ganhou o check de
+reload) + 2 testes novos (isolamento via UI real, da Onda 2; corrida de saves, desta onda) = **4
+testes, todos com dados 100% descartáveis** (loja/admin/`super_admins` criados e destruídos por
+teste, nunca a Encanto real). Limpeza confirmada por leitura direta pós-suíte: 0 loja/`super_admins`
+remanescente.
+
+### 10. Produção
+
+Nenhuma escrita operacional. `loyalty_enabled` da Encanto **não foi tocado** (nem para confirmar nem
+para reverter) — permanece exatamente como encontrado (`true`, ação externa ao dono, ver §5). Nenhum
+pedido real criado, nenhum cliente real alterado, nenhum histórico real alterado. Única atividade em
+produção: leituras (várias) + o script de regressão da Onda 1, 100% dentro de `BEGIN...ROLLBACK`.
+
+### 11. Validação estática
+
+`lint` — 0 erros, 54 warnings pré-existentes (nenhum nos arquivos tocados). `typecheck` — limpo.
+`build` — sucesso. `test:domain` (inclui `test:loyalty`/`test:loyalty-guard`) — exit 0. `git diff
+--check` — limpo (sem problema de whitespace). Varredura de segredos no diff — nenhum encontrado (só
+os 2 arquivos de outra sessão em andamento, `privacyPolicy.js`/`loadtest-e2e.mjs`, continuam de fora
+do commit, confirmado por `git add` explícito por caminho).
+
+### 12. E2E
+
+4/4 PASS (`admin-fidelidade.spec.js`, projeto E2E) — 2 rodadas limpas consecutivas após a correção
+final do locator. `e2e/tests/cliente/fidelidade.spec.js` — 2/2 PASS, reconfirmado sem alteração.
+
+### 13–17. Diff / Commit / Push / CI / Pendências
+
+Ver commit(s) desta onda abaixo. Diff contido em 4 arquivos: `AdminFidelidade.jsx` (correção real),
+`AdminFidelidadePage.page.js` + `admin-fidelidade.spec.js` (testes), `loyalty-audit-01-onda1-test.mjs`
+(ajuste de determinismo). Nenhuma migration, nenhuma RPC.
+
+**Pendências restantes:**
+1. Achado incidental do `create_order`/Origin HTTP no harness de teste antigo (`saas01-onda4-1`,
+   registrado na Onda 2) — segue sem solução, fora do escopo de todas as ondas desta REF até agora.
+2. Nenhuma nova pendência foi criada por esta onda — a corrida de saves está fechada.
+
+---
+
+## Gate final da Onda 3
+
+Race condition reproduzida, causa raiz identificada, corrigida de forma mínima e estrutural
+(serialização via guarda de reentrância — mecanismo já usado no projeto, nenhuma arquitetura nova).
+Controle ATIVO/INATIVO confirmado confiável mesmo sob saves concorrentes. Isolamento por tenant,
+kill switch, histórico, idempotência e cancelamento — todos reconfirmados sem regressão (28/28 +
+4/4 E2E). Fidelidade da Encanto não foi ativada por esta sessão (encontrada já ativa, ação externa,
+não tocada). **Não iniciar a Onda 4 automaticamente.** Aguardando push + CI e autorização explícita
+do dono para qualquer onda futura.

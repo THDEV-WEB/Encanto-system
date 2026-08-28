@@ -193,10 +193,15 @@ try {
   });
   out('');
 
-  out('— A) ENCANTO INATIVA: pedido elegivel na Encanto (real, enabled=false hoje) NAO gera contabilizacao —');
-  await txPlain(setupSql(encantoId), async () => {
+  out('— A) ENCANTO INATIVA: pedido elegivel na Encanto NAO gera contabilizacao quando enabled=false —');
+  // loyalty_enabled da Encanto MUDA no mundo real (o dono opera o toggle em producao -- achado da
+  // Onda 3, ver relatorio: nao era mais 'false' quando este teste rodou de novo). Forca 'false' SO
+  // dentro desta transacao (ROLLBACK desfaz) pra este teste ser deterministico e nao quebrar toda vez
+  // que o dono liga/desliga o programa de verdade -- mesmo padrao ja usado em
+  // scripts/saas01-onda4-1-pedidos-test.mjs/saas01-onda4-2-fidelidade-test.mjs.
+  await txPlain([`UPDATE public.store_settings SET valor='false' WHERE store_id='${encantoId}' AND chave='loyalty_enabled'`], async () => {
     const { customerId, orderId } = await inserirPedido(encantoId, '47966670002', 'Cliente Encanto Teste (fake onda1)');
-    await callRpc('ENCANTO-INATIVA-P1', 'loyalty_grant() na Encanto (config REAL, enabled=false) roda sem erro mas nao concede',
+    await callRpc('ENCANTO-INATIVA-P1', 'loyalty_grant() na Encanto (forcada enabled=false nesta tx) roda sem erro mas nao concede',
       `SELECT public.loyalty_grant($1,$2)`, [customerId, orderId],
       (row, err) => ({ ok: err === null, detail: err || 'ok' }));
     await callRpc('ENCANTO-INATIVA-P2', 'zero evento earned para este pedido (programa desativado bloqueou a concessao automatica)',

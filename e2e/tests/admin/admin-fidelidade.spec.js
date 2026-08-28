@@ -94,6 +94,14 @@ test.describe('Fidelidade — visão do Admin', { tag: '@writes' }, () => {
     await expect(page.getByText(estavaAtivo ? '○ Desativado' : '● Ativo')).toBeVisible();
     await expect.poll(lerValorReal).toBe(!estavaAtivo);
 
+    // REF-LOYALTY-AUDIT-01 · Onda 3 (Fase 3-E): recarregar a pagina -- a UI busca o estado do BACKEND
+    // de novo (adminLerConfig no mount), nunca confia em cache local/estado React perdido no reload.
+    // Reload sempre volta pro login (REF-STABILITY-02) -- reaproveita a sessao real ja aberta.
+    await page.reload();
+    await adminLoginPage.entrarReaproveitandoSessao();
+    await adminPanel.abrirAba('fidelidade');
+    await expect(page.getByText(estavaAtivo ? '○ Desativado' : '● Ativo')).toBeVisible();
+
     // restaura o estado original
     await adminFidelidadePage.enabledToggleClicavel.click();
     await expect(page.getByText('✓ Salvo com sucesso!')).toBeVisible();
@@ -224,5 +232,76 @@ test.describe('Fidelidade — isolamento por loja via troca real de contexto no 
     await aguardarConfigCarregada();
     await expect(page.getByText(/^Regra: 3 pedidos = 77% de desconto/)).toBeVisible();
     await expect(page.getByText('● Ativo')).toBeVisible();
+  });
+
+  /* REF-LOYALTY-AUDIT-01 · Onda 3 — reproducao controlada do achado incidental da Onda 2: "Salvar
+     configurações" (botão) e o toggle Ativo/Desativado disparavam 2 chamadas INDEPENDENTES a
+     set_loyalty_config; disparadas em sequência rápida, as respostas podiam chegar fora de ordem e a
+     mais lenta sobrescrevia a mais rápida (banco divergia do que a tela mostrava). Corrigido em
+     AdminFidelidade.jsx com uma guarda de reentrância (`cfgSaving`): nenhum dos 2 controles dispara um
+     novo save enquanto o anterior está em voo. Este teste atrasa DE PROPÓSITO a resposta do 1º save
+     (page.route) pra abrir a mesma janela real que causava a corrupção, e prova que a guarda torna um
+     2º save concorrente fisicamente impossível pela UI. */
+  test('corrida de saves: 2 ações rápidas (Salvar configurações + toggle) nunca produzem estado incorreto -- a 2ª fica bloqueada até a 1ª assentar', async ({ adminLoginPage, platformConsole, adminPanel, adminFidelidadePage, page }) => {
+    const admin = supabaseAdmin();
+
+    await adminLoginPage.goto();
+    await adminLoginPage.login(ADMIN_FIXTURE.email, ADMIN_FIXTURE.senha);
+    await platformConsole.abrirAba('lojas');
+    await platformConsole.preencherNovaLoja({ nome: NOME, slug: SLUG });
+    await platformConsole.criarLoja();
+    await expect(page.getByText(`Loja "${NOME}" criada.`)).toBeVisible();
+    await platformConsole.abrirDetalhe(SLUG);
+    await platformConsole.vincularAdmin(SLUG, ADMIN_FIXTURE.email);
+    await expect(page.getByText(`${ADMIN_FIXTURE.email} agora é admin desta loja.`)).toBeVisible();
+
+    const { data: lojaNova } = await admin.from('stores').select('id').eq('slug', SLUG).single();
+
+    await page.getByTestId(`plataforma-abrir-admin-${SLUG}`).click();
+    await expect(adminPanel.tab('dashboard')).toBeVisible();
+    await adminPanel.abrirAba('fidelidade');
+    await expect(adminFidelidadePage.salvarConfigButton).toBeEnabled(); // config inicial (default) ja carregada
+
+    // Atrasa DE PROPOSITO a resposta do 1o (e so o 1o) POST a set_loyalty_config -- abre uma janela
+    // real onde um 2o clique dispararia um request concorrente se a guarda nao existisse.
+    let interceptado = false;
+    await page.route('**/rest/v1/rpc/set_loyalty_config**', async (route) => {
+      if (!interceptado) { interceptado = true; await new Promise((r) => setTimeout(r, 1500)); }
+      await route.continue();
+    });
+
+    await adminFidelidadePage.requiredInput.fill('5');
+    await adminFidelidadePage.discountInput.fill('60');
+    await adminFidelidadePage.salvarConfigButton.click(); // dispara o 1o save (atrasado 1.5s pelo intercept)
+
+    // Enquanto o 1o save esta em voo, os 2 controles ficam bloqueados -- prova central desta onda:
+    // fisicamente impossivel disparar um 2o save concorrente pela UI.
+    await expect(adminFidelidadePage.salvarConfigButton).toBeDisabled();
+    await expect(adminFidelidadePage.enabledCheckbox).toBeDisabled();
+    await expect(page.getByText('Salvando…')).toBeVisible();
+
+    // Assenta (apos o atraso) -- controles liberam, config gravou com os valores certos.
+    await expect(page.getByText('✓ Salvo com sucesso!')).toBeVisible();
+    await expect(adminFidelidadePage.salvarConfigButton).toBeEnabled();
+    await expect(adminFidelidadePage.enabledCheckbox).toBeEnabled();
+    await expect(page.getByText(/^Regra: 5 pedidos = 60% de desconto/)).toBeVisible();
+
+    // SO AGORA a 2a acao (toggle) e possivel -- exatamente a sequencia que corrompia o estado antes da
+    // guarda (Onda 2). As 2 acoes feitas em sequencia real terminam AMBAS corretas, sem se pisarem.
+    await adminFidelidadePage.enabledToggleClicavel.click();
+    await expect(page.getByText('✓ Salvo com sucesso!')).toBeVisible();
+    await expect(page.getByText('● Ativo')).toBeVisible();
+
+    // Confirma no BANCO -- o rotulo muda otimista no clique, mas o RPC e assincrono (mesmo achado do
+    // teste de toggle simples, acima); expect.poll fecha essa corrida sem depender de timeout fixo.
+    const lerConfigReal = async () => {
+      const { data } = await admin.from('store_settings').select('chave, valor')
+        .eq('store_id', lojaNova.id).in('chave', ['loyalty_enabled', 'loyalty_required', 'loyalty_discount']);
+      return Object.fromEntries(data.map((r) => [r.chave, r.valor]));
+    };
+    await expect.poll(async () => (await lerConfigReal()).loyalty_enabled).toBe('true');
+    const mapa = await lerConfigReal();
+    expect(mapa.loyalty_required).toBe('5');
+    expect(mapa.loyalty_discount).toBe('60');
   });
 });

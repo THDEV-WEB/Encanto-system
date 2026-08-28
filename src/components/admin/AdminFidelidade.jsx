@@ -21,6 +21,14 @@ export function AdminFidelidade() {
   const [cfgSaved, setCfgSaved] = useState(false);
   const [cfgErro,  setCfgErro]  = useState('');
   const [cfgLoad,  setCfgLoad]  = useState(true);
+  // REF-LOYALTY-AUDIT-01 · Onda 3: "Salvar configurações" (botão) e o toggle Ativo/Desativado disparam
+  // 2 chamadas INDEPENDENTES a set_loyalty_config. Sem esta guarda, disparar as 2 em sequência rápida
+  // cria 2 requests concorrentes cujas respostas podem chegar FORA DE ORDEM — a mais lenta (não
+  // necessariamente a mais antiga) vence por último e sobrescreve o valor que a mais rápida acabara de
+  // gravar (reproduzido em e2e/tests/admin/admin-fidelidade.spec.js). Serializa: nenhum dos 2 controles
+  // pode disparar um novo save enquanto o anterior ainda está em voo (mesmo princípio já usado por
+  // cfgLoad pro carregamento inicial — não é mecanismo novo, só estendido pra cobrir também o salvar).
+  const [cfgSaving, setCfgSaving] = useState(false);
 
   useEffect(() => {
     let vivo = true;
@@ -29,18 +37,25 @@ export function AdminFidelidade() {
   }, []);
 
   const salvarConfig = async (over) => {
+    if (cfgSaving) return false; // reentrancia: um save ja em voo -- nunca dispara um 2o em paralelo
     const r = over || { required, discount, enabled };
     setCfgErro('');
-    const res = await adminSalvarConfig(r.required, r.discount, r.enabled);
-    if (res.ok) { setCfgSaved(true); setTimeout(() => setCfgSaved(false), 2500); }
-    else setCfgErro(res.error === 'sem permissao' ? 'Sem permissão de administrador.' : 'Não foi possível salvar.');
-    return res.ok;
+    setCfgSaving(true);
+    try {
+      const res = await adminSalvarConfig(r.required, r.discount, r.enabled);
+      if (res.ok) { setCfgSaved(true); setTimeout(() => setCfgSaved(false), 2500); }
+      else setCfgErro(res.error === 'sem permissao' ? 'Sem permissão de administrador.' : 'Não foi possível salvar.');
+      return res.ok;
+    } finally {
+      setCfgSaving(false);
+    }
   };
 
   // Otimista, mas nunca mentiroso: se o backend recusar, desfaz o toggle na tela — sem isto, uma
   // falha de rede/permissao deixava o rotulo "Ativo/Desativado" mostrando um estado que nunca foi
   // persistido (achado real: settings.loyalty_enabled ficou dessincronizado no projeto de E2E).
   const toggleEnabled = async (v) => {
+    if (cfgSaving) return; // guarda de reentrancia (ver comentario de cfgSaving acima)
     const anterior = enabled;
     setEnabled(v);
     const ok = await salvarConfig({ required, discount, enabled: v });
@@ -125,7 +140,7 @@ export function AdminFidelidade() {
             {enabled ? '● Ativo' : '○ Desativado'}
           </span>
           <label className="toggle-switch">
-            <input data-testid="fid-form-enabled" type="checkbox" checked={enabled} disabled={cfgLoad} onChange={e=>toggleEnabled(e.target.checked)}/>
+            <input data-testid="fid-form-enabled" type="checkbox" checked={enabled} disabled={cfgLoad || cfgSaving} onChange={e=>toggleEnabled(e.target.checked)}/>
             <span className="toggle-slider"/>
           </label>
         </div>
@@ -258,8 +273,8 @@ export function AdminFidelidade() {
             • Ao resgatar: <code>stamps −= {required}</code>, novo ciclo. Recompensas não são cumulativas.<br/>
             • Pedido <b>cancelado</b> reverte o selo daquele pedido. Frete não é contabilizado.
           </div>
-          <button className="btn-primary" onClick={()=>salvarConfig()} disabled={cfgLoad} style={{minWidth:160}}>
-            {cfgSaved ? '✓ Salvo!' : '💾 Salvar configurações'}
+          <button data-testid="fid-form-salvar" className="btn-primary" onClick={()=>salvarConfig()} disabled={cfgLoad || cfgSaving} style={{minWidth:160}}>
+            {cfgSaved ? '✓ Salvo!' : (cfgSaving ? 'Salvando…' : '💾 Salvar configurações')}
           </button>
           {cfgErro && <p style={{fontSize:13,color:'#DC2626',marginTop:10,fontWeight:600}}>{cfgErro}</p>}
         </div>
