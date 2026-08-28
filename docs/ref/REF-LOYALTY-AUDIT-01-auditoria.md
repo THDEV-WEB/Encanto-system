@@ -991,5 +991,204 @@ Race condition reproduzida, causa raiz identificada, corrigida de forma mínima 
 Controle ATIVO/INATIVO confirmado confiável mesmo sob saves concorrentes. Isolamento por tenant,
 kill switch, histórico, idempotência e cancelamento — todos reconfirmados sem regressão (28/28 +
 4/4 E2E). Fidelidade da Encanto não foi ativada por esta sessão (encontrada já ativa, ação externa,
-não tocada). **Não iniciar a Onda 4 automaticamente.** Aguardando push + CI e autorização explícita
-do dono para qualquer onda futura.
+não tocada). Commit `f5766d3`, pushed em `origin/main`.
+
+---
+
+## Onda 4 — Divergência storefront: contador ATIVO vs. botão "Programa Fidelidade" bloqueado
+
+**Nota de numeração:** o pedido que originou esta onda foi escrito e enviado como "Onda 3" (com
+contexto completo da Onda 2, tratando a corrida de saves como pendência ainda aberta) — mas a
+corrida já havia sido investigada e corrigida no turno anterior desta mesma sessão (documentada
+acima como "Onda 3", commit `f5766d3`, já pushed antes deste pedido chegar). Tratando este pedido
+como **Onda 4** para não colidir no histórico; a investigação da corrida foi reaproveitada
+(reconfirmada, não refeita do zero) e o achado novo — a divergência do storefront — é o foco real
+desta onda.
+
+**Status: DIAGNÓSTICO CONCLUÍDO. Causa raiz confirmada com evidência de histórico do git. Nenhuma
+correção implementada — aguardando autorização, conforme o gate desta onda.**
+
+### Resposta direta à pergunta central
+
+> "Por que o contador reconhece a fidelidade como ATIVA, mas o clique em 'Programa Fidelidade'
+> ainda abre a mensagem de bloqueio?"
+
+**Porque são 2 elementos de UI completamente independentes, que nunca compartilharam a mesma fonte
+de dados — um deles nunca foi conectado ao sistema real de fidelidade.**
+
+- O **contador** ("🎁 Fidelidade: 1 de 10 pedidos") é alimentado por `useLoyalty()` →
+  `get_my_loyalty()` (RPC real, por loja, por cliente) — reflete o estado verdadeiro.
+- O **chip "Programa Fidelidade"** (dentro de `StoreHighlights`, ao lado do chip "Entrega Rápida")
+  **não consulta nenhuma fonte de dados**. Seu `onClick` é uma função hardcoded que sempre abre o
+  mesmo modal estático "Em breve teremos novidades para nossos clientes mais fiéis! ❤️" — **não
+  importa se o programa está ativo, desativado, ou se o cliente tem uma recompensa pronta pra
+  resgatar.**
+
+### Prova por histórico do git (não é interpretação, é fato registrado)
+
+`git log -S"loyaltyTeaser"` mostra que o modal "Em breve" foi **restilizado** em `7922000` (`fix(store):
+teaser de fidelidade mostra nome da loja, nao o dominio`, 2026-08-03) — mas o diff desse commit prova
+que **antes dele**, o mesmíssimo texto já existia como um `alert()` nativo do navegador:
+
+```jsx
+// ANTES (qualquer commit até 2026-08-03):
+onLoyalty={()=>alert('Em breve teremos novidades para nossos clientes mais fiéis! ❤️')}
+// DEPOIS (2026-08-03, so trocou alert() por modal estilizado — mesmo texto, mesma logica):
+onLoyalty={()=>setLoyaltyTeaser(true)}
+```
+
+**REF-LOYALTY-01** (o sistema real de fidelidade, backend completo) foi ao ar em **2026-07-13** —
+**3 semanas antes** desse commit. Ou seja: quando a fidelidade real passou a existir, este chip
+específico **já era um placeholder "em breve"**, e o commit de 08-03 só melhorou a *apresentação*
+do placeholder (trocou `alert()` — que sempre mostra o domínio, nunca o nome da loja — por um modal
+estilizado com `companyInfo.nomeCurto`), **sem nunca reconectar a lógica ao sistema real.** Nenhum
+commit, desde 2026-07-13 até hoje, jamais tocou essa lógica para integrá-la ao `useLoyalty()`.
+
+### Mapa de código (Fases 1–4)
+
+| Elemento | Arquivo | Fonte de dados | Condição de exibição | Ação ao clicar |
+|---|---|---|---|---|
+| Contador "Fidelidade: X de Y pedidos" | `src/pages/StoreApp.jsx:380-406` | `useLoyalty()` → `get_my_loyalty()` (RPC real, por loja) | `temCadastro && loyaltyEnabled && loyaltyCount>0 && !loyaltyReward` | `setShowLoyalty(true)` → modal REAL de progresso |
+| Banner "Recompensa disponível" | `src/pages/StoreApp.jsx:407-419` | idem | `temCadastro && loyaltyReward` (`loyaltyReward = loyalty.rewardAvailable && loyalty.enabled`) | `setShowLoyalty(true)` → modal REAL, com botão de resgate |
+| **Chip "Programa Fidelidade" / "Recompensa disponível!"** | `StoreHighlights.jsx` (renderizado por `StoreApp.jsx:434-437`) | **NENHUMA** — só recebe `loyaltyReward` como prop pra trocar o **texto do rótulo** | **Sempre renderizado**, sem condição nenhuma (nem `temCadastro`, nem `loyaltyEnabled`) | `setLoyaltyTeaser(true)` → modal ESTÁTICO "Em breve...", **hardcoded, sempre igual** |
+| Menu "🎁 Programa de Fidelidade" (SideDrawer) | `SideDrawer.jsx:64` → `StoreMenu.jsx:51` → `FidelidadeScreen.jsx` | `company_info.fidelidadeTexto` (Supabase, texto administrável) | sempre visível no menu | abre tela **descritiva** (regulamento, não progresso) |
+| Modal REAL de progresso | `StoreApp.jsx:522-` | `useLoyalty()` | `showLoyalty===true` | resgate real (`redeem_reward`) quando `loyaltyReward` |
+| Modal teaser "Em breve" | `StoreApp.jsx:509-518` | nenhuma (texto fixo) | `loyaltyTeaser===true` | só fecha (`OK`) |
+
+**3 caminhos distintos existem, não 2** — o pedido descreveu contador vs. botão; a auditoria achou
+também um **3º caminho legítimo** (menu → tela descritiva) que não está quebrado, só serve um
+propósito diferente (regulamento, não progresso pessoal).
+
+### Fase 5 — onde os caminhos divergem
+
+O primeiro (e único) ponto de divergência é estrutural, não uma condição que "escolhe errado": o
+chip do `StoreHighlights` **nunca teve acesso a `loyalty`/`useLoyalty()` nenhuma vez** — o componente
+é "apresentacional puro" por desenho (`StoreHighlights.jsx:5`, comentário original: "sem hooks/DS/
+browser"), e o `StoreApp.jsx` só lhe passa `loyaltyReward` (o bastante pra mudar o RÓTULO) mas nunca
+decidiu passar `loyaltyEnabled`/`temCadastro`/uma função que abrisse `showLoyalty`. A "segunda
+condição" hipotética do pedido não existe como condição — é a **ausência completa de condição**
+(o clique sempre faz a mesma coisa, incondicionalmente).
+
+### Fase 6 — é regra deliberada ou bug?
+
+**CONFIRMADO: bug / inconsistência de integração, não regra de negócio.** Evidência, não suposição:
+
+1. O texto e o comportamento são **anteriores** ao sistema real de fidelidade (existiam como
+   `alert()` antes de `useLoyalty`/`get_my_loyalty` existirem).
+2. O commit de 2026-08-03 (3 semanas **depois** da fidelidade real já estar em produção) só mexeu na
+   apresentação (alert→modal), nunca na lógica — comportamento consistente com "ninguém percebeu que
+   isso precisava ser reconectado", não com uma decisão consciente de mantê-lo separado.
+3. **Inconsistência interna que uma regra deliberada não teria**: o próprio componente já recebe
+   `loyaltyReward` e muda o RÓTULO pra "Recompensa disponível!" quando é verdade — ou seja, alguém
+   *começou* a integrar o estado real, trocou o texto, mas não terminou de trocar a ação do clique.
+   Um cliente com recompensa pronta pra usar vê "Recompensa disponível!" em destaque dourado
+   (`store-chip--reward`) e, ao clicar, é informado que "em breve teremos novidades" — a pior versão
+   possível dessa divergência, porque promete algo real e entrega um teaser.
+4. Nenhum ADR, comentário ou commit em todo o histórico do projeto (busquei) documenta isso como
+   decisão de produto. REF-LOYALTY-01 e as 3 ondas desta REF tratam `useLoyalty`/`showLoyalty` como
+   *a* experiência de fidelidade do cliente, sem nenhuma menção a este 2º caminho.
+
+**Achado secundário, menor, classificado à parte:** a tela descritiva (3º caminho, `FidelidadeScreen.jsx`)
+tem conteúdo administrável real (`company_info.fidelidadeTexto`) majoritariamente correto, mas com 1
+frase desatualizada: *"Entre na sua conta para acompanhar seus selos em qualquer dispositivo
+(em breve)"* — o "(em breve)" está errado hoje: isso **já é real** desde REF-LOYALTY-01/REF-CLIENTE-02
+(o cliente logado já acompanha os selos entre dispositivos). **Não é bug de código** — é texto
+editorial, editável pelo próprio dono na Central de Configuração da Empresa. Não requer nenhuma
+alteração de código; fica registrado como recomendação de conteúdo, não implementado (não é dado que
+esta sessão deva escrever em produção sem pedido específico).
+
+### Fases 7–13 — reconfirmação (sem alteração desde a onda anterior)
+
+Nenhum código de backend, RPC ou migration foi tocado entre a onda anterior e esta — as respostas
+abaixo reaproveitam a evidência já produzida (não foram re-testadas do zero, porque nada mudou que
+pudesse afetá-las):
+
+| Fase | Pergunta | Resposta | Evidência |
+|---|---|---|---|
+| 7 | Race condition existe? | **Existia, já corrigida.** | Onda 3 (acima), commit `f5766d3`, 4/4 E2E, 2 rodadas limpas |
+| 8 | Kill switch bloqueia backend E frontend? | **SIM**, backend é a autoridade (`loyalty_grant` checa `enabled` por loja; UI é só reflexo) | Onda 1 (28/28), reconfirmado na Onda 3 |
+| 9 | Contabilização idempotente? | **SIM** | `IDEMP-P1..P3`, Onda 1/3, sem mudança |
+| 10 | Cancelamento correto? | **SIM** | `CANCEL-P1..P3`, idem |
+| 11 | Clientes isolados? | **SIM** | RLS + `auth.uid()`, intocado desde a Onda 0 |
+| 12 | Tenants isolados? | **SIM** | `store_settings`/`is_admin_of`, intocado desde a Onda 1 |
+| 13 | Operações manuais têm regra definida? | **SIM**, decisão explícita do dono (Onda 1): bypass do admin mantido | Documentado, não reaberto |
+
+### Fase 2 — tabela comparativa (valores reais, lidos agora)
+
+| Camada | Fonte | store_id | `loyalty_enabled` | Resultado |
+|---|---|---|---|---|
+| Banco (`store_settings`) | leitura direta | Encanto (`8604324d-...`) | `true` | discount=30, required=10 |
+| RPC (`get_loyalty_config()`) | chamada real | Encanto (default) | `true` | `{enabled:true,discount:30,required:10}` — **idêntico ao banco** |
+| Admin (`AdminFidelidade`) | `get_loyalty_config` via `buildStoreRpcParam()` | loja ativa da sessão | reflete o RPC | consistente |
+| Contador/banner (storefront) | `get_my_loyalty()` via `useLoyalty()` | loja resolvida por domínio | reflete o RPC | consistente, **CORRETO** |
+| Chip "Programa Fidelidade" | nenhuma | nenhum | nenhum | **sempre "Em breve", ignora tudo acima** |
+
+**Não há divergência de dado em lugar nenhum** — banco, RPC, Admin e o contador do storefront
+concordam perfeitamente. A única "divergência" é que 1 elemento de UI nunca consultou dado nenhum.
+
+### Fase 14 — cache/deploy/SW descartados como causa
+
+Confirmado por leitura direta do bundle publicado (`https://encanto.valionsistemas.com.br/encanto/`,
+`assets/index-CEEDSGUP.js`): contém o texto "Em breve teremos novidades..." e o rótulo "Programa
+Fidelidade" — **o comportamento ao vivo bate exatamente com o código-fonte lido**, não é bundle
+antigo nem cache mascarando um comportamento diferente. `devOptions.enabled:false` no `vite.config.js`
+confirma que Service Worker nunca ativa fora de build de produção real (não é o caso do
+`vite --mode e2e` usado pelos testes, então esta investigação não se mistura com o incidente de
+`/convite.html` da REF-AUTH-PLATFORM-ISOLATION-01 — bases de código diferentes, causas diferentes).
+
+### Fase 17 — solução mínima proposta (NÃO IMPLEMENTADA)
+
+**Causa raiz:** `onLoyalty={()=>setLoyaltyTeaser(true)}` em `StoreApp.jsx:436` é incondicional —
+nunca verifica se o cliente tem cadastro/progresso real antes de abrir o teaser.
+
+**Arquivos afetados (proposta):** só `src/pages/StoreApp.jsx` (1 linha) — nenhuma migration, nenhuma
+RPC, nenhuma mudança em `StoreHighlights.jsx` (o componente já recebe os dados certos, só a decisão
+de qual modal abrir precisa mudar, e essa decisão já mora no componente pai).
+
+**Solução mínima:**
+```jsx
+// de:
+onLoyalty={()=>setLoyaltyTeaser(true)}
+// para:
+onLoyalty={()=>{ if (temCadastro && loyaltyEnabled) setShowLoyalty(true); else setLoyaltyTeaser(true); }}
+```
+Quando o cliente tem cadastro E o programa está ativo → abre o modal REAL (progresso/resgate,
+idêntico ao que o contador já abre). Caso contrário (visitante não logado, ou programa desativado)
+→ mantém o teaser "Em breve" (mensagem genérica segue apropriada nesses 2 casos).
+
+**Impacto:** idêntico para **todas as lojas** (Encanto, Aquarios, futuras) — o componente é
+compartilhado, sem lógica por tenant; cada loja já resolve `loyaltyEnabled`/`temCadastro` via seu
+próprio `useLoyalty()`. Nenhuma loja fica pior do que está hoje (hoje TODAS têm o mesmo teaser
+incondicional).
+
+**Riscos:** baixos. Não toca núcleo de contabilização/RPC/migration. Único ponto de atenção: define
+que um **visitante não-logado com o programa ativo** ainda vê o teaser (em vez de, por exemplo, um
+convite pra criar conta) — mantém o comportamento atual pra esse caso específico, não piora nem
+melhora, só corrige o caso onde já existe cadastro e progresso real.
+
+**Testes necessários (se autorizado):** E2E cobrindo (a) cliente logado + programa ativo + sem
+progresso ainda → clique abre modal real (não o teaser); (b) cliente logado + recompensa disponível
+→ clique abre modal real com botão de resgate funcional; (c) visitante não-logado → continua vendo o
+teaser; (d) programa desativado → continua vendo o teaser mesmo logado.
+
+**Requer migration/RPC?** Não. **Requer mudança de backend?** Não. **Impacto sobre outras lojas?**
+Nenhum negativo — mesma correção beneficia todas igualmente.
+
+### Pendências
+
+1. **Correção do chip "Programa Fidelidade"** — diagnosticada, proposta, **aguardando autorização
+   explícita** conforme o gate desta onda.
+2. Frase desatualizada em `company_info.fidelidadeTexto` (achado secundário) — recomendação de
+   conteúdo pro dono editar quando quiser, não é código.
+3. Achado incidental do `create_order`/Origin HTTP (harness de teste antigo, registrado nas ondas
+   anteriores) — segue sem solução, fora do escopo desta onda.
+
+---
+
+## Gate final da Onda 4
+
+**Diagnóstico concluído. Nenhuma correção implementada.** Causa raiz confirmada com evidência de
+histórico do git (não suposição). Fidelidade da Encanto não foi ativada/desativada por esta sessão —
+permanece como encontrada (`enabled=true`, ação do dono). Nenhum pedido, cliente ou histórico real
+alterado. **Não iniciar implementação nem Onda 5 automaticamente.** Aguardando autorização explícita
+do dono para a correção proposta acima.
