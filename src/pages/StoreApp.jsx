@@ -430,10 +430,14 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
           resultados). A busca abre um dropdown na barra/strip e navega ate o produto/secao aqui mesmo. */}
       <>
           {/* REF-UI-TOPBAR-01: chips leves com os diferenciais da loja — preservam a acao do antigo botao
-              de fidelidade (inclusive o estado de recompensa). Sem banner/foto/titulo. */}
+              de fidelidade (inclusive o estado de recompensa). Sem banner/foto/titulo.
+              REF-LOYALTY-AUDIT-01 · Onda 4: onLoyalty era incondicional (sempre abria o teaser "Em breve",
+              mesmo com cadastro/progresso real) — achado de integracao nunca concluida desde REF-LOYALTY-01.
+              Com cadastro e programa ativo, abre o modal REAL (mesmo que o contador/banner ja abrem);
+              sem cadastro ou com o programa desativado, mantem o teaser (nada real pra mostrar ainda). */}
           <StoreHighlights
             loyaltyReward={loyaltyReward}
-            onLoyalty={()=>setLoyaltyTeaser(true)}
+            onLoyalty={()=>{ if (temCadastro && loyaltyEnabled) setShowLoyalty(true); else setLoyaltyTeaser(true); }}
           />
 
           {/* Categorias — navegacao por scroll + scroll-spy (REF-UI-CATEGORY-01 Fase 2) substitui a grade de chips.
