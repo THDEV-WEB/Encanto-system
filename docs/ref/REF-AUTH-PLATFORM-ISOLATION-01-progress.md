@@ -540,13 +540,67 @@ confirmação → senha → login → acesso`) só fecha quando `encantomarmitar
 o link de recuperação da Onda 6-F, definiu a senha e conseguiu logar. Isso depende do destinatário, não
 bloqueia a conclusão estrutural da REF, e será validado por leitura assim que o destinatário confirmar.
 
+## Onda 6-F — fechamento (login real confirmado)
+
+Destinatário confirmou acesso ao Admin com `encantomarmitaria@gmail.com` e a nova senha. Validação de
+leitura: `last_sign_in_at` atualizado para um timestamp novo e posterior ao da sessão do convite
+(`2026-08-28T01:20:04.781Z`, era `2026-08-27T16:09:49.341Z`) — prova de login real, não da sessão antiga.
+`email_confirmed_at` inalterado, vínculo com Encanto presente, fora de `super_admins`, sem privilégio de
+plataforma, sem vínculo com Aquarios. Super Admin real e Aquarios reconfirmados inalterados. **Onda 6-F
+concluída — nenhuma mutação nesta validação.**
+
+## Onda 7 — push e CI
+
+Commit `842f042` (já existente) enviado para `origin/main` (`7fe80e0..842f042`). `HEAD` local = `origin/main`
+= `842f042`. CI verde ([run 33136284844](https://github.com/THDEV-WEB/Encanto-system/actions/runs/33136284844)).
+
+## Deploy em produção das Ondas 1-3 (2/3 concluído — Onda 1 bloqueada)
+
+**Pré-checagem**: os 3 commits identificados (`6ef988c` Onda 1, `8da8251` Onda 2, `3562f76` Onda 3) só
+tocam os arquivos esperados, sem mistura com outra REF. Definições já aplicadas no projeto E2E lidas e
+comparadas byte a byte com os arquivos de migration — idênticas. Produção, antes do deploy, ainda rodava
+as versões antigas de `platform_unlink_store_admin` e `platform_tenant_detail` (confirmado por leitura) —
+sem drift. Testes E2E re-executados como gate: Onda 1 16/16 PASS; Onda 2 11/11 PASS (uma primeira
+tentativa teve 5 falhas por contenção transitória na fixture compartilhada `ADMIN_FIXTURE` — mesma E2E
+usada pela sessão paralela de `REF-LOYALTY-AUDIT-01` — re-execução limpa confirmou não ser regressão).
+
+**Onda 2 e Onda 3 — aplicadas em produção**: `migrations/REF-AUTH-PLATFORM-ISOLATION-01-onda2-...sql` e
+`...-onda3-...sql` executados diretamente via `BEGIN...COMMIT` contra o Postgres de produção. Definições
+pós-deploy lidas e conferidas idênticas, byte a byte, às já validadas no E2E.
+
+**Onda 1 — BLOQUEADA**: o deploy de `platform-set-store-admin-password` (Edge Function, via
+`supabase functions deploy --project-ref hvbcdxsagkjtfjwvnslo`) exige um `SUPABASE_ACCESS_TOKEN`
+(Management API). O único token salvo localmente (`C:\Users\00thi\.encanto\supabase-management.env`)
+retornou `401 Unauthorized` tanto na Management API quanto no próprio comando do CLI — está
+expirado/revogado, não é um problema de escopo. **Produção continua rodando a versão antiga desta função
+(sem a guarda da Onda 1)** até um token válido ser fornecido, ou até o dono fazer o deploy manualmente
+(`supabase login` + `supabase functions deploy platform-set-store-admin-password` no próprio terminal, ou
+colando o código no Dashboard).
+
+**Validação pós-deploy em produção** (`BEGIN...ROLLBACK`, líquido zero, mesmo padrão da Onda 7 —
+identidades reais simuladas via JWT, nenhuma linha alterada de fato):
+
+| Contexto | Teste | Resultado |
+|---|---|---|
+| Super Admin real | `is_admin_of(Encanto)` | `true` |
+| Super Admin real | `is_admin_of(Aquarios)` | `true` (prova acesso a QUALQUER loja via papel, não só Encanto) |
+| Super Admin real | `platform_tenant_detail(Encanto)` | funcionou |
+| Super Admin real | detalhe mostra `is_super_admin=false` para o admin operacional | ✅ (campo novo da Onda 3 correto) |
+| Super Admin real | `platform_unlink_store_admin` tentando desvincular a si mesmo | **bloqueado** — `nao e possivel desvincular um Super Admin da plataforma por este fluxo` |
+| Admin operacional | `is_admin_of(Encanto)` | `true` |
+| Admin operacional | `is_admin_of(Aquarios)` | `false` |
+| Admin operacional | `platform_tenant_detail` | **bloqueado** — `apenas o super admin da plataforma pode ver o detalhe de um tenant` |
+| Admin operacional | `platform_unlink_store_admin` (caller não super admin) | **bloqueado** — mesma exceção pré-existente |
+
+**9/9 PASS.** Nenhum admin real foi desvinculado durante o teste (a chamada contra o Super Admin real é
+recusada pelo guard antes de qualquer `DELETE`, e a transação inteira foi revertida). Integridade
+reconfirmada após o teste: `admins`=2, `super_admins`=1, Aquarios `status=suspenso`, admin da Aquarios
+intacto — idêntico a antes do teste.
+
 ## Pendências / próximas ondas (não iniciadas)
 
-- Confirmação real de login de `encantomarmitaria@gmail.com` (Onda 6-F) — depende do destinatário; a
-  validação final por leitura só será feita após essa confirmação.
-- **Deploy em produção das correções das Ondas 1, 2 e 3** (hardening de credenciais/desvincular/selo do
-  Platform Console) também depende de autorização própria — está fora do escopo aprovado até aqui.
-  Produção hoje roda: `platform-set-store-admin-password` versão 1 (sem a guarda), e
-  `platform_unlink_store_admin`/`platform_tenant_detail` sem as guardas/campo novos — ou seja, hoje em
-  produção o Platform Console **ainda não mostra** o selo de Super Admin (o campo não existe na resposta
-  da RPC em produção até a migration ser aplicada lá).
+- **Deploy da Onda 1** (Edge Function `platform-set-store-admin-password`) — bloqueado por token de
+  Management API expirado. Precisa de um `SUPABASE_ACCESS_TOKEN` novo, ou deploy manual pelo dono.
+  Enquanto isso, produção aceita definir senha de um admin vinculado mesmo que ele seja Super Admin (o
+  cenário real que motivou a Onda 1) — risco baixo (exige ser o próprio Super Admin autenticado como
+  caller), mas o hardening não está completo em produção.
