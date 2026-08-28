@@ -1238,5 +1238,8 @@ lia o texto "50%" hardcoded; passou a usar `config.discount`, lido real via `get
 assumido — mesmo padrão de baseline observado já usado no resto da suíte).
 
 **Validação:** 10/10 E2E (fidelidade cliente + admin, 2 suítes) + lint/typecheck/build/`test:domain`
-verdes. Commit `b21af85`, pushed em `origin/main` (autorização explícita do dono, corrigir + push +
-deploy sem confirmação adicional). Deploy Vercel dispara automaticamente no push — sem passo manual.
+verdes. Commits `b21af85` (correção) + `28d8174` (documentação), pushed em `origin/main`
+(autorização explícita do dono, corrigir + push + deploy sem confirmação adicional). **CI verde**
+(run `33140665199`, commit `28d8174`, `conclusion: success` — o run anterior do `b21af85` apareceu
+como `cancelled`, substituído pelo run do push seguinte, comportamento normal de concorrência do
+workflow, não falha real). Deploy Vercel dispara automaticamente no push — sem passo manual.
