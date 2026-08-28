@@ -1318,3 +1318,34 @@ foram adicionados ao commit; `src/constants/privacyPolicy.js` (modificado) e `sc
 
 Implementação e testes concluídos conforme especificado. **Não fazer push/deploy sem autorização
 explícita do dono.** Nenhuma onda nova foi iniciada.
+
+### Addendum — fecha a última pendência: "(em breve)" no default de `fidelidadeTexto`
+
+Pendência secundária registrada desde a Onda 4 (frase desatualizada na tela descritiva "Programa de
+Fidelidade" do menu, `FidelidadeScreen.jsx`, separada do chip corrigido acima). Autorizado pelo dono
+nesta sessão ("resolva essa parte também").
+
+**Descoberta:** não era conteúdo salvo pela loja — a Encanto nunca gravou `fidelidadeTexto` próprio
+em `store_settings` (confirmado por leitura direta). O texto "(em breve)" vinha do **default embutido
+na função `get_company_info()`** (RPC `SECURITY DEFINER`), que é o mesmo default servido a qualquer
+loja sem override. Corrigir exigiu redefinir essa função (`CREATE OR REPLACE`, mesma assinatura, só
+o 3º parágrafo do literal mudou) — mais do que a simples edição de conteúdo pelo Admin cogitada
+inicialmente. Comunicado ao dono antes de aplicar; aplicação em produção pausada automaticamente pelo
+classificador de auto mode e liberada com confirmação explícita.
+
+**Alterado:**
+- `migrations/REF-LOYALTY-AUDIT-01-fidelidade-texto-em-breve.sql` (+ rollback pareado) — troca só o
+  texto do 3º parágrafo: "...em qualquer dispositivo (em breve)." → "...em qualquer dispositivo."
+  (a funcionalidade que o parênteses hedgeava — progresso sincronizado por conta entre dispositivos —
+  já está LIVE desde REF-CLIENTE-02/03, não é mais "em breve").
+- `src/services/company/companyInfoRules.js` — mesmo texto no `DEFAULT_COMPANY_INFO.fidelidadeTexto`
+  (fallback JS/novas lojas), para consistência com o default do banco.
+
+**Aplicado em produção e confirmado:** `get_company_info()` para a Encanto agora retorna o texto
+corrigido (leitura direta pós-migration). Nenhum dado de cliente/pedido/fidelidade tocado — só o
+literal de texto institucional.
+
+**Validação:** `test:company` (golden, checa forma/estrutura, não byte específico — segue verde) +
+`test:company-guard` verdes, `lint` 0 erros, `typecheck` limpo, `build` sucesso.
+
+**Commit:** local, aguardando autorização de push (mesmo padrão do restante desta sessão).

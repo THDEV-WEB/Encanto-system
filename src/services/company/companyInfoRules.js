@@ -118,7 +118,7 @@ export const DEFAULT_COMPANY_INFO = {
   fidelidadeTexto: [
     'A cada pedido você acumula um selo no seu cartão de fidelidade.',
     'Ao completar a cartela, você ganha um benefício especial no próximo pedido.',
-    'Entre na sua conta para acompanhar seus selos em qualquer dispositivo (em breve).',
+    'Entre na sua conta para acompanhar seus selos em qualquer dispositivo.',
   ],
 };
 
