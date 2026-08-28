@@ -554,7 +554,7 @@ concluída — nenhuma mutação nesta validação.**
 Commit `842f042` (já existente) enviado para `origin/main` (`7fe80e0..842f042`). `HEAD` local = `origin/main`
 = `842f042`. CI verde ([run 33136284844](https://github.com/THDEV-WEB/Encanto-system/actions/runs/33136284844)).
 
-## Deploy em produção das Ondas 1-3 (2/3 concluído — Onda 1 bloqueada)
+## Deploy em produção das Ondas 1-3 (3/3 concluído)
 
 **Pré-checagem**: os 3 commits identificados (`6ef988c` Onda 1, `8da8251` Onda 2, `3562f76` Onda 3) só
 tocam os arquivos esperados, sem mistura com outra REF. Definições já aplicadas no projeto E2E lidas e
@@ -568,14 +568,23 @@ usada pela sessão paralela de `REF-LOYALTY-AUDIT-01` — re-execução limpa co
 `...-onda3-...sql` executados diretamente via `BEGIN...COMMIT` contra o Postgres de produção. Definições
 pós-deploy lidas e conferidas idênticas, byte a byte, às já validadas no E2E.
 
-**Onda 1 — BLOQUEADA**: o deploy de `platform-set-store-admin-password` (Edge Function, via
-`supabase functions deploy --project-ref hvbcdxsagkjtfjwvnslo`) exige um `SUPABASE_ACCESS_TOKEN`
-(Management API). O único token salvo localmente (`C:\Users\00thi\.encanto\supabase-management.env`)
-retornou `401 Unauthorized` tanto na Management API quanto no próprio comando do CLI — está
-expirado/revogado, não é um problema de escopo. **Produção continua rodando a versão antiga desta função
-(sem a guarda da Onda 1)** até um token válido ser fornecido, ou até o dono fazer o deploy manualmente
-(`supabase login` + `supabase functions deploy platform-set-store-admin-password` no próprio terminal, ou
-colando o código no Dashboard).
+**Onda 1 — inicialmente bloqueada, depois concluída**: o deploy de `platform-set-store-admin-password`
+(Edge Function, via `supabase functions deploy --project-ref hvbcdxsagkjtfjwvnslo`) exige um
+`SUPABASE_ACCESS_TOKEN` (Management API). O token salvo localmente (`supabase-management.env`) estava
+expirado/revogado (`401` tanto na Management API quanto no próprio CLI). O dono forneceu um token novo em
+seguida — usado só na memória do processo (nunca escrito em arquivo, nunca logado) para rodar o deploy.
+
+Deploy confirmado: `GET /v1/projects/.../functions/platform-set-store-admin-password` mostra
+`version: 2` (era 1), `status: ACTIVE`. Bundle compilado consultado (`.../functions/.../body`) e confirmado
+contendo a string exata da guarda da Onda 1 (`nao_e_possivel_alterar_senha_de_super_admin_por_este_fluxo`)
+— prova de que o código novo está realmente no ar, não só o número de versão. Endpoint real testado sem
+autenticação (`POST .../functions/v1/platform-set-store-admin-password`) → `401` do gateway, confirmando
+que a função está ativa e respondendo.
+
+**Limite honesto desta validação**: não foi feita uma chamada HTTP autenticada de ponta a ponta como o
+Super Admin real, porque isso exigiria a senha real dele — que esta REF nunca deve obter. A prova ficou
+no nível de bundle/deploy (código certo, no ar, respondendo), o mais verificável sem essa credencial —
+mesmo limite já registrado na validação pós-deploy da Onda 6-D para o Platform Console interativo.
 
 **Validação pós-deploy em produção** (`BEGIN...ROLLBACK`, líquido zero, mesmo padrão da Onda 7 —
 identidades reais simuladas via JWT, nenhuma linha alterada de fato):
@@ -599,8 +608,4 @@ intacto — idêntico a antes do teste.
 
 ## Pendências / próximas ondas (não iniciadas)
 
-- **Deploy da Onda 1** (Edge Function `platform-set-store-admin-password`) — bloqueado por token de
-  Management API expirado. Precisa de um `SUPABASE_ACCESS_TOKEN` novo, ou deploy manual pelo dono.
-  Enquanto isso, produção aceita definir senha de um admin vinculado mesmo que ele seja Super Admin (o
-  cenário real que motivou a Onda 1) — risco baixo (exige ser o próprio Super Admin autenticado como
-  caller), mas o hardening não está completo em produção.
+Nenhuma. As três guardas (Ondas 1, 2 e 3) estão em produção e validadas.
