@@ -1214,3 +1214,29 @@ ativada/desativada por esta sessão — permanece como encontrada (`enabled=true
 pedido, cliente ou histórico real alterado; toda escrita de teste ficou no projeto E2E, restaurada ao
 final. **Não iniciar Onda 5 automaticamente.** Aguardando autorização explícita do dono para qualquer
 onda futura.
+
+### Addendum — "% de desconto" fixo em 50%, ignorando o valor real configurado
+
+Achado do dono, direto de uma screenshot real da Encanto (`loyalty_discount=30` configurado): o modal
+de fidelidade mostrava corretamente "30%" onde o texto já era dinâmico (`Faltam X pedidos para ganhar
+{discount}%`), mas **"50%" fixo** em 3 lugares que nunca foram conectados a `loyaltyConfig.discount`/
+`required` — mesma classe de bug do achado principal desta onda (texto que parecia dinâmico mas nunca
+foi conectado à fonte real), em pontos diferentes do código:
+
+1. `StoreApp.jsx` — banner amarelo "Você ganhou 50% de desconto! Clique para resgatar." (só aparece
+   quando há recompensa real disponível — mostrava o número errado no momento em que o cliente mais
+   presta atenção nele).
+2. `StoreApp.jsx` — item 1 de "Regras do Programa", dentro do próprio modal de fidelidade (o item que
+   o dono apontou na screenshot).
+3. `AdminFidelidade.jsx` — item "Recompensa" do Regulamento do próprio painel Admin (mesmo texto
+   fixo, visível pro dono também).
+
+**Corrigido:** os 3 passam a usar `loyaltyConfig.discount`/`required` (storefront) ou `discount`/
+`required` (Admin, já em escopo) — mesmo padrão já usado no resto de cada tela. Nenhuma mudança de
+backend/RPC/migration. `e2e/tests/cliente/fidelidade.spec.js` ajustado (a asserção do banner amarelo
+lia o texto "50%" hardcoded; passou a usar `config.discount`, lido real via `get_my_loyalty()`, não
+assumido — mesmo padrão de baseline observado já usado no resto da suíte).
+
+**Validação:** 10/10 E2E (fidelidade cliente + admin, 2 suítes) + lint/typecheck/build/`test:domain`
+verdes. Commit `b21af85`, pushed em `origin/main` (autorização explícita do dono, corrigir + push +
+deploy sem confirmação adicional). Deploy Vercel dispara automaticamente no push — sem passo manual.
