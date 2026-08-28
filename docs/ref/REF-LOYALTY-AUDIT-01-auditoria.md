@@ -1174,12 +1174,34 @@ teaser; (d) programa desativado → continua vendo o teaser mesmo logado.
 **Requer migration/RPC?** Não. **Requer mudança de backend?** Não. **Impacto sobre outras lojas?**
 Nenhum negativo — mesma correção beneficia todas igualmente.
 
+### Implementação (autorizada explicitamente pelo dono após o diagnóstico)
+
+Correção aplicada exatamente como proposta: `StoreApp.jsx`, `onLoyalty` do `StoreHighlights` passa a
+verificar `temCadastro && loyaltyEnabled` antes de decidir entre o modal real (`setShowLoyalty`) e o
+teaser (`setLoyaltyTeaser`). Nenhuma migration, RPC ou mudança de backend.
+
+**Testes novos** (`e2e/tests/cliente/fidelidade.spec.js`, novo `describe`): 4 cenários — (A) cliente
+com cadastro, programa ativo, 0 selos → chip abre o modal real; (B) recompensa disponível → chip abre
+o modal real com resgate funcional; (C) visitante anônimo → continua vendo o teaser; (D) programa
+desativado → continua vendo o teaser mesmo logado (com restauração garantida em `finally`, mesmo se o
+teste falhar no meio). **6/6 PASS** (2 pré-existentes + 4 novos), 2 rodadas seguidas sem flakiness.
+Achado de teste (não de produto): o cenário A precisou de retry (`expect(...).toPass()`) porque o
+rótulo do chip é idêntico antes/depois de `temCadastro` resolver de forma assíncrona — diferente do
+cenário B, onde o próprio rótulo ("Recompensa disponível!") só aparece depois que o estado real já
+chegou, então o `expect(chip).toBeVisible()` já esperava o suficiente.
+
+**Validação estática:** `lint` 0 erros (55 warnings pré-existentes, nenhum nos arquivos tocados),
+`typecheck` limpo, `build` sucesso, `test:domain` exit 0. `git diff --check` limpo. Varredura de
+segredos no diff — nenhum encontrado.
+
+**Commit:** `de90ff1` — **local, NÃO empurrado ainda** (autorização recebida foi "implementar agora",
+sem push automático). Aguardando confirmação explícita do dono pra `git push origin main`.
+
 ### Pendências
 
-1. **Correção do chip "Programa Fidelidade"** — diagnosticada, proposta, **aguardando autorização
-   explícita** conforme o gate desta onda.
+1. **Push do commit `de90ff1`** — aguardando confirmação explícita.
 2. Frase desatualizada em `company_info.fidelidadeTexto` (achado secundário) — recomendação de
-   conteúdo pro dono editar quando quiser, não é código.
+   conteúdo pro dono editar quando quiser, não é código, não implementado.
 3. Achado incidental do `create_order`/Origin HTTP (harness de teste antigo, registrado nas ondas
    anteriores) — segue sem solução, fora do escopo desta onda.
 
@@ -1187,8 +1209,9 @@ Nenhum negativo — mesma correção beneficia todas igualmente.
 
 ## Gate final da Onda 4
 
-**Diagnóstico concluído. Nenhuma correção implementada.** Causa raiz confirmada com evidência de
-histórico do git (não suposição). Fidelidade da Encanto não foi ativada/desativada por esta sessão —
-permanece como encontrada (`enabled=true`, ação do dono). Nenhum pedido, cliente ou histórico real
-alterado. **Não iniciar implementação nem Onda 5 automaticamente.** Aguardando autorização explícita
-do dono para a correção proposta acima.
+**Diagnóstico concluído, correção implementada e testada, commit local `de90ff1` — push pendente de
+confirmação.** Causa raiz confirmada com evidência de histórico do git (não suposição). Fidelidade da
+Encanto não foi ativada/desativada por esta sessão — permanece como encontrada (`enabled=true`, ação
+do dono). Nenhum pedido, cliente ou histórico real alterado; toda escrita de teste ficou no projeto
+E2E, restaurada ao final. **Não iniciar Onda 5 automaticamente.** Aguardando confirmação pra push e
+autorização explícita do dono para qualquer onda futura.
