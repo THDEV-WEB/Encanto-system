@@ -1194,24 +1194,23 @@ chegou, então o `expect(chip).toBeVisible()` já esperava o suficiente.
 `typecheck` limpo, `build` sucesso, `test:domain` exit 0. `git diff --check` limpo. Varredura de
 segredos no diff — nenhum encontrado.
 
-**Commit:** `de90ff1` — **local, NÃO empurrado ainda** (autorização recebida foi "implementar agora",
-sem push automático). Aguardando confirmação explícita do dono pra `git push origin main`.
+**Commit:** `de90ff1` (correção) + `d4f9a5f` (documentação) — **pushed em `origin/main`**, HEAD local
+confirmado igual ao remoto. **CI verde** (run `33139135794`, `conclusion: success`).
 
 ### Pendências
 
-1. **Push do commit `de90ff1`** — aguardando confirmação explícita.
-2. Frase desatualizada em `company_info.fidelidadeTexto` (achado secundário) — recomendação de
+1. Frase desatualizada em `company_info.fidelidadeTexto` (achado secundário) — recomendação de
    conteúdo pro dono editar quando quiser, não é código, não implementado.
-3. Achado incidental do `create_order`/Origin HTTP (harness de teste antigo, registrado nas ondas
+2. Achado incidental do `create_order`/Origin HTTP (harness de teste antigo, registrado nas ondas
    anteriores) — segue sem solução, fora do escopo desta onda.
 
 ---
 
 ## Gate final da Onda 4
 
-**Diagnóstico concluído, correção implementada e testada, commit local `de90ff1` — push pendente de
-confirmação.** Causa raiz confirmada com evidência de histórico do git (não suposição). Fidelidade da
-Encanto não foi ativada/desativada por esta sessão — permanece como encontrada (`enabled=true`, ação
-do dono). Nenhum pedido, cliente ou histórico real alterado; toda escrita de teste ficou no projeto
-E2E, restaurada ao final. **Não iniciar Onda 5 automaticamente.** Aguardando confirmação pra push e
-autorização explícita do dono para qualquer onda futura.
+**Diagnóstico concluído, correção implementada, testada, commitada e pushed — CI verde.** Causa raiz
+confirmada com evidência de histórico do git (não suposição). Fidelidade da Encanto não foi
+ativada/desativada por esta sessão — permanece como encontrada (`enabled=true`, ação do dono). Nenhum
+pedido, cliente ou histórico real alterado; toda escrita de teste ficou no projeto E2E, restaurada ao
+final. **Não iniciar Onda 5 automaticamente.** Aguardando autorização explícita do dono para qualquer
+onda futura.
