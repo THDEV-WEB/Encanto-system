@@ -184,6 +184,56 @@ function LinhaAdmin({ admin, storeId, onDesvinculado }) {
   );
 }
 
+/* REF-STORE-ONBOARD-02 · Onda 1: checklist de lancamento -- resume, num so' lugar, o que falta para
+   esta loja ficar pronta pra ir ao ar de verdade. So' LEITURA (deriva 100% de platform_tenant_detail() +
+   da mesma checagem HTTPS ja feita pra "Dominios" abaixo) -- nenhum item aqui tem acao propria, cada
+   linha aponta pra a secao/tela onde a acao real acontece. */
+function ItemChecklist({ ok, texto, nota, testid }) {
+  return (
+    <div data-testid={testid} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '4px 0' }}>
+      <span style={{ fontSize: 14 }}>{ok ? '✅' : '⚠️'}</span>
+      <div>
+        <span style={{ fontSize: 12.5, fontWeight: ok ? 500 : 700, color: ok ? 'var(--gray-600)' : '#B45309' }}>{texto}</span>
+        {!ok && nota && <div style={{ fontSize: 11, color: 'var(--gray-500)' }}>{nota}</div>}
+      </div>
+    </div>
+  );
+}
+
+function ChecklistLancamento({ detalhe, hosts, verif, slug }) {
+  const cfg = detalhe.config;
+  const dominioOk = verif.storefront === 'ok' && verif.admin === 'ok';
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <h4 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>🚀 Checklist de lançamento</h4>
+      <ItemChecklist testid={`plataforma-checklist-admin-${slug}`} ok={detalhe.admins.length > 0}
+        texto="Administrador vinculado"
+        nota="Sem admin, ninguém consegue logar nesta loja -- vincule abaixo, em Administradores." />
+      <ItemChecklist testid={`plataforma-checklist-catalogo-${slug}`} ok={cfg.tem_catalogo}
+        texto="Catálogo com produtos"
+        nota="Clone o catálogo de outra loja abaixo, ou cadastre produtos direto no Admin desta loja." />
+      <ItemChecklist testid={`plataforma-checklist-horario-${slug}`} ok={cfg.tem_horario_config}
+        texto="Horário de funcionamento configurado"
+        nota="Sem isso, o Admin desta loja mostra o horário de OUTRA loja como exemplo temporário." />
+      <ItemChecklist testid={`plataforma-checklist-entrega-${slug}`} ok={cfg.tem_delivery_config}
+        texto="Taxa de entrega configurada"
+        nota="Sem isso, o Admin desta loja mostra a tabela de preço de OUTRA loja como exemplo temporário." />
+      <ItemChecklist testid={`plataforma-checklist-coordenadas-${slug}`} ok={cfg.tem_coordenadas}
+        texto="Coordenadas da loja definidas"
+        nota="Risco real: sem isso, TODO pedido de entrega sai com taxa R$ 0,00 -- configure em Empresa/Taxa de Entrega, no Admin desta loja." />
+      <ItemChecklist testid={`plataforma-checklist-eta-${slug}`} ok={cfg.tem_eta_customizado}
+        texto="Tempo estimado de entrega revisado"
+        nota={`Usando o padrão genérico (${cfg.delivery_eta_min} min) até ser revisado no Admin desta loja.`} />
+      <ItemChecklist testid={`plataforma-checklist-modo-${slug}`} ok={cfg.tem_modo_customizado}
+        texto="Modo da loja revisado"
+        nota="Usando o padrão automático (segue o horário configurado) até ser revisado no Admin desta loja." />
+      <ItemChecklist testid={`plataforma-checklist-dominio-${slug}`} ok={dominioOk}
+        texto="Domínio respondendo"
+        nota={`Ação manual sua, fora do app: crie o CNAME de ${hosts.storefrontUrl} e de ${hosts.adminUrl} no Registro.br. O valor exato do CNAME aparece ao anexar cada host no projeto Vercel correspondente (encanto-system / encanto-admin) -- não é um valor fixo previsível pelo slug.`} />
+    </div>
+  );
+}
+
 function DetalheTenant({ loja, todasAsLojas, onFechar, onMudou, onAbrirAdmin }) {
   const [detalhe, setDetalhe] = useState(null);
   const [erro, setErro] = useState(null);
@@ -291,6 +341,7 @@ function DetalheTenant({ loja, todasAsLojas, onFechar, onMudou, onAbrirAdmin }) 
 
   return (
     <div style={{ borderTop: '1px solid var(--gray-200)', marginTop: 12, paddingTop: 16 }} data-testid={`plataforma-detalhe-${loja.slug}`}>
+      <ChecklistLancamento detalhe={detalhe} hosts={hosts} verif={verif} slug={loja.slug} />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
         <div>
           <h4 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>📋 Resumo</h4>

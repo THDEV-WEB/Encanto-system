@@ -21,6 +21,9 @@ async function limparLojaDeTeste(admin) {
   if (loja) {
     await admin.from('admins').delete().eq('store_id', loja.id);
     await admin.from('store_settings').delete().eq('store_id', loja.id);
+    // REF-STORE-ONBOARD-02 · Onda 1: o teste de checklist insere 1 produto descartavel nesta loja --
+    // sem este DELETE, o DELETE de `stores` abaixo falha (FK) e deixa loja+produto orfaos.
+    await admin.from('products').delete().eq('store_id', loja.id);
     await admin.from('stores').delete().eq('id', loja.id);
   }
 }
@@ -159,5 +162,52 @@ test.describe('Platform Console / provisionamento (Admin)', { tag: '@writes' }, 
     } finally {
       await contextB.close();
     }
+  });
+
+  /* REF-STORE-ONBOARD-02 · Onda 1: checklist de lancamento -- prova que os indicadores refletem o
+     ESTADO REAL da loja, tanto recem-criada (tudo pendente) quanto totalmente configurada (tudo ok).
+     Configura por baixo (service_role, dados descartaveis) em vez de repetir cada tela do Admin --
+     essas telas ja tem suas proprias suites; aqui so' testamos se o CHECKLIST le certo. */
+  test('checklist de lancamento reflete o estado real da loja -- pendente ao criar, ok apos configurar', async ({ adminLoginPage, platformConsole, page }) => {
+    await adminLoginPage.goto();
+    await adminLoginPage.login(ADMIN_FIXTURE.email, ADMIN_FIXTURE.senha);
+    await platformConsole.abrirAba('lojas');
+
+    await platformConsole.preencherNovaLoja({ nome: NOME, slug: SLUG });
+    await platformConsole.criarLoja();
+    await expect(page.getByText(`Loja "${NOME}" criada.`)).toBeVisible();
+
+    await platformConsole.abrirDetalhe(SLUG);
+    await expect(page.getByTestId(`plataforma-checklist-admin-${SLUG}`)).toContainText('⚠️');
+    await expect(page.getByTestId(`plataforma-checklist-catalogo-${SLUG}`)).toContainText('⚠️');
+    await expect(page.getByTestId(`plataforma-checklist-horario-${SLUG}`)).toContainText('⚠️');
+    await expect(page.getByTestId(`plataforma-checklist-entrega-${SLUG}`)).toContainText('⚠️');
+    await expect(page.getByTestId(`plataforma-checklist-coordenadas-${SLUG}`)).toContainText('⚠️');
+    await expect(page.getByTestId(`plataforma-checklist-eta-${SLUG}`)).toContainText('⚠️');
+    await expect(page.getByTestId(`plataforma-checklist-modo-${SLUG}`)).toContainText('⚠️');
+
+    const admin = supabaseAdmin();
+    const { data: loja } = await admin.from('stores').select('id').eq('slug', SLUG).single();
+    await admin.from('products').insert({ store_id: loja.id, nome: 'Produto Onda1', preco: 10, disponivel: false });
+    await admin.from('store_settings').upsert([
+      { store_id: loja.id, chave: 'business_hours_schedule', valor: '{}' },
+      { store_id: loja.id, chave: 'delivery_fee_config', valor: '{}' },
+      { store_id: loja.id, chave: 'delivery_eta_min', valor: '30' },
+      { store_id: loja.id, chave: 'store_mode', valor: 'OPEN' },
+      { store_id: loja.id, chave: 'company_info', valor: JSON.stringify({ lojaLat: -26.9, lojaLng: -48.6 }) },
+    ], { onConflict: 'store_id,chave' });
+
+    // Vincular o admin, alem de ser a acao real que faltava, dispara o recarregarTudo() que traz o
+    // estado atualizado dos itens configurados diretamente acima.
+    await platformConsole.vincularAdmin(SLUG, ADMIN_FIXTURE.email);
+    await expect(page.getByText(`${ADMIN_FIXTURE.email} agora é admin desta loja.`)).toBeVisible();
+
+    await expect(page.getByTestId(`plataforma-checklist-admin-${SLUG}`)).toContainText('✅');
+    await expect(page.getByTestId(`plataforma-checklist-catalogo-${SLUG}`)).toContainText('✅');
+    await expect(page.getByTestId(`plataforma-checklist-horario-${SLUG}`)).toContainText('✅');
+    await expect(page.getByTestId(`plataforma-checklist-entrega-${SLUG}`)).toContainText('✅');
+    await expect(page.getByTestId(`plataforma-checklist-coordenadas-${SLUG}`)).toContainText('✅');
+    await expect(page.getByTestId(`plataforma-checklist-eta-${SLUG}`)).toContainText('✅');
+    await expect(page.getByTestId(`plataforma-checklist-modo-${SLUG}`)).toContainText('✅');
   });
 });
