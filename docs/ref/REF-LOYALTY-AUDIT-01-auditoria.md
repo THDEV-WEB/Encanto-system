@@ -1243,3 +1243,78 @@ verdes. Commits `b21af85` (correção) + `28d8174` (documentação), pushed em `
 (run `33140665199`, commit `28d8174`, `conclusion: success` — o run anterior do `b21af85` apareceu
 como `cancelled`, substituído pelo run do push seguinte, comportamento normal de concorrência do
 workflow, não falha real). Deploy Vercel dispara automaticamente no push — sem passo manual.
+
+### Addendum — ajuste de UX: teaser "Em breve..." nunca mais representa o Programa de Fidelidade
+
+**Contexto:** o dono reportou que no celular (inclusive aba anônima) o chip "🎁 Programa Fidelidade"
+continuava abrindo "Em breve teremos novidades..." mesmo com a correção da Onda 4 já em produção
+(confirmado via `curl` com User-Agent mobile: servidor 100% correto, sem cache/CDN envolvido).
+**Diagnóstico correto, apurado nesta sessão:** não era bug — o teste no celular estava sendo feito
+SEM autenticação (o notebook, que mostrava certo, estava logado). O `else` de `onLoyalty`
+(`StoreApp.jsx`) sempre caiu no teaser genérico pros dois casos onde não há experiência real pra
+mostrar: visitante sem conta e cliente com o programa desativado — comportamento correto por desenho
+desde a Onda 4, não um bug novo. O problema real identificado foi outro: o Programa de Fidelidade já
+existe, já contabiliza de verdade (Onda 0 em diante) e o texto genérico "em breve" não é mais
+adequado pra nenhum dos dois casos — precisa de mensagem própria e profissional para cada um.
+
+**Implementado — `StoreApp.jsx`, o mesmo dialog (`loyaltyTeaser`) passa a distinguir 2 estados em vez
+de mostrar um texto único:**
+
+1. **Sem cadastro (não autenticado):** título "🎁 Programa de Fidelidade" + "Para receber benefícios
+   e acompanhar seu progresso, faça login ou crie sua conta." + ação "Entrar ou criar conta", que
+   aciona o **mesmo** `LoginScreen` já usado pelo menu (☰ → Login) — nenhum fluxo de autenticação
+   novo, nenhuma duplicação do Supabase Auth. Mecanismo: `StoreMenu.jsx` ganhou um método imperativo
+   novo, `abrirLogin` (mesmo padrão já existente de `temAlgoAberto`/`fecharTudo` expostos via
+   `useImperativeHandle`), chamado pelo `StoreApp` através do `storeMenuRef` que já existia.
+2. **Com cadastro, mas programa desativado pela loja (`loyaltyEnabled=false`):** título "🎁 Programa
+   de Fidelidade indisponível" + "O programa está temporariamente indisponível no momento." + aviso
+   secundário, visualmente menor: "Enquanto o programa estiver inativo, novos pedidos não serão
+   contabilizados para a fidelidade." — não sugere perda de progresso/benefícios já conquistados
+   (não apaga nada, é só aviso).
+
+O caso "autenticado + programa ativo" não muda — continua abrindo a experiência real (`showLoyalty`),
+como já corrigido na Onda 4. **Nenhuma regra de negócio nova, nenhuma mudança de backend/RPC/
+migration/`loyalty_enabled`/modelo por tenant** — puramente camada de apresentação, reaproveitando
+componentes e o mecanismo de autenticação já existentes.
+
+**Varredura de outras ocorrências de "em breve" (classificação, não substituição cega):**
+
+| Local | Relacionado à fidelidade? | Ação |
+|---|---|---|
+| `StoreApp.jsx` (comentários no próprio bloco do dialog) | Sim | Atualizados, deixaram de descrever "teaser em breve" |
+| `StoreApp.jsx:316` `alert('Agendamento em breve!')` | Não (agendamento de pedido) | Não tocado |
+| `messageTemplates.js:39` "Em breve seguirá para a próxima etapa" | Não (status de pedido/comanda) | Não tocado |
+| `companyInfoRules.js:15` (comentário sobre placeholders de upload) | Não (branding/logo) | Não tocado |
+| `companyInfoRules.js:121` — default de `company_info.fidelidadeTexto`: "...em qualquer dispositivo (em breve)" | Sim, tematicamente — mas é o texto **descritivo** da tela separada "Programa de Fidelidade" do menu (`FidelidadeScreen.jsx`, drawer ☰), não o dialog do chip que esta onda cobre. É conteúdo administrável (Central de Configuração da Empresa), com valor próprio já salvo por loja no Supabase — mudar o default no código não necessariamente reflete no que a Encanto já tem salvo. | **Não alterado via código** — mantido como pendência já registrada (achado secundário desde a Onda 4) para o dono editar pela tela de Admin quando quiser |
+
+**Arquivos alterados:**
+- `src/pages/StoreApp.jsx` — dialog `loyaltyTeaser` com os 2 estados; comentários atualizados.
+- `src/components/menu/StoreMenu.jsx` — método imperativo `abrirLogin` adicionado.
+- `e2e/tests/cliente/fidelidade.spec.js` — testes C e D reescritos: C cobre o convite de login E a
+  ação abrindo o `LoginScreen` real (`getByRole('dialog', { name: 'Entrar / Criar conta' })`); D
+  cobre o aviso de indisponibilidade + o texto secundário + ausência do CTA de login (cliente já
+  autenticado).
+
+**Testes (12 critérios do pedido, cobertos pela suíte `fidelidade.spec.js` + `admin-fidelidade.spec.js`):**
+visitante anônimo vê convite de login (1) e a ação abre o fluxo real de auth (2); autenticado+ativo
+abre a experiência real (3, 6 — testes A/B pré-existentes, sem regressão); autenticado+inativo mostra
+o aviso (4) com o texto de "não contabiliza" (5); progresso (7) e recompensa (8/9) seguem corretos
+(testes A/B); contador "Fidelidade: X de 10 pedidos" sem regressão (10, teste 1 da suíte); corrida de
+saves da Onda 3 sem regressão (11, teste dedicado no `admin-fidelidade.spec.js`); isolamento por
+tenant sem regressão (12, suíte de isolamento do Admin). **10/10 E2E PASS** (`fidelidade.spec.js` +
+`admin-fidelidade.spec.js`, projeto chromium), 1 rodada, sem flakiness.
+
+**Validação estática:** `lint` 0 erros (mesmos 55 warnings pré-existentes, nenhum novo nos arquivos
+tocados), `typecheck` limpo, `build` sucesso, `test:domain` exit 0 (todas as suítes OK). `git diff
+--check` sem erros (só avisos de normalização LF/CRLF, já existentes no repo). Varredura de segredos
+no diff dos 3 arquivos — nenhum encontrado.
+
+**Commit:** local, feito nesta sessão — **push NÃO realizado**, aguardando autorização explícita do
+dono (gate explícito do pedido). `git status` confirma isolamento: apenas os 3 arquivos desta mudança
+foram adicionados ao commit; `src/constants/privacyPolicy.js` (modificado) e `scripts/loadtest-e2e.mjs`
+(novo, sem tracking) pertencem a outra sessão em paralelo no mesmo diretório local e não entraram.
+
+### Gate — aguardando autorização
+
+Implementação e testes concluídos conforme especificado. **Não fazer push/deploy sem autorização
+explícita do dono.** Nenhuma onda nova foi iniciada.

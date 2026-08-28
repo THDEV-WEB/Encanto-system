@@ -29,6 +29,9 @@ export const StoreMenu = forwardRef(function StoreMenu({ onRecomprar }, ref) {
   useImperativeHandle(ref, () => ({
     temAlgoAberto: () => drawer || !!tela,
     fecharTudo: () => { setDrawer(false); setTela(null); },
+    // REF-LOYALTY-AUDIT-01: chip fidelidade (StoreApp.jsx) precisa abrir o MESMO fluxo de login do
+    // drawer pra visitante nao-autenticado -- sem duplicar LoginScreen/Supabase Auth.
+    abrirLogin: () => { setDrawer(false); setTela('login'); },
   }), [drawer, tela]);
 
   return (

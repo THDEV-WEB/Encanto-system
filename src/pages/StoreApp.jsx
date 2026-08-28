@@ -84,7 +84,7 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
      o modal (abrirEndereco); a edicao/persistencia e do provider. Sem estado paralelo de endereco. */
   const { endereco: enderecoObj, temEndereco, abrirModal: abrirEndereco, limpar: limparEndereco } = useAddress();
   const [showLoyalty,    setShowLoyalty]     = useState(false);
-  const [loyaltyTeaser,  setLoyaltyTeaser]   = useState(false);   // teaser "em breve" do chip de fidelidade (troca o alert() nativo, que sempre mostraria o dominio em vez do nome da loja)
+  const [loyaltyTeaser,  setLoyaltyTeaser]   = useState(false);   // dialog de estado do chip fidelidade (nao-autenticado: convite pra login | programa inativo: aviso) -- dialog proprio, nao alert() nativo (que sempre mostraria o dominio em vez do nome da loja)
   /* ── Programa de Fidelidade (REF-LOYALTY-01) ── fonte unica: Supabase (get_my_loyalty), por CLIENTE.
      O visitante nao-logado ve zeros (fidelidade nao pertence ao navegador). O cliente logado ve o
      PROPRIO saldo, sincronizado entre dispositivos. localStorage e so cache (dentro do hook). */
@@ -506,18 +506,37 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
       {/* ── Modal de Seleção de Endereço ── REF-CHECKOUT-ADDRESS-01: renderizado uma unica vez pelo
           AddressProvider (fonte unica); o header so o ABRE via abrirEndereco. */}
 
-      {/* ── Teaser "em breve" do chip de fidelidade ── dialog proprio (nao alert() nativo): o alert()
+      {/* ── Dialog de estado do chip de fidelidade ── dialog proprio (nao alert() nativo): o alert()
           do browser sempre prefixa com o DOMINIO da pagina ("valionsistemas.com.br diz"), nunca com o
-          nome da loja — texto que o navegador controla, o app nao tem como sobrescrever. Aqui o titulo
-          usa companyInfo.nomeCurto (REF-COMPANY-02: fonte unica do nome institucional). */}
+          nome da loja — texto que o navegador controla, o app nao tem como sobrescrever.
+          REF-LOYALTY-AUDIT-01: so abre (onLoyalty, acima) quando NAO é o caso "autenticado + programa
+          ativo" (que ja tem experiencia real, setShowLoyalty) -- ou seja, exatamente os 2 casos aqui:
+          sem cadastro (convite pra login, reaproveitando o MESMO LoginScreen do menu via abrirLogin
+          imperativo, sem duplicar fluxo de auth) ou com cadastro mas programa temporariamente inativo
+          (aviso, sem sugerir perda de historico/beneficios). Nunca mais o placeholder generico "em
+          breve" -- o programa ja existe e contabiliza de verdade. */}
       {loyaltyTeaser&&(
         <div className="modal-overlay" style={{alignItems:'center',justifyContent:'center'}} onClick={e=>e.target===e.currentTarget&&setLoyaltyTeaser(false)}>
           <div style={{background:'var(--white)',borderRadius:16,width:'min(92vw,340px)',padding:'20px 20px 8px',boxShadow:'0 20px 60px rgba(0,0,0,.3)'}}>
-            <strong style={{fontSize:16,display:'block',marginBottom:8}}>{companyInfo.nomeCurto} diz</strong>
-            <p style={{fontSize:14,color:'var(--gray-800)',lineHeight:1.5,margin:0}}>Em breve teremos novidades para nossos clientes mais fiéis! ❤️</p>
-            <div style={{display:'flex',justifyContent:'flex-end',margin:'12px -8px 0 0'}}>
-              <button onClick={()=>setLoyaltyTeaser(false)} style={{border:'none',background:'none',color:'var(--grape)',fontWeight:700,fontSize:15,cursor:'pointer',padding:'10px 12px'}}>OK</button>
-            </div>
+            {!temCadastro ? (
+              <>
+                <strong style={{fontSize:16,display:'block',marginBottom:8}}>🎁 Programa de Fidelidade</strong>
+                <p style={{fontSize:14,color:'var(--gray-800)',lineHeight:1.5,margin:0}}>Para receber benefícios e acompanhar seu progresso, faça login ou crie sua conta.</p>
+                <div style={{display:'flex',justifyContent:'flex-end',gap:4,margin:'12px -8px 0 0'}}>
+                  <button onClick={()=>setLoyaltyTeaser(false)} style={{border:'none',background:'none',color:'var(--gray-600)',fontWeight:600,fontSize:15,cursor:'pointer',padding:'10px 12px'}}>Agora não</button>
+                  <button onClick={()=>{ setLoyaltyTeaser(false); storeMenuRef.current?.abrirLogin(); }} style={{border:'none',background:'none',color:'var(--grape)',fontWeight:700,fontSize:15,cursor:'pointer',padding:'10px 12px'}}>Entrar ou criar conta</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <strong style={{fontSize:16,display:'block',marginBottom:8}}>🎁 Programa de Fidelidade indisponível</strong>
+                <p style={{fontSize:14,color:'var(--gray-800)',lineHeight:1.5,margin:0}}>O programa está temporariamente indisponível no momento.</p>
+                <p style={{fontSize:12,color:'var(--gray-600)',lineHeight:1.4,margin:'8px 0 0'}}>Enquanto o programa estiver inativo, novos pedidos não serão contabilizados para a fidelidade.</p>
+                <div style={{display:'flex',justifyContent:'flex-end',margin:'12px -8px 0 0'}}>
+                  <button onClick={()=>setLoyaltyTeaser(false)} style={{border:'none',background:'none',color:'var(--grape)',fontWeight:700,fontSize:15,cursor:'pointer',padding:'10px 12px'}}>OK</button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

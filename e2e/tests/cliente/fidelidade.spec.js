@@ -12,7 +12,15 @@
    cadastro/progresso/recompensa reais — nunca consultava `useLoyalty()`. Corrigido em `StoreApp.jsx`
    (`onLoyalty` do `StoreHighlights`): com cadastro E programa ativo, abre o modal REAL (mesmo que o
    banner de progresso já abre); sem cadastro ou com o programa desativado, mantém o teaser (nada real
-   pra mostrar). O 2º describe abaixo prova os 4 cenários dessa correção. */
+   pra mostrar). O 2º describe abaixo prova os 4 cenários dessa correção.
+
+   REF-LOYALTY-AUDIT-01 · ajuste de UX (pós-Onda 4): o teaser "Em breve..." continuava aparecendo pros
+   dois casos que caem no `else` do `onLoyalty` (sem cadastro / programa desativado) — reportado como
+   "bug" no celular, mas era comportamento correto pra visitante deslogado; o texto genérico é que não
+   fazia mais sentido pra um programa que já existe e contabiliza de verdade. `StoreApp.jsx` agora
+   distingue os dois casos: sem cadastro → convite pra login (reaproveita o LoginScreen do menu via
+   `StoreMenu.abrirLogin`, imperativo); com cadastro mas `loyaltyEnabled=false` → aviso de
+   indisponibilidade temporária, sem sugerir perda de progresso. Testes C e D abaixo, reescritos. */
 import { test, expect } from '@playwright/test';
 import { StorePage } from '../../pages/StorePage.js';
 import { contextClienteFixture } from '../../support/authSession.js';
@@ -137,15 +145,21 @@ test.describe('Fidelidade — chip "Programa Fidelidade" reflete o estado real',
     await context.close();
   });
 
-  test('C) visitante NAO logado -> chip continua abrindo o teaser (nada real pra mostrar)', async ({ page, baseURL }) => {
+  test('C) visitante NAO logado -> chip abre convite pra login (nao mais o teaser "em breve"), e a ação leva ao fluxo real de autenticação', async ({ page, baseURL }) => {
     const storePage = new StorePage(page);
     await storePage.goto();
 
     await page.getByRole('button', { name: 'Programa Fidelidade' }).click();
-    await expect(page.getByText('Em breve teremos novidades', { exact: false })).toBeVisible();
+    await expect(page.getByText('Para receber benefícios e acompanhar seu progresso, faça login ou crie sua conta.')).toBeVisible();
+    await expect(page.getByText('Em breve teremos novidades', { exact: false })).toHaveCount(0);
+
+    // ação "Entrar ou criar conta" aciona o MESMO LoginScreen do menu (StoreMenu.jsx, abrirLogin
+    // imperativo) -- nenhum fluxo de autenticação novo/duplicado.
+    await page.getByRole('button', { name: 'Entrar ou criar conta' }).click();
+    await expect(page.getByRole('dialog', { name: 'Entrar / Criar conta' })).toBeVisible();
   });
 
-  test('D) programa DESATIVADO -> chip continua abrindo o teaser mesmo com cliente logado', async ({ browser, baseURL }) => {
+  test('D) programa DESATIVADO -> chip abre aviso de indisponibilidade (nao mais o teaser "em breve"), sem sugerir perda de progresso', async ({ browser, baseURL }) => {
     const context = await contextClienteFixture(browser, baseURL);
     test.skip(!context, 'ambiente de E2E não configurado (.env.e2e)');
 
@@ -158,7 +172,12 @@ test.describe('Fidelidade — chip "Programa Fidelidade" reflete o estado real',
       await storePage.goto();
 
       await page.getByRole('button', { name: 'Programa Fidelidade' }).click();
-      await expect(page.getByText('Em breve teremos novidades', { exact: false })).toBeVisible();
+      await expect(page.getByText('🎁 Programa de Fidelidade indisponível')).toBeVisible();
+      await expect(page.getByText('O programa está temporariamente indisponível no momento.')).toBeVisible();
+      await expect(page.getByText('Enquanto o programa estiver inativo, novos pedidos não serão contabilizados para a fidelidade.')).toBeVisible();
+      await expect(page.getByText('Em breve teremos novidades', { exact: false })).toHaveCount(0);
+      // cliente ja esta autenticado -- nao faz sentido convidar pra login de novo
+      await expect(page.getByRole('button', { name: 'Entrar ou criar conta' })).toHaveCount(0);
     } finally {
       // restaura ANTES de fechar o context, nunca deixa a loja E2E presa em desativada por um teste falho
       await admin.from('store_settings').update({ valor: 'true' }).eq('store_id', loja.id).eq('chave', 'loyalty_enabled');
