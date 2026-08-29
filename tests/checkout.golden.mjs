@@ -60,7 +60,7 @@ const ENDERECO = 'Rua A, 100, Centro';
 
 const GOLDEN_PAYLOAD = {
   p_customer: { name: 'Maria Teste', phone: '38999990000' },
-  p_order: { total: 56, status: 'recebido', payment_method: 'pix', address: 'Rua A, 100, Centro', observacoes: 'sem cebola', endereco_id: null, delivery_fee: 0, maquininha_fee: 0 },
+  p_order: { total: 56, status: 'recebido', payment_method: 'pix', address: 'Rua A, 100, Centro', observacoes: 'sem cebola', endereco_id: null, delivery_fee: 0, maquininha_fee: 0, retirada: false },
   p_items: [
     { product_id: '11111111-1111-4111-8111-111111111111', nome_produto: 'Açaí 500ml', quantity: 2, price: 22, preco_unitario: 22,
       adicionais: [{ nome: 'Leite Ninho', preco: 2 }, { nome: 'Granola', preco: 2 }], observacoes: 'sem cebola', tamanho_label: null },
