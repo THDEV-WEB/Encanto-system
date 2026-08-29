@@ -7,6 +7,7 @@ import { useState, useRef, useEffect, useMemo, lazy, Suspense } from 'react';
 import { useAuth } from '../../hooks/useAuth.js';
 import { useCompanyInfo } from '../../hooks/useCompanyInfo.js';   // REF-COMPANY-02: nome curto na mensagem do WhatsApp
 import { useBusinessHours } from '../../hooks/useBusinessHours.js';   // REF-BUSINESS-HOURS-01: bloqueio fora do horario
+import { useCatalogoConfiavel } from '../../hooks/useCatalogoConfiavel.js';   // REF-PRICE-SOURCE-01 · Onda 2: bloqueio quando o catalogo caiu no mock
 import { useDeliveryFeeConfig } from '../../hooks/useDeliveryFeeConfig.js';   // REF-DELIVERY-FEE-01: config da taxa por distancia
 import { STORAGE_KEYS } from '../../constants/storage.js';
 import { newRequestId } from '../../utils/ids.js';
@@ -44,6 +45,10 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
      finaliza pedido. Mesma fonte de verdade do header (services/businessHours via useBusinessHours). */
   const horario = useBusinessHours();
   const lojaFechada = !horario.aberto;
+  /* REF-PRICE-SOURCE-01 · Onda 2: catálogo em modo mock nunca autoriza checkout real — create_order()
+     já rejeita no servidor (fail-closed), este gate só evita a má UX de preencher tudo para ver um
+     erro genérico no fim. Mesmo padrão de bloqueio explícito já usado para "loja fechada" abaixo. */
+  const catalogoConfiavel = useCatalogoConfiavel();
   const identidadeTravada = isLogged && !!customer?.phone;
   const [form, setForm] = useState({nome:'',telefone:'',pagamento:'dinheiro',troco:'',obs:''});
   /* Cliente LOGADO: Supabase (customer) e a FONTE OFICIAL — inalterado. */
@@ -123,6 +128,8 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
     /* GATE de horário (REF-BUSINESS-HOURS-01): fora do expediente NÃO cria pedido — interrompe antes de
        validar/persistir e informa o próximo horário correto. Guest e logado passam pelo mesmo gate. */
     if (lojaFechada) { setErr(horario.mensagemFechado || 'Estamos fechados no momento.'); return; }
+    /* REF-PRICE-SOURCE-01 · Onda 2: catálogo não confirmado com o banco -- não finaliza pedido real. */
+    if (!catalogoConfiavel) { setErr('Não foi possível confirmar o catálogo agora. Atualize a página e tente novamente em instantes.'); return; }
     if (!form.nome||!form.telefone) { setErr('Preencha nome e telefone.'); return; }
     /* Validação de telefone alinhada ao servidor (normalize_phone): DDD + número = ≥10 dígitos.
        Impede que telefone inválido chegue à RPC create_order (que rejeitaria com rollback). */
@@ -322,6 +329,25 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
           ℹ️ Esta loja ainda está finalizando suas configurações.
         </p>
       )}
+      {/* REF-PRICE-SOURCE-01 · Onda 2: catálogo não confirmado com o banco (caiu no mock) -- mesmo
+          padrão visual do aviso de loja fechada acima. */}
+      {!lojaFechada && !catalogoConfiavel && (
+        <div data-testid="checkout-catalogo-indisponivel" style={{
+          display:'flex',gap:10,alignItems:'flex-start',
+          background:'#FEF2F2',border:'1px solid #FECACA',borderRadius:12,
+          padding:'12px 14px',marginBottom:12,
+        }}>
+          <span style={{fontSize:18,lineHeight:1.2,flexShrink:0}}>⚠️</span>
+          <div>
+            <div style={{fontWeight:700,fontSize:14,color:'#B91C1C',lineHeight:1.4}}>
+              Não foi possível confirmar o catálogo agora.
+            </div>
+            <div style={{fontSize:13,color:'#7F1D1D',marginTop:3,lineHeight:1.5}}>
+              Atualize a página e tente novamente em instantes.
+            </div>
+          </div>
+        </div>
+      )}
       {err&&<p data-testid="checkout-erro" role="alert" style={{color:'var(--red)',fontSize:13,marginBottom:8}}>{err}</p>}
       {/* REF-LGPD-01 · Onda 3 (LGPD-R14): aviso factual, so' informa e linka a politica ja versionada
           (LGPD-R02) -- nao e' um checkbox de consentimento (nao inventamos essa exigencia juridica). */}
@@ -332,9 +358,11 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
           Política de Privacidade
         </button>.
       </p>
-      <button className="confirm-btn" data-testid="checkout-submit" onClick={submit} disabled={loading || lojaFechada}
-        style={lojaFechada?{opacity:0.6,cursor:'not-allowed'}:undefined}>
-        {lojaFechada ? '🔒 Loja fechada no momento' : (loading ? 'Enviando...' : `Confirmar via WhatsApp • ${view.total}`)}
+      <button className="confirm-btn" data-testid="checkout-submit" onClick={submit} disabled={loading || lojaFechada || !catalogoConfiavel}
+        style={(lojaFechada || !catalogoConfiavel)?{opacity:0.6,cursor:'not-allowed'}:undefined}>
+        {lojaFechada ? '🔒 Loja fechada no momento'
+          : !catalogoConfiavel ? '⚠️ Catálogo indisponível no momento'
+          : (loading ? 'Enviando...' : `Confirmar via WhatsApp • ${view.total}`)}
       </button>
       <Suspense fallback={null}>
         {mostrarPrivacidade && <PrivacidadeScreen onClose={() => setMostrarPrivacidade(false)} />}

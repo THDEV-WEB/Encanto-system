@@ -374,24 +374,23 @@ async function main() {
     check('Caso 10 — price+preco_unitario+total adulterados simultaneamente -> servidor determina tudo (15.99)', ok, JSON.stringify(res));
   });
 
-  // ── Regressão consciente — item SEM product_id preserva o comportamento legado (ver nota de escopo
-  // no topo da migration: scripts/saas01-onda4-1-pedidos-test.mjs e harden-orders-rls-test.mjs dependem
-  // disso; é também o caminho do mockCatalog). ─────────────────────────────────────────────────────
+  // ── SUPERSEDIDO PELA ONDA 2 (REF-PRICE-SOURCE-01-onda2-exige-product-id.sql) ──────────────────────
+  // Ate a Onda 1, item SEM product_id preservava o comportamento legado (confiava no price do client)
+  // -- decisao consciente para nao quebrar scripts/saas01-onda4-1-pedidos-test.mjs e
+  // scripts/harden-orders-rls-test.mjs, na epoca. A Onda 2 investigou esse caminho (mockCatalog.js) e
+  // provou, com teste Playwright real, que ele permitia um PEDIDO REAL com preco do MOCK -- fechado:
+  // agora TODO item exige product_id valido, sem excecao (os 2 scripts acima foram adaptados para usar
+  // produto real). Ver scripts/price-source-01-onda2-test.mjs para a suite completa da Onda 2.
   await withTx(async () => {
     await comoEncanto();
     const p = telefone();
     const r = await callCreateOrder(
-      { name: 'Teste Legado', phone: p },
+      { name: 'Teste Sem ProductId', phone: p },
       { total: 33.00, payment_method: 'dinheiro', address: 'Rua Teste, 1' },
       [{ nome_produto: 'Item Avulso Sem Catalogo', quantity: 1, price: 33.00, preco_unitario: 33.00 }], // sem product_id
     );
     const res = r.rows[0].res;
-    let ok = res.ok;
-    if (ok) {
-      const item = await getOrderItem(res.order_id);
-      ok = Number(item.price) === 33.00; // comportamento legado preservado -- nao regrediu
-    }
-    check('Regressão — item SEM product_id continua confiando no price do client (comportamento legado preservado)', ok, JSON.stringify(res));
+    check('Onda 2 fechou o legado — item SEM product_id agora e REJEITADO (nunca mais confia no price do client)', res.ok === false && res.error === 'item "Item Avulso Sem Catalogo" sem produto valido', JSON.stringify(res));
   });
 
   console.log(`\n${pass} passaram, ${fail} falharam.`);

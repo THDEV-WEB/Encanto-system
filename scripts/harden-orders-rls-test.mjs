@@ -42,7 +42,17 @@ const startedMs = Date.now(), startedIso = isoUtc();
 const REQ = "'1f1f1f1f-2e2e-3d3d-4c4c-5b5b5b5b5b5b'::uuid";
 const P_CUST = `'{"name":"__ord_rls_test","phone":"38900000001"}'::jsonb`;   // REQ-01: telefone válido ≥10 díg. (DDD+número)
 const P_ORDER = `'{"total":"10.00","status":"recebido","payment_method":"dinheiro","address":"rua teste 1"}'::jsonb`;
-const P_ITEMS = `'[{"nome_produto":"__ord_rls_item","quantity":"1","price":"10.00"}]'::jsonb`;
+// REF-PRICE-SOURCE-01 · Onda 2: create_order() passou a EXIGIR product_id válido em todo item (fecha
+// o vetor do mockCatalog) -- item "avulso" sem produto não é mais aceito. TEST_PRODUCT_ID é inserido
+// dentro da MESMA transação BEGIN...ROLLBACK (nunca persiste) via setupSql de tx(), com o mesmo preço
+// 10.00 que P_ITEMS/P_ORDER já esperavam -- preserva 100% as asserções existentes deste script (RLS/
+// ACL/idempotência de create_order, não catálogo).
+const TEST_PRODUCT_ID = '0f0f0f0f-1e1e-4d3d-8c4c-5b5b5b5b5b5b';
+const SETUP_PRODUCT = [
+  `INSERT INTO public.products (id, nome, preco, categoria_id, disponivel, store_id)
+   VALUES ('${TEST_PRODUCT_ID}', '__ord_rls_produto_teste', 10.00, NULL, true, public.default_store_id())`,
+];
+const P_ITEMS = `'[{"product_id":"${TEST_PRODUCT_ID}","nome_produto":"__ord_rls_item","quantity":"1","price":"10.00"}]'::jsonb`;
 
 async function counts() {
   const q = await client.query(`SELECT
@@ -54,9 +64,13 @@ async function counts() {
 // AUTH-01: apos o endurecimento, a gestao de pedidos e privilegio de ADMIN. Os testes 'authenticated'
 // (admin: getPedidos/setStatus/health) rodam com o JWT do admin (is_admin()=true). anon segue sem JWT.
 let ADMIN_UID = null;
-async function tx(role, fn) {
+// setupSql (opcional, novo parâmetro no final -- não quebra chamadas existentes): roda DENTRO do
+// BEGIN, ANTES do SET LOCAL ROLE -- ou seja, como o role padrão de conexão (bypassa RLS), igual ao
+// padrão já usado em scripts/saas01-onda4-1-pedidos-test.mjs. Sempre desfeito pelo ROLLBACK do finally.
+async function tx(role, fn, setupSql) {
   try {
     await client.query('BEGIN');
+    for (const s of (setupSql || [])) await client.query(s);
     if (role === 'authenticated' && ADMIN_UID) await client.query("SELECT set_config('request.jwt.claims', $1, true)", [JSON.stringify({ sub: ADMIN_UID, role: 'authenticated' })]);
     await client.query(`SET LOCAL ROLE ${role}`);
     return await fn();
@@ -125,7 +139,7 @@ try {
     await tx('anon', async () => {
       const res = (await client.query(`SELECT public.create_order(${P_CUST}, ${P_ORDER}, ${P_ITEMS}, ${REQ}) AS res`)).rows[0]?.res;
       if (res && res.ok === true && res.order_id) { v = 'PASS'; d = 'ok=true order_id=' + res.order_id; } else { v = 'FAIL'; d = 'retorno inesperado: ' + JSON.stringify(res); }
-    });
+    }, SETUP_PRODUCT);
     record('AC1', 'anon', 'create_order cria pedido', v, d);
   }
   {
@@ -135,7 +149,7 @@ try {
       const r2 = (await client.query(`SELECT public.create_order(${P_CUST}, ${P_ORDER}, ${P_ITEMS}, ${REQ}) AS res`)).rows[0].res;
       if (r1?.ok && r2?.ok && r2.idempotent === true && r2.order_id === r1.order_id) { v = 'PASS'; d = '2a chamada idempotent=true, mesmo order_id'; }
       else { v = 'FAIL'; d = '1=' + JSON.stringify(r1) + ' 2=' + JSON.stringify(r2); }
-    });
+    }, SETUP_PRODUCT);
     record('AC2', 'anon', 'create_order idempotência (mesmo request_id)', v, d);
   }
   out('');

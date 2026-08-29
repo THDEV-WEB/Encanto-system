@@ -198,10 +198,18 @@ try {
   // 'true' SO dentro desta transacao (ROLLBACK desfaz) pra exercitar o caminho de concessao de selo
   // de forma deterministica, sem depender do toggle real do dono. Fonte = store_settings (por loja)
   // desde REF-LOYALTY-AUDIT-01 · Onda 1 -- antes era settings global.
-  await tx('anon', null, [`INSERT INTO public.store_settings (store_id, chave, valor) VALUES ('${encantoId}','loyalty_enabled','true') ON CONFLICT (store_id, chave) DO UPDATE SET valor='true'`], async () => {
+  // REF-PRICE-SOURCE-01 · Onda 2: create_order() passou a exigir product_id válido em todo item --
+  // produto de teste inserido na MESMA transação (nunca persiste, ROLLBACK do tx()), mesmo preço
+  // (33.00) que este teste já esperava -- preserva as asserções de isolamento multi-tenant/fidelidade
+  // que este teste realmente exercita (não é sobre catálogo).
+  const PROD_CHECKOUT_P1 = 'eeeeeeee-3333-4000-8000-0000000000c1';
+  await tx('anon', null, [
+    `INSERT INTO public.store_settings (store_id, chave, valor) VALUES ('${encantoId}','loyalty_enabled','true') ON CONFLICT (store_id, chave) DO UPDATE SET valor='true'`,
+    `INSERT INTO public.products (id, nome, preco, categoria_id, disponivel, store_id) VALUES ('${PROD_CHECKOUT_P1}', '__checkout_p1_produto_teste', 33.00, NULL, true, '${encantoId}')`,
+  ], async () => {
     const payload = { p_customer: { name: 'Cliente Checkout Onda41', phone: '47977770001' },
       p_order: { total: 33.0, payment_method: 'pix', address: 'Rua Checkout, 1' },
-      p_items: [{ nome_produto: 'Item Checkout', quantity: 1, price: 33.0 }] };
+      p_items: [{ product_id: PROD_CHECKOUT_P1, nome_produto: 'Item Checkout', quantity: 1, price: 33.0 }] };
     const r = await client.query(`SELECT public.create_order($1::jsonb,$2::jsonb,$3::jsonb) AS r`,
       [JSON.stringify(payload.p_customer), JSON.stringify(payload.p_order), JSON.stringify(payload.p_items)]);
     const res = r.rows[0].r;
@@ -225,10 +233,16 @@ try {
   out('');
 
   out('— CHECKOUT-P2: create_order (anon) COM p_store_id=lojaB cria tudo isolado na loja B —');
-  await tx('anon', null, [`INSERT INTO public.stores (id, slug, nome, dominio, status) VALUES ('${STORE_B_ID}', 'loja-b-teste-onda41', 'Loja B (fake, teste Onda 4.1)', NULL, 'ativo')`], async () => {
+  // REF-PRICE-SOURCE-01 · Onda 2: idem CHECKOUT-P1 -- produto de teste na loja B (fake, mesma
+  // transação), preço 44.00 (o que este teste já esperava).
+  const PROD_CHECKOUT_P2 = 'eeeeeeee-3333-4000-8000-0000000000c2';
+  await tx('anon', null, [
+    `INSERT INTO public.stores (id, slug, nome, dominio, status) VALUES ('${STORE_B_ID}', 'loja-b-teste-onda41', 'Loja B (fake, teste Onda 4.1)', NULL, 'ativo')`,
+    `INSERT INTO public.products (id, nome, preco, categoria_id, disponivel, store_id) VALUES ('${PROD_CHECKOUT_P2}', '__checkout_p2_produto_teste', 44.00, NULL, true, '${STORE_B_ID}')`,
+  ], async () => {
     const payload = { p_customer: { name: 'Cliente Checkout B Onda41', phone: '47977770002' },
       p_order: { total: 44.0, payment_method: 'pix', address: 'Rua Checkout B, 1' },
-      p_items: [{ nome_produto: 'Item Checkout B', quantity: 1, price: 44.0 }] };
+      p_items: [{ product_id: PROD_CHECKOUT_P2, nome_produto: 'Item Checkout B', quantity: 1, price: 44.0 }] };
     const r = await client.query(`SELECT public.create_order($1::jsonb,$2::jsonb,$3::jsonb, NULL, $4) AS r`,
       [JSON.stringify(payload.p_customer), JSON.stringify(payload.p_order), JSON.stringify(payload.p_items), STORE_B_ID]);
     const res = r.rows[0].r;
