@@ -263,7 +263,7 @@ pinSvc('savePedido → rpc create_order',  /d\.rpc\('create_order',\s*\{/);
 pinSvc('rpc args p_customer/p_order/p_items/p_request_id', /p_customer:\s*cliente,\s*p_order:\s*order,\s*p_items:\s*itens,\s*p_request_id:\s*requestId\s*\?\?\s*null/);
 pinCk('cliente logado passa o proprio customer_id ao salvar (REF-ADDRESS-SEC-01)', /const\s+enderecoParaSalvar\s*=\s*\(isLogged\s*&&\s*customer\?\.\s*id\)\s*\?\s*\{\s*\.\.\.\s*endereco,\s*customerId:\s*customer\.id\s*\}\s*:\s*endereco;/);
 pinCk('endereco estruturado so persiste em entrega, nunca bloqueia (Onda 6)', /const\s+enderecoId\s*=\s*\(!retirada\s*&&\s*endereco\)\s*\?\s*await\s+addressRepository\.salvar\(enderecoParaSalvar\)\s*:\s*null;/);
-pinCk('buildOrderArgs recebe enderecoId + resumo (Onda 6 + REF-DELIVERY-FEE-01)', /buildOrderArgs\(cart,\s*form,\s*enderecoEntrega,\s*requestIdRef\.current,\s*enderecoId,\s*resumo\)/);
+pinCk('buildOrderArgs recebe enderecoId + resumoEnvio (Onda 6 + REF-DELIVERY-FEE-01 + REF-DELIVERY-FEE-04 Onda 2)', /buildOrderArgs\(cart,\s*form,\s*enderecoEntrega,\s*requestIdRef\.current,\s*enderecoId,\s*resumoEnvio\)/);
 
 console.error(fail === 0
   ? '\n✅ checkout.golden OK — payload + mensagem + invariantes congelados; montagem real fixada (pin de fonte)'

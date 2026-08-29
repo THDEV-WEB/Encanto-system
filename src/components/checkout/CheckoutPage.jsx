@@ -11,7 +11,7 @@ import { useCatalogoConfiavel } from '../../hooks/useCatalogoConfiavel.js';   //
 import { useDeliveryFeeConfig } from '../../hooks/useDeliveryFeeConfig.js';   // REF-DELIVERY-FEE-01: config da taxa por distancia
 import { STORAGE_KEYS } from '../../constants/storage.js';
 import { newRequestId } from '../../utils/ids.js';
-import { buildOrderArgs, buildOrderConfirmationMessage, buildCheckoutView } from '../../utils/orderPayload.js';
+import { buildOrderArgs, buildOrderConfirmationMessage, buildCheckoutView, buildDivergenciaView } from '../../utils/orderPayload.js';
 import { DS } from '../../services/DataService.js';
 import { LOYALTY_EVENT } from '../../services/loyalty/index.js';   // REF-LOYALTY-01: avisa a loja p/ re-buscar o estado oficial
 import { STORE_INFO } from '../../constants/storeInfo.js';
@@ -113,6 +113,11 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
   }), [cart.total, retirada, distanciaInfo, feeConfig, form.pagamento]);
   const [loading, setLoading] = useState(false);
   const [err,     setErr]     = useState('');   // feedback inline (mesmo padrão do AdminLogin)
+  /* REF-DELIVERY-FEE-04 · Onda 2: create_order recalculou delivery_fee/maquininha_fee e o valor
+     diverge do que esta tela mostrava (raro, perto de fronteira de faixa — client usa rota viária
+     real, servidor só calcula haversine) — não persiste nada, exige reapresentar e confirmar de
+     novo. { deliveryFee, maquininhaFee } = valores AUTORITATIVOS devolvidos por DS.savePedido. */
+  const [divergencia, setDivergencia] = useState(null);
   const submittingRef = useRef(false);   // trava reentrância (duplo clique / envio simultâneo)
   const requestIdRef  = useRef(null);    // idempotency key (estável por tentativa de checkout)
   const upd = (k,v) => setForm(f=>({...f,[k]:v}));
@@ -154,14 +159,36 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
        — endereço continua salvo com customer_id=NULL, exatamente como antes, sem associação nenhuma. */
     const enderecoParaSalvar = (isLogged && customer?.id) ? { ...endereco, customerId: customer.id } : endereco;
     const enderecoId = (!retirada && endereco) ? await addressRepository.salvar(enderecoParaSalvar) : null;
+    /* REF-DELIVERY-FEE-04 · Onda 2: numa CONFIRMAÇÃO (após divergência já sinalizada), declara os
+       valores AUTORITATIVOS que o próprio servidor acabou de informar — nunca o resumo local (que
+       gerou a divergência da 1ª tentativa) de novo, senão o servidor recalcularia e divergiria
+       outra vez, num loop. O servidor SEMPRE recalcula do zero nas duas chamadas; aqui só muda o
+       que o client DECLARA como expectativa. */
+    const resumoEnvio = divergencia
+      ? { ...resumo, deliveryFee: divergencia.deliveryFee, maquininhaFee: divergencia.maquininhaFee,
+          total: resumo.subtotal + divergencia.deliveryFee + divergencia.maquininhaFee }
+      : resumo;
     /* Montagem do pedido no order-domain (Onda 5.2 · Trilha B): buildOrderArgs concentra a
        lógica pura que antes vivia inline aqui (precoUnitario por item, product_id uuid/null,
        contratos null). Σ(price*quantity) reconcilia com orders.total. */
-    const { customer: customerPedido, order, items } = buildOrderArgs(cart, form, enderecoEntrega, requestIdRef.current, enderecoId, resumo);
+    const { customer: customerPedido, order, items } = buildOrderArgs(cart, form, enderecoEntrega, requestIdRef.current, enderecoId, resumoEnvio);
     /* GATE (fonte única de verdade): a persistência bem-sucedida é o evento que autoriza TODAS as ações
-       seguintes. savePedido devolve o order_id em sucesso, ou null em falha (validação/rollback/timeout). */
-    const orderId = await DS.savePedido(customerPedido, order, items, requestIdRef.current);
-    if (!orderId) {
+       seguintes. savePedido devolve { orderId, divergencia, deliveryFee, maquininhaFee }. */
+    const resultado = await DS.savePedido(customerPedido, order, items, requestIdRef.current);
+    if (resultado.divergencia) {
+      /* REF-DELIVERY-FEE-04 · Onda 2: NÃO é falha — servidor recusou persistir silenciosamente um
+         valor diferente do apresentado. Reapresenta o valor autoritativo e exige nova confirmação;
+         preserva requestId (mesma idempotency key) e o formulário intacto. */
+      setLoading(false);
+      submittingRef.current = false;
+      setDivergencia({ deliveryFee: resultado.deliveryFee, maquininhaFee: resultado.maquininhaFee });
+      registrarBreadcrumb('checkout: valor de entrega divergente, aguardando confirmação', {
+        deliveryFeeAntigo: resumo.deliveryFee, deliveryFeeNovo: resultado.deliveryFee,
+        maquininhaFeeAntigo: resumo.maquininhaFee, maquininhaFeeNovo: resultado.maquininhaFee,
+      });
+      return;
+    }
+    if (!resultado.orderId) {
       /* Falha de persistência: interrompe o fluxo. NÃO conta fidelidade, NÃO limpa carrinho,
          NÃO executa onSuccess, NÃO mostra sucesso. Preserva requestId (retry reusa a MESMA
          idempotency key) e mantém o formulário intacto para nova tentativa. */
@@ -171,6 +198,8 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
       registrarBreadcrumb('checkout: falha ao persistir pedido', { itens: cart.items.length, retirada });
       return;
     }
+    const orderId = resultado.orderId;
+    setDivergencia(null);
     registrarBreadcrumb('checkout: pedido criado', { orderId, itens: cart.items.length, retirada });
     marcarPedido(orderId); // REF-SENTRY-01: tag pesquisável — acha no Sentry qualquer erro próximo deste pedido
     /* REF-CUSTOMER-01: so cacheia localmente p/ visitante — cliente logado ja tem o Supabase (customer)
@@ -208,6 +237,9 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
      fora_de_alcance por definição de montarResumoFinanceiro). */
   const entregaConfigPadrao = !retirada && resumo.status === 'ok' && !resumo.configuracaoPropria;
   const horarioConfigPadrao = !horario.configuracaoPropria;
+  /* REF-DELIVERY-FEE-04 · Onda 2: view-model da divergência (buildDivergenciaView, G-CK2 — fmt()
+     fica no order-domain, não aqui). null enquanto não houver divergência sinalizada. */
+  const divergenciaView = divergencia ? buildDivergenciaView(resumo, divergencia) : null;
   return (
     <div className="checkout-page">
       <button onClick={onBack} style={{background:'none',color:'var(--gray-500)',fontSize:14,marginBottom:16,display:'flex',alignItems:'center',gap:6,cursor:'pointer',border:'none'}}>
@@ -348,6 +380,26 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
           </div>
         </div>
       )}
+      {/* REF-DELIVERY-FEE-04 · Onda 2: servidor recusou persistir silenciosamente um valor diferente
+          do apresentado -- avisa e pede nova confirmação (botão abaixo já muda de rótulo). Tom
+          informativo (âmbar), não de erro (vermelho) -- não é uma falha, é uma atualização de valor. */}
+      {divergenciaView && (
+        <div data-testid="checkout-divergencia-valor" role="status" style={{
+          display:'flex',gap:10,alignItems:'flex-start',
+          background:'#FFFBEB',border:'1px solid #FDE68A',borderRadius:12,
+          padding:'12px 14px',marginBottom:12,
+        }}>
+          <span style={{fontSize:18,lineHeight:1.2,flexShrink:0}}>💡</span>
+          <div>
+            <div style={{fontWeight:700,fontSize:14,color:'#92400E',lineHeight:1.4}}>
+              Atualizamos o valor da sua entrega
+            </div>
+            <div style={{fontSize:13,color:'#78350F',marginTop:3,lineHeight:1.5}}>
+              {divergenciaView.mensagem}
+            </div>
+          </div>
+        </div>
+      )}
       {err&&<p data-testid="checkout-erro" role="alert" style={{color:'var(--red)',fontSize:13,marginBottom:8}}>{err}</p>}
       {/* REF-LGPD-01 · Onda 3 (LGPD-R14): aviso factual, so' informa e linka a politica ja versionada
           (LGPD-R02) -- nao e' um checkbox de consentimento (nao inventamos essa exigencia juridica). */}
@@ -362,6 +414,7 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
         style={(lojaFechada || !catalogoConfiavel)?{opacity:0.6,cursor:'not-allowed'}:undefined}>
         {lojaFechada ? '🔒 Loja fechada no momento'
           : !catalogoConfiavel ? '⚠️ Catálogo indisponível no momento'
+          : divergenciaView ? (loading ? 'Enviando...' : `Continuar com novo valor • ${divergenciaView.totalFmt}`)
           : (loading ? 'Enviando...' : `Confirmar via WhatsApp • ${view.total}`)}
       </button>
       <Suspense fallback={null}>

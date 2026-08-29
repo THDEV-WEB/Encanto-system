@@ -127,3 +127,26 @@ export function buildCheckoutView(cart, resumo) {
     total: fmt(resumo.total),
   };
 }
+
+/* REF-DELIVERY-FEE-04 · Onda 2: view-model da divergência de valor (create_order recalculou e
+   recusou persistir silenciosamente — ver DataService.savePedido). Reaproveita fmt() deste módulo
+   (G-CK2: CheckoutPage não importa format.js diretamente). `resumoExibido` é o resumo local (o que
+   o cliente via na tela); `autoritativo` vem de DS.savePedido ({ deliveryFee, maquininhaFee }, os
+   valores que o servidor de fato vai cobrar). Mensagem descreve só a(s) parcela(s) que realmente
+   mudou(aram) — nunca inventa uma mudança que não ocorreu. */
+export function buildDivergenciaView(resumoExibido, autoritativo) {
+  const partes = [];
+  if (autoritativo.deliveryFee !== resumoExibido.deliveryFee) {
+    partes.push(`entrega de ${fmt(resumoExibido.deliveryFee)} para ${fmt(autoritativo.deliveryFee)}`);
+  }
+  if (autoritativo.maquininhaFee !== resumoExibido.maquininhaFee) {
+    partes.push(`retorno da maquininha de ${fmt(resumoExibido.maquininhaFee)} para ${fmt(autoritativo.maquininhaFee)}`);
+  }
+  const totalNovo = resumoExibido.subtotal + autoritativo.deliveryFee + autoritativo.maquininhaFee;
+  return {
+    mensagem: partes.length
+      ? `Para garantir o valor correto, atualizamos o valor de ${partes.join(' e ')}.`
+      : 'Atualizamos o valor do seu pedido — confira antes de continuar.',
+    totalFmt: fmt(totalNovo),
+  };
+}

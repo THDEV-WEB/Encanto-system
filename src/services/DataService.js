@@ -160,8 +160,17 @@ export const DS = {
      1 chamada → customer (reuso por telefone normalizado) + order + order_items, atômico.
      requestId (idempotency key): mesma key → devolve o pedido já criado (sem duplicar).
      HARDEN-04: timeout defensivo (não congela o checkout) + 1 retry idempotente em falha de rede.
-     Retorna o uuid do pedido, ou null em erro/offline (o erro é logado, nunca escondido).
-     A RPC responde jsonb {ok, order_id|error, sqlstate, idempotent}. */
+     Retorna { orderId, divergencia, deliveryFee, maquininhaFee } — orderId é o uuid do pedido criado
+     ou null (erro/offline/divergência, sempre logado, nunca escondido).
+     A RPC responde jsonb {ok, order_id|error, sqlstate, idempotent, divergencia_valor?, delivery_fee?,
+     maquininha_fee?}.
+     REF-DELIVERY-FEE-04 · Onda 2: quando o valor de delivery_fee/maquininha_fee declarado no payload
+     diverge do autoritativo (perto de uma fronteira de faixa, client mostrou distância de rota viária
+     real enquanto o servidor só calcula haversine), a RPC devolve ok:false + divergencia_valor:true +
+     os valores autoritativos, SEM criar pedido nenhum — não é uma falha, é um pedido de reconfirmação.
+     O chamador (CheckoutPage.jsx) reapresenta o novo valor e, se o cliente confirmar, chama de novo
+     com o MESMO requestId — o servidor recalcula do zero, nunca confia no valor que ele mesmo acabou
+     de informar. */
   async savePedido(cliente, order, itens, requestId) {
     const call = () => this.run(d=>d.rpc('create_order', {
       p_customer: cliente, p_order: order, p_items: itens, p_request_id: requestId ?? null,
@@ -169,11 +178,16 @@ export const DS = {
     }));
     const withTimeout = p => Promise.race([p,
       new Promise(res => setTimeout(() => res({ data:null, error:{ message:'timeout' } }), RPC_TIMEOUT))]);
+    const vazio = { orderId: null, divergencia: false, deliveryFee: null, maquininhaFee: null };
     let r = await withTimeout(call());
     if (r.error && requestId) r = await withTimeout(call());   // 1 retry seguro (mesma idempotency key)
-    if (r.error) { console.error('[ENCANTO] create_order erro de rede/timeout:', r.error.message || r.error); return null; }
-    const res = r.data;   // {ok, order_id|error, sqlstate, idempotent}
+    if (r.error) { console.error('[ENCANTO] create_order erro de rede/timeout:', r.error.message || r.error); return vazio; }
+    const res = r.data;   // {ok, order_id|error, sqlstate, idempotent, divergencia_valor?, delivery_fee?, maquininha_fee?}
     if (res && res.ok === false) {
+      if (res.divergencia_valor) {
+        // REF-DELIVERY-FEE-04 · Onda 2: fluxo esperado, não é erro — sem console.error/capturarDenyTenant.
+        return { orderId: null, divergencia: true, deliveryFee: res.delivery_fee, maquininhaFee: res.maquininha_fee };
+      }
       console.error('[ENCANTO] create_order falhou (rollback no banco):', res.error, '['+res.sqlstate+']');
       /* REF-OBS-02: os 2 DENY fail-closed de isolamento tenant (REF-ORDER-TENANT-01) não vêm com
          `sqlstate` (não são exceção do Postgres, só um retorno lógico antecipado) — único jeito seguro
@@ -182,9 +196,9 @@ export const DS = {
       if (!res.sqlstate && (res.error === 'loja invalida' || res.error === 'loja nao identificada')) {
         capturarDenyTenant(res.error, { rpc: 'create_order', hostname: window.location.hostname });
       }
-      return null;
+      return vazio;
     }
-    return res?.order_id ?? null;
+    return { orderId: res?.order_id ?? null, divergencia: false, deliveryFee: null, maquininhaFee: null };
   },
   /* REF-ADMIN-03 · Onda 3 — substitui o antigo getPedidos() (select direto, limit(100) fixo, sem
      paginacao/busca/filtro server-side). Causa raiz: aquele limit(100) capava SILENCIOSAMENTE tanto os

@@ -5,6 +5,14 @@
 // tenant_id assinado (nao depende de resolucao por Origin, fora do alvo desta REF). Loja/produto/
 // enderecos 100% descartaveis, criados dentro da propria transacao -- nunca toca Encanto/Aquarios
 // reais nem qualquer fixture compartilhada de outra suite. Exit 0 = SUCCESS.
+//
+// ADAPTADO PELA ONDA 2 (REF-DELIVERY-FEE-04-onda2-transparencia-valor.sql): antes, um valor forjado
+// pelo client era corrigido SILENCIOSAMENTE numa unica chamada (Onda 1 pura). Agora o mesmo forjar
+// dispara divergencia -- create_order recusa persistir (ok:false, divergencia_valor:true) e devolve
+// o valor autoritativo. Os 12 casos abaixo passam a fazer 2 chamadas: a 1a com o valor forjado
+// (espera divergencia, nenhum pedido criado) e a 2a com o valor autoritativo que a 1a devolveu
+// (espera pedido criado com esse valor) -- mesma garantia de fundo (servidor nunca persiste um valor
+// diferente do autoritativo), mecanica atualizada. Nenhum caso foi apagado.
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { randomUUID } from 'node:crypto';
@@ -52,6 +60,26 @@ async function getOrder(orderId) {
   return r.rows[0];
 }
 
+// REF-DELIVERY-FEE-04 · Onda 2: 1a chamada (valor forjado) espera divergencia sem persistir; 2a
+// chamada (valor autoritativo devolvido pela 1a) espera pedido criado com esse valor.
+async function assertDivergeEntaoConfirma(labelBase, customer, orderForjado, items, storeId, esperadoDelivery, esperadoMaquininha) {
+  const r1 = await callCreateOrder(customer, orderForjado, items, storeId);
+  const res1 = r1.rows[0].res;
+  const divergiu = res1.ok === false && res1.divergencia_valor === true
+    && Number(res1.delivery_fee) === esperadoDelivery && Number(res1.maquininha_fee) === esperadoMaquininha;
+  check(`${labelBase} (1a chamada, forjado) — divergencia detectada, autoritativo=${esperadoDelivery}/${esperadoMaquininha}, nenhum pedido criado`, divergiu, JSON.stringify(res1));
+
+  const orderConfirmado = { ...orderForjado, delivery_fee: esperadoDelivery, maquininha_fee: esperadoMaquininha };
+  const r2 = await callCreateOrder(customer, orderConfirmado, items, storeId);
+  const res2 = r2.rows[0].res;
+  let ok2 = res2.ok;
+  if (ok2) {
+    const o = await getOrder(res2.order_id);
+    ok2 = Number(o.delivery_fee) === esperadoDelivery && Number(o.maquininha_fee) === esperadoMaquininha;
+  }
+  check(`${labelBase} (2a chamada, confirmado com o valor autoritativo) — pedido criado corretamente`, ok2, JSON.stringify(res2));
+}
+
 // ── Coordenadas fixas p/ teste (Blumenau/SC, mesma regiao dos dados reais do projeto): loja em
 // (-26.9000,-48.6000). PERTO ~0.7km (faixa 1, ate 5km). LONGE ~7.8km (faixa 2, 5.1-10km). FORA DE
 // ALCANCE ~50km (alem da maior faixa cadastrada).
@@ -75,7 +103,7 @@ async function main() {
   const END_OUTRA_LOJA = randomUUID();
 
   console.log('==========================================================================');
-  console.log(' REF-DELIVERY-FEE-04 (Onda 1) · delivery_fee/maquininha_fee autoritativos -- create_order (E2E)');
+  console.log(' REF-DELIVERY-FEE-04 (Onda 1, adaptado p/ Onda 2) · create_order (E2E)');
   console.log('==========================================================================\n');
 
   // Setup (fora de transacao de teste -- fixtures persistentes so' durante a execucao do script,
@@ -107,174 +135,114 @@ async function main() {
     // ── Caso 1 — retirada: delivery_fee/maquininha_fee forjados no payload -> ambos zerados. ──────
     await withTx(async () => {
       await comoLoja(STORE);
-      const r = await callCreateOrder(
+      await assertDivergeEntaoConfirma('Caso 1 — retirada com fees forjados (999/999)',
         { name: 'C1', phone: telefone() },
         { payment_method: 'cartao_credito', address: 'Retirada na loja', retirada: true, delivery_fee: 999, maquininha_fee: 999 },
-        item(), STORE,
-      );
-      const res = r.rows[0].res;
-      let ok = res.ok;
-      if (ok) { const o = await getOrder(res.order_id); ok = Number(o.delivery_fee) === 0 && Number(o.maquininha_fee) === 0 && Number(o.total) === 10.00; }
-      check('Caso 1 — retirada com fees forjados (999/999) -> servidor grava 0/0', ok, JSON.stringify(res));
+        item(), STORE, 0, 0);
     });
 
-    // ── Caso 2 — maquininha DESLIGADA no config + cartao + fee forjado -> 0. ────────────────────────
+    // ── Caso 2 — maquininha DESLIGADA no config + cartao + fee forjado -> 0; delivery PERTO -> 10.00. ──
     await withTx(async () => {
       await client.query(`UPDATE public.store_settings SET valor = $2::text WHERE store_id = $1 AND chave = 'delivery_fee_config'`,
         [STORE, JSON.stringify({ version: 1, ativo: true, maquininha: { ativo: false, valor: 2.00 }, faixas: FAIXAS })]);
       await comoLoja(STORE);
-      const r = await callCreateOrder(
+      await assertDivergeEntaoConfirma('Caso 2 — maquininha DESLIGADA + cartao + fees forjados (0/999)',
         { name: 'C2', phone: telefone() },
         { payment_method: 'cartao_credito', address: 'Rua Perto, 1', endereco_id: END_PERTO, delivery_fee: 0, maquininha_fee: 999 },
-        item(), STORE,
-      );
-      const res = r.rows[0].res;
-      let ok = res.ok;
-      if (ok) { const o = await getOrder(res.order_id); ok = Number(o.maquininha_fee) === 0; }
-      check('Caso 2 — maquininha DESLIGADA + cartao + fee forjado (999) -> servidor grava 0', ok, JSON.stringify(res));
+        item(), STORE, 10.00, 0);
     });
 
-    // ── Caso 3 — maquininha LIGADA + cartao debito + fee forjado pra 0 -> servidor grava o valor real (2.00). ──
+    // ── Caso 3 — maquininha LIGADA + cartao debito + fees forjados pra 0 -> autoritativo 10.00/2.00. ──
     await withTx(async () => {
       await comoLoja(STORE);
-      const r = await callCreateOrder(
+      await assertDivergeEntaoConfirma('Caso 3 — maquininha LIGADA + cartao_debito + fees forjados (0/0)',
         { name: 'C3', phone: telefone() },
         { payment_method: 'cartao_debito', address: 'Rua Perto, 1', endereco_id: END_PERTO, delivery_fee: 0, maquininha_fee: 0 },
-        item(), STORE,
-      );
-      const res = r.rows[0].res;
-      let ok = res.ok;
-      if (ok) { const o = await getOrder(res.order_id); ok = Number(o.maquininha_fee) === 2.00; }
-      check('Caso 3 — maquininha LIGADA + cartao_debito + fee forjado (0) -> servidor grava 2.00 (config real)', ok, JSON.stringify(res));
+        item(), STORE, 10.00, 2.00);
     });
 
     // ── Caso 4 — maquininha LIGADA + pagamento SEM cartao (pix) -> maquininha_fee=0 mesmo forjado. ──
     await withTx(async () => {
       await comoLoja(STORE);
-      const r = await callCreateOrder(
+      await assertDivergeEntaoConfirma('Caso 4 — pagamento PIX (sem maquininha) + fees forjados (0/999)',
         { name: 'C4', phone: telefone() },
         { payment_method: 'pix', address: 'Rua Perto, 1', endereco_id: END_PERTO, delivery_fee: 0, maquininha_fee: 999 },
-        item(), STORE,
-      );
-      const res = r.rows[0].res;
-      let ok = res.ok;
-      if (ok) { const o = await getOrder(res.order_id); ok = Number(o.maquininha_fee) === 0; }
-      check('Caso 4 — pagamento PIX (sem maquininha) + fee forjado (999) -> servidor grava 0', ok, JSON.stringify(res));
+        item(), STORE, 10.00, 0);
     });
 
-    // ── Caso 5 — entrega, endereco PERTO (faixa 1), delivery_fee forjado pra 0 -> grava 10.00. ─────
+    // ── Caso 5 — entrega, endereco PERTO (faixa 1), delivery_fee forjado pra 0 -> autoritativo 10.00. ──
     await withTx(async () => {
       await comoLoja(STORE);
-      const r = await callCreateOrder(
+      await assertDivergeEntaoConfirma('Caso 5 — endereco PERTO (~0.9km, faixa1) + fee forjado (0)',
         { name: 'C5', phone: telefone() },
         { payment_method: 'dinheiro', address: 'Rua Perto, 1', endereco_id: END_PERTO, delivery_fee: 0, maquininha_fee: 0 },
-        item(), STORE,
-      );
-      const res = r.rows[0].res;
-      let ok = res.ok;
-      if (ok) { const o = await getOrder(res.order_id); ok = Number(o.delivery_fee) === 10.00 && Number(o.total) === 20.00; }
-      check('Caso 5 — endereco PERTO (~0.9km, faixa1) + fee forjado (0) -> servidor grava 10.00', ok, JSON.stringify(res));
+        item(), STORE, 10.00, 0);
     });
 
-    // ── Caso 6 — entrega, endereco LONGE (faixa 2), delivery_fee forjado pra 0 -> grava 20.00. ─────
+    // ── Caso 6 — entrega, endereco LONGE (faixa 2), delivery_fee forjado pra 0 -> autoritativo 20.00. ──
     await withTx(async () => {
       await comoLoja(STORE);
-      const r = await callCreateOrder(
+      await assertDivergeEntaoConfirma('Caso 6 — endereco LONGE (~6.7km, faixa2) + fee forjado (0)',
         { name: 'C6', phone: telefone() },
         { payment_method: 'dinheiro', address: 'Rua Longe, 2', endereco_id: END_LONGE, delivery_fee: 0, maquininha_fee: 0 },
-        item(), STORE,
-      );
-      const res = r.rows[0].res;
-      let ok = res.ok;
-      if (ok) { const o = await getOrder(res.order_id); ok = Number(o.delivery_fee) === 20.00; }
-      check('Caso 6 — endereco LONGE (~9.7km, faixa2) + fee forjado (0) -> servidor grava 20.00', ok, JSON.stringify(res));
+        item(), STORE, 20.00, 0);
     });
 
     // ── Caso 6b — cliente tenta pagar MENOS num pedido LONGE (fee forjado pra baixo). ───────────────
     await withTx(async () => {
       await comoLoja(STORE);
-      const r = await callCreateOrder(
+      await assertDivergeEntaoConfirma('Caso 6b — endereco LONGE + delivery_fee forjado pra baixo (1.00)',
         { name: 'C6b', phone: telefone() },
         { payment_method: 'dinheiro', address: 'Rua Longe, 2', endereco_id: END_LONGE, delivery_fee: 1.00, maquininha_fee: 0 },
-        item(), STORE,
-      );
-      const res = r.rows[0].res;
-      let ok = res.ok;
-      if (ok) { const o = await getOrder(res.order_id); ok = Number(o.delivery_fee) === 20.00; } // NUNCA 1.00
-      check('Caso 6b — endereco LONGE + client manda delivery_fee=1.00 -> servidor grava 20.00, nunca 1.00', ok, JSON.stringify(res));
+        item(), STORE, 20.00, 0);
     });
 
     // ── Caso 7 — endereco FORA DE ALCANCE (>10km) -> delivery_fee=0 (mesmo fallback do client). ────
     await withTx(async () => {
       await comoLoja(STORE);
-      const r = await callCreateOrder(
+      await assertDivergeEntaoConfirma('Caso 7 — endereco FORA DE ALCANCE (~58km) + fee forjado (999)',
         { name: 'C7', phone: telefone() },
         { payment_method: 'dinheiro', address: 'Rua Fora, 3', endereco_id: END_FORA, delivery_fee: 999, maquininha_fee: 0 },
-        item(), STORE,
-      );
-      const res = r.rows[0].res;
-      let ok = res.ok;
-      if (ok) { const o = await getOrder(res.order_id); ok = Number(o.delivery_fee) === 0; }
-      check('Caso 7 — endereco FORA DE ALCANCE (~58km) + fee forjado (999) -> servidor grava 0', ok, JSON.stringify(res));
+        item(), STORE, 0, 0);
     });
 
     // ── Caso 8 — entrega SEM endereco_id (null) -> delivery_fee=0 (decisao do dono, 2026-08-29). ───
     await withTx(async () => {
       await comoLoja(STORE);
-      const r = await callCreateOrder(
+      await assertDivergeEntaoConfirma('Caso 8 — sem endereco_id (null) + fee forjado (999)',
         { name: 'C8', phone: telefone() },
         { payment_method: 'dinheiro', address: 'Endereco so em texto, sem endereco_id', delivery_fee: 999, maquininha_fee: 0 },
-        item(), STORE,
-      );
-      const res = r.rows[0].res;
-      let ok = res.ok;
-      if (ok) { const o = await getOrder(res.order_id); ok = Number(o.delivery_fee) === 0; }
-      check('Caso 8 — sem endereco_id (null) + fee forjado (999) -> servidor grava 0', ok, JSON.stringify(res));
+        item(), STORE, 0, 0);
     });
 
     // ── Caso 9 — endereco existe mas SEM lat/lng gravado (geocode falhou) -> delivery_fee=0. ───────
     await withTx(async () => {
       await comoLoja(STORE);
-      const r = await callCreateOrder(
+      await assertDivergeEntaoConfirma('Caso 9 — endereco_id existe mas sem lat/lng gravado + fee forjado (999)',
         { name: 'C9', phone: telefone() },
         { payment_method: 'dinheiro', address: 'Rua Sem Coord, 4', endereco_id: END_SEM_COORD, delivery_fee: 999, maquininha_fee: 0 },
-        item(), STORE,
-      );
-      const res = r.rows[0].res;
-      let ok = res.ok;
-      if (ok) { const o = await getOrder(res.order_id); ok = Number(o.delivery_fee) === 0; }
-      check('Caso 9 — endereco_id existe mas sem lat/lng gravado + fee forjado (999) -> servidor grava 0', ok, JSON.stringify(res));
+        item(), STORE, 0, 0);
     });
 
     // ── Caso 10 — endereco_id de OUTRA loja -> tratado como "sem coordenadas" (fee=0), anti-enumeracao. ──
     await withTx(async () => {
       await comoLoja(STORE);
-      const r = await callCreateOrder(
+      await assertDivergeEntaoConfirma('Caso 10 — endereco_id de OUTRA loja + fee forjado (999)',
         { name: 'C10', phone: telefone() },
         { payment_method: 'dinheiro', address: 'Tentando usar endereco de outra loja', endereco_id: END_OUTRA_LOJA, delivery_fee: 999, maquininha_fee: 0 },
-        item(), STORE,
-      );
-      const res = r.rows[0].res;
-      let ok = res.ok; // pedido nao e rejeitado -- so cai no fallback de sem-coordenadas
-      if (ok) { const o = await getOrder(res.order_id); ok = Number(o.delivery_fee) === 0; }
-      check('Caso 10 — endereco_id de OUTRA loja + fee forjado (999) -> tratado como sem-coordenadas, grava 0', ok, JSON.stringify(res));
+        item(), STORE, 0, 0);
     });
 
     // ── Caso 11 — cobranca automatica DESLIGADA no admin (config.ativo=false) -> delivery_fee=0
-    // mesmo com endereco PERTO valido; maquininha continua independente. ───────────────────────────
+    // mesmo com endereco PERTO valido; maquininha continua independente (2.00). ───────────────────────
     await withTx(async () => {
       await client.query(`UPDATE public.store_settings SET valor = $2::text WHERE store_id = $1 AND chave = 'delivery_fee_config'`,
         [STORE, JSON.stringify({ version: 1, ativo: false, maquininha: { ativo: true, valor: 2.00 }, faixas: FAIXAS })]);
       await comoLoja(STORE);
-      const r = await callCreateOrder(
+      await assertDivergeEntaoConfirma('Caso 11 — cobranca automatica DESLIGADA + fees forjados (999/0)',
         { name: 'C11', phone: telefone() },
         { payment_method: 'cartao_debito', address: 'Rua Perto, 1', endereco_id: END_PERTO, delivery_fee: 999, maquininha_fee: 0 },
-        item(), STORE,
-      );
-      const res = r.rows[0].res;
-      let ok = res.ok;
-      if (ok) { const o = await getOrder(res.order_id); ok = Number(o.delivery_fee) === 0 && Number(o.maquininha_fee) === 2.00; }
-      check('Caso 11 — cobranca automatica DESLIGADA (config.ativo=false) -> delivery_fee=0, maquininha independente (2.00)', ok, JSON.stringify(res));
+        item(), STORE, 0, 2.00);
     });
 
     // ── Caso 12 — isolamento: OUTRA_LOJA nunca e afetada pelas mudancas de config feitas em STORE. ──
@@ -289,15 +257,11 @@ async function main() {
       const prodOutra = randomUUID();
       await client.query(`INSERT INTO public.products (id, nome, preco, categoria_id, disponivel, store_id) VALUES ($1,'Produto Outra Loja',10.00,NULL,true,$2)`, [prodOutra, OUTRA_LOJA]);
       await comoLoja(OUTRA_LOJA);
-      const r = await callCreateOrder(
+      await assertDivergeEntaoConfirma('Caso 12 — isolamento: OUTRA_LOJA usa sua PROPRIA tabela, fees forjados (0/0)',
         { name: 'C12', phone: telefone() },
         { payment_method: 'cartao_debito', address: 'Rua Outra Loja, 5', endereco_id: END_OUTRA_LOJA, delivery_fee: 0, maquininha_fee: 0 },
         [{ product_id: prodOutra, nome_produto: 'Produto Outra Loja', quantity: 1, price: 10.00, preco_unitario: 10.00 }], OUTRA_LOJA,
-      );
-      const res = r.rows[0].res;
-      let ok = res.ok;
-      if (ok) { const o = await getOrder(res.order_id); ok = Number(o.delivery_fee) === 99.00 && Number(o.maquininha_fee) === 5.00; }
-      check('Caso 12 — isolamento: OUTRA_LOJA usa sua PROPRIA tabela (99.00/5.00), nunca a de STORE (10.00/2.00)', ok, JSON.stringify(res));
+        99.00, 5.00);
     });
 
     console.log(`\n${pass} passaram, ${fail} falharam.`);
