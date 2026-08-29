@@ -1,7 +1,8 @@
 # REF-LOYALTY-AUDIT-01 — Programa de Fidelidade: auditoria + configuração por loja
 
-**Status: ONDA 0 (auditoria) + ONDA 1 (configuração por loja) CONCLUÍDAS, aplicadas em produção e
-no projeto E2E, commit `fb2a2e7`.** Ver §Onda 1 abaixo para o relatório final da implementação.
+**Status: ENCERRADA.** Todas as ondas (0-4) + os 2 addendums (desconto fixo em 50%, teaser "em
+breve") concluídos, testados e em produção. Ver §Encerramento no final deste documento para o
+resumo final e commits.
 
 ## Onda 0 — Auditoria completa do Programa de Fidelidade (somente leitura)
 
@@ -1348,4 +1349,52 @@ literal de texto institucional.
 **Validação:** `test:company` (golden, checa forma/estrutura, não byte específico — segue verde) +
 `test:company-guard` verdes, `lint` 0 erros, `typecheck` limpo, `build` sucesso.
 
-**Commit:** local, aguardando autorização de push (mesmo padrão do restante desta sessão).
+**Commit:** `2961469`, pushed em `origin/main`. **CI verde** (run `33224656590`, `conclusion:
+success`, 5/5 jobs).
+
+---
+
+## Encerramento
+
+**REF-LOYALTY-AUDIT-01 está encerrada.** Escopo original (auditoria + configuração por loja) e os
+achados de integração/UX levantados ao longo do uso real em produção foram todos resolvidos,
+testados e confirmados no ar — nenhuma pendência de código aberta.
+
+### O que foi entregue
+
+| Onda/Addendum | Entrega | Commit(s) |
+|---|---|---|
+| Onda 0 | Auditoria completa (somente leitura) | — |
+| Onda 1 | `loyalty_enabled`/`loyalty_required`/`loyalty_discount` migrados de global p/ por-loja (`store_settings`), kill switch real | `fb2a2e7` |
+| Onda 2 | Admin ativa/desativa por loja, isolamento entre lojas provado via UI real | — |
+| Onda 3 | Corrida de saves no Admin (toggle + salvar simultâneos) corrigida (`cfgSaving`) | `de90ff1` + `d4f9a5f` |
+| Onda 4 | Chip "Programa Fidelidade" passou a refletir o estado real (parava sempre no teaser estático) | `de90ff1` + `d4f9a5f` |
+| Addendum 1 | "% de desconto" fixo em 50% (3 lugares) corrigido p/ valor real configurado | `b21af85` + `28d8174` |
+| Addendum 2 | Teaser "Em breve..." substituído por mensagens de estado reais (login/indisponível) | `a4999a4` |
+| Addendum 3 | Mesma frase "(em breve)" removida do default institucional (`get_company_info`) | `2961469` |
+
+### Estado final confirmado
+
+- `loyalty_enabled` da Encanto: **inalterado** (`true`), como encontrado no início da auditoria —
+  nenhuma decisão de negócio foi tomada por esta sessão.
+- Contabilização, idempotência, reversão em cancelamento e isolamento por cliente/loja: núcleo
+  intocado desde a Onda 0, revalidado sem regressão a cada onda subsequente.
+- Config do programa: por loja, com kill switch real (bloqueia operações automáticas no backend,
+  não só na UI); resgate/ajuste manual do Admin continua disponível mesmo com o programa desativado
+  (decisão de produto reconfirmada explicitamente na Onda 1, não alterada).
+- Toda a superfície cliente (contador, banner de recompensa, chip, modal de progresso/resgate,
+  mensagens de estado) reflete a configuração real da loja — sem texto estático desatualizado
+  remanescente relacionado à fidelidade.
+- Nenhum dado real de cliente/pedido/histórico de fidelidade foi alterado em nenhuma etapa; toda
+  escrita de teste ficou isolada no projeto Supabase de E2E.
+
+### Pendências residuais (fora do escopo desta REF, não bloqueantes)
+
+1. Achado incidental do `create_order`/Origin HTTP quebrando 2 checks do harness de teste antigo
+   `saas01-onda4-1-pedidos-test.mjs` — raiz em REF-PROD-GOLIVE-01, não relacionado à fidelidade,
+   documentado desde a Onda 1, sem solicitação de ação.
+2. Onboarding guiado (ideia registrada no backlog geral do produto) — **já em execução em outra
+   frente**, fora do escopo/responsabilidade desta REF.
+
+Nenhuma onda nova prevista para esta REF. Reabrir só se surgir um achado novo específico de
+fidelidade.
