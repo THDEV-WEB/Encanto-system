@@ -32,7 +32,7 @@ export async function criarPedidoFixture() {
   return { ok: true, skipped: false, orderId: data.order_id };
 }
 
-/** REF-E2E-03 · Onda 1 (+ Onda 2: parâmetro `endereco`). Cria 1 pedido "avulso" (R$12,50, 1x Marmita P
+/** REF-E2E-03 · Onda 1 (+ Onda 2: parâmetro `endereco`). Cria 1 pedido "avulso" (R$15,99, 1x Marmita P
     fixture) para um cliente GENÉRICO (nome com PREFIXO_TESTE, telefone gerado por execução) — SEM
     vínculo com CLIENTE_FIXTURE. Usado por specs de Admin que precisam de um pedido real no backend
     sem tocar Meus Pedidos/Fidelidade do cliente fixture (que usam criarPedidoFixture, acima). Limpo
@@ -40,12 +40,16 @@ export async function criarPedidoFixture() {
     controla o TIPO detectado por `comandaModel.js` (tipoDoPedido): o default replica o padrão
     "Retirada na loja — ..." (retirada); passar um endereço de entrega real produz um pedido tipo
     'entrega' (ver admin-pedidos-status.spec.js, que precisa dos 2 tipos p/ provar as 2 trilhas).
+    REF-PRICE-SOURCE-01 · Onda 1: total = R$15,99 (preço REAL de PROD_MARMITA_P no banco) — antes
+    era um valor fictício (R$12,50) que só "funcionava" porque create_order() confiava cegamente no
+    total enviado pelo client; agora o servidor recalcula order_items/orders.total a partir do preço
+    autoritativo do produto, então um total incoerente com o produto não sobrevive mais.
     Retorna o order_id e o telefone gerado. {ok:false, skipped:true} se o ambiente de E2E não estiver
     configurado. */
 export async function criarPedidoAvulso({ endereco = 'Retirada na loja — E2E' } = {}) {
   if (!E2E_ENV_PRONTO) { avisarAmbientePendente('pedido avulso (Admin)'); return { ok: false, skipped: true }; }
   const anon = supabaseAnon();
-  const total = 12.5;
+  const total = 15.99;
   const telefone = `4799${Date.now().toString().slice(-7)}`; // gerado por execucao - nunca colide com CLIENTE_FIXTURE
   const { data, error } = await anon.rpc('create_order', {
     p_customer: { name: `${PREFIXO_TESTE}Avulso`, phone: telefone },

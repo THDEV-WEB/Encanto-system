@@ -12,7 +12,7 @@
    troca o espelho pelo import real mantendo GOLDEN_PAYLOAD idêntico); buildOrderConfirmationMessage é
    coberta por tests/checkout.golden.mjs (§C) + tests/comanda.golden.mjs (view-model/texto). */
 import { precoUnitario, precoLinha } from './pricing.js';
-import { fmt } from './format.js';
+import { fmt, precoTamanho } from './format.js';
 import { isUuid } from './ids.js';
 /* REF-CHECKOUT-02: reaproveita a MESMA camada de domínio da comanda (Admin) para montar a mensagem
    de confirmação do cliente — única fonte de verdade, ver buildOrderConfirmationMessage abaixo.
@@ -44,6 +44,18 @@ export function buildOrderArgs(cart, form, endereco, requestId, enderecoId, resu
       preco_unitario: pu,
       adicionais:     i.adicionais || [],
       observacoes:    i.obs || null,
+      /* REF-PRICE-SOURCE-01: identifica QUAL tamanho foi escolhido (dado de escolha do cliente, não
+         financeiro) para o servidor localizar o preço autoritativo em products.tamanhos[].preco —
+         nunca o preço em si, que o servidor sempre recalcula do banco. Derivado do item do carrinho
+         (nunca alterado no momento da adição — ver ProductModalInner.jsx): casa o `preco` já resolvido
+         do item com o `tamanhos[].preco` original do produto (mesma função precoTamanho, tolerante a
+         legado 'price'). Cobre tanto item novo quanto item de carrinho persistido antes desta REF
+         (localStorage, TTL 12h) — ambos guardam `tamanhos` completo + `preco` do tamanho escolhido.
+         Sem correspondência (ou produto sem tamanhos) → null, e o servidor cai no 1º tamanho, mesmo
+         fallback que o client já usa (tamanho||prod.tamanhos[0]). */
+      tamanho_label: Array.isArray(i.tamanhos)
+        ? (i.tamanhos.find(t => precoTamanho(t) === Number(i.preco))?.label ?? null)
+        : null,
     };
   });
   return { customer, order, items, requestId };

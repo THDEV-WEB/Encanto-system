@@ -22,7 +22,7 @@ test.describe('lista de Pedidos — dados refletem o backend', { tag: '@writes' 
     const card = adminPedidosPage.card(pedido.orderId);
     await expect(card).toBeVisible();
     await expect(card.getByText('E2E_TEST_Avulso')).toBeVisible();
-    await expect(card).toContainText(/R\$\s*12,50/);
+    await expect(card).toContainText(/R\$\s*15,99/); // REF-PRICE-SOURCE-01: preço real de PROD_MARMITA_P, autoritativo no servidor
     await expect(card.getByText('🏪 Retirada')).toBeVisible();
   });
 });

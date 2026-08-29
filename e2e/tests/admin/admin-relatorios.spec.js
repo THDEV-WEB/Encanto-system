@@ -23,7 +23,7 @@ test.describe('Relatórios (Admin)', { tag: '@writes' }, () => {
 
     await expect(page.getByText('Pedidos no período')).toBeVisible();
     const cardReceita = page.locator('.stat-card').filter({ hasText: 'Receita no período' });
-    await expect(cardReceita.locator('.stat-val')).toHaveText('R$ 12,50'); // total do pedido avulso (fixture-order.js)
+    await expect(cardReceita.locator('.stat-val')).toHaveText('R$ 15,99'); // total do pedido avulso (fixture-order.js) — REF-PRICE-SOURCE-01: preço real de PROD_MARMITA_P, autoritativo no servidor
     await expect(page.getByText('Marmita P')).toBeVisible(); // top produtos
 
     await page.getByRole('button', { name: '7 dias' }).click();

@@ -63,8 +63,8 @@ const GOLDEN_PAYLOAD = {
   p_order: { total: 56, status: 'recebido', payment_method: 'pix', address: 'Rua A, 100, Centro', observacoes: 'sem cebola', endereco_id: null, delivery_fee: 0, maquininha_fee: 0 },
   p_items: [
     { product_id: '11111111-1111-4111-8111-111111111111', nome_produto: 'Açaí 500ml', quantity: 2, price: 22, preco_unitario: 22,
-      adicionais: [{ nome: 'Leite Ninho', preco: 2 }, { nome: 'Granola', preco: 2 }], observacoes: 'sem cebola' },
-    { product_id: null, nome_produto: 'Batidinha Morango', quantity: 1, price: 12, preco_unitario: 12, adicionais: [], observacoes: null },
+      adicionais: [{ nome: 'Leite Ninho', preco: 2 }, { nome: 'Granola', preco: 2 }], observacoes: 'sem cebola', tamanho_label: null },
+    { product_id: null, nome_produto: 'Batidinha Morango', quantity: 1, price: 12, preco_unitario: 12, adicionais: [], observacoes: null, tamanho_label: null },
   ],
   p_request_id: REQ,
 };
@@ -160,6 +160,33 @@ check('4. product_id: uuid preservado / mock → null', () => {
   assert.strictEqual(p.p_items[0].product_id, '11111111-1111-4111-8111-111111111111');
   assert.strictEqual(p.p_items[1].product_id, null);
 });
+/* REF-PRICE-SOURCE-01 · Onda 1: tamanho_label — identifica pro servidor QUAL tamanho foi escolhido
+   (nunca o preço em si), casando o `preco` já resolvido do item do carrinho com `tamanhos[].preco`. */
+check('4b. tamanho_label: item sem tamanhos → null', () => {
+  const p = buildRpcPayload(cart, FORM, ENDERECO, REQ);
+  assert.strictEqual(p.p_items[0].tamanho_label, null);
+  assert.strictEqual(p.p_items[1].tamanho_label, null);
+});
+check('4c. tamanho_label: item com tamanhos[] → label do tamanho cujo preço casa com item.preco', () => {
+  const cartTamanho = {
+    items: [{ id: '22222222-2222-4222-8222-222222222222', nome: 'Açaí', qty: 1, preco: 26.9, preco_promo: null,
+      tamanhos: [{ label: '300 ml', preco: 17.9 }, { label: '500 ml', preco: 26.9 }, { label: '700 ml', preco: 35.9 }],
+      adicionais: [], obs: null }],
+    total: 26.9,
+  };
+  const p = buildRpcPayload(cartTamanho, FORM, ENDERECO, REQ);
+  assert.strictEqual(p.p_items[0].tamanho_label, '500 ml');
+});
+check('4d. tamanho_label: nenhum tamanho casa com item.preco (dado inconsistente) → null (fallback do servidor cai no 1º tamanho)', () => {
+  const cartTamanho = {
+    items: [{ id: '22222222-2222-4222-8222-222222222222', nome: 'Açaí', qty: 1, preco: 999, preco_promo: null,
+      tamanhos: [{ label: '300 ml', preco: 17.9 }, { label: '500 ml', preco: 26.9 }],
+      adicionais: [], obs: null }],
+    total: 999,
+  };
+  const p = buildRpcPayload(cartTamanho, FORM, ENDERECO, REQ);
+  assert.strictEqual(p.p_items[0].tamanho_label, null);
+});
 check('5. idempotência: p_request_id passthrough',  () => assert.strictEqual(buildRpcPayload(cart, FORM, ENDERECO, REQ).p_request_id, REQ));
 check('5b. requestId ausente → p_request_id null',  () => assert.strictEqual(buildRpcPayload(cart, FORM, ENDERECO, undefined).p_request_id, null));
 check('5c. address = FONTE UNICA (arg endereco), nao form', () => {
@@ -230,6 +257,7 @@ pinOD('item.price = pu',                /price:\s*pu/);
 pinOD('item.preco_unitario = pu',       /preco_unitario:\s*pu/);
 pinOD('item.adicionais = i.adicionais||[]', /adicionais:\s*i\.adicionais\s*\|\|\s*\[\]/);
 pinOD('item.observacoes = i.obs||null', /observacoes:\s*i\.obs\s*\|\|\s*null/);
+pinOD('item.tamanho_label deriva de i.tamanhos via precoTamanho (REF-PRICE-SOURCE-01)', /tamanho_label:\s*Array\.isArray\(i\.tamanhos\)/);
 pinOD('pu = precoUnitario(i)',          /const\s+pu\s*=\s*precoUnitario\(i\)/);
 pinSvc('savePedido → rpc create_order',  /d\.rpc\('create_order',\s*\{/);
 pinSvc('rpc args p_customer/p_order/p_items/p_request_id', /p_customer:\s*cliente,\s*p_order:\s*order,\s*p_items:\s*itens,\s*p_request_id:\s*requestId\s*\?\?\s*null/);
