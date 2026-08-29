@@ -82,6 +82,22 @@ typecheck limpo; `test:domain` 0 falhas; `npm run build` e `npm run build:admin`
 **Não alterado**: `provision_store`, `invite-store-admin`, `platform_clone_catalog`, nenhuma RPC/RLS da
 REF-AUTH-PLATFORM-ISOLATION-01, nenhum wizard/stepper novo.
 
-**Estado**: implementado e validado 100% no projeto E2E. **Migration NÃO aplicada em produção** — aguardando
-autorização explícita de deploy (regra do projeto: nenhuma mutação de produção sem pedido específico).
-Commit local, push não pedido.
+**Estado**: implementado e validado 100% no projeto E2E, commit `a51d1eb` pushed (CI verde, run
+33224656590) e **migration aplicada em produção**.
+
+## Deploy em produção
+
+Migration aplicada via `BEGIN...COMMIT` direto contra o Postgres de produção. Confirmado por leitura que
+`platform_tenant_detail` passou a expor os 4 campos novos.
+
+**Validação com dados reais** (`BEGIN...ROLLBACK`, líquido zero — nenhuma linha alterada):
+
+| Loja real | `config` retornado |
+|---|---|
+| Encanto (ativa, totalmente configurada há muito tempo) | `tem_catalogo`/`tem_coordenadas`/`tem_horario_config`/`tem_delivery_config`/`tem_eta_customizado`/`tem_modo_customizado` = `true` (`delivery_eta_min: "60"`) |
+| Aquarios Bar (suspensa, nunca configurada) | todos os 4 campos novos + os 2 pré-existentes = `false` (`delivery_eta_min: "45"`, o fallback) |
+
+O resultado da Aquarios Bar é exatamente o cenário real que motivou esta REF: uma loja de produção sem
+catálogo, sem coordenadas, sem horário/entrega próprios -- hoje o Platform Console mostra isso com clareza
+no checklist, em vez de silêncio. Integridade reconfirmada após o teste: `admins`=2, `super_admins`=1,
+status de ambas as lojas inalterado.
