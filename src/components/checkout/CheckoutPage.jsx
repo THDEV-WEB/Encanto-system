@@ -195,6 +195,12 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
      retirada e "sem taxa" continuam com o resumo simples (itens + Total), zero mudança visual pra eles. */
   const mostrarDetalhamento = !!(view.entregaFmt || view.maquininhaFmt);
   const entregaAConfirmar = !retirada && !view.entregaFmt && (resumo.status === 'sem_coordenadas' || resumo.status === 'fora_de_alcance');
+  /* REF-STORE-ONBOARD-02 · Onda 2: distinto de entregaAConfirmar (falta DISTÂNCIA) -- aqui a distância e
+     a faixa existem (status 'ok', valor calculado e cobrado normalmente), só a TABELA em si ainda não é
+     própria da loja (fallback da plataforma). Nunca os dois juntos (status 'ok' exclui sem_coordenadas/
+     fora_de_alcance por definição de montarResumoFinanceiro). */
+  const entregaConfigPadrao = !retirada && resumo.status === 'ok' && !resumo.configuracaoPropria;
+  const horarioConfigPadrao = !horario.configuracaoPropria;
   return (
     <div className="checkout-page">
       <button onClick={onBack} style={{background:'none',color:'var(--gray-500)',fontSize:14,marginBottom:16,display:'flex',alignItems:'center',gap:6,cursor:'pointer',border:'none'}}>
@@ -215,8 +221,20 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
         {view.entregaFmt && (
           <div className="summary-item"><span>Entrega</span><span>{view.entregaFmt}</span></div>
         )}
+        {/* REF-STORE-ONBOARD-02 · Onda 2: a taxa acima já foi calculada e será cobrada normalmente —
+            este aviso só sinaliza que a tabela em si ainda é a padrão da plataforma, não muda o valor. */}
+        {entregaConfigPadrao && (
+          <div data-testid="checkout-entrega-config-padrao" style={{fontSize:11.5,color:'var(--gray-500)',marginTop:-6,marginBottom:6}}>
+            ℹ️ Esta loja ainda está finalizando suas configurações.
+          </div>
+        )}
         {entregaAConfirmar && (
-          <div className="summary-item"><span>Entrega</span><span>A confirmar</span></div>
+          <>
+            <div className="summary-item"><span>Entrega</span><span>A confirmar</span></div>
+            <div style={{fontSize:11.5,color:'var(--gray-500)',marginTop:-6,marginBottom:6}}>
+              Vamos confirmar o valor da entrega com você antes de despachar seu pedido.
+            </div>
+          </>
         )}
         {view.maquininhaFmt && (
           <div className="summary-item"><span>Retorno da maquininha</span><span>{view.maquininhaFmt}</span></div>
@@ -288,8 +306,21 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
             <div style={{fontSize:13,color:'#7F1D1D',marginTop:3,lineHeight:1.5}}>
               Você pode montar seu pedido e finalizar quando reabrirmos.
             </div>
+            {/* REF-STORE-ONBOARD-02 · Onda 2: horário ainda não é próprio da loja (padrão da plataforma)
+                -- avisa antes do cliente interpretar este fechamento como definitivo, sem mudar o bloqueio
+                em si (lojaFechada continua a mesma regra). */}
+            {horarioConfigPadrao && (
+              <div data-testid="checkout-horario-config-padrao" style={{fontSize:12,color:'#7F1D1D',marginTop:6,lineHeight:1.5}}>
+                ℹ️ Esta loja ainda está finalizando suas configurações — o horário acima pode não ser definitivo.
+              </div>
+            )}
           </div>
         </div>
+      )}
+      {!lojaFechada && horarioConfigPadrao && (
+        <p data-testid="checkout-horario-config-padrao-aberta" style={{fontSize:11.5,color:'var(--gray-500)',marginBottom:12}}>
+          ℹ️ Esta loja ainda está finalizando suas configurações.
+        </p>
       )}
       {err&&<p data-testid="checkout-erro" role="alert" style={{color:'var(--red)',fontSize:13,marginBottom:8}}>{err}</p>}
       {/* REF-LGPD-01 · Onda 3 (LGPD-R14): aviso factual, so' informa e linka a politica ja versionada

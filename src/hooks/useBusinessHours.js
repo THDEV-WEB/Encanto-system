@@ -19,8 +19,14 @@ import {
 } from '../services/businessHours/index.js';
 
 function calcular() {
-  const semana = semanaFromSchedule(lerCronogramaCache()); // null só se o cache estiver corrompido; getStoreStatus cai no fallback local
-  return resolverOverride(getStoreStatus(new Date(), semana ?? undefined), lerModoCache());
+  const cronograma = lerCronogramaCache();
+  const semana = semanaFromSchedule(cronograma); // null só se o cache estiver corrompido; getStoreStatus cai no fallback local
+  const status = resolverOverride(getStoreStatus(new Date(), semana ?? undefined), lerModoCache());
+  /* REF-STORE-ONBOARD-02 · Onda 2: proveniência do cronograma (própria da loja vs. padrão da
+     plataforma) -- vem pronta do RPC (get_business_hours_schedule), nunca calculada aqui. Default
+     `true` (sem aviso) enquanto o cache ainda é o CRONOGRAMA_PADRAO local, antes da 1ª sincronização --
+     mesmo espírito "nunca afirmar o que não foi confirmado pelo servidor" do resto do módulo. */
+  return { ...status, configuracaoPropria: cronograma?.configuracao_propria !== false };
 }
 
 /* Compara os campos que afetam a UI — se nada mudou, mantem a MESMA referencia p/ o React descartar o
@@ -33,7 +39,8 @@ function mesmoStatus(a, b) {
     && a.rotuloCurto === b.rotuloCurto
     && a.detalhe === b.detalhe
     && a.mensagemFechado === b.mensagemFechado
-    && a.fechaAs === b.fechaAs;
+    && a.fechaAs === b.fechaAs
+    && a.configuracaoPropria === b.configuracaoPropria;
 }
 
 export function useBusinessHours() {

@@ -104,7 +104,31 @@ check('MAQUININHA_METODOS é exatamente [cartao_debito, cartao_credito]', () => 
 /* ── (D) montarResumoFinanceiro ──────────────────────────────────────────────────────────────── */
 check('resumo: retirada nunca tem taxa nem maquininha (mesmo com cartão)', () => {
   const r = montarResumoFinanceiro({ subtotal: 50, retirada: true, distanciaKm: 3, config: CONFIG_PADRAO, paymentMethod: 'cartao_credito' });
-  assert.deepStrictEqual(r, { subtotal: 50, distanciaKm: null, faixa: null, deliveryFee: 0, maquininhaFee: 0, total: 50, status: 'retirada' });
+  assert.deepStrictEqual(r, { subtotal: 50, distanciaKm: null, faixa: null, deliveryFee: 0, maquininhaFee: 0, total: 50, status: 'retirada', configuracaoPropria: true });
+});
+/* REF-STORE-ONBOARD-02 · Onda 2: configuracaoPropria deriva de config.configuracao_propria (vindo do
+   RPC get_delivery_fee_config) -- default true (sem aviso) quando ausente, nunca confundido com
+   'sem_coordenadas'/'fora_de_alcance' (estados de distância, já cobertos por `status`). */
+check('resumo: configuracaoPropria default true quando config não traz o campo (compat)', () => {
+  const r = montarResumoFinanceiro({ subtotal: 30, retirada: false, distanciaKm: 4, config: CONFIG_PADRAO, paymentMethod: 'dinheiro' });
+  assert.strictEqual(r.configuracaoPropria, true);
+});
+check('resumo: configuracaoPropria false quando config.configuracao_propria === false, mesmo com faixa/status ok', () => {
+  const cfg = { ...CONFIG_PADRAO, configuracao_propria: false };
+  const r = montarResumoFinanceiro({ subtotal: 30, retirada: false, distanciaKm: 4, config: cfg, paymentMethod: 'dinheiro' });
+  assert.strictEqual(r.status, 'ok');
+  assert.strictEqual(r.configuracaoPropria, false);
+});
+check('resumo: configuracaoPropria false não muda deliveryFee/total -- só sinaliza proveniência', () => {
+  const proprio = montarResumoFinanceiro({ subtotal: 30, retirada: false, distanciaKm: 4, config: CONFIG_PADRAO, paymentMethod: 'dinheiro' });
+  const padrao = montarResumoFinanceiro({ subtotal: 30, retirada: false, distanciaKm: 4, config: { ...CONFIG_PADRAO, configuracao_propria: false }, paymentMethod: 'dinheiro' });
+  assert.strictEqual(proprio.deliveryFee, padrao.deliveryFee);
+  assert.strictEqual(proprio.total, padrao.total);
+});
+check('resumo: sem_coordenadas mantém configuracaoPropria independente (estados nunca se confundem)', () => {
+  const r = montarResumoFinanceiro({ subtotal: 30, retirada: false, distanciaKm: null, config: { ...CONFIG_PADRAO, configuracao_propria: false }, paymentMethod: 'dinheiro' });
+  assert.strictEqual(r.status, 'sem_coordenadas');
+  assert.strictEqual(r.configuracaoPropria, false);
 });
 check('resumo: feature desativada -> sem taxa de entrega, mas maquininha continua independente', () => {
   const r = montarResumoFinanceiro({ subtotal: 50, retirada: false, distanciaKm: 3, config: { ...CONFIG_PADRAO, ativo: false }, paymentMethod: 'cartao_credito' });

@@ -310,6 +310,15 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
                   </span>
                 )}
               </div>
+              {/* REF-STORE-ONBOARD-02 · Onda 2: transparencia -- o horario acima pode ser o padrao da
+                  plataforma (loja nova, ainda sem cronograma proprio), nunca afirmado como definitivo sem
+                  avisar. So aparece quando !horario.configuracaoPropria (nunca junto com config propria). */}
+              {!horario.configuracaoPropria && (
+                <span data-testid="header-config-padrao-aviso"
+                  style={{fontSize:10.5,fontWeight:600,color:'rgba(255,255,255,.85)',textShadow:'0 1px 6px rgba(0,0,0,.6)',marginTop:2,display:'block'}}>
+                  ℹ️ Esta loja ainda está finalizando suas configurações.
+                </span>
+              )}
               {/* REF-UI-HERO-03: "Agendar Pedido" imediatamente abaixo da info de horario (CTA junto do
                   operacional, sem competir com o resto do Hero). So aparece com a loja fechada. */}
               {!storeOpen && (

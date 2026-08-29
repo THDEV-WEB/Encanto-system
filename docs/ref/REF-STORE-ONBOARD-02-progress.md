@@ -101,3 +101,101 @@ O resultado da Aquarios Bar é exatamente o cenário real que motivou esta REF: 
 catálogo, sem coordenadas, sem horário/entrega próprios -- hoje o Platform Console mostra isso com clareza
 no checklist, em vez de silêncio. Integridade reconfirmada após o teste: `admins`=2, `super_admins`=1,
 status de ambas as lojas inalterado.
+
+## Onda 2 — Transparência de configuração padrão/herdada (P5)
+
+**Origem**: auditoria P5 (turno anterior) confirmou que uma loja sem `business_hours_schedule`/
+`delivery_fee_config` próprios herda, em silêncio, o horário/tabela de preço REAIS da Encanto —
+`get_business_hours_schedule`/`get_delivery_fee_config` (RPCs públicas, `GRANT EXECUTE TO anon`) nunca
+informavam a proveniência do valor. Achado mais grave: o gate `lojaFechada` do Checkout (`!horario.aberto`)
+usa exatamente esse horário para **desabilitar o botão de finalizar pedido** — uma loja nova podia ficar
+impossibilitada de receber pedidos (ou aceitar fora do que o dono considera aberto) sem nenhum aviso, em
+nenhum lugar, para o cliente final.
+
+### O que foi feito
+
+**Backend** (`migrations/REF-STORE-ONBOARD-02-onda2-transparencia-config-padrao.sql` + rollback):
+aditivo — um campo novo `configuracao_propria: boolean` mesclado (`||`) ao objeto já retornado por
+`get_business_hours_schedule` e `get_delivery_fee_config`, derivado de `EXISTS(...store_settings...)`.
+Mesma assinatura, mesmo `SECURITY DEFINER`, mesmos grants (`CREATE OR REPLACE` não reseta grants).
+Auditado antes de tocar: nenhum consumidor existente (`semanaFromSchedule`, `AdminBusinessHours`/
+`AdminTaxaEntrega` no save) lê o objeto inteiro por igualdade — todos destructuram chaves específicas
+ou reconstroem só as chaves que gravam, então o campo novo nunca vaza para o que é persistido.
+
+**Frontend — engine/hooks** (sem tocar o engine puro de horário, como pedido):
+- `hooks/useBusinessHours.js`: `calcular()` passa a incluir `configuracaoPropria` (lido do cache do
+  cronograma, default `true` — "sem aviso" — enquanto o cache é só o `CRONOGRAMA_PADRAO` pré-1ª-sincronização).
+- `services/delivery/deliveryFeeRules.js` (`montarResumoFinanceiro`): todo branch retorna
+  `configuracaoPropria` agora, derivado de `config.configuracao_propria`. **Nunca confundido com**
+  `status` (`sem_coordenadas`/`fora_de_alcance` continuam sinalizando falta de distância; `configuracaoPropria`
+  cobre separadamente "a tabela em si não é da loja", mesmo com `status:'ok'` e cobrança normal).
+
+**Frontend — cliente final** (texto sempre "Esta loja ainda está finalizando suas configurações." —
+sem termos técnicos, conforme pedido):
+- `StoreApp.jsx`: linha discreta sob a pílula de status do cabeçalho, quando `!horario.configuracaoPropria`.
+- `CheckoutPage.jsx`: (a) mesma linha perto do bloqueio "🔒 Loja fechada", qualificando que o horário pode
+  não ser definitivo — **sem mudar `lojaFechada` nem o bloqueio em si**; (b) mesma linha quando a loja
+  está aberta mas o horário ainda é o padrão; (c) nota nova junto da linha "Entrega", só quando
+  `status:'ok' && !configuracaoPropria` (coordenadas existem, tabela não é própria — cobrança segue
+  igual, só avisa); (d) "Entrega: A confirmar" (sem coordenadas) ganhou uma frase curta explicando que o
+  valor será combinado — comportamento/valor **inalterados**, só a explicação é nova.
+
+**Frontend — Admin da loja**: `AdminStatus.jsx` (tela "Status da Loja", o ponto operacional mais visto no
+dia a dia) ganhou um banner de pendências reaproveitando **a mesma fonte já existente**
+(`useStoreConfigStatus` → `get_store_config_status`, REF-STORE-ONBOARD-01 · Onda 1) — zero duplicação de
+lógica, zero mudança de backend para este banner específico.
+
+**Platform Console (Onda 1)**: intocado — nenhuma mudança em `platform_tenant_detail`/`PlatformTenants.jsx`
+nesta onda; regressão confirmada (3/3 em `platform-console.spec.js`).
+
+### Achado colateral (infraestrutura de teste, não é bug de produção)
+
+Ao escrever o teste de `AdminStatus`, `get_store_config_status` (RPC da REF-STORE-ONBOARD-01 · Onda 1,
+**já em produção** desde aquela REF) retornou `404 PGRST202` no projeto E2E — nunca tinha sido aplicada
+lá. Sem relação com esta onda; aplicada agora ao E2E (mesmo arquivo de migration já existente,
+`migrations/REF-STORE-ONBOARD-01-onda1-config-status.sql`, sem alteração) só para meus testes
+funcionarem — **não afeta produção** (que já a tinha).
+
+### Testes
+
+- `scripts/store-onboard-02-onda2-transparencia-test.mjs` (RPC real, `anon`, dados descartáveis) —
+  **17/17 PASS**: cenários A-F (tudo configurado / sem horário / sem entrega / sem ambos / coordenadas +
+  sem tabela própria via `montarResumoFinanceiro` real / restaurado) + isolamento entre 2 lojas
+  simultâneas (loja B nunca reflete o que a loja A configurou).
+- `tests/deliveryFee.golden.mjs` — 5 casos novos provando `configuracaoPropria` puro (default `true`,
+  `false` explícito, não muda `deliveryFee`/`total`, independente de `sem_coordenadas`) + regressão no
+  caso pré-existente (`deepStrictEqual` atualizado com o campo novo).
+- `e2e/tests/store/config-padrao-transparencia.spec.js` (browser real, loja descartável com domínio
+  próprio `{slug}.localhost`, resolvida via `get_store_by_domain`) — **4/4 PASS**: aviso no cabeçalho +
+  "Entrega: A confirmar" com explicação (sem bloquear o formulário); loja fechada (forçado) com horário
+  não-próprio mostra o aviso qualificando o bloqueio, **sem** alterar a regra (botão continua desabilitado);
+  loja totalmente configurada não mostra nenhum aviso; `AdminStatus` mostra as pendências e some quando
+  configurado.
+- Regressão (specs existentes, sem alteração): `admin-status.spec.js`, `admin-taxa-entrega.spec.js`,
+  `platform-console.spec.js`, `checkout-guest/logado/whatsapp.spec.js` (inclui "loja fechada bloqueia o
+  checkout"), `admin-fidelidade.spec.js`, `admin-empresa-identidade-visual.spec.js`, `store/boot+catalog.spec.js`
+  — **30/30 PASS**, nenhuma quebra.
+
+**Limitação de escopo, deliberada**: o cenário "coordenadas presentes + tabela própria ausente" não tem
+prova em navegador real nesta onda — exigiria construir, pela primeira vez, infraestrutura E2E de
+endereço/geocoding para checkout com entrega (nenhum spec hoje faz isso; todos usam `retirada` para
+evitar essa complexidade). Desproporcional para uma onda de transparência. Esse cenário já está provado
+ponta a ponta (RPC real + `montarResumoFinanceiro` real, mesma função do Checkout) no script `.mjs` acima.
+
+### Fora de escopo (conforme autorização)
+
+- **Confiança financeira de `create_order`** (aceita `delivery_fee` do cliente sem recalcular no
+  servidor) — achado real da auditoria P5, explicitamente separado para outra frente.
+- **P4** (PWA manifest por tenant) — não tocado.
+- Nenhuma mudança em `provision_store`, `platform_clone_catalog`, `invite-store-admin`, RLS ou qualquer
+  RPC da REF-AUTH-PLATFORM-ISOLATION-01.
+
+### Verificações estáticas
+
+Lint: 0 erros (55 warnings, nenhum dos arquivos tocados — baseline pré-existente idêntico ao da Onda 1).
+Typecheck: limpo. `test:domain`: 0 falhas. `npm run build`/`build:admin`: OK.
+
+### Estado
+
+Implementado e validado 100% no projeto E2E (migration da Onda 2 aplicada só lá). **Não aplicado em
+produção** — aguardando autorização explícita de deploy. Commit local, push não pedido.

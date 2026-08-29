@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import { useBusinessHours } from '../../hooks/useBusinessHours.js';
 import { definirModo, MODOS } from '../../services/businessHours/index.js';
+import { useStoreConfigStatus } from '../../hooks/useStoreConfigStatus.js'; // REF-STORE-ONBOARD-02 · Onda 2: mesma fonte do checklist do Super Admin (Onda 1), reaproveitada aqui
 
 const OPCOES = [
   { modo: MODOS.AUTO,   titulo: 'Automático',    desc: 'Segue o horário oficial da loja',        cor: '#6B21A8', bg: '#F5F3FF', bd: '#DDD6FE' },
@@ -15,6 +16,7 @@ const OPCOES = [
 
 export function AdminStatus() {
   const h = useBusinessHours();
+  const configStatus = useStoreConfigStatus(); // REF-STORE-ONBOARD-02 · Onda 2: tem_horario_config/tem_delivery_config (null = status desconhecido, nunca mostra aviso errado)
   const [salvando, setSalvando] = useState(null);   // modo em gravacao (ou null)
   const [erro, setErro] = useState('');
 
@@ -35,8 +37,31 @@ export function AdminStatus() {
   const bdStatus = aberta ? '#BBF7D0' : '#FECACA';
   const origem = forcada ? 'Forçada pelo administrador' : 'Automático';
 
+  /* REF-STORE-ONBOARD-02 · Onda 2: pendências de configuração própria, no ponto operacional mais visto
+     no dia a dia -- não depende do admin lembrar de abrir "Horário de Funcionamento"/"Taxa de Entrega"
+     especificamente. null = status desconhecido (RPC ainda não respondeu/falhou) -- nunca mostra aviso
+     errado, mesmo padrão de StatusHorarioLoja/StatusPrecoEntrega. */
+  const pendencias = [];
+  if (configStatus.tem_horario_config === false) pendencias.push('Horário de Funcionamento');
+  if (configStatus.tem_delivery_config === false) pendencias.push('Taxa de Entrega');
+
   return (
     <div>
+      {pendencias.length > 0 && (
+        <div data-testid="admin-status-config-padrao" className="admin-card" style={{
+          marginBottom: 20, border: '1.5px solid #FDE68A', background: '#FFFBEB',
+        }}>
+          <div style={{ padding: '16px 20px' }}>
+            <div style={{ fontWeight: 700, fontSize: 14, color: '#92400E', marginBottom: 4 }}>
+              ⚠️ Esta loja está operando com configuração padrão da plataforma
+            </div>
+            <div style={{ fontSize: 13, color: '#78350F', lineHeight: 1.6 }}>
+              Pendente: <strong>{pendencias.join(' e ')}</strong>. Enquanto isso, o cliente pode ver
+              horário e/ou taxa de entrega que não são desta loja. Configure abaixo{pendencias.includes('Taxa de Entrega') ? ', ou na aba "Taxa de Entrega"' : ''} para corrigir.
+            </div>
+          </div>
+        </div>
+      )}
       <div className="admin-card" style={{ marginBottom: 20 }}>
         <div className="admin-card-header">
           <h3>🏪 Status da Loja</h3>

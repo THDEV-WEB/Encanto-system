@@ -51,30 +51,37 @@ export function calcularMaquininhaFee(paymentMethod, maquininhaConfig) {
      config        : objeto delivery_fee_config { ativo, maquininha:{ativo,valor}, faixas:[{de,ate,valor}] }
      paymentMethod : string — forma de pagamento escolhida no checkout
    saida (sempre preenchida, nunca undefined):
-     { subtotal, distanciaKm, faixa, deliveryFee, maquininhaFee, total, status }
-     status: 'retirada' | 'desativado' | 'sem_coordenadas' | 'fora_de_alcance' | 'ok' */
+     { subtotal, distanciaKm, faixa, deliveryFee, maquininhaFee, total, status, configuracaoPropria }
+     status: 'retirada' | 'desativado' | 'sem_coordenadas' | 'fora_de_alcance' | 'ok'
+     configuracaoPropria: REF-STORE-ONBOARD-02 · Onda 2 -- true quando a loja tem sua PRÓPRIA tabela de
+       faixas (config.configuracao_propria, vem do RPC get_delivery_fee_config); false quando o valor
+       calculado usa a tabela padrão da plataforma (fallback). Distinto de 'sem_coordenadas'/
+       'fora_de_alcance' (que já sinalizam via `status` a falta da distância em si) -- este campo cobre
+       especificamente o caso "há distância e faixa, mas a tabela em si não é da loja". Default `true`
+       (sem aviso) se `config` não trouxer o campo (compat com chamadores antigos/testes). */
 export function montarResumoFinanceiro({ subtotal, retirada, distanciaKm, config, paymentMethod }) {
   const sub = Number(subtotal) || 0;
   const cfg = config || {};
+  const configuracaoPropria = cfg.configuracao_propria !== false;
 
   if (retirada) {
-    return { subtotal: sub, distanciaKm: null, faixa: null, deliveryFee: 0, maquininhaFee: 0, total: sub, status: 'retirada' };
+    return { subtotal: sub, distanciaKm: null, faixa: null, deliveryFee: 0, maquininhaFee: 0, total: sub, status: 'retirada', configuracaoPropria };
   }
 
   const maquininhaFee = calcularMaquininhaFee(paymentMethod, cfg.maquininha);
 
   if (!cfg.ativo) {
-    return { subtotal: sub, distanciaKm: Number.isFinite(distanciaKm) ? distanciaKm : null, faixa: null, deliveryFee: 0, maquininhaFee, total: sub + maquininhaFee, status: 'desativado' };
+    return { subtotal: sub, distanciaKm: Number.isFinite(distanciaKm) ? distanciaKm : null, faixa: null, deliveryFee: 0, maquininhaFee, total: sub + maquininhaFee, status: 'desativado', configuracaoPropria };
   }
   if (!Number.isFinite(distanciaKm)) {
-    return { subtotal: sub, distanciaKm: null, faixa: null, deliveryFee: 0, maquininhaFee, total: sub + maquininhaFee, status: 'sem_coordenadas' };
+    return { subtotal: sub, distanciaKm: null, faixa: null, deliveryFee: 0, maquininhaFee, total: sub + maquininhaFee, status: 'sem_coordenadas', configuracaoPropria };
   }
 
   const faixa = localizarFaixa(distanciaKm, cfg.faixas);
   if (!faixa) {
-    return { subtotal: sub, distanciaKm, faixa: null, deliveryFee: 0, maquininhaFee, total: sub + maquininhaFee, status: 'fora_de_alcance' };
+    return { subtotal: sub, distanciaKm, faixa: null, deliveryFee: 0, maquininhaFee, total: sub + maquininhaFee, status: 'fora_de_alcance', configuracaoPropria };
   }
 
   const deliveryFee = Number(faixa.valor) || 0;
-  return { subtotal: sub, distanciaKm, faixa, deliveryFee, maquininhaFee, total: sub + deliveryFee + maquininhaFee, status: 'ok' };
+  return { subtotal: sub, distanciaKm, faixa, deliveryFee, maquininhaFee, total: sub + deliveryFee + maquininhaFee, status: 'ok', configuracaoPropria };
 }
