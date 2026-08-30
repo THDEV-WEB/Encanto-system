@@ -50,6 +50,17 @@ const ORDER_B_ID      = 'dddddddd-2222-4000-8000-00000000000b';
 const ORDER_ITEM_A_ID = 'dddddddd-3333-4000-8000-00000000000a';
 const ORDER_ITEM_B_ID = 'dddddddd-3333-4000-8000-00000000000b';
 
+// Origin real das lojas -- create_order() no caminho guest (tenant_id ausente do JWT, o unico caso
+// que este arquivo simula) deriva a loja de current_setting('request.headers')::json->>'origin' via
+// resolve_store_from_origin(); p_store_id e' sempre ignorado nesse ramo. Sem simular esse header, os
+// casos guest sempre falham com "loja nao identificada" -- divida da REF-ORDER-TENANT-01. Encanto
+// casa por stores.dominio; a loja B (fake, dominio=NULL, ver setup do CHECKOUT-P2) so' casa pelo ramo
+// de slug {slug}.localhost (dev/E2E, ja suportado por resolve_store_from_origin()) -- usar o Origin
+// da Encanto nos dois casos resolveria a loja ERRADA no CHECKOUT-P2 e o produto de teste (que
+// pertence a loja B) seria rejeitado como "produto invalido" (produto de outro tenant).
+const TEST_ORIGIN_ENCANTO = 'https://encanto.valionsistemas.com.br';
+const TEST_ORIGIN_LOJA_B  = 'https://loja-b-teste-onda41.localhost';
+
 const R = []; const out = (s = '') => R.push(s);
 let passes = 0, failures = 0, spCounter = 0;
 const startedMs = Date.now(), startedIso = isoUtc();
@@ -57,10 +68,11 @@ function record(id, desc, verdict, detail) {
   if (verdict === 'PASS') passes++; else failures++;
   out(`  [${verdict}] ${id} ${desc}`); out(`         -> ${detail}`);
 }
-async function tx(role, sub, setupSql, fn) {
+async function tx(role, sub, setupSql, fn, origin = TEST_ORIGIN_ENCANTO) {
   try {
     await client.query('BEGIN');
     for (const s of (setupSql || [])) await client.query(s);
+    await client.query("SELECT set_config('request.headers', $1, true)", [JSON.stringify({ origin })]);
     await client.query("SELECT set_config('request.jwt.claims', $1, true)", [JSON.stringify(sub ? { sub, role } : { role })]);
     await client.query(`SET LOCAL ROLE ${role}`);
     return await fn();
@@ -255,7 +267,7 @@ try {
     if (ok) passes++; else failures++;
     out(`  [${ok ? 'PASS' : 'FAIL'}] CHECKOUT-P2 pedido explicito na loja B fica isolado la`);
     out(`         -> resultado=${JSON.stringify(res)}`);
-  });
+  }, TEST_ORIGIN_LOJA_B);
   out('');
 
   // REF-SAAS-01 · Onda 6.1 (achado real, nao previsto no plano da subfase): estas 5 policies

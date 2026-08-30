@@ -53,6 +53,13 @@ const SETUP_PRODUCT = [
    VALUES ('${TEST_PRODUCT_ID}', '__ord_rls_produto_teste', 10.00, NULL, true, public.default_store_id())`,
 ];
 const P_ITEMS = `'[{"product_id":"${TEST_PRODUCT_ID}","nome_produto":"__ord_rls_item","quantity":"1","price":"10.00"}]'::jsonb`;
+// Origin real da loja Encanto (stores.dominio) -- create_order() no caminho guest (sem tenant_id no
+// JWT, que e' o caso deste script inteiro: nenhum request.jwt.claims aqui inclui tenant_id) deriva a
+// loja de current_setting('request.headers')::json->>'origin' via resolve_store_from_origin(). Sem
+// simular esse header, o caminho anon sempre falha com "loja nao identificada" -- divida da
+// REF-ORDER-TENANT-01, nao um bug real. Mesmo padrao ja usado em
+// scripts/store-onboard-01-onda2-dominio-lojas-test.mjs / scripts/store-onboard-01-rename-aquariosbar.mjs.
+const TEST_ORIGIN = 'https://encanto.valionsistemas.com.br';
 
 async function counts() {
   const q = await client.query(`SELECT
@@ -71,6 +78,9 @@ async function tx(role, fn, setupSql) {
   try {
     await client.query('BEGIN');
     for (const s of (setupSql || [])) await client.query(s);
+    // Origin sempre simulado (inofensivo p/ authenticated -- so' e' lido no ramo guest de
+    // create_order(), que exige tenant_id ausente do JWT; nenhum caso deste arquivo seta tenant_id).
+    await client.query("SELECT set_config('request.headers', $1, true)", [JSON.stringify({ origin: TEST_ORIGIN })]);
     if (role === 'authenticated' && ADMIN_UID) await client.query("SELECT set_config('request.jwt.claims', $1, true)", [JSON.stringify({ sub: ADMIN_UID, role: 'authenticated' })]);
     await client.query(`SET LOCAL ROLE ${role}`);
     return await fn();
