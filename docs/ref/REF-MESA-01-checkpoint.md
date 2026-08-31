@@ -1,6 +1,6 @@
 # REF-MESA-01 — CHECKPOINT DE RETOMADA (ler isto primeiro numa nova sessão)
 
-**Atualizado em:** 2026-08-31, Onda 3 CONCLUÍDA, iniciando Onda 4.
+**Atualizado em:** 2026-08-31, Onda 4 CONCLUÍDA, iniciando Onda 5.
 **Se você é uma nova sessão/contexto retomando este trabalho:** leia este arquivo inteiro, depois
 rode `git log --oneline -12` e `git status --porcelain=v1` em `C:\Projetos\Encanto\encanto-react`
 para confirmar que o estado real do repositório bate com o descrito aqui ANTES de continuar. Não
@@ -15,12 +15,15 @@ resumos de conversa, só neste arquivo + no Git real.
 
 ## Onde estamos agora (resumo de 1 parágrafo)
 
-Onda 0 (auditoria + plano), Onda 1 (fundação de banco/RPC), Onda 2 (checkout/storefront) e Onda 3
-(canal QR) estão **CONCLUÍDAS, TESTADAS E COMMITADAS LOCALMENTE** (não commitadas em produção, não
-pushed — commits `af50c3a`, `e972e1a`, `fff4946`, `287ee04`, `6875bf3`, `ddb0743`). Onda 3 fechou
-100% verde: lint 0 erros, typecheck limpo, `test:domain` 40/40, E2E checkout 9/9, teste dedicado da
-Onda 3 8/8, regressão completa de banco (Onda 1 26/26 + 8 suites de outras REFs, 129 checks) — tudo
-verde. Próxima: Onda 4 (Admin/garçom — criação manual de pedido de mesa).
+Ondas 0-4 (auditoria/plano, fundação banco/RPC, checkout/storefront, canal QR, canal Admin/garçom)
+estão **CONCLUÍDAS, TESTADAS E COMMITADAS LOCALMENTE** (não commitadas em produção, não pushed —
+commits `af50c3a`, `e972e1a`, `fff4946`, `287ee04`, `6875bf3`, `ddb0743`, `d1856c6`, `78e79f0`). Onda
+4 fechou 100% verde: lint 0 erros, typecheck limpo, `test:domain` 40/40, teste dedicado da Onda 4
+8/8, regressão completa de banco (Onda 1 26/26 + Onda 3 8/8 + 8 suites de outras REFs, 129 checks) +
+2 specs E2E novos (browser real, prova ponta-a-ponta do fluxo Admin) + 10 specs E2E existentes
+(checkout/admin-pedidos) confirmando zero regressão e zero vazamento de estado — tudo verde. Próxima:
+Onda 5 (propagar tipo_pedido estruturado pra Admin/Comanda/operação — hoje ainda mostram Mesa como
+"Entrega" via a regex antiga sobre `address`, gap deliberadamente adiado até aqui).
 
 ---
 
@@ -187,11 +190,77 @@ Tudo descrito abaixo já foi implementado, testado e commitado. Não refazer.
 
 ---
 
-## PRÓXIMO PASSO EXATO (retomar por aqui) — Onda 4: Admin/garçom
+## Onda 4 — Admin/garçom (CONCLUÍDA, commit `78e79f0`)
 
-Ainda NÃO iniciada. Esta é a onda mais NOVA arquiteturalmente — hoje não existe NENHUMA tela no
-Admin para criar um pedido manualmente (todo pedido nasce no storefront do cliente, achado já
-registrado na auditoria original). Plano:
+- `migrations/REF-MESA-01-onda4-canal-admin.sql` (+rollback) — `create_order()` ganhou: quando
+  `origem_pedido='admin_garcom'`, exige `mesa_canal_admin=true` (mesmo `v_mesa_cfg`) **e**
+  `is_admin_of(v_store_id)` (diferente do canal QR — este exige que o CHAMADOR seja admin da loja).
+  Aplicada no E2E, nunca em hvbcdx/produção.
+- `src/services/DataService.js` — `savePedidoAdmin` (nova, usa `buildStoreRpcParam` de `adminStore.js`)
+  + `_executarCreateOrder` (retry/timeout/erro extraído, compartilhado com `savePedido`). **Achado
+  crítico evitado:** `savePedido` (do cliente) usa `buildStorefrontRpcParam`, que nunca resolve dentro
+  do bundle Admin — reusar direto criaria pedido na loja errada em cenários multi-loja.
+- `src/components/admin/NovoPedidoMesaModal.jsx` (novo) — form: busca produto (`DS.getAllProds`, não
+  `useProducts` — este só funciona no bundle storefront), tamanho (quando o produto tiver), número da
+  mesa, nome/telefone do cliente, forma de pagamento. Preço mostrado é só estimativa.
+- `src/components/admin/AdminPedidos.jsx` — botão "🍽️ Novo pedido de mesa", só visível com
+  `mesaConfig.canal_admin` (via `useMesaConfig`, já funciona certo no bundle Admin desde a Onda 2).
+- `e2e/support/mesaMode.js` (novo) — liga/desliga capacidade de Mesa direto via `service_role` (mesmo
+  padrão de `storeMode.js`), para setup de specs E2E. `e2e/tests/admin/admin-pedidos-novo-mesa.spec.js`
+  (novo, 2 specs) + `e2e/pages/AdminPedidosPage.page.js` ganhou os locators do modal novo.
+- `scripts/mesa-01-onda4-canal-admin-test.mjs` (novo) — 8/8 verde.
+- Regressão completa: `mesa-01-onda1` 26/26, `mesa-01-onda3` 8/8, 8 suites de outras REFs (129
+  checks), `test:domain` 40/40, lint 0 erros, typecheck limpo, E2E checkout+admin-pedidos existentes
+  (10/10) — tudo verde, zero vazamento de estado entre specs (confirmado rodando checkout logo depois).
+- **Gaps registrados, não bloqueantes:**
+  - Adicionais/extras pagos não são selecionáveis no formulário ainda (só produto+tamanho+observação
+    em texto livre, que NÃO gera cobrança) — mencionar no relatório final.
+  - Ainda não existe tela para LIGAR `mesa_canal_admin`/`mesa_habilitada`/`mesa_canal_qr` em si (RPC
+    `set_mesa_config` existe desde a Onda 1, sem consumidor de UI de escrita — só foi ligado via
+    script/service_role nos testes). Precisa de decisão: onde essa tela entra (talvez uma nova
+    sub-onda, ou dentro da Onda 5/8) — **não inventar sozinho, sinalizar no relatório final.**
+
+---
+
+## PRÓXIMO PASSO EXATO (retomar por aqui) — Onda 5: Operação/Comanda/Admin
+
+Ainda NÃO iniciada. Objetivo: propagar `tipo_pedido`/`mesa_identificador` (estruturados desde a Onda
+1) pra toda a operação, ELIMINANDO os pontos que ainda dependem da regex antiga sobre `address` —
+hoje um pedido de mesa aparece como "🛵 Entrega" em todo lugar do Admin. Plano:
+
+1. **Investigar primeiro (não presumir):** confirmar se `admin_orders_search()` (RPC usada por
+   `useOrdersPagina`/`AdminPedidos.jsx`) já devolve as colunas `tipo_pedido`/`origem_pedido`/
+   `mesa_identificador` no `RETURNS TABLE(...)` — a migration é `REF-ADMIN-03-orders-scale.sql`. Se
+   não devolver, é preciso uma migration nova (`REF-MESA-01-onda5-...`) só adicionando essas 3 colunas
+   ao retorno da RPC (sem mudar a lógica de busca/paginação em si). Mesma checagem para qualquer outra
+   RPC/`select` que alimenta `order` nas telas listadas abaixo (`admin_order_endereco`, o que
+   `DS.getPedidoEndereco` retorna, etc.).
+2. **`src/components/admin/comanda/comandaModel.js::tipoDoPedido(order)`** — hoje é
+   `RE_RETIRADA.test(order?.address)`. Trocar para: `order?.tipo_pedido` quando presente (sempre vai
+   estar, é `NOT NULL DEFAULT` desde a Onda 1 — todo pedido, histórico ou novo, tem o valor certo ou
+   o default seguro 'entrega'), com fallback pra regex SÓ se por algum motivo o campo não vier no
+   objeto (defesa, não o caminho normal). Isso já upgrade tudo que consome `tipoDoPedido` de graça:
+   `tipoLabel`/`tipoLabelCliente`/`previsaoLabel`/decisão de mostrar endereço em `buildComanda` — mas
+   cada um desses ainda é um `? :` de 2 vias (`retirada`/`entrega`), precisa virar 3 vias explícitas
+   (`entrega`/`retirada`/`mesa`) — ver auditoria original §9 pra lista exata dos pontos.
+3. **`src/components/pedidos/pedidoStatus.js`** — `FLUXO_ENTREGA`/`FLUXO_RETIRADA` precisam de um
+   `FLUXO_MESA` novo (provavelmente `recebido→preparo→pronto→servido`, sem "saiu para entrega" — mesmo
+   raciocínio já aplicado em `SuccessPage.jsx` na Onda 2). `fluxoDoTipo(tipo)` deixa de ser ternário.
+4. **`src/components/admin/AdminPedidos.jsx`** — badge do card (`tipo === 'retirada' ? '🏪' : '🛵'`)
+   vira mapa de 3 entradas incluindo `🍽️ Mesa`; exibir `order.mesa_identificador` quando presente
+   (ex.: "Mesa 07") em vez de/além do texto de `address`.
+5. **Comanda impressa/WhatsApp** (`comandaModel.js`/`comandaHtml.js`/`comandaTexto.js`) — endereço só
+   aparece se NÃO for mesa nem retirada; texto "Mesa {id}" em vez de tentar mostrar endereço vazio.
+6. **`tests/comanda.golden.mjs`/`tests/order-status.guard.mjs`** — vão precisar de um 3º fixture/caso
+   (`pedidoMesa`) — são os "pins de fonte" desta REF que precisarão de atualização deliberada, mesmo
+   padrão do que já aconteceu em `checkout.golden.mjs` na Onda 2.
+7. **NÃO tocar nesta onda** (deliberadamente fora, são Ondas 6/7): `AdminRelatorios.jsx`/
+   `admin_reports_summary` (rótulo "Entrega vs Retirada" no BI) e `enc_render_message`/
+   `enc_tempo_estimado` (notificação WhatsApp automática) — continuam classificando mesa como
+   "entrega" até essas ondas específicas.
+8. Fluxo de sempre: investigar → implementar → testar (domain + backend se migration nova + E2E pros
+   specs de Admin já existentes, mais um novo se fizer sentido) → revisar diff → `git add` explícito
+   → commit `feat(admin): REF-MESA-01 Onda 5 -- ...` → atualizar checkpoint → Onda 6.
 
 1. **Backend primeiro (mesmo padrão das Ondas 1/3):** nova migration
    `REF-MESA-01-onda4-canal-admin.sql`. Dentro de `create_order()`, quando `origem_pedido='admin_garcom'`:
