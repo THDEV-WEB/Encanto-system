@@ -1,9 +1,12 @@
 # REF-MESA-01 — CHECKPOINT DE RETOMADA (ler isto primeiro numa nova sessão)
 
-**Atualizado em:** 2026-08-31, Onda 7 CONCLUÍDA (todas as ondas de conteúdo 0-7 feitas), iniciando
-Onda 8 (auditoria final + regressão completa + relatório consolidado, PARAR NO GATE).
+**Atualizado em:** 2026-08-31 — **REF-MESA-01 ENCERRADA NO GATE FINAL.** Todas as 8 ondas (0-8)
+concluídas, testadas e commitadas localmente. Relatório final entregue em
+`docs/ref/REF-MESA-01-relatorio-final.md`. Nenhum push. Nenhuma produção alterada. Nenhuma REF nova
+iniciada. **Não há próximo passo — se uma sessão futura ler isto, esta REF está FECHADA; qualquer
+trabalho adicional é uma REF nova (mesmo que sobre o mesmo assunto).**
 **Se você é uma nova sessão/contexto retomando este trabalho:** leia este arquivo inteiro, depois
-rode `git log --oneline -12` e `git status --porcelain=v1` em `C:\Projetos\Encanto\encanto-react`
+rode `git log --oneline -16` e `git status --porcelain=v1` em `C:\Projetos\Encanto\encanto-react`
 para confirmar que o estado real do repositório bate com o descrito aqui ANTES de continuar. Não
 repita trabalho já commitado. Não presuma nada além do que está confirmado abaixo.
 
@@ -278,93 +281,76 @@ Tudo descrito abaixo já foi implementado, testado e commitado. Não refazer.
 
 ---
 
-## PRÓXIMO PASSO EXATO (retomar por aqui) — Onda 7: WhatsApp/notificações
+## Onda 7 — WhatsApp/notificações (CONCLUÍDA, commit `572cf72`)
 
-Ainda NÃO iniciada — última onda de conteúdo antes da Onda 8 (auditoria final + regressão completa).
-Objetivo do usuário: "garantir que eventos específicos de Delivery não sejam disparados para Mesa"
-(ex.: Mesa deveria dizer "Pedido da Mesa 07 recebido", não hedgear "se for retirada/se for entrega").
-Isto é **mais delicado que as ondas anteriores** porque mexe no pipeline de notificação AUTOMÁTICA
-que roda de verdade em produção via `pg_cron` — precisa ser feito com cuidado extra.
+- `migrations/REF-MESA-01-onda7-notificacoes-mesa.sql` (+rollback) — `enc_tempo_estimado` renomeou
+  `p_address`→`p_tipo_pedido` (DROP+CREATE obrigatório, Postgres não permite renomear parâmetro só com
+  CREATE OR REPLACE mesmo com tipos idênticos; GRANT restaurado depois). `enc_enqueue_notification`
+  passou a selecionar `tipo_pedido`/`mesa_identificador` de `orders` e monta `vars.situacao`/`vars.mesa`
+  além de `vars.tempo`. `enc_render_message` no template `'pronto'` trocou o hedge "Se for retirada...
+  Se for entrega..." por `{{situacao}}` (nunca mais escalaria pra 3 vias).
+- **Achado operacional confirmado e corrigido como baseline correta (não scope creep):** a versão VIVA
+  de `enc_render_message` no projeto E2E ainda estava na forma pré-`REF-COMPANY-02` (hardcoded "Encanto
+  Delivery", nunca substituía `{{empresa}}`) — o fix da REF-COMPANY-02 (commitado há semanas) nunca
+  tinha sido aplicado nesse ambiente especificamente. A migration desta onda partiu da versão já
+  commitada (correta) como base, porque qualquer substituição dessa função precisaria disso de qualquer
+  forma. Documentado em detalhe no relatório final §16.
+- `src/services/notifications/messageTemplates.js` — `situacaoPronto(tipo)`, 3 ramos explícitos.
+  `src/components/admin/PedidoNotificacoes.jsx` passa `situacao: situacaoPronto(tipo)` no preview.
+- `tests/whatsapp-templates.golden.mjs` — "sincronia" reapontada pra migration desta onda; `situacaoPronto`
+  testada; regressão de retirada/entrega mantida.
+- `scripts/mesa-01-onda7-notificacoes-test.mjs` (novo) — 9/9 verde, exercita o pipeline real
+  (trigger→enqueue→outbox→render) via UPDATEs de status reais dentro de BEGIN...ROLLBACK (nenhuma linha
+  chega a ser commitada em `notification_outbox`; `pg_cron` do E2E, se estiver rodando, nunca vê nada
+  criado aqui, em nenhuma janela de tempo, por isolamento de transação padrão).
+- Regressão completa: todas as 6 suites de banco da REF (26+8+8+4+5+9=60), 129 checks de REFs
+  relacionadas, `test:domain` 40/40, lint 0 erros, typecheck limpo — tudo verde.
 
-1. **Investigar primeiro, a fundo, antes de escrever qualquer coisa:**
-   - Ler `src/services/notifications/messageTemplates.js` INTEIRO (as 5 templates notificáveis:
-     recebido/preparo/pronto/entrega/entregue — `tests/whatsapp-templates.golden.mjs` cita esse
-     número). Qual(is) desses templates hoje tem texto que hedgeia entrega/retirada (a auditoria
-     achou isso no template de `'pronto'`: "Se for retirada, já pode ser buscado. Se for entrega,
-     nosso entregador sairá em instantes.") — confirmar se é só esse ou se há mais.
-   - Ler a definição VIVA (E2E) de `enc_render_message`, `enc_enqueue_notification`,
-     `enc_tempo_estimado`, e o trigger `trg_enc_order_notify`/função que ele chama — via script de
-     recon, mesmo padrão das ondas anteriores. Confirmar a assinatura exata de cada uma e quais
-     parâmetros já recebem (a auditoria disse que hoje só recebem `status`+`vars` genéricos, nunca o
-     tipo do pedido — mas CONFIRME contra o código vivo, pode ter mudado).
-   - Entender exatamente o teste `tests/whatsapp-templates.golden.mjs`, caso
-     `'enc_render_message (SQL...) em sincronia com o canonico'` — como ele compara JS vs SQL (extrai
-     texto do arquivo de migration? faz alguma outra checagem?). Qualquer mudança nos templates
-     precisa manter as DUAS pontas (JS `messageTemplates.js` E a função SQL) em sincronia, ou esse
-     teste quebra (o que é uma boa notícia — é uma trava automática contra esquecer um dos dois lados).
-2. **Design (a decidir DEPOIS de ler o código real, não antes):** provavelmente
-   `enc_enqueue_notification` (ou o trigger que a chama) precisa passar `orders.tipo_pedido`/
-   `mesa_identificador` pra dentro de `vars`, e `enc_render_message` precisa ramificar o texto do
-   template de `'pronto'` (e talvez outros) por tipo — mesma ideia de "3 ramos explícitos, nunca
-   ternário de 2 vias" das ondas anteriores. `enc_tempo_estimado` também precisa parar de inferir de
-   `address` — usar `tipo_pedido` direto, como as Ondas 5/6 já fizeram noutros pontos.
-3. **CUIDADO EXTRA (diferente de tudo até aqui):** este pipeline dispara notificações REAIS por
-   WhatsApp via `pg_cron` a cada 30s. Qualquer teste de comportamento precisa continuar 100%
-   confinado ao projeto E2E (nunca deixar uma linha real entrar em `notification_outbox` que
-   `pg_cron` do E2E possa tentar despachar de verdade — verificar se o E2E tem esse cron rodando ou
-   se as credenciais do Vault lá são inertes; se houver qualquer dúvida, testar dentro de
-   BEGIN...ROLLBACK como sempre, nunca commitando uma linha de notification_outbox de verdade).
-4. Fluxo de sempre: investigar → decidir design → migration(s) + `messageTemplates.js` em sincronia →
-   testar (`whatsapp-templates.golden.mjs` estendido + script SQL dedicado + regressão de todas as
-   suites anteriores) → revisar diff → `git add` explícito → commit
-   `feat(notifications): REF-MESA-01 Onda 7 -- ...` → atualizar checkpoint → Onda 8 (auditoria final:
-   varredura completa procurando qualquer `retirada ? X : Y`/regex/status específico de Delivery
-   remanescente + suíte inteira + relatório final consolidado, PARAR NO GATE).
+---
 
-1. **Backend primeiro (mesmo padrão das Ondas 1/3):** nova migration
-   `REF-MESA-01-onda4-canal-admin.sql`. Dentro de `create_order()`, quando `origem_pedido='admin_garcom'`:
-   - Exigir `mesa_canal_admin=true` (mesmo `v_mesa_cfg`, mesmo padrão de `canal_qr` da Onda 3).
-   - **Diferença importante da Onda 3:** este canal exige que o CHAMADOR seja um admin autenticado
-     DAQUELA loja — adicionar `if not public.is_admin_of(v_store_id) then return 'sem permissao'`
-     (ou mensagem equivalente) especificamente pro ramo `admin_garcom`. Sem isso, qualquer
-     `authenticated` (não só admin) poderia se passar por garçom. `qr_mesa`/`storefront` continuam
-     sem essa exigência (são os canais voltados ao cliente final, guest ou logado).
-   - Reaproveitar a MESMA validação de `tipo_pedido='mesa'` + `mesa_habilitada` já existente (Onda 1)
-     — `admin_garcom` sem `tipo_pedido='mesa'` também deveria ser rejeitado, mesmo raciocínio da
-     Onda 3 pra `qr_mesa`.
-2. **Frontend — novo componente no Admin** (não existe nada parecido hoje, é uma tela nova):
-   - Reaproveitar o catálogo/produtos já carregados pelo Admin (ver `useProducts`/hooks de catálogo
-     já usados por `AdminCatalog`/telas de produto do Admin — **investigar antes de escrever** qual
-     hook/serviço já existe pra listar produtos no bundle Admin, não duplicar).
-   - Form simples: selecionar produtos (nome + quantidade, mesmo padrão de item que `create_order`
-     já aceita — `product_id`, `quantity`, `tamanho_label`/`adicionais` se o produto tiver), número da
-     mesa, forma de pagamento (mesmas opções do checkout do cliente), nome/telefone do cliente
-     (MESMOS campos obrigatórios do checkout — não inventar uma regra nova de "cliente anônimo pra
-     pedido de garçom", não há pedido do usuário pra isso).
-   - Submit chama a MESMA `create_order()` (nunca um insert direto em `orders` — regra explícita do
-     usuário: "não criar um segundo mecanismo de persistência de pedidos"), com
-     `p_order.tipo_pedido='mesa'`, `origem_pedido='admin_garcom'`, `mesa_identificador=<escolhido>`.
-   - Chamada precisa rodar com a SESSÃO do admin logado (`auth.uid()` = admin), não anônima — conferir
-     como o Admin hoje monta suas chamadas RPC autenticadas (deve já existir um client Supabase do
-     bundle Admin com sessão ativa, ver `AdminApp.jsx`/`useAdminStore`/serviços do Admin).
-   - Gate visual: essa tela/botão "+ Novo pedido de mesa" só aparece se `mesaConfig.canal_admin` for
-     true pra loja ativa (mesmo padrão de `useMesaConfig` já usado no storefront, mas lido no bundle
-     Admin — conferir se `useMesaConfig`/`mesaConfig.js` (Onda 2) já funciona no bundle Admin via
-     `buildStoreRpcParam` (que já suporta os dois bundles, ver `resolveStoreParam.js`) ou se precisa
-     de ajuste).
-3. **Onde colocar a tela:** mais provável dentro da área de Pedidos do Admin (`AdminPedidos.jsx`) como
-   um botão/modal "+ Novo pedido", já que é ali que o operador já vê a lista — mas CONFIRMAR isso lendo
-   `AdminPedidos.jsx`/`AdminPanel.jsx` antes de decidir (não presumir a estrutura de abas do Admin sem
-   olhar o código atual).
-4. **Testes:** script SQL dedicado (`scripts/mesa-01-onda4-canal-admin-test.mjs`, mesmo padrão dos
-   anteriores) cobrindo: admin da própria loja consegue criar; admin de OUTRA loja não consegue
-   (cross-tenant); authenticated sem vínculo de admin não consegue; anon não consegue (grant de
-   `create_order` pra anon continua existindo, então isso precisa ser barrado pela lógica, não só por
-   ausência de sessão); `mesa_canal_admin=false` bloqueia mesmo admin sendo admin de verdade.
-5. Fluxo de sempre: implementar → testar (domain + backend, considerar E2E se a tela ficar pronta a
-   tempo) → revisar diff → `git add` explícito (cuidado redobrado: Admin tem MUITOS arquivos, outras
-   sessões podem estar mexendo lá também — sempre `git status` antes) → commit
-   `feat(admin): REF-MESA-01 Onda 4 -- ...` → atualizar este checkpoint → prosseguir pra Onda 5.
+## Onda 8 — Auditoria final + regressão completa + relatório (CONCLUÍDA, commit `f1ff654` + commit
+final deste checkpoint/relatório)
+
+- **Varredura de binário/regex remanescente:** grep exaustivo por `retirada ? `/`RE_RETIRADA`/
+  `retirada\s+na\s+loja` em todo `src/`. Resultado: ZERO caminho ATIVO restante decidindo tipo de
+  pedido por regex/heurística — o único uso de `RE_RETIRADA` que sobra é o fallback defensivo
+  documentado em `comandaModel.js::tipoDoPedido` (intencional, protege pedidos históricos pré-migration
+  que não tinham `tipo_pedido`), e os arquivos de migration/rollback antigos (congelados por convenção,
+  nunca editados retroativamente).
+- **`_resolve_delivery_fee()` confirmada intocada** — inspeção direta do corpo ao vivo no banco,
+  zero menção a "mesa"/"tipo_pedido" em todas as 7 ondas de mudança de schema/RPC.
+- **Regressão completa executada:** 60 (backend próprio da REF) + 129 (REFs relacionadas que
+  compartilham `create_order`/`_resolve_delivery_fee`/`_resolve_item_pricing`) + 40 (`test:domain`) +
+  lint (0 erros) + typecheck (limpo) + build storefront + build Admin (ambos OK) + suíte E2E completa
+  (`test:e2e`, 50 arquivos/140 testes): **139 passaram, 1 falhou**
+  (`e2e/tests/auth/logout.spec.js:39`).
+- **A falha foi investigada e PROVADA não-regressão** (regra explícita do plano: provar a causa antes
+  de classificar como não-regressão, nunca descartar sem evidência): rodada isolada → 2/2 passou; rodada
+  dentro da pasta `auth/` inteira (13 specs) → 13/13 passou, incluindo o teste antes falho; só falha
+  dentro da sequência completa de ~130 testes anteriores — assinatura de poluição de estado
+  (storageState/localStorage) entre specs, pré-existente, zero overlap com qualquer arquivo tocado por
+  esta REF (`AuthProvider`, `useAuth.js`, `guestIdentity.js`, logout handler — nenhum tocado em nenhuma
+  onda). Registrada no relatório final, não corrigida (fora de escopo desta REF).
+- `docs/ref/REF-MESA-01-relatorio-final.md` (novo, 23 seções) — relatório consolidado completo, ver
+  arquivo. Cobre: ondas, commits, arquivos, migrations, RPCs, modelo de dados, config por tenant, os 3
+  fluxos (Delivery/Retirada/Mesa), canal QR, canal Garçom/Admin, Admin, Comanda, Relatórios, WhatsApp,
+  segurança, compatibilidade histórica, testes por onda, regressão completa, limitações (7 itens),
+  achados fora de escopo (3 itens), decisões tomadas dentro das regras do plano (6 itens).
+- Este checkpoint atualizado e fechado nesta mesma etapa.
+
+---
+
+## STATUS FINAL — NÃO HÁ PRÓXIMO PASSO
+
+**REF-MESA-01 está ENCERRADA.** Todas as 8 ondas concluídas, testadas, commitadas localmente. Relatório
+final entregue. Nenhum push realizado. Nenhuma migration aplicada em produção (todas as 6 migrations
+desta REF — Ondas 1/3/4/5/6/7 — aguardam decisão do dono do produto, testadas apenas contra o projeto
+E2E dedicado `db.e2e.env`/`bgzcro...`). Nenhuma REF nova foi iniciada.
+
+Se uma sessão futura precisar continuar o trabalho de Mesa (ex.: fechar algum dos gaps da seção
+"Limitações" do relatório final, ou decidir sobre os achados fora de escopo), isso é uma **REF NOVA**
+— não reabrir esta. Leia `docs/ref/REF-MESA-01-relatorio-final.md` primeiro para saber exatamente o que
+já existe antes de propor qualquer coisa.
 
 ---
 
