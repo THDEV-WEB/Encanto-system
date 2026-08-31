@@ -1,6 +1,6 @@
 # REF-MESA-01 — CHECKPOINT DE RETOMADA (ler isto primeiro numa nova sessão)
 
-**Atualizado em:** 2026-08-31, Onda 5 CONCLUÍDA, iniciando Onda 6.
+**Atualizado em:** 2026-08-31, Onda 6 CONCLUÍDA, iniciando Onda 7.
 **Se você é uma nova sessão/contexto retomando este trabalho:** leia este arquivo inteiro, depois
 rode `git log --oneline -12` e `git status --porcelain=v1` em `C:\Projetos\Encanto\encanto-react`
 para confirmar que o estado real do repositório bate com o descrito aqui ANTES de continuar. Não
@@ -18,10 +18,10 @@ resumos de conversa, só neste arquivo + no Git real.
 Ondas 0-5 (auditoria/plano, fundação banco/RPC, checkout/storefront, canal QR, canal Admin/garçom,
 propagação pra Admin/Comanda) estão **CONCLUÍDAS, TESTADAS E COMMITADAS LOCALMENTE** (não commitadas
 em produção, não pushed — commits `af50c3a`, `e972e1a`, `fff4946`, `287ee04`, `6875bf3`, `ddb0743`,
-`d1856c6`, `78e79f0`, `5c05be1`, `67f4bd2`). Onda 5 fechou 100% verde, incluindo uma REGRESSÃO REAL
-encontrada e corrigida na mesma onda (não só registrada — ver seção Onda 5 abaixo). Próxima: Onda 6
-(Relatórios/Métricas — `admin_reports_summary`/`AdminRelatorios.jsx` ainda classificam Mesa como
-"Entrega" via a MESMA regex antiga sobre `address`, deliberadamente adiado até aqui).
+`d1856c6`, `78e79f0`, `5c05be1`, `67f4bd2`, `f7750b9`, `cc1ab30`). Onda 6 fechou 100% verde,
+corrigindo o achado MAIS GRAVE de toda a auditoria original (Mesa contabilizada silenciosamente como
+Entrega no BI). Próxima: Onda 7 (WhatsApp/notificações — última onda de conteúdo antes da Onda 8,
+auditoria final + regressão completa).
 
 ---
 
@@ -258,35 +258,67 @@ Tudo descrito abaixo já foi implementado, testado e commitado. Não refazer.
 
 ---
 
-## PRÓXIMO PASSO EXATO (retomar por aqui) — Onda 6: Relatórios/Métricas
+## Onda 6 — Relatórios/Métricas (CONCLUÍDA, commit `cc1ab30`)
 
-Ainda NÃO iniciada. Objetivo: `admin_reports_summary()`/`AdminRelatorios.jsx` ainda classificam Mesa
-como "Entrega" (achado mais grave da auditoria original, §10) via a MESMA regex sobre `address` —
-agora que `orders.tipo_pedido` está estruturado (Onda 1) e a solução do "DROP FUNCTION antes de mudar
-RETURNS TABLE" já está provada (Onda 5), esta onda deve ser direta:
+- `migrations/REF-MESA-01-onda6-admin-reports.sql` (+rollback) — `admin_reports_summary()`::`base`
+  ganhou `o.tipo_pedido`; `por_tipo` trocou `CASE WHEN address ~* 'retirada...'` por
+  `GROUP BY o.tipo_pedido` direto. **Achado técnico:** `RETURNS jsonb` (não `TABLE`), então
+  `CREATE OR REPLACE` simples bastou (diferente da Onda 5, que precisou `DROP FUNCTION`).
+  `scripts/dashboard01-admin-reports-test.mjs` (REF-DASHBOARD-01) mira `db.env`/hvbcdx — FORA da
+  política desta REF (só `db.e2e.env`) — não rodar/depender dele; escrevi
+  `scripts/mesa-01-onda6-admin-reports-test.mjs` próprio, contra o E2E.
+- `src/components/admin/AdminRelatorios.jsx` — ternário do card "Entrega vs. retirada" virou mapa
+  `TIPO_LABEL` de 3 entradas (não extraí um módulo compartilhado com o `TIPO_BADGE` de
+  `AdminPedidos.jsx` — os emojis de entrega já divergiam entre as duas telas antes desta REF, `🛵` vs
+  `🚚`; mantive cada tela com seu próprio estilo já estabelecido, só corrigi o bug de 2→3 vias).
+- Testes: `scripts/mesa-01-onda6-admin-reports-test.mjs` (5/5 — 3 fatias distintas, mesa não somada
+  em entrega); regressão das 4 suites anteriores (26+8+8+4); `test:domain` 40/40; lint 0 erros;
+  typecheck limpo; `e2e/tests/admin/admin-relatorios.spec.js` (2/2, existente, zero regressão).
 
-1. **Investigar primeiro:** ler a definição VIVA de `admin_reports_summary()` no E2E (mesmo padrão
-   das ondas anteriores — script de recon via `db.e2e.env`) antes de escrever a migration, para
-   confirmar a query exata da CTE `base`/`por_tipo` (a versão auditada está em
-   `migrations/REF-DASHBOARD-01-admin-reports.sql`, mas pode ter mudado desde então).
-2. **Migration nova** (`REF-MESA-01-onda6-admin-reports.sql`): a CTE `base` precisa incluir
-   `o.tipo_pedido` no SELECT; a CTE `por_tipo` troca `CASE WHEN address ~* 'retirada...' THEN
-   'retirada' ELSE 'entrega' END` por `o.tipo_pedido` direto (`GROUP BY o.tipo_pedido`) — elimina a
-   regex de vez neste ponto. Provavelmente NÃO muda `RETURNS jsonb` (é só `jsonb`, não `TABLE`), então
-   talvez baste `CREATE OR REPLACE` simples desta vez (confirmar antes de assumir).
-3. **`src/components/admin/AdminRelatorios.jsx`** (linha do card "Entrega vs. retirada", achado mais
-   grave da auditoria original: `t.tipo === 'retirada' ? '🏪 Retirada' : '🚚 Entrega'` — um 3º valor
-   cairia silenciosamente em "Entrega", distorcendo o BI sem erro visível). Trocar por mapa de 3
-   entradas — considerar reaproveitar/extrair o `TIPO_BADGE` já criado em `AdminPedidos.jsx` (Onda 5)
-   pra um módulo compartilhado, já que seria a 2ª tela precisando exatamente dos mesmos 3 rótulos
-   (evita duplicar/divergir label+emoji entre as duas telas).
-4. **Testes:** `scripts/dashboard01-admin-reports-test.mjs` já existe (REF-DASHBOARD-01) — verificar
-   se cobre `por_tipo` e estender com um caso de pedido de mesa; `tests/` não parece ter golden de
-   domínio puro pra `admin_reports_summary` (é só SQL) — confirmar antes de presumir.
-5. Fluxo de sempre: investigar → migration → frontend → testar (script SQL dedicado ou estendido +
-   regressão das ondas anteriores + E2E `admin-relatorios.spec.js` se existir) → revisar diff →
-   `git add` explícito → commit `feat(admin): REF-MESA-01 Onda 6 -- ...` → atualizar checkpoint →
-   Onda 7 (WhatsApp/notificações — a última peça que ainda depende da regex antiga).
+---
+
+## PRÓXIMO PASSO EXATO (retomar por aqui) — Onda 7: WhatsApp/notificações
+
+Ainda NÃO iniciada — última onda de conteúdo antes da Onda 8 (auditoria final + regressão completa).
+Objetivo do usuário: "garantir que eventos específicos de Delivery não sejam disparados para Mesa"
+(ex.: Mesa deveria dizer "Pedido da Mesa 07 recebido", não hedgear "se for retirada/se for entrega").
+Isto é **mais delicado que as ondas anteriores** porque mexe no pipeline de notificação AUTOMÁTICA
+que roda de verdade em produção via `pg_cron` — precisa ser feito com cuidado extra.
+
+1. **Investigar primeiro, a fundo, antes de escrever qualquer coisa:**
+   - Ler `src/services/notifications/messageTemplates.js` INTEIRO (as 5 templates notificáveis:
+     recebido/preparo/pronto/entrega/entregue — `tests/whatsapp-templates.golden.mjs` cita esse
+     número). Qual(is) desses templates hoje tem texto que hedgeia entrega/retirada (a auditoria
+     achou isso no template de `'pronto'`: "Se for retirada, já pode ser buscado. Se for entrega,
+     nosso entregador sairá em instantes.") — confirmar se é só esse ou se há mais.
+   - Ler a definição VIVA (E2E) de `enc_render_message`, `enc_enqueue_notification`,
+     `enc_tempo_estimado`, e o trigger `trg_enc_order_notify`/função que ele chama — via script de
+     recon, mesmo padrão das ondas anteriores. Confirmar a assinatura exata de cada uma e quais
+     parâmetros já recebem (a auditoria disse que hoje só recebem `status`+`vars` genéricos, nunca o
+     tipo do pedido — mas CONFIRME contra o código vivo, pode ter mudado).
+   - Entender exatamente o teste `tests/whatsapp-templates.golden.mjs`, caso
+     `'enc_render_message (SQL...) em sincronia com o canonico'` — como ele compara JS vs SQL (extrai
+     texto do arquivo de migration? faz alguma outra checagem?). Qualquer mudança nos templates
+     precisa manter as DUAS pontas (JS `messageTemplates.js` E a função SQL) em sincronia, ou esse
+     teste quebra (o que é uma boa notícia — é uma trava automática contra esquecer um dos dois lados).
+2. **Design (a decidir DEPOIS de ler o código real, não antes):** provavelmente
+   `enc_enqueue_notification` (ou o trigger que a chama) precisa passar `orders.tipo_pedido`/
+   `mesa_identificador` pra dentro de `vars`, e `enc_render_message` precisa ramificar o texto do
+   template de `'pronto'` (e talvez outros) por tipo — mesma ideia de "3 ramos explícitos, nunca
+   ternário de 2 vias" das ondas anteriores. `enc_tempo_estimado` também precisa parar de inferir de
+   `address` — usar `tipo_pedido` direto, como as Ondas 5/6 já fizeram noutros pontos.
+3. **CUIDADO EXTRA (diferente de tudo até aqui):** este pipeline dispara notificações REAIS por
+   WhatsApp via `pg_cron` a cada 30s. Qualquer teste de comportamento precisa continuar 100%
+   confinado ao projeto E2E (nunca deixar uma linha real entrar em `notification_outbox` que
+   `pg_cron` do E2E possa tentar despachar de verdade — verificar se o E2E tem esse cron rodando ou
+   se as credenciais do Vault lá são inertes; se houver qualquer dúvida, testar dentro de
+   BEGIN...ROLLBACK como sempre, nunca commitando uma linha de notification_outbox de verdade).
+4. Fluxo de sempre: investigar → decidir design → migration(s) + `messageTemplates.js` em sincronia →
+   testar (`whatsapp-templates.golden.mjs` estendido + script SQL dedicado + regressão de todas as
+   suites anteriores) → revisar diff → `git add` explícito → commit
+   `feat(notifications): REF-MESA-01 Onda 7 -- ...` → atualizar checkpoint → Onda 8 (auditoria final:
+   varredura completa procurando qualquer `retirada ? X : Y`/regex/status específico de Delivery
+   remanescente + suíte inteira + relatório final consolidado, PARAR NO GATE).
 
 1. **Backend primeiro (mesmo padrão das Ondas 1/3):** nova migration
    `REF-MESA-01-onda4-canal-admin.sql`. Dentro de `create_order()`, quando `origem_pedido='admin_garcom'`:
