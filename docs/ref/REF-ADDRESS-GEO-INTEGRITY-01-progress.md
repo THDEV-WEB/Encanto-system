@@ -176,10 +176,96 @@ dados descartáveis).
   nunca tocar produção — por isso foram deliberadamente pulados, a pedido do dono, em vez de
   rodados. Lacuna de cobertura registrada aqui.
 
+## Onda 3 — Fecha as lacunas de validação (infra de teste + evidência de integração)
+
+**Status: concluída. Não aplicada em produção, não pushada. Não altera a regra da Onda 2 (bbox/
+ownership intocados) nem o ataque fino (registrado como dívida, não corrigido).**
+
+### 1. Correção de infraestrutura — scripts nunca mais apontam para produção
+
+4 scripts pendentes da Onda 2 conectavam em `db.env` (produção) por padrão histórico do projeto
+(sempre em `BEGIN...ROLLBACK`, net-zero, validado por outras sessões "contra produção"). Editados
+para conectar em `db.e2e.env`, com autorização explícita do dono:
+
+- `scripts/address-onda6-orders-test.mjs`
+- `scripts/harden-orders-rls-test.mjs`
+- `scripts/loyalty-audit-01-onda1-test.mjs`
+- `scripts/saas01-onda1-authz-test.mjs`
+
+`address-onda6-orders-test.mjs` também recebeu a simulação de header `Origin` (mesma dívida da
+`REF-ORDER-TENANT-01` já corrigida por outra sessão em `harden-orders-rls-test.mjs`/
+`saas01-onda4-1-pedidos-test.mjs`, mesmo padrão reaproveitado) — sem isso o caminho guest de
+`create_order` sempre falhava com `"loja nao identificada"`, por motivo alheio ao que o script testa.
+
+### 2. Execução no E2E — resultado e causa raiz de cada falha remanescente
+
+Nenhuma das falhas abaixo foi causada por esta REF (não tocamos `create_order`/`_resolve_delivery_fee`
+nesta Onda 3, só reconfirmamos a Onda 2). Investigadas e **não corrigidas**, por pertencerem a outras
+REFs:
+
+| Script | Resultado | Falhas e causa raiz |
+|---|---|---|
+| `address-onda6-orders-test.mjs` | PRE1 PASS; CO1-CO4 FAIL | `product_id` obrigatório desde `REF-PRICE-SOURCE-01` Onda 2, mas o script (mais antigo, `REF-ADDRESS-02` Onda 6) usa itens em formato legado sem `product_id` → `"item sem produto valido"`. CO3 propaga exceção crua de `uuid` malformado porque o cast acontece na seção `DECLARE` de `create_order`, fora do bloco protegido por `exception` — comportamento pré-existente, não desta REF. CO4 e CO5 nem chegam a rodar (mesma transação, sem savepoints entre casos, aborta em cascata). |
+| `harden-orders-rls-test.mjs` | AO4/AO6/AC1/AC2 PASS; AO1/AO2/AO3/AO5/AO7/AO8/GR1 FAIL | O E2E **nunca recebeu** `migrations/HARDEN-ORDERS-RLS-step2.sql` — os `REVOKE` de `SELECT/UPDATE/DELETE` em `orders/customers/order_items/order_events` para `anon/authenticated` só existem em produção (confirmado por introspecção read-only). Defasagem de paridade de ambiente, não regressão de código. **AC1/AC2 (o que interessa a esta REF — `create_order` via RPC) passaram.** |
+| `loyalty-audit-01-onda1-test.mjs` | A1/A2/A3 PASS; A4 FAIL | `loyalty_grant()` está com `EXECUTE` ainda concedido a `anon/authenticated` no E2E; produção já tem isso revogado (confirmado por introspecção read-only). Mesma classe de defasagem de ambiente. Erro fatal por FK: fixtures de `auth.users` hardcoded de produção não existem no E2E (só 3 usuários lá). |
+| `saas01-onda1-authz-test.mjs` | A1/A2 PASS; A3/B1 FAIL | Dependem de um UUID real de admin de produção (`b9dc7626-...`) que não existe no E2E. Mesmo erro fatal de FK do item acima. |
+
+### 3. Evidência de integração — as 8 propriedades coexistindo (peça central desta onda)
+
+Como as suítes de "checkout/fidelidade/isolamento multi-tenant" de outras REFs têm dívidas técnicas
+pré-existentes que impedem cobertura 100% via elas, foi escrito um teste de integração **dedicado**
+(`scripts/address-geo-integrity-01-onda3-integration-test.mjs`, novo) — uma única sequência de
+chamadas reais a `create_order()`, no E2E, que força as 8 propriedades a se manifestarem juntas,
+não em suítes separadas:
+
+1. **Chamada 1** — customer D usa o endereço de outro customer (C) + declara `delivery_fee` forjado
+   → ownership zera o endereço → `_resolve_delivery_fee` recalcula autoritativo=0 (sem endereço) →
+   diverge do forjado → `ok:false`, nenhum pedido criado. Prova **ownership + delivery_fee
+   autoritativo + divergência de valor** juntos.
+2. **Chamada 2** (mesmo `request_id`) — D usa o **próprio** endereço (dentro do bbox) + declara o
+   `delivery_fee` autoritativo correto + item com `price` forjado (R$0,01) → pedido criado com
+   `delivery_fee=9.00` (faixa real) e `preco_unitario=18.50` (do banco, forjado ignorado) → exatamente
+   1 `loyalty_event` novo. Prova **bounding box + ownership + preço autoritativo + fidelidade** juntos.
+3. **Chamada 3** (retry, mesmo `request_id`) — `idempotent:true`, mesmo `order_id`, nenhum
+   `loyalty_event` duplicado. Prova **idempotência**.
+4. **Chamada 4** — mesma distância relativa à loja, mas na loja Y (config totalmente diferente) →
+   cobra R$40 (não R$9 de X); endereço de X usado num pedido de Y é rejeitado (bbox+ownership
+   escopados a `store_id`). Prova **isolamento multi-tenant**.
+
+**Resultado: 10/10.** Essa é a evidência direta de que a versão atual de `create_order()` preserva
+simultaneamente as 8 propriedades pedidas, na mesma chamada real, não apenas em testes isolados.
+
+### 4. Regressão completa (suíte ampliada)
+
+| Suite | Resultado |
+|---|---|
+| `address-geo-integrity-01-onda2-test.mjs` | 14/14 |
+| `address-geo-integrity-01-onda3-integration-test.mjs` (novo) | 10/10 |
+| `delivery-fee-04-onda1-test.mjs` | 26/26 |
+| `delivery-fee-04-onda2-test.mjs` | 16/16 |
+| `delivery-fee-04-onda3-test.mjs` | 5/5 |
+| `price-source-01-onda1-test.mjs` | 16/16 |
+| `price-source-01-onda2-test.mjs` | 15/15 |
+| `price-hardening-01-test.mjs` | 14/14 |
+| **Total** | **116/116** |
+
+Todas rodadas no projeto E2E dedicado, nenhuma em produção.
+
+### 5. Achados correlatos registrados (fora do escopo, não corrigidos)
+
+- `HARDEN-ORDERS-RLS-step2.sql` nunca aplicada no E2E — recomendação: aplicar lá para o E2E ficar em
+  paridade com produção (decisão de outra REF/dono).
+- `loyalty_grant()` com `EXECUTE` público no E2E (produção já está correta) — mesma recomendação.
+- `address-onda6-orders-test.mjs` (CO1-CO4) e a incompatibilidade `product_id` obrigatório vs. itens
+  em formato legado — dívida entre `REF-ADDRESS-02` e `REF-PRICE-SOURCE-01`, não desta REF.
+- Exceção crua de `uuid` malformado em `create_order` (cast na seção `DECLARE`, fora do bloco
+  `exception`) — pré-existente, não desta REF.
+- Fixtures de `auth.users`/admins reais de produção hardcoded em `loyalty-audit-01-onda1-test.mjs` e
+  `saas01-onda1-authz-test.mjs` — precisam de fixtures E2E equivalentes para rodar 100% lá.
+
 ## Próximos passos (fora desta REF, não implementados)
 
 1. Aplicar Onda 2 (Parte 1 + Parte 2) em produção (aguarda aprovação/deploy separados).
-2. Rodar as regressões de checkout/fidelidade/isolamento multi-tenant puladas nesta onda — precisa de
-   decisão sobre rodá-las contra produção (`BEGIN...ROLLBACK`) ou adaptar para um banco E2E.
+2. Decidir sobre os achados correlatos da Onda 3 (item 5 acima) — pertencem a outras REFs.
 3. Decidir sobre fechar a manipulação fina (texto ↔ coordenada) — geocodificação server-side via Edge
-   Function assíncrona, ou aceitar o risco residual documentado no item 4 acima.
+   Function assíncrona, ou aceitar o risco residual documentado no item 4 da Onda 2.
