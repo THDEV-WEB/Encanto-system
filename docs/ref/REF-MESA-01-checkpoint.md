@@ -1,20 +1,26 @@
 # REF-MESA-01 — CHECKPOINT DE RETOMADA (ler isto primeiro numa nova sessão)
 
-**Atualizado em:** 2026-08-31, Onda 2 CONCLUÍDA, iniciando Onda 3.
+**Atualizado em:** 2026-08-31, Onda 3 CONCLUÍDA, iniciando Onda 4.
 **Se você é uma nova sessão/contexto retomando este trabalho:** leia este arquivo inteiro, depois
-rode `git log --oneline -10` e `git status --porcelain=v1` em `C:\Projetos\Encanto\encanto-react`
+rode `git log --oneline -12` e `git status --porcelain=v1` em `C:\Projetos\Encanto\encanto-react`
 para confirmar que o estado real do repositório bate com o descrito aqui ANTES de continuar. Não
 repita trabalho já commitado. Não presuma nada além do que está confirmado abaixo.
+
+**Nota sobre continuidade:** esta REF já sobreviveu a pelo menos uma renovação de contexto/sessão
+(a sessão anterior não tem visibilidade de quando o limite é renovado — não há mecanismo de
+"acordar sozinho"). Por isso este arquivo é a ÚNICA fonte confiável de estado — não confie em
+resumos de conversa, só neste arquivo + no Git real.
 
 ---
 
 ## Onde estamos agora (resumo de 1 parágrafo)
 
-Onda 0 (auditoria + plano), Onda 1 (fundação de banco/RPC) e Onda 2 (checkout/storefront) estão
-**CONCLUÍDAS, TESTADAS E COMMITADAS LOCALMENTE** (não commitadas em produção, não pushed — commits
-`af50c3a`, `e972e1a`, `fff4946`, `287ee04`). Onda 2 fechou 100% verde: lint 0 erros, typecheck limpo,
-`test:domain` 40/40, E2E de checkout (9/9 specs, browser real) sem regressão. Próxima: Onda 3 (QR
-Code / canal do cliente).
+Onda 0 (auditoria + plano), Onda 1 (fundação de banco/RPC), Onda 2 (checkout/storefront) e Onda 3
+(canal QR) estão **CONCLUÍDAS, TESTADAS E COMMITADAS LOCALMENTE** (não commitadas em produção, não
+pushed — commits `af50c3a`, `e972e1a`, `fff4946`, `287ee04`, `6875bf3`, `ddb0743`). Onda 3 fechou
+100% verde: lint 0 erros, typecheck limpo, `test:domain` 40/40, E2E checkout 9/9, teste dedicado da
+Onda 3 8/8, regressão completa de banco (Onda 1 26/26 + 8 suites de outras REFs, 129 checks) — tudo
+verde. Próxima: Onda 4 (Admin/garçom — criação manual de pedido de mesa).
 
 ---
 
@@ -160,44 +166,77 @@ Tudo descrito abaixo já foi implementado, testado e commitado. Não refazer.
 
 ---
 
-## PRÓXIMO PASSO EXATO (retomar por aqui) — Onda 3: QR Code / canal do cliente
+## Onda 3 — Canal QR (CONCLUÍDA, commit `ddb0743`)
 
-Ainda NÃO iniciada. Plano (baseado na arquitetura já existente, sem inventar infraestrutura nova):
+- `src/hooks/useMesaFromQuery.js` (novo) — lê `?mesa=` da URL no boot, só aplica
+  `deliveryMode='mesa'`/`mesaIdentificador`/`origemPedido='qr_mesa'` quando `mesaConfig.canal_qr===true`.
+- `StoreApp.jsx` — novo estado `origemPedido` (default `'storefront'`), chama `useMesaFromQuery(...)`,
+  repassa `origemPedido` pro `CheckoutPage`.
+- `orderPayload.js` — `extra.origemPedido` opcional em `buildOrderArgs` → `p_order.origem_pedido`.
+- `CheckoutPage.jsx` — inclui `origemPedido` em `extraPedido` quando `mesa===true`.
+- `migrations/REF-MESA-01-onda3-canal-qr.sql` (+rollback) — `create_order()` ganhou checagem: quando
+  `origem_pedido='qr_mesa'`, exige `mesa_canal_qr=true` (reusa o mesmo `v_mesa_cfg` já buscado pra
+  `mesa_habilitada`); `origem_pedido='qr_mesa'` sem `tipo_pedido='mesa'` também é rejeitado (combinação
+  sem sentido). Aplicada no E2E (bgzcro), nunca em hvbcdx/produção.
+- `scripts/mesa-01-onda3-canal-qr-test.mjs` (novo) — 8/8 verde.
+- Regressão completa rodada de novo (create_order foi substituído): `mesa-01-onda1-fundacao-test.mjs`
+  26/26, as 8 suites de outras REFs (129 checks), `test:domain` 40/40, E2E checkout 9/9 — tudo verde.
+- **Gap registrado, não bloqueante:** não existe spec Playwright dedicado provando o fluxo `?mesa=`
+  ponta-a-ponta via browser real ainda (só a parte de servidor foi provada exaustivamente + revisão
+  de código do hook). Mencionar no relatório final.
 
-1. **Ideia central (simples, reaproveitando o que já existe):** o storefront já é resolvido por
-   domínio por-tenant (`useStorefrontStore`/`resolve_store_from_origin` — cada loja tem seu próprio
-   subdomínio). Um QR Code de mesa aponta pro MESMO subdomínio da loja (zero risco de cross-tenant,
-   porque não há nenhum `store_id` no link pro cliente adulterar) só com um parâmetro a mais na URL
-   identificando a mesa, ex.: `https://{slug}.valionsistemas.com.br/?mesa=07`. Isso elimina a
-   necessidade de qualquer mecanismo novo de resolução de loja — o QR só pré-preenche o que o cliente
-   preencheria manualmente no checkout (Onda 2).
-2. **Frontend (`StoreApp.jsx` ou um hook novo `useMesaFromQuery.js`):** ler `?mesa=` da URL no mount
-   (`window.location.search`/`URLSearchParams`). Se presente E `mesaConfig.canal_qr === true`: setar
-   `deliveryMode='mesa'` e `mesaIdentificador=<valor>` automaticamente (o cliente já chega no
-   checkout com a mesa pré-identificada, sem digitar nada — mas o campo continua editável, não
-   trava). Se `mesaConfig.canal_qr` for `false` (canal desligado nessa loja) ou `mesaConfig.habilitada`
-   for `false`, ignorar o parâmetro silenciosamente (cai no comportamento normal de hoje).
-3. **Rastrear a origem:** precisa de um novo estado (`origemPedido`, default `'storefront'`) setado
-   pra `'qr_mesa'` quando o parâmetro `?mesa=` foi de fato aplicado. Esse valor viaja em
-   `extraPedido.origemPedido` (novo campo em `buildOrderArgs`, mesmo padrão opcional de
-   `tipoPedido`/`mesaIdentificador` já feito na Onda 2) → `p_order.origem_pedido` → `create_order`.
-4. **Backend (nova migration `REF-MESA-01-onda3-canal-qr.sql`):** dentro de `create_order`, quando
-   `v_origem_pedido = 'qr_mesa'`, validar `get_mesa_config(v_store_id)->>'canal_qr'` (fail-closed,
-   mesmo padrão da checagem de `mesa_habilitada` já existente) — impede um client adulterado de
-   mandar `origem_pedido:'qr_mesa'` numa loja que não ligou esse canal especificamente (mesmo que
-   `mesa_habilitada` geral esteja true). Devolver o MESMO tipo de erro genérico já usado
-   (`'modalidade indisponivel para esta loja'` ou mensagem equivalente).
-5. **Testes:** estender `scripts/mesa-01-onda1-fundacao-test.mjs` (ou um novo
-   `scripts/mesa-01-onda3-canal-qr-test.mjs`) cobrindo: `canal_qr=true` aceita `origem_pedido='qr_mesa'`;
-   `canal_qr=false` (mas `mesa_habilitada=true`) rejeita; parâmetro `?mesa=` na URL não pode virar
-   vetor de XSS/injeção (sempre tratado como texto simples, nunca `innerHTML`); mesa_identificador
-   longo/malformado cai na mesma validação de tamanho (1-40) já existente.
-6. Não criar geração de imagem de QR Code nesta onda (infra de impressão/design fica de fora por ora,
-   é puramente visual/operacional, não é o que a REF pediu para provar) — só o link/parâmetro e a
-   validação server-side, que é a parte arquitetural que importa.
-7. Seguir o mesmo fluxo de sempre: implementar → testar (domain + E2E se fizer sentido) → revisar
-   diff → `git add` explícito → commit `feat(...): REF-MESA-01 Onda 3 -- ...` → atualizar este
-   checkpoint → prosseguir pra Onda 4 (Admin/garçom) sem pedir autorização entre ondas.
+---
+
+## PRÓXIMO PASSO EXATO (retomar por aqui) — Onda 4: Admin/garçom
+
+Ainda NÃO iniciada. Esta é a onda mais NOVA arquiteturalmente — hoje não existe NENHUMA tela no
+Admin para criar um pedido manualmente (todo pedido nasce no storefront do cliente, achado já
+registrado na auditoria original). Plano:
+
+1. **Backend primeiro (mesmo padrão das Ondas 1/3):** nova migration
+   `REF-MESA-01-onda4-canal-admin.sql`. Dentro de `create_order()`, quando `origem_pedido='admin_garcom'`:
+   - Exigir `mesa_canal_admin=true` (mesmo `v_mesa_cfg`, mesmo padrão de `canal_qr` da Onda 3).
+   - **Diferença importante da Onda 3:** este canal exige que o CHAMADOR seja um admin autenticado
+     DAQUELA loja — adicionar `if not public.is_admin_of(v_store_id) then return 'sem permissao'`
+     (ou mensagem equivalente) especificamente pro ramo `admin_garcom`. Sem isso, qualquer
+     `authenticated` (não só admin) poderia se passar por garçom. `qr_mesa`/`storefront` continuam
+     sem essa exigência (são os canais voltados ao cliente final, guest ou logado).
+   - Reaproveitar a MESMA validação de `tipo_pedido='mesa'` + `mesa_habilitada` já existente (Onda 1)
+     — `admin_garcom` sem `tipo_pedido='mesa'` também deveria ser rejeitado, mesmo raciocínio da
+     Onda 3 pra `qr_mesa`.
+2. **Frontend — novo componente no Admin** (não existe nada parecido hoje, é uma tela nova):
+   - Reaproveitar o catálogo/produtos já carregados pelo Admin (ver `useProducts`/hooks de catálogo
+     já usados por `AdminCatalog`/telas de produto do Admin — **investigar antes de escrever** qual
+     hook/serviço já existe pra listar produtos no bundle Admin, não duplicar).
+   - Form simples: selecionar produtos (nome + quantidade, mesmo padrão de item que `create_order`
+     já aceita — `product_id`, `quantity`, `tamanho_label`/`adicionais` se o produto tiver), número da
+     mesa, forma de pagamento (mesmas opções do checkout do cliente), nome/telefone do cliente
+     (MESMOS campos obrigatórios do checkout — não inventar uma regra nova de "cliente anônimo pra
+     pedido de garçom", não há pedido do usuário pra isso).
+   - Submit chama a MESMA `create_order()` (nunca um insert direto em `orders` — regra explícita do
+     usuário: "não criar um segundo mecanismo de persistência de pedidos"), com
+     `p_order.tipo_pedido='mesa'`, `origem_pedido='admin_garcom'`, `mesa_identificador=<escolhido>`.
+   - Chamada precisa rodar com a SESSÃO do admin logado (`auth.uid()` = admin), não anônima — conferir
+     como o Admin hoje monta suas chamadas RPC autenticadas (deve já existir um client Supabase do
+     bundle Admin com sessão ativa, ver `AdminApp.jsx`/`useAdminStore`/serviços do Admin).
+   - Gate visual: essa tela/botão "+ Novo pedido de mesa" só aparece se `mesaConfig.canal_admin` for
+     true pra loja ativa (mesmo padrão de `useMesaConfig` já usado no storefront, mas lido no bundle
+     Admin — conferir se `useMesaConfig`/`mesaConfig.js` (Onda 2) já funciona no bundle Admin via
+     `buildStoreRpcParam` (que já suporta os dois bundles, ver `resolveStoreParam.js`) ou se precisa
+     de ajuste).
+3. **Onde colocar a tela:** mais provável dentro da área de Pedidos do Admin (`AdminPedidos.jsx`) como
+   um botão/modal "+ Novo pedido", já que é ali que o operador já vê a lista — mas CONFIRMAR isso lendo
+   `AdminPedidos.jsx`/`AdminPanel.jsx` antes de decidir (não presumir a estrutura de abas do Admin sem
+   olhar o código atual).
+4. **Testes:** script SQL dedicado (`scripts/mesa-01-onda4-canal-admin-test.mjs`, mesmo padrão dos
+   anteriores) cobrindo: admin da própria loja consegue criar; admin de OUTRA loja não consegue
+   (cross-tenant); authenticated sem vínculo de admin não consegue; anon não consegue (grant de
+   `create_order` pra anon continua existindo, então isso precisa ser barrado pela lógica, não só por
+   ausência de sessão); `mesa_canal_admin=false` bloqueia mesmo admin sendo admin de verdade.
+5. Fluxo de sempre: implementar → testar (domain + backend, considerar E2E se a tela ficar pronta a
+   tempo) → revisar diff → `git add` explícito (cuidado redobrado: Admin tem MUITOS arquivos, outras
+   sessões podem estar mexendo lá também — sempre `git status` antes) → commit
+   `feat(admin): REF-MESA-01 Onda 4 -- ...` → atualizar este checkpoint → prosseguir pra Onda 5.
 
 ---
 
