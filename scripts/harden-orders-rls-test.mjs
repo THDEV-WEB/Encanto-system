@@ -17,7 +17,7 @@ import { dirname, resolve } from 'node:path';
 const require = createRequire('C:\\Users\\00thi\\.encanto\\package.json');
 const pg = require('pg');
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const ENV_PATH = 'C:\\Users\\00thi\\.encanto\\db.env';
+const ENV_PATH = 'C:\\Users\\00thi\\.encanto\\db.e2e.env';
 const SCRIPT_NAME = 'test:orders-rls';
 
 const envGet = (txt, k) => { const m = txt.match(new RegExp('^\\s*' + k + '\\s*=\\s*(.+?)\\s*$', 'm')); return m ? m[1].trim().replace(/^["']|["']$/g, '') : null; };

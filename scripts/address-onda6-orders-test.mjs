@@ -24,7 +24,7 @@ import { dirname, resolve } from 'node:path';
 const require = createRequire('C:\\Users\\00thi\\.encanto\\package.json');
 const pg = require('pg');
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const ENV_PATH = 'C:\\Users\\00thi\\.encanto\\db.env';
+const ENV_PATH = 'C:\\Users\\00thi\\.encanto\\db.e2e.env';
 const SCRIPT_NAME = 'test:address-onda6-orders';
 
 const envGet = (txt, k) => { const m = txt.match(new RegExp('^\\s*' + k + '\\s*=\\s*(.+?)\\s*$', 'm')); return m ? m[1].trim().replace(/^["']|["']$/g, '') : null; };
@@ -85,7 +85,14 @@ try {
     try { return await fn(); } finally { await client.query('SET LOCAL ROLE anon'); }
   }
 
+  // REF-ADDRESS-GEO-INTEGRITY-01 · Onda 3 (correcao de infra de teste, dividia da REF-ORDER-TENANT-01,
+  // mesmo padrao ja aplicado por outra sessao em harden-orders-rls-test.mjs/saas01-onda4-1-pedidos-test.mjs,
+  // 2026-08-30 -- nao e' regressao de codigo): create_order() no caminho guest (sem tenant_id no JWT,
+  // que e' o caso deste script inteiro) deriva a loja via resolve_store_from_origin(), que le
+  // current_setting('request.headers')::json->>'origin'. Sem isso, TODO o fluxo anon falhava com
+  // "loja nao identificada", por um motivo alheio ao que este script testa.
   await client.query('BEGIN');
+  await client.query("SELECT set_config('request.headers', $1, true)", [JSON.stringify({ origin: 'https://encanto.valionsistemas.com.br' })]);
   await client.query('SET LOCAL ROLE anon');
   try {
     out('— CO1 · create_order SEM endereco_id (formato legado) continua funcionando —');
