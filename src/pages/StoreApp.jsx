@@ -25,6 +25,7 @@ import { useSearchSuggestions } from '../hooks/useSearchSuggestions.js'; // REF-
 import { useScrollToProduct } from '../hooks/useScrollToProduct.js';     // REF-UI-SEARCH-01: navegacao ate o produto + realce
 import { useDeliveryEta } from '../hooks/useDeliveryEta.js';             // REF-DELIVERY-01: tempo de entrega (config unica Supabase)
 import { useMesaConfig } from '../hooks/useMesaConfig.js';               // REF-MESA-01 · Onda 2: capacidade de Mesa por loja (fonte unica Supabase)
+import { useMesaFromQuery } from '../hooks/useMesaFromQuery.js';         // REF-MESA-01 · Onda 3: aplica ?mesa= da URL (canal QR)
 import { useCompanyInfo } from '../hooks/useCompanyInfo.js';             // REF-COMPANY-01: dados institucionais (config unica Supabase)
 import { AddressProvider, useAddress } from '../address/index.js'; // REF-CHECKOUT-ADDRESS-01: fonte unica do endereco (provider)
 import { useAuth } from '../hooks/useAuth.js'; // REF-SEC-DATA-01 R12: detecta logout de verdade p/ limpar endereco/carrinho
@@ -87,6 +88,13 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
      "Mesa" aparece no seletor (DeliveryBar) — loja sem a capacidade nunca ve a opcao. */
   const [mesaIdentificador, setMesaIdentificador] = useState('');
   const mesaConfig = useMesaConfig();
+  /* REF-MESA-01 · Onda 3: canal QR — de onde este pedido de mesa "nasceu" (storefront normal vs.
+     link de QR escaneado). Default 'storefront' cobre TODOS os fluxos de hoje (inclusive mesa
+     digitada manualmente na Onda 2); só vira 'qr_mesa' quando useMesaFromQuery de fato aplicar o
+     parametro ?mesa= da URL (loja com mesa_canal_qr habilitado). create_order valida esse canal
+     especificamente quando origem_pedido='qr_mesa' (ver migration da Onda 3). */
+  const [origemPedido, setOrigemPedido] = useState('storefront');
+  useMesaFromQuery(mesaConfig, setDeliveryMode, setMesaIdentificador, setOrigemPedido);
   /* REF-CHECKOUT-ADDRESS-01: FONTE UNICA do endereco (contexto). O header apenas EXIBE o rotulo e abre
      o modal (abrirEndereco); a edicao/persistencia e do provider. Sem estado paralelo de endereco. */
   const { endereco: enderecoObj, temEndereco, abrirModal: abrirEndereco, limpar: limparEndereco } = useAddress();
@@ -237,7 +245,7 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
     },
   }), [page, modal, cartOpen, showLoyalty, loyaltyTeaser]);
 
-  if (page==='checkout') return <Suspense fallback={<Spinner/>}><CheckoutPage cart={cart} deliveryMode={deliveryMode} deliveryEta={deliveryEta} produtosVivos={rawProds} mesaIdentificador={mesaIdentificador} setMesaIdentificador={setMesaIdentificador} onBack={()=>setPage('home')} onSuccess={msg=>{setWaMsg(msg);setPage('success');}}/></Suspense>;
+  if (page==='checkout') return <Suspense fallback={<Spinner/>}><CheckoutPage cart={cart} deliveryMode={deliveryMode} deliveryEta={deliveryEta} produtosVivos={rawProds} mesaIdentificador={mesaIdentificador} setMesaIdentificador={setMesaIdentificador} origemPedido={origemPedido} onBack={()=>setPage('home')} onSuccess={msg=>{setWaMsg(msg);setPage('success');}}/></Suspense>;
   if (page==='success')  return <Suspense fallback={<Spinner/>}><SuccessPage  msg={waMsg} cart={cart} onBack={()=>setPage('home')} deliveryEta={deliveryEta} deliveryMode={deliveryMode} mesaIdentificador={mesaIdentificador} whatsapp={companyInfo.whatsapp} horario={horario}/></Suspense>;
 
   return (

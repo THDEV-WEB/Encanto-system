@@ -38,13 +38,18 @@ export function buildOrderArgs(cart, form, endereco, requestId, enderecoId, resu
      REF-MESA-01 · Onda 2: extra.tipoPedido/extra.mesaIdentificador sao OPCIONAIS (ausentes preservam
      100% o payload antigo, byte-a-byte — nenhum chamador existente, incluindo o golden test, precisa
      mudar). Quando tipoPedido='mesa', create_order() valida a capacidade da loja no servidor (fail-
-     closed) e usa mesa_identificador — nunca infere nada do texto de `address`. */
+     closed) e usa mesa_identificador — nunca infere nada do texto de `address`.
+     REF-MESA-01 · Onda 3: extra.origemPedido (tambem opcional, default implicito 'storefront' do
+     lado do servidor quando ausente) so vira 'qr_mesa' quando o pedido nasceu de um link de QR de
+     mesa escaneado (ver hooks/useMesaFromQuery.js) — create_order valida esse canal especificamente
+     contra a capacidade da loja (mesa_canal_qr), alem da checagem geral de mesa_habilitada. */
   const order = { total: resumo ? resumo.total : cart.total, status: 'recebido', payment_method: form.pagamento,
                   address: endereco, observacoes: form.obs || null, endereco_id: enderecoId ?? null,
                   delivery_fee: resumo ? resumo.deliveryFee : 0, maquininha_fee: resumo ? resumo.maquininhaFee : 0,
                   retirada: resumo ? resumo.status === 'retirada' : false,
                   ...(extra.tipoPedido ? { tipo_pedido: extra.tipoPedido } : {}),
-                  ...(extra.mesaIdentificador ? { mesa_identificador: extra.mesaIdentificador } : {}) };
+                  ...(extra.mesaIdentificador ? { mesa_identificador: extra.mesaIdentificador } : {}),
+                  ...(extra.origemPedido ? { origem_pedido: extra.origemPedido } : {}) };
   const items = cart.items.map(i => {
     const pu = precoUnitario(i);
     return {

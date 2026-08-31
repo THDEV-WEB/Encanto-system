@@ -25,7 +25,7 @@ import { registrarBreadcrumb, marcarPedido } from '../../lib/sentry.js'; // REF-
 // REF-LGPD-01 · Onda 3 (LGPD-R14): so' carrega o chunk se o cliente realmente abrir o aviso.
 const PrivacidadeScreen = lazy(() => import('../menu/PrivacidadeScreen.jsx').then(m => ({ default: m.PrivacidadeScreen })));
 
-export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEta, produtosVivos, mesaIdentificador, setMesaIdentificador }) {
+export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEta, produtosVivos, mesaIdentificador, setMesaIdentificador, origemPedido }) {
   /* REF-CLIENTE-02 (vinculo pedido<->conta): create_order reusa o customer POR TELEFONE e nunca toca
      auth_user_id. Logo o pedido so aparece em "Meus Pedidos" se o telefone do checkout casar com o do
      cadastro (que carrega o auth_user_id). Para o cliente LOGADO, a identidade vem da conta e o telefone
@@ -188,8 +188,12 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
        contratos null). Σ(price*quantity) reconcilia com orders.total. */
     /* REF-MESA-01 · Onda 2: tipo_pedido/mesa_identificador viajam explicitos no p_order -- create_order
        valida a capacidade da loja no servidor (fail-closed) antes de aceitar 'mesa'. Ausentes (entrega/
-       retirada) preservam 100% o payload de antes desta REF. */
-    const extraPedido = mesa ? { tipoPedido: 'mesa', mesaIdentificador: mesaIdentificador.trim() } : {};
+       retirada) preservam 100% o payload de antes desta REF.
+       REF-MESA-01 · Onda 3: origemPedido (prop, vem de StoreApp -> useMesaFromQuery) só é 'qr_mesa'
+       quando o pedido nasceu de um link de QR escaneado -- create_order valida esse canal também. */
+    const extraPedido = mesa
+      ? { tipoPedido: 'mesa', mesaIdentificador: mesaIdentificador.trim(), origemPedido }
+      : {};
     const { customer: customerPedido, order, items } = buildOrderArgs(cart, form, enderecoEntrega, requestIdRef.current, enderecoId, resumoEnvio, extraPedido);
     /* GATE (fonte única de verdade): a persistência bem-sucedida é o evento que autoriza TODAS as ações
        seguintes. savePedido devolve { orderId, divergencia, deliveryFee, maquininhaFee }. */
