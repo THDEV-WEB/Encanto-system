@@ -17,12 +17,23 @@ export const statusInfo = (s) => STATUS_INFO[s] || { label: s || '—', cor: '#6
    Retirada segue a mesma trilha e conclui em 'entregue' (o passo 'entrega' fica implicito p/ retirada). */
 export const TIMELINE = ['recebido', 'preparo', 'pronto', 'entrega', 'entregue'];
 
-/* ── FLUXO OPERACIONAL (REF-ORDER-01 · integracao) ──────────────────────────────────────────────
-   Trilha por TIPO: retirada NAO tem "Saiu para entrega" (nao ha entregador) -> conclui de 'pronto'
-   direto em 'entregue'. Puro/sem imports (folha). Usado pelos botoes de avancar status no admin. */
+/* ── FLUXO OPERACIONAL (REF-ORDER-01 · integracao + REF-MESA-01 · Onda 5) ────────────────────────
+   Trilha por TIPO: retirada e mesa NAO tem "Saiu para entrega" (nao ha entregador) -> concluem de
+   'pronto' direto em 'entregue'. Mesa reusa os MESMOS 4 valores de status de retirada (orders.status
+   so aceita 'recebido'/'preparo'/'pronto'/'entrega'/'entregue'/'cancelado' via CHECK constraint —
+   introduzir um valor novo tipo 'servido' exigiria migration de schema, fora do escopo desta onda;
+   "Entregue" permanece honesto o suficiente pra mesa: o pedido foi concluido/entregue na propria
+   mesa). Puro/sem imports (folha). Usado pelos botoes de avancar status no admin.
+   fluxoDoTipo deixa de ser ternario de 2 vias -- terceiro tipo nunca mais herda a trilha de entrega
+   por default (a fragilidade exata que motivou a REF-MESA-01). */
 export const FLUXO_ENTREGA  = ['recebido', 'preparo', 'pronto', 'entrega', 'entregue'];
 export const FLUXO_RETIRADA = ['recebido', 'preparo', 'pronto', 'entregue'];
-export const fluxoDoTipo = (tipo) => (tipo === 'retirada' ? FLUXO_RETIRADA : FLUXO_ENTREGA);
+export const FLUXO_MESA     = ['recebido', 'preparo', 'pronto', 'entregue'];
+export const fluxoDoTipo = (tipo) => {
+  if (tipo === 'retirada') return FLUXO_RETIRADA;
+  if (tipo === 'mesa') return FLUXO_MESA;
+  return FLUXO_ENTREGA;
+};
 
 /* Proximo status na trilha do tipo (ou null no fim / status fora da trilha, ex.: 'cancelado'). */
 export const proximoStatus = (status, tipo) => {

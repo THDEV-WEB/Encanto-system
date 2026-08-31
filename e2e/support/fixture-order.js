@@ -20,7 +20,11 @@ export async function criarPedidoFixture() {
   const total = 15.99;
   const { data, error } = await anon.rpc('create_order', {
     p_customer: { name: CLIENTE_FIXTURE.nome, phone: CLIENTE_FIXTURE.telefone },
-    p_order: { total, status: 'recebido', payment_method: 'dinheiro', address: 'Retirada na loja — E2E', observacoes: null },
+    /* REF-MESA-01 · Onda 1: `retirada` precisa viajar explicito -- e o UNICO sinal que create_order
+       de fato LE pra derivar orders.tipo_pedido (o texto do endereco e so exibicao, nunca mais fonte
+       de verdade). Sem isso, o pedido seria persistido com tipo_pedido='entrega' (default), mesmo o
+       endereco dizendo "Retirada na loja" -- exatamente a inconsistencia que a REF elimina. */
+    p_order: { total, status: 'recebido', payment_method: 'dinheiro', address: 'Retirada na loja — E2E', retirada: true, observacoes: null },
     p_items: [{
       product_id: PROD_MARMITA_P, nome_produto: 'Marmita P', quantity: 1,
       price: total, preco_unitario: total, adicionais: [], observacoes: null,
@@ -51,9 +55,16 @@ export async function criarPedidoAvulso({ endereco = 'Retirada na loja — E2E' 
   const anon = supabaseAnon();
   const total = 15.99;
   const telefone = `4799${Date.now().toString().slice(-7)}`; // gerado por execucao - nunca colide com CLIENTE_FIXTURE
+  /* REF-MESA-01 · Onda 1: `retirada` e o UNICO sinal que create_order de fato LE pra derivar
+     orders.tipo_pedido — o texto do endereco virou so exibicao. Deriva da MESMA regex que
+     comandaModel.js usava como fonte antes desta REF, pra manter os dois tipos que este fixture
+     sempre soube produzir (retirada via endereco default, entrega via endereco real passado pelo
+     chamador — ver ENDERECO_ENTREGA em admin-pedidos-status.spec.js) consistentes com o structured
+     column novo, sem reintroduzir inferencia por regex em nenhum caminho de PRODUCAO. */
+  const retirada = /retirada\s+na\s+loja/i.test(endereco);
   const { data, error } = await anon.rpc('create_order', {
     p_customer: { name: `${PREFIXO_TESTE}Avulso`, phone: telefone },
-    p_order: { total, status: 'recebido', payment_method: 'dinheiro', address: endereco, observacoes: null },
+    p_order: { total, status: 'recebido', payment_method: 'dinheiro', address: endereco, retirada, observacoes: null },
     p_items: [{
       product_id: PROD_MARMITA_P, nome_produto: 'Marmita P', quantity: 1,
       price: total, preco_unitario: total, adicionais: [], observacoes: null,

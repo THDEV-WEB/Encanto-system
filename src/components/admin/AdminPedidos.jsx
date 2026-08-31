@@ -43,6 +43,13 @@ const act = (bg, fg, bd) => ({
   border: bd || 'none', borderRadius: 9, padding: '8px 12px', fontSize: 13, fontWeight: 700,
   cursor: 'pointer', background: bg, color: fg, fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 6,
 });
+/* REF-MESA-01 · Onda 5: badge do tipo de pedido -- mapa de 3 entradas, nunca mais um ternario de 2
+   vias que empurraria um 3º valor pro ramo "Entrega" por default (a fragilidade que motivou a REF). */
+const TIPO_BADGE = {
+  mesa:     { cor: '#A62786', label: '🍽️ Mesa' },
+  retirada: { cor: '#0F766E', label: '🏪 Retirada' },
+  entrega:  { cor: '#1D4ED8', label: '🛵 Entrega' },
+};
 
 function OrderCard({ order, onChanged, onComanda }) {
   const [aba, setAba] = useState(null);   // 'hist' | 'msg' | null
@@ -69,8 +76,8 @@ function OrderCard({ order, onChanged, onComanda }) {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
           <span style={{ fontWeight: 800, fontSize: 14, color: 'var(--grape,#A62786)' }}>Ref. {('#' + String(order.id || '').replace(/-/g, '').slice(0, 8)).toUpperCase()}</span>
-          <span style={{ fontSize: 11.5, fontWeight: 700, color: tipo === 'retirada' ? '#0F766E' : '#1D4ED8' }}>
-            {tipo === 'retirada' ? '🏪 Retirada' : '🛵 Entrega'}
+          <span style={{ fontSize: 11.5, fontWeight: 700, color: (TIPO_BADGE[tipo] || TIPO_BADGE.entrega).cor }}>
+            {(TIPO_BADGE[tipo] || TIPO_BADGE.entrega).label}{tipo === 'mesa' && order.mesa_identificador ? ` ${order.mesa_identificador}` : ''}
           </span>
         </div>
         <span style={{ fontSize: 12.5, fontWeight: 800, color: infoAtual.cor, background: infoAtual.bg, borderRadius: 999, padding: '4px 12px' }}>

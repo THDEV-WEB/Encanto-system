@@ -15,14 +15,24 @@
    RESOLVER o numero (useDeliveryEta) e so passar o valor ja pronto.
 
    Retirada NAO e administravel pelo Admin (e uma constante de negocio, fora do escopo do REF-DELIVERY-01
-   e desta correcao) — permanece exatamente "cerca de 20 min" nas tres copias, como sempre foi. */
+   e desta correcao) — permanece exatamente "cerca de 20 min" nas tres copias, como sempre foi.
+
+   REF-MESA-01 · Onda 5: Mesa NAO tem ETA de deslocamento nenhum (nao ha entrega nem retirada) — nao
+   inventa um tempo de preparo que nao existe configurado em lugar nenhum do sistema hoje; usa um texto
+   de status neutro. Corrige textoTempoEntrega aqui beneficia tanto comandaModel.js (Onda 5, escopo
+   desta REF) quanto PedidoNotificacoes.jsx (preview da notificacao WhatsApp) — mas a notificacao
+   AUTOMATICA de verdade (enc_render_message/enc_tempo_estimado, SQL) so e corrigida na Onda 7; ate lá
+   o preview do Admin fica correto ANTES do envio real acompanhar (gap conhecido, registrado). */
 
 export const RETIRADA_TEMPO_TEXTO = 'cerca de 20 min';
+export const MESA_TEMPO_TEXTO = 'preparo em andamento';
 
 /* Espelha ETA_DEFAULT de deliveryEta.js — usado só quando o chamador ainda não tem o valor sincronizado
    (mesmo papel que os fallbacks locais de schedule.js/cronograma.js para business hours). */
 export const ENTREGA_ETA_FALLBACK = 45;
 
 export function textoTempoEntrega(tipo, etaMin = ENTREGA_ETA_FALLBACK) {
-  return tipo === 'retirada' ? RETIRADA_TEMPO_TEXTO : `até ${etaMin} min`;
+  if (tipo === 'retirada') return RETIRADA_TEMPO_TEXTO;
+  if (tipo === 'mesa') return MESA_TEMPO_TEXTO;
+  return `até ${etaMin} min`;
 }

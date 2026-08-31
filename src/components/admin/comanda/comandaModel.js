@@ -52,10 +52,17 @@ export function agruparAdicionais(adicionais) {
   return ordem.map((label) => ({ label, itens: mapa.get(label) }));
 }
 
-/* Deteccao de TIPO — sinal deterministico gravado pelo checkout: retirada persiste
-   `address = "Retirada na loja — ..."` (CheckoutPage), entrega persiste o label do cliente. */
+/* Deteccao de TIPO — REF-MESA-01 · Onda 5: a fonte de verdade agora e' orders.tipo_pedido (estruturado,
+   NOT NULL DEFAULT 'entrega' desde a Onda 1 — todo pedido, historico ou novo, ja tem um valor correto
+   ou o default seguro). A regex antiga (RE_RETIRADA sobre orders.address) fica so como FALLBACK
+   defensivo, para qualquer chamador que ainda monte um snapshot sem esse campo (ex.: teste antigo que
+   nao foi atualizado) — nunca mais o caminho normal. Historico: antes desta Onda, address era a UNICA
+   fonte; nenhuma migracao de dado foi necessaria porque a coluna nova ja nasceu com o default certo. */
 const RE_RETIRADA = /retirada\s+na\s+loja/i;
-export const tipoDoPedido = (order) => RE_RETIRADA.test(String(order?.address || '')) ? 'retirada' : 'entrega';
+export const tipoDoPedido = (order) => {
+  if (order?.tipo_pedido) return order.tipo_pedido;
+  return RE_RETIRADA.test(String(order?.address || '')) ? 'retirada' : 'entrega';
+};
 
 /* Pista de "kind" do item — SO para tag/rotulo visual (a categoria nao vive no snapshot do item).
    Heuristica honesta sobre o nome; nunca inventa proteina/acompanhamento que o dado nao tem. */
@@ -194,16 +201,23 @@ export function buildComanda(order, opts = {}) {
       nomeComercial,
     },
     tipo,
-    tipoLabel: tipo === 'retirada' ? 'RETIRADA' : 'ENTREGA',
-    /* REF-CHECKOUT-03: rotulo do cabecalho SOZINHO da mensagem do cliente ("PARA ENTREGA"/"RETIRADA") —
-       tipoLabel (acima) continua servindo a comanda impressa do Admin, intocado. */
-    tipoLabelCliente: tipo === 'retirada' ? 'RETIRADA' : 'PARA ENTREGA',
+    /* REF-MESA-01 · Onda 5: mesa vira um 3º rotulo explicito -- nunca mais cai no "ENTREGA" por
+       default de um ternario de 2 vias (a fragilidade exata que motivou esta REF). */
+    tipoLabel: tipo === 'mesa' ? 'MESA' : tipo === 'retirada' ? 'RETIRADA' : 'ENTREGA',
+    /* REF-CHECKOUT-03: rotulo do cabecalho SOZINHO da mensagem do cliente ("PARA ENTREGA"/"RETIRADA"/
+       "MESA {id}") — tipoLabel (acima) continua servindo a comanda impressa do Admin, intocado. */
+    tipoLabelCliente: tipo === 'mesa'
+      ? `MESA${o?.mesa_identificador ? ' ' + o.mesa_identificador : ''}`
+      : tipo === 'retirada' ? 'RETIRADA' : 'PARA ENTREGA',
     numero: numeroFormatado(opts.numero, o),
     numeroCurto: numeroCurtoDoPedido(o),
     refCurta: refCurtaDoPedido(o?.id),
     criadoEm: fmtDataHoraLoja(o?.created_at),
-    previsao: textoTempoEntrega(tipo, opts.deliveryEtaMin),
-    previsaoLabel: tipo === 'retirada' ? 'Retirada prevista' : 'Entrega prevista',
+    /* REF-MESA-01 · Onda 5: mesa nao tem ETA de deslocamento (nem entrega nem retirada) -- reaproveita
+       o slot de "previsao" pra mostrar a informacao que a cozinha/salao realmente precisa: qual mesa.
+       Nao fabrica um tempo que nao existe configurado em lugar nenhum do sistema. */
+    previsao: tipo === 'mesa' ? (o?.mesa_identificador ? `Mesa ${o.mesa_identificador}` : 'Mesa') : textoTempoEntrega(tipo, opts.deliveryEtaMin),
+    previsaoLabel: tipo === 'mesa' ? 'Atendimento' : tipo === 'retirada' ? 'Retirada prevista' : 'Entrega prevista',
     itens,
     cliente: {
       nome: (o?.customers?.name && String(o.customers.name).trim()) || '—',
@@ -211,8 +225,9 @@ export function buildComanda(order, opts = {}) {
       totalPedidos: totalPedidosCliente,
     },
     /* REF-COMANDA-ENDERECO-01: estruturado (opts.enderecoEstruturado) vence quando existe — texto
-       livre é só o fallback (pedido sem vínculo: legado, ou fetch ainda não resolvido). */
-    endereco: tipo === 'retirada' ? null : { linhas: enderecoEstruturadoEmLinhas(opts.enderecoEstruturado) || enderecoEmLinhas(o?.address) || [] },
+       livre é só o fallback (pedido sem vínculo: legado, ou fetch ainda não resolvido).
+       REF-MESA-01 · Onda 5: mesa tambem nunca mostra endereco (nao tem, nao e retirada nem entrega). */
+    endereco: (tipo === 'retirada' || tipo === 'mesa') ? null : { linhas: enderecoEstruturadoEmLinhas(opts.enderecoEstruturado) || enderecoEmLinhas(o?.address) || [] },
     pagamento: {
       forma: PAGAMENTO_LABEL[o?.payment_method] || (o?.payment_method ? String(o.payment_method) : '—'),
       /* REF-CHECKOUT-02: troco so existe quando o chamador passa opts.troco (CheckoutPage, no instante

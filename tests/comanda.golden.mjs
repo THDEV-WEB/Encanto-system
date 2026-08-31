@@ -34,9 +34,27 @@ const pedidoRetirada = {
   order_items: [{ id: 'r1', nome_produto: 'Combo Casal', quantity: 1, preco_unitario: 20, adicionais: [], observacoes: null }],
 };
 
-/* ── deteccao de tipo (sinal deterministico do checkout) ── */
+/* REF-MESA-01 · Onda 5: tipo_pedido/mesa_identificador ESTRUTURADOS (colunas de orders desde a
+   Onda 1) -- address vira so texto de EXIBICAO ("Mesa 07"), nunca mais lido de volta pra decidir
+   o tipo (a fragilidade que a REF inteira existe pra eliminar). */
+const pedidoMesa = {
+  id: 'ffeeddccbb', total: 33, status: 'preparo', payment_method: 'dinheiro',
+  address: 'Mesa 07', tipo_pedido: 'mesa', origem_pedido: 'admin_garcom', mesa_identificador: '07', observacoes: null,
+  created_at: '2026-07-20 19:15:00', customer_id: 'cust-3',
+  customers: { name: 'Carlos', phone: '38977776666' },
+  order_items: [{ id: 'm1', nome_produto: 'Marmita P', quantity: 1, preco_unitario: 33, adicionais: [], observacoes: null }],
+};
+
+/* ── deteccao de tipo (fonte de verdade = orders.tipo_pedido; regex so' e' fallback) ── */
 check('tipoDoPedido: entrega (endereco do cliente)', () => assert.equal(tipoDoPedido(pedidoEntrega), 'entrega'));
 check('tipoDoPedido: retirada ("Retirada na loja — ...")', () => assert.equal(tipoDoPedido(pedidoRetirada), 'retirada'));
+check('tipoDoPedido: mesa (campo estruturado orders.tipo_pedido, NUNCA mais regex sobre address)', () => {
+  assert.equal(tipoDoPedido(pedidoMesa), 'mesa');
+});
+check('tipoDoPedido: fallback pra regex quando tipo_pedido ausente (retrocompat com snapshot antigo)', () => {
+  assert.equal(tipoDoPedido({ address: 'Retirada na loja — x' }), 'retirada');
+  assert.equal(tipoDoPedido({ address: 'Rua Y, 10' }), 'entrega');
+});
 
 /* ── agrupamento de adicionais: subgrupo_label vence, grupo mapeado, ORDEM preservada ── */
 check('agruparAdicionais separa "Adicionais Premium" de "Complementos" na ordem', () => {
@@ -92,6 +110,37 @@ check('vm retirada: sem endereco, item COMBO, totalPedidos null quando ausente',
   assert.equal(vmR.endereco, null);
   assert.equal(vmR.itens[0].kind, 'combo');
   assert.equal(vmR.cliente.totalPedidos, null);
+});
+
+/* REF-MESA-01 · Onda 5: mesa NUNCA herda comportamento de entrega (label/endereco/previsao) por
+   ternario de 2 vias -- cada campo tem um 3º ramo explicito. */
+const vmM = buildComanda(pedidoMesa, { numero: 15 });
+check('vm mesa: tipoLabel/tipoLabelCliente = MESA (nunca ENTREGA/PARA ENTREGA por default)', () => {
+  assert.equal(vmM.tipoLabel, 'MESA');
+  assert.equal(vmM.tipoLabelCliente, 'MESA 07');
+});
+check('vm mesa: NUNCA mostra endereco (nao e entrega nem retirada)', () => {
+  assert.equal(vmM.endereco, null);
+});
+check('vm mesa: previsao mostra a mesa (numero da mesa), nao um tempo de entrega/retirada inventado', () => {
+  assert.equal(vmM.previsaoLabel, 'Atendimento');
+  assert.equal(vmM.previsao, 'Mesa 07');
+});
+check('vm mesa: sem mesa_identificador -> previsao cai num rotulo neutro, nunca quebra', () => {
+  const vm = buildComanda({ ...pedidoMesa, mesa_identificador: null }, { numero: 16 });
+  assert.equal(vm.tipoLabelCliente, 'MESA');
+  assert.equal(vm.previsao, 'Mesa');
+});
+check('cliente (WhatsApp): cabecalho da mesa e "MESA 07", sem "PARA ENTREGA"/"RETIRADA"', () => {
+  const texto = comandaTexto(vmM, { contexto: 'cliente' });
+  assert.ok(texto.includes('MESA 07'));
+  assert.ok(!texto.includes('PARA ENTREGA'));
+  assert.ok(!/^RETIRADA$/m.test(texto));
+});
+check('HTML termico (mesa): tipoLabel "MESA" aparece, bloco de endereco ausente', () => {
+  const html = comandaHTML(vmM);
+  assert.ok(html.includes('>MESA<'));
+  assert.ok(!html.includes('class="addr"'));
 });
 
 /* ── REF-COMANDA-ENDERECO-01: endereco ESTRUTURADO vence o texto livre, quando existe ── */

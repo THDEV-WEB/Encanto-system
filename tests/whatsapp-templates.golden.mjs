@@ -42,6 +42,14 @@ check('textoTempoEntrega: entrega usa o numero configurado; retirada e constante
 check('textoTempoEntrega: sem etaMin explicito, cai no fallback (nunca undefined/NaN na mensagem)', () => {
   assert.equal(textoTempoEntrega('entrega'), 'até 45 min');
 });
+/* REF-MESA-01 · Onda 5: mesa nao tem ETA de deslocamento (nao entrega, nao retirada) -- texto de
+   status neutro, nunca "até Nmin" (implicaria motoboy) nem "cerca de 20 min" (implicaria balcao).
+   Gap conhecido: so o preview do Admin (PedidoNotificacoes.jsx) reflete isto agora -- a notificacao
+   automatica de verdade (enc_render_message/enc_tempo_estimado, SQL) so e corrigida na Onda 7. */
+check('textoTempoEntrega: mesa e texto de status neutro (nunca herda "até Nmin"/"cerca de 20 min")', () => {
+  assert.equal(textoTempoEntrega('mesa', 45), 'preparo em andamento');
+  assert.equal(textoTempoEntrega('mesa'), 'preparo em andamento');
+});
 check('render preparo/pronto/entrega usam numero/empresa', () => {
   for (const s of ['preparo', 'pronto', 'entrega']) {
     const txt = renderTemplate(s, { numero: 'X9', empresa: 'Empório Teste' });

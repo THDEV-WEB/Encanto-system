@@ -43,6 +43,18 @@ test.describe('Novo pedido de mesa (Admin/garçom)', { tag: '@writes' }, () => {
     // Pedido real criado -> aparece na lista de Pedidos (mesmo carregamento que qualquer outro).
     await adminPedidosPage.buscar('38999990012');
     await expect(page.getByText('E2E_TEST_Mesa Admin')).toBeVisible();
+
+    /* REF-MESA-01 · Onda 5: badge do card mostra "🍽️ Mesa 12" (nao mais "🛵 Entrega" por default de
+       ternario de 2 vias — admin_orders_search agora devolve tipo_pedido/mesa_identificador de
+       verdade, comandaModel.tipoDoPedido le esses campos em vez de inferir por regex). */
+    await expect(page.getByText('🍽️ Mesa 12')).toBeVisible();
+
+    // Comanda do pedido de mesa: "MESA 12" no cabecalho, sem bloco de endereco.
+    const card = page.locator('[data-testid^="pedido-card-"]').filter({ hasText: 'E2E_TEST_Mesa Admin' });
+    await card.getByRole('button', { name: /Comanda/ }).click();
+    await expect(adminPedidosPage.comandaDialog).toBeVisible();
+    await expect(adminPedidosPage.comandaFrame.getByText('MESA', { exact: true })).toBeVisible();
+    await adminPedidosPage.fecharComanda();
   });
 
   test('botão NÃO aparece quando mesa_canal_admin=false (default seguro)', async ({ adminLoginPage, adminPanel, adminPedidosPage }) => {
