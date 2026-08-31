@@ -273,8 +273,22 @@ Pré-check confirmou a base idêntica à assumida; ambas migrations aplicadas na
 pós-deploy em produção (`BEGIN...ROLLBACK`, dados descartáveis) confirmou **10/10** das 8
 propriedades pedidas coexistindo ao vivo; `_resolve_item_pricing` (price-source-01/price-hardening-01)
 confirmada bit-a-bit intacta em 2 checagens; nenhum erro em `application_logs` na janela de
-aplicação. Nenhum rollback necessário. Push não realizado — commits locais, aguardando pedido
-explícito.
+aplicação. Nenhum rollback necessário.
+
+## Onda 5 — Push + CI
+
+**Status: EXECUTADO. `git push origin main` em 2026-08-31, autorizado explicitamente. Registro
+completo em `docs/ref/REF-ADDRESS-GEO-INTEGRITY-01-gate-final-producao.md` (seção "Push / CI").**
+
+Os 7 commits desta REF confirmados no remoto. CI: **4/5 jobs verdes** (Build, Testes de domínio,
+Lint+typecheck, Lighthouse CI); E2E Playwright falhou em 1 teste
+(`config-padrao-transparencia.spec.js`), confirmado **pré-existente** — mesma falha, mesma
+assinatura, já presente no CI de um commit anterior desta REF que só continha testes/documentação,
+antes de qualquer migration em produção. Não pertence a esta REF (aparenta ser lógica de horário de
+funcionamento sensível ao horário real de execução do CI, `REF-STORE-ONBOARD-02`) — não corrigida,
+por instrução explícita.
+
+**REF-ADDRESS-GEO-INTEGRITY-01: CONCLUÍDA.**
 
 ## Próximos passos (fora desta REF, não implementados)
 
@@ -283,4 +297,4 @@ explícito.
    legados).
 2. Decidir sobre fechar a manipulação fina (texto ↔ coordenada) — geocodificação server-side via Edge
    Function assíncrona, ou aceitar o risco residual documentado no item 4 da Onda 2.
-3. Push dos commits desta REF para `origin/main`, quando autorizado.
+3. Investigar a falha pré-existente de `config-padrao-transparencia.spec.js` no CI (fora desta REF).

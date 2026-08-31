@@ -271,8 +271,39 @@ Verificacao pos-ROLLBACK: lojas de teste ainda existem no banco? NAO (liquido ze
 Não foi necessário acionar — nenhuma falha em nenhum passo. Os 2 arquivos `-rollback.sql` seguem
 disponíveis e testados (usados no E2E) caso uma reversão seja necessária no futuro.
 
-### Push / CI
+### Push / CI — 2026-08-31 (autorizado explicitamente em separado)
 
-**Não realizado nesta execução.** Seguindo a prática já estabelecida neste projeto (commits ficam
-locais até pedido explícito de push), os commits desta REF permanecem locais. Avise se quiser que
-eu empurre agora.
+`git push origin main` — `63c4e96..e972e1a`. HEAD local confirmado igual a `origin/main` logo após o
+push (`e972e1a975ada69d52c45f0e846e2d4c5394770d` nos dois). Os 7 commits desta REF (`85f5217` até
+`df5a3d1`) confirmados alcançáveis a partir de `origin/main` (`git branch --contains 85f5217 -r`).
+
+O push também levou 2 commits de outra sessão (`af50c3a`, `e972e1a`, `REF-MESA-01` Ondas 0/1) que já
+estavam à frente localmente no mesmo histórico linear — autorizado explicitamente pelo dono após eu
+sinalizar essa mistura, por não ser possível separar sem reescrever histórico.
+
+**CI (GitHub Actions, disparado pelo push, run `33352286027`): 4/5 jobs verdes.**
+
+| Job | Conclusão |
+|---|---|
+| Build | success |
+| Testes de domínio | success |
+| Lint + typecheck | success |
+| Lighthouse CI | success |
+| **E2E (Playwright · Chromium)** | **failure** — 137 passed, 1 failed |
+
+**A falha é pré-existente, não causada por esta REF.** O único teste que falhou —
+`e2e/tests/store/config-padrao-transparencia.spec.js:73:3` ("loja sem NENHUMA config própria: aviso
+no cabeçalho + 'Entrega: A confirmar' com explicação") — já falhava **com a mesma assinatura exata**
+no CI do commit `63c4e96` (run `33351543139`), que só continha testes/documentação desta REF, **antes
+de qualquer migration ter sido aplicada em produção**. Erro: `checkout-submit` aparece `disabled`
+("🔒 Loja fechada no momento") onde o teste esperava `enabled` — sintoma típico de teste sensível ao
+horário real de execução (sem mock de tempo), não relacionado a `create_order`/`_resolve_delivery_fee`.
+`git log --oneline f9af74d..63c4e96` mostra que, entre o último CI verde conhecido e essa falha,
+só entraram os 5 commits desta REF (nenhum toca horário/config herdada de loja) e 1 commit de outra
+REF (`42fea5b feat(checkout): aviso de preco divergente no carrinho`). Pertence à
+`REF-STORE-ONBOARD-02`/lógica de horário de funcionamento — **não corrigida aqui**, por instrução
+explícita de não tocar falhas de outra REF encontradas na regressão.
+
+Evidência coletada via API pública do GitHub (`check-runs`/`annotations`), sem token — logs brutos do
+job (`/actions/jobs/{id}/logs`) e artifacts retornaram 401/403 (fora do alcance deste ambiente, sem
+credencial de admin no repositório).
