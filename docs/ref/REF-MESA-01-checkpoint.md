@@ -1,6 +1,6 @@
 # REF-MESA-01 — CHECKPOINT DE RETOMADA (ler isto primeiro numa nova sessão)
 
-**Atualizado em:** 2026-08-31, durante execução autônoma da Onda 2.
+**Atualizado em:** 2026-08-31, Onda 2 CONCLUÍDA, iniciando Onda 3.
 **Se você é uma nova sessão/contexto retomando este trabalho:** leia este arquivo inteiro, depois
 rode `git log --oneline -10` e `git status --porcelain=v1` em `C:\Projetos\Encanto\encanto-react`
 para confirmar que o estado real do repositório bate com o descrito aqui ANTES de continuar. Não
@@ -10,13 +10,11 @@ repita trabalho já commitado. Não presuma nada além do que está confirmado a
 
 ## Onde estamos agora (resumo de 1 parágrafo)
 
-Onda 0 (auditoria + plano) e Onda 1 (fundação de banco/RPC) estão **CONCLUÍDAS, TESTADAS E
-COMMITADAS LOCALMENTE** (não commitadas em produção, não pushed). Onda 2 (checkout/storefront) está
-**EM ANDAMENTO, código já escrito, lint/typecheck limpos, mas `npm run test:domain` ainda está
-VERMELHO** — 2 testes "pin de fonte" em `tests/checkout.golden.mjs` esperam o texto-fonte antigo de
-`CheckoutPage.jsx` (antes desta onda) e precisam ser atualizados para o novo texto-fonte. Isso é
-trabalho NORMAL de onda (o próprio fluxo pedido pelo usuário é
-`IMPLEMENTAÇÃO → TESTES → CORREÇÃO DE REGRESSÕES`), não um bug — só ainda não foi terminado.
+Onda 0 (auditoria + plano), Onda 1 (fundação de banco/RPC) e Onda 2 (checkout/storefront) estão
+**CONCLUÍDAS, TESTADAS E COMMITADAS LOCALMENTE** (não commitadas em produção, não pushed — commits
+`af50c3a`, `e972e1a`, `fff4946`, `287ee04`). Onda 2 fechou 100% verde: lint 0 erros, typecheck limpo,
+`test:domain` 40/40, E2E de checkout (9/9 specs, browser real) sem regressão. Próxima: Onda 3 (QR
+Code / canal do cliente).
 
 ---
 
@@ -102,7 +100,9 @@ listando só os arquivos da Onda em andamento.**
 
 ---
 
-## O que está EM ANDAMENTO agora (Onda 2 — Checkout/Storefront)
+## Onda 2 — Checkout/Storefront (CONCLUÍDA, commit `287ee04`)
+
+Tudo descrito abaixo já foi implementado, testado e commitado. Não refazer.
 
 ### Arquivos já criados (novos, prontos, não commitados)
 - `src/services/mesa/mesaConfig.js` — espelha `services/delivery/deliveryFeeConfig.js` (cache +
@@ -145,72 +145,59 @@ listando só os arquivos da Onda em andamento.**
   componente — `src/components/pedidos/pedidoStatus.js` (`fluxoDoTipo`, usado pelo Admin) continua
   INTOCADO, propositalmente adiado pra Onda 5.
 
-### Verificações já feitas nesta Onda 2
-- `npm run lint` → **0 erros**, 59 warnings (todos pré-existentes, nenhum novo introduzido pelos
-  arquivos desta onda — confirme lendo a lista se quiser, mas já foi conferido).
-- `npm run typecheck` → **limpo**.
-- `npm run test:domain` → **FALHOU, exit 1**. Falha isolada em `tests/checkout.golden.mjs`, seção
-  "(B) PIN DE FONTE": 2 testes que checam por REGEX EXATO o texto-fonte de `CheckoutPage.jsx`
-  (técnica de "pin" já usada por várias REFs anteriores neste arquivo de teste) ainda esperam o texto
-  ANTIGO, de antes desta onda. Não é uma regressão de comportamento — é literalmente o teste
-  "travando" a string antiga, que mudou de propósito nesta onda. Localização exata:
-  `tests/checkout.golden.mjs` linhas 265-266:
-  ```js
-  pinCk('endereco estruturado so persiste em entrega, nunca bloqueia (Onda 6)', /const\s+enderecoId\s*=\s*\(!retirada\s*&&\s*endereco\)\s*\?\s*await\s+addressRepository\.salvar\(enderecoParaSalvar\)\s*:\s*null;/);
-  pinCk('buildOrderArgs recebe enderecoId + resumoEnvio (Onda 6 + REF-DELIVERY-FEE-01 + REF-DELIVERY-FEE-04 Onda 2)', /buildOrderArgs\(cart,\s*form,\s*enderecoEntrega,\s*requestIdRef\.current,\s*enderecoId,\s*resumoEnvio\)/);
-  ```
-  Precisam virar (ajustar a regex pro texto NOVO, mantendo a descrição do teste atualizada pra
-  mencionar Mesa/Onda 2 se fizer sentido, seguindo o estilo das descrições vizinhas):
-  ```js
-  pinCk('endereco estruturado so persiste fora de mesa/retirada, nunca bloqueia (Onda 6 + REF-MESA-01 Onda 2)', /const\s+enderecoId\s*=\s*\(!semEntregaFisica\s*&&\s*endereco\)\s*\?\s*await\s+addressRepository\.salvar\(enderecoParaSalvar\)\s*:\s*null;/);
-  pinCk('buildOrderArgs recebe enderecoId + resumoEnvio + extraPedido (Onda 6 + REF-DELIVERY-FEE-01 + REF-DELIVERY-FEE-04 Onda 2 + REF-MESA-01 Onda 2)', /buildOrderArgs\(cart,\s*form,\s*enderecoEntrega,\s*requestIdRef\.current,\s*enderecoId,\s*resumoEnvio,\s*extraPedido\)/);
-  ```
-  **Ainda não apliquei esse ajuste — é o próximo passo exato, ver abaixo.**
+### Verificações feitas na Onda 2 (todas verdes, confirmado)
+- `npm run lint` → 0 erros (59 warnings pré-existentes, nenhum novo).
+- `npm run typecheck` → limpo.
+- `npm run test:domain` → 40/40 verde (os 2 pins de `tests/checkout.golden.mjs` foram atualizados
+  pro novo texto-fonte; `render.smoke.mjs` confirmado incólume — a 3ª opção só aparece com
+  `mesaHabilitada=true`, os snapshots existentes chamam `DeliveryBar` sem essa prop).
+- `npx playwright test e2e/tests/checkout/` → 9/9 specs verdes (guest/logado/whatsapp/preço-divergente),
+  browser real contra o projeto E2E dedicado — zero regressão em Entrega/Retirada.
+- Diff final: 8 arquivos (`DeliveryBar.jsx`, `StoreApp.jsx`, `CheckoutPage.jsx`, `SuccessPage.jsx`,
+  `orderPayload.js`, `useMesaConfig.js` novo, `services/mesa/mesaConfig.js` novo,
+  `checkout.golden.mjs`), commit `287ee04`. `privacyPolicy.js`/`loadtest-e2e.mjs` (outra sessão)
+  confirmados fora do commit.
 
 ---
 
-## PRÓXIMO PASSO EXATO (retomar por aqui)
+## PRÓXIMO PASSO EXATO (retomar por aqui) — Onda 3: QR Code / canal do cliente
 
-1. Editar `tests/checkout.golden.mjs` linhas 265-266 com as 2 regexes novas acima (usar Edit, não
-   reescrever o arquivo inteiro).
-2. Rodar `npm run test:domain` de novo. Prestar atenção especial a:
-   - `tests/render.smoke.mjs` — faz snapshot HTML LITERAL do `DeliveryBar` (2 `<option>`s antes desta
-     onda). Como a 3ª opção só aparece com `mesaHabilitada=true` e os cenários existentes desse
-     snapshot certamente chamam `DeliveryBar` sem essa prop (→ `undefined`, falsy), o snapshot
-     provavelmente NÃO quebrou — mas CONFIRME rodando, não presuma.
-   - `tests/checkout.golden.mjs` seção (A)/(C)/(D) — os outros golden tests de `buildOrderArgs`/
-     `buildOrderConfirmationMessage` chamam essas funções SEM o novo 7º parâmetro `extra` — como ele
-     tem default `{}`, devem continuar passando sem alteração nenhuma, mas CONFIRME.
-   - Se aparecer qualquer outra falha inesperada (não só os 2 pins já identificados), investigue antes
-     de seguir — não assuma que é "mais do mesmo".
-3. Quando `npm run test:domain` estiver 100% verde, considerar também rodar `npm run test:e2e`
-   (Playwright) pelo menos nos specs de checkout (`e2e/tests/checkout/*.spec.js`) — ainda não usam
-   Mesa (não há Page Object nem fixture pra isso, isso é trabalho de Onda 3/5 nos testes, conforme já
-   mapeado na auditoria original), então o objetivo aqui é só confirmar ZERO regressão em Entrega/
-   Retirada via browser real, não testar Mesa via E2E ainda.
-4. Revisar o diff completo (`git diff -- <cada arquivo da Onda 2>`) mais uma vez antes de comitar.
-5. `git add` EXPLICITAMENTE (nunca `-A`/`.`) exatamente estes arquivos:
-   ```
-   src/components/DeliveryBar.jsx
-   src/pages/StoreApp.jsx
-   src/components/checkout/CheckoutPage.jsx
-   src/components/checkout/SuccessPage.jsx
-   src/utils/orderPayload.js
-   src/hooks/useMesaConfig.js
-   src/services/mesa/mesaConfig.js
-   tests/checkout.golden.mjs
-   ```
-   **NUNCA incluir** `src/constants/privacyPolicy.js` nem `scripts/loadtest-e2e.mjs` (de outra
-   sessão/iniciativa — confirmar de novo com `git status` que ainda são só esses 2 "estranhos" antes
-   de comitar, porque outra sessão pode ter mexido em mais coisa nesse meio-tempo).
-6. Commitar como `feat(checkout): REF-MESA-01 Onda 2 -- mesa no storefront/checkout` (mensagem
-   completa, estilo ASCII sem acento, ver commits anteriores desta REF pro tom exato), citando o que
-   foi testado (lint/typecheck/test:domain verdes, o que ficou de fora — E2E de Mesa em si, Admin
-   toggle da capability).
-7. Atualizar ESTE checkpoint marcando Onda 2 como CONCLUÍDA, e prosseguir automaticamente para a
-   Onda 3 (QR Code / canal do cliente) conforme o plano original do usuário — sem pedir autorização
-   entre ondas (autorização já dada), só parando nas condições de parada já definidas (arquivo de
-   outra sessão, necessidade de produção, ambiguidade de decisão de negócio não prevista, etc.).
+Ainda NÃO iniciada. Plano (baseado na arquitetura já existente, sem inventar infraestrutura nova):
+
+1. **Ideia central (simples, reaproveitando o que já existe):** o storefront já é resolvido por
+   domínio por-tenant (`useStorefrontStore`/`resolve_store_from_origin` — cada loja tem seu próprio
+   subdomínio). Um QR Code de mesa aponta pro MESMO subdomínio da loja (zero risco de cross-tenant,
+   porque não há nenhum `store_id` no link pro cliente adulterar) só com um parâmetro a mais na URL
+   identificando a mesa, ex.: `https://{slug}.valionsistemas.com.br/?mesa=07`. Isso elimina a
+   necessidade de qualquer mecanismo novo de resolução de loja — o QR só pré-preenche o que o cliente
+   preencheria manualmente no checkout (Onda 2).
+2. **Frontend (`StoreApp.jsx` ou um hook novo `useMesaFromQuery.js`):** ler `?mesa=` da URL no mount
+   (`window.location.search`/`URLSearchParams`). Se presente E `mesaConfig.canal_qr === true`: setar
+   `deliveryMode='mesa'` e `mesaIdentificador=<valor>` automaticamente (o cliente já chega no
+   checkout com a mesa pré-identificada, sem digitar nada — mas o campo continua editável, não
+   trava). Se `mesaConfig.canal_qr` for `false` (canal desligado nessa loja) ou `mesaConfig.habilitada`
+   for `false`, ignorar o parâmetro silenciosamente (cai no comportamento normal de hoje).
+3. **Rastrear a origem:** precisa de um novo estado (`origemPedido`, default `'storefront'`) setado
+   pra `'qr_mesa'` quando o parâmetro `?mesa=` foi de fato aplicado. Esse valor viaja em
+   `extraPedido.origemPedido` (novo campo em `buildOrderArgs`, mesmo padrão opcional de
+   `tipoPedido`/`mesaIdentificador` já feito na Onda 2) → `p_order.origem_pedido` → `create_order`.
+4. **Backend (nova migration `REF-MESA-01-onda3-canal-qr.sql`):** dentro de `create_order`, quando
+   `v_origem_pedido = 'qr_mesa'`, validar `get_mesa_config(v_store_id)->>'canal_qr'` (fail-closed,
+   mesmo padrão da checagem de `mesa_habilitada` já existente) — impede um client adulterado de
+   mandar `origem_pedido:'qr_mesa'` numa loja que não ligou esse canal especificamente (mesmo que
+   `mesa_habilitada` geral esteja true). Devolver o MESMO tipo de erro genérico já usado
+   (`'modalidade indisponivel para esta loja'` ou mensagem equivalente).
+5. **Testes:** estender `scripts/mesa-01-onda1-fundacao-test.mjs` (ou um novo
+   `scripts/mesa-01-onda3-canal-qr-test.mjs`) cobrindo: `canal_qr=true` aceita `origem_pedido='qr_mesa'`;
+   `canal_qr=false` (mas `mesa_habilitada=true`) rejeita; parâmetro `?mesa=` na URL não pode virar
+   vetor de XSS/injeção (sempre tratado como texto simples, nunca `innerHTML`); mesa_identificador
+   longo/malformado cai na mesma validação de tamanho (1-40) já existente.
+6. Não criar geração de imagem de QR Code nesta onda (infra de impressão/design fica de fora por ora,
+   é puramente visual/operacional, não é o que a REF pediu para provar) — só o link/parâmetro e a
+   validação server-side, que é a parte arquitetural que importa.
+7. Seguir o mesmo fluxo de sempre: implementar → testar (domain + E2E se fizer sentido) → revisar
+   diff → `git add` explícito → commit `feat(...): REF-MESA-01 Onda 3 -- ...` → atualizar este
+   checkpoint → prosseguir pra Onda 4 (Admin/garçom) sem pedir autorização entre ondas.
 
 ---
 
