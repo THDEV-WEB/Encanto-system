@@ -1,18 +1,27 @@
-/* components/DeliveryBar.jsx — REF-UI-HEADER-02.
-   Barra de Entrega/Retirada do topo da loja, EXTRAIDA do StoreApp (antes era JSX inline). Apresentacional
-   e sem estado proprio: recebe tudo por prop. Duas colunas: (1) o seletor Entrega/Retirada, agora da MESMA
-   familia visual do botao "Categorias" (classe compartilhada no CSS: fundo branco + borda cinza + texto
-   cinza-escuro + chevron roxo, sem emoji/icone); (2) um bloco com hierarquia — ETA em cima e, embaixo, o
-   endereco como ACAO DE TEXTO leve (nao mais o botao roxo chapado):
+/* components/DeliveryBar.jsx — REF-UI-HEADER-02 + REF-MESA-01 · Onda 2.
+   Barra de Entrega/Retirada/Mesa do topo da loja. Apresentacional e sem estado proprio: recebe tudo
+   por prop. Duas colunas: (1) o seletor, agora da MESMA familia visual do botao "Categorias" (classe
+   compartilhada no CSS: fundo branco + borda cinza + texto cinza-escuro + chevron roxo, sem
+   emoji/icone); (2) um bloco com hierarquia — ETA em cima e, embaixo, o endereco/mesa como ACAO DE
+   TEXTO leve (nao mais o botao roxo chapado):
      - entrega sem endereco  -> "Selecionar endereco" (link roxo) abre o modal;
      - entrega com endereco  -> valor do endereco (texto neutro) + par de acoes "Alterar"/"Limpar"
                                 (mesma familia de link roxo, consistentes entre si);
-     - retirada              -> endereco fixo da loja (so leitura).
+     - retirada              -> endereco fixo da loja (so leitura);
+     - mesa                  -> "Atendimento presencial" (so leitura, sem endereco nenhum).
    O bloco usa flex:1 + min-width:0 + ellipsis, entao o texto encolhe sem "escapar" da area util em
    qualquer largura (correcao de responsividade). Nao altera regra de negocio (deliveryMode segue no
-   StoreApp e vai ao checkout; endereco e a fonte unica do dominio Address). */
-export function DeliveryBar({ deliveryMode, setDeliveryMode, endereco, temEndereco, onEditar, onLimpar, retiradaLabel, deliveryEta }) {
+   StoreApp e vai ao checkout; endereco e a fonte unica do dominio Address).
+
+   REF-MESA-01 · Onda 2: a opcao "Mesa" so aparece quando `mesaHabilitada` (get_mesa_config da propria
+   loja, via useMesaConfig em StoreApp) e true — lojas sem a capacidade nunca veem a opcao. Isso e so
+   UX (a barreira de seguranca de verdade vive dentro de create_order, ver migration da Onda 1); um
+   client adulterado poderia tentar enviar deliveryMode='mesa' mesmo sem essa opcao aparecer aqui, mas
+   o servidor rejeita de qualquer forma. */
+export function DeliveryBar({ deliveryMode, setDeliveryMode, endereco, temEndereco, onEditar, onLimpar, retiradaLabel, deliveryEta, mesaHabilitada, mesaIdentificador }) {
   const entrega = deliveryMode === 'entrega';
+  const retirada = deliveryMode === 'retirada';
+  const mesa = deliveryMode === 'mesa';
   return (
     <div className="delivery-bar">
       <div className="delivery-mode-select">
@@ -20,9 +29,10 @@ export function DeliveryBar({ deliveryMode, setDeliveryMode, endereco, temEndere
           className="delivery-mode-dropdown"
           value={deliveryMode}
           onChange={e => setDeliveryMode(e.target.value)}
-          aria-label="Escolher entre entrega ou retirada">
+          aria-label={mesaHabilitada ? 'Escolher entre entrega, retirada ou mesa' : 'Escolher entre entrega ou retirada'}>
           <option value="entrega">Entrega</option>
           <option value="retirada">Retirada</option>
+          {mesaHabilitada && <option value="mesa">Mesa</option>}
         </select>
       </div>
 
@@ -30,7 +40,9 @@ export function DeliveryBar({ deliveryMode, setDeliveryMode, endereco, temEndere
         <div className="delivery-eta">
           {entrega
             ? <>Entregar em, até <b>{deliveryEta} min</b></>   /* REF-DELIVERY-01: valor da config (SSoT) */
-            : <>Retirar em, até <b>20 min</b></>}
+            : retirada
+            ? <>Retirar em, até <b>20 min</b></>
+            : <>Pedido para {mesaIdentificador ? <>a mesa <b>{mesaIdentificador}</b></> : 'a mesa'}</>}
         </div>
 
         <div className="delivery-place">
@@ -51,8 +63,10 @@ export function DeliveryBar({ deliveryMode, setDeliveryMode, endereco, temEndere
                 Selecionar endereço
               </button>
             )
-          ) : (
+          ) : retirada ? (
             <span className="delivery-addr-store">{retiradaLabel}</span>
+          ) : (
+            <span className="delivery-addr-store">Atendimento presencial</span>
           )}
         </div>
       </div>

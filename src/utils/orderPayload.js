@@ -21,7 +21,7 @@ import { isUuid } from './ids.js';
 import { buildComanda } from '../components/admin/comanda/comandaModel.js';
 import { comandaTexto } from '../components/admin/comanda/comandaTexto.js';
 
-export function buildOrderArgs(cart, form, endereco, requestId, enderecoId, resumo) {
+export function buildOrderArgs(cart, form, endereco, requestId, enderecoId, resumo, extra = {}) {
   const customer = { name: form.nome, phone: form.telefone };
   /* REF-CHECKOUT-ADDRESS-01: o endereco vem da FONTE UNICA (dominio Address), passado explicitamente —
      nunca mais de um form.endereco paralelo. O que e persistido no pedido e EXATAMENTE o exibido/confirmado.
@@ -34,11 +34,17 @@ export function buildOrderArgs(cart, form, endereco, requestId, enderecoId, resu
      REF-DELIVERY-FEE-04: delivery_fee/maquininha_fee/retirada enviados aqui sao ADVISORY apenas — o
      servidor (create_order) sempre recalcula os dois primeiros do zero (_resolve_delivery_fee), ignorando
      por completo o que o client mandar; retirada (novo campo, derivado do MESMO resumo.status que ja
-     existia) e o unico dos tres que o servidor de fato LE, pra decidir se zera a taxa incondicionalmente. */
+     existia) e o unico dos tres que o servidor de fato LE, pra decidir se zera a taxa incondicionalmente.
+     REF-MESA-01 · Onda 2: extra.tipoPedido/extra.mesaIdentificador sao OPCIONAIS (ausentes preservam
+     100% o payload antigo, byte-a-byte — nenhum chamador existente, incluindo o golden test, precisa
+     mudar). Quando tipoPedido='mesa', create_order() valida a capacidade da loja no servidor (fail-
+     closed) e usa mesa_identificador — nunca infere nada do texto de `address`. */
   const order = { total: resumo ? resumo.total : cart.total, status: 'recebido', payment_method: form.pagamento,
                   address: endereco, observacoes: form.obs || null, endereco_id: enderecoId ?? null,
                   delivery_fee: resumo ? resumo.deliveryFee : 0, maquininha_fee: resumo ? resumo.maquininhaFee : 0,
-                  retirada: resumo ? resumo.status === 'retirada' : false };
+                  retirada: resumo ? resumo.status === 'retirada' : false,
+                  ...(extra.tipoPedido ? { tipo_pedido: extra.tipoPedido } : {}),
+                  ...(extra.mesaIdentificador ? { mesa_identificador: extra.mesaIdentificador } : {}) };
   const items = cart.items.map(i => {
     const pu = precoUnitario(i);
     return {

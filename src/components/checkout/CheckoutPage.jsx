@@ -25,7 +25,7 @@ import { registrarBreadcrumb, marcarPedido } from '../../lib/sentry.js'; // REF-
 // REF-LGPD-01 · Onda 3 (LGPD-R14): so' carrega o chunk se o cliente realmente abrir o aviso.
 const PrivacidadeScreen = lazy(() => import('../menu/PrivacidadeScreen.jsx').then(m => ({ default: m.PrivacidadeScreen })));
 
-export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEta, produtosVivos }) {
+export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEta, produtosVivos, mesaIdentificador, setMesaIdentificador }) {
   /* REF-CLIENTE-02 (vinculo pedido<->conta): create_order reusa o customer POR TELEFONE e nunca toca
      auth_user_id. Logo o pedido so aparece em "Meus Pedidos" se o telefone do checkout casar com o do
      cadastro (que carrega o auth_user_id). Para o cliente LOGADO, a identidade vem da conta e o telefone
@@ -40,7 +40,17 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
      (abrirModal). Retirada nao usa endereco de entrega — usa o endereco da loja. */
   const { endereco, temEndereco, abrirModal } = useAddress();
   const retirada = deliveryMode === 'retirada';
-  const enderecoEntrega = retirada ? ('Retirada na loja — ' + STORE_INFO.retirada) : (endereco?.label || '');
+  /* REF-MESA-01 · Onda 2: Mesa NAO e Retirada nem Entrega — nao usa endereco, nao calcula distancia/
+     taxa, nao dispara geocoding. `semEntregaFisica` agrupa os dois casos ("sem deslocamento nenhum")
+     nos pontos onde retirada e mesa se comportam IGUAL hoje (fee zerada, endereco nao obrigatorio);
+     `retirada`/`mesa` continuam separados onde o TEXTO/UI difere (rotulo, campo pedido). */
+  const mesa = deliveryMode === 'mesa';
+  const semEntregaFisica = retirada || mesa;
+  /* address continua sendo só um texto de EXIBIÇÃO (a fonte de verdade do tipo é tipo_pedido, gravado
+     à parte — ver create_order na migration da Onda 1). Symmetric com o que retirada já fazia. */
+  const enderecoEntrega = mesa ? ('Mesa ' + (mesaIdentificador || '').trim())
+    : retirada ? ('Retirada na loja — ' + STORE_INFO.retirada)
+    : (endereco?.label || '');
   /* REF-BUSINESS-HOURS-01: fora do horário oficial o cliente navega/vê preços normalmente, mas NÃO
      finaliza pedido. Mesma fonte de verdade do header (services/businessHours via useBusinessHours). */
   const horario = useBusinessHours();
@@ -74,7 +84,7 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
   const [coordCliente, setCoordCliente] = useState(null);
   useEffect(() => {
     let vivo = true;
-    if (retirada || !endereco) { setCoordCliente(null); return; }
+    if (semEntregaFisica || !endereco) { setCoordCliente(null); return; }
     if (Number.isFinite(endereco.lat) && Number.isFinite(endereco.lng)) {
       setCoordCliente({ lat: endereco.lat, lng: endereco.lng });
       return;
@@ -82,7 +92,7 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
     setCoordCliente(null);
     geocoding.coordenadasDe(endereco).then(c => { if (vivo) setCoordCliente(c); });
     return () => { vivo = false; };
-  }, [retirada, endereco]);
+  }, [semEntregaFisica, endereco]);
   /* Coordenada da LOJA (Admin > Taxa de Entrega, arraste do pino) + distância + resumo financeiro —
      recalculam sozinhos a cada mudança relevante, sem precisar finalizar o pedido (tempo real). */
   const coordLoja = localizacaoLojaConfigurada(companyInfo)
@@ -108,9 +118,12 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
     });
     return () => { vivo = false; };
   }, [companyInfo.lojaLat, companyInfo.lojaLng, coordCliente?.lat, coordCliente?.lng]);
+  /* REF-MESA-01 · Onda 2: mesa reaproveita o MESMO ramo "sem taxa" que retirada ja tinha em
+     montarResumoFinanceiro (funcao INTOCADA) -- so muda o booleano que o Checkout passa pra ela,
+     exatamente simetrico ao que create_order faz no servidor (ver migration da Onda 1). */
   const resumo = useMemo(() => montarResumoFinanceiro({
-    subtotal: cart.total, retirada, distanciaKm: distanciaInfo?.distanceKm ?? null, config: feeConfig, paymentMethod: form.pagamento,
-  }), [cart.total, retirada, distanciaInfo, feeConfig, form.pagamento]);
+    subtotal: cart.total, retirada: semEntregaFisica, distanciaKm: distanciaInfo?.distanceKm ?? null, config: feeConfig, paymentMethod: form.pagamento,
+  }), [cart.total, semEntregaFisica, distanciaInfo, feeConfig, form.pagamento]);
   const [loading, setLoading] = useState(false);
   const [err,     setErr]     = useState('');   // feedback inline (mesmo padrão do AdminLogin)
   /* REF-DELIVERY-FEE-04 · Onda 2: create_order recalculou delivery_fee/maquininha_fee e o valor
@@ -140,8 +153,10 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
        Impede que telefone inválido chegue à RPC create_order (que rejeitaria com rollback). */
     const digits = form.telefone.replace(/\D/g, '');
     if (digits.length < 10) { setErr('Informe um telefone válido com DDD (mínimo 10 dígitos).'); return; }
-    /* REF-CHECKOUT-ADDRESS-01: entrega exige endereco da fonte unica; retirada usa o endereco da loja. */
-    if (!retirada && !temEndereco) { setErr('Selecione seu endereço de entrega.'); return; }
+    /* REF-CHECKOUT-ADDRESS-01: entrega exige endereco da fonte unica; retirada usa o endereco da loja.
+       REF-MESA-01 · Onda 2: mesa nao exige endereco nenhum -- exige a identificacao da mesa. */
+    if (!semEntregaFisica && !temEndereco) { setErr('Selecione seu endereço de entrega.'); return; }
+    if (mesa && !mesaIdentificador?.trim()) { setErr('Informe o número da mesa.'); return; }
     if (cart.items.length === 0) { console.warn('[ENCANTO] Carrinho vazio ao finalizar!'); }
     submittingRef.current = true;
     setLoading(true);
@@ -158,7 +173,7 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
        outro valor é gravado como NULL pelo próprio RPC). Convidado (não logado) nunca envia customerId
        — endereço continua salvo com customer_id=NULL, exatamente como antes, sem associação nenhuma. */
     const enderecoParaSalvar = (isLogged && customer?.id) ? { ...endereco, customerId: customer.id } : endereco;
-    const enderecoId = (!retirada && endereco) ? await addressRepository.salvar(enderecoParaSalvar) : null;
+    const enderecoId = (!semEntregaFisica && endereco) ? await addressRepository.salvar(enderecoParaSalvar) : null;
     /* REF-DELIVERY-FEE-04 · Onda 2: numa CONFIRMAÇÃO (após divergência já sinalizada), declara os
        valores AUTORITATIVOS que o próprio servidor acabou de informar — nunca o resumo local (que
        gerou a divergência da 1ª tentativa) de novo, senão o servidor recalcularia e divergiria
@@ -171,7 +186,11 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
     /* Montagem do pedido no order-domain (Onda 5.2 · Trilha B): buildOrderArgs concentra a
        lógica pura que antes vivia inline aqui (precoUnitario por item, product_id uuid/null,
        contratos null). Σ(price*quantity) reconcilia com orders.total. */
-    const { customer: customerPedido, order, items } = buildOrderArgs(cart, form, enderecoEntrega, requestIdRef.current, enderecoId, resumoEnvio);
+    /* REF-MESA-01 · Onda 2: tipo_pedido/mesa_identificador viajam explicitos no p_order -- create_order
+       valida a capacidade da loja no servidor (fail-closed) antes de aceitar 'mesa'. Ausentes (entrega/
+       retirada) preservam 100% o payload de antes desta REF. */
+    const extraPedido = mesa ? { tipoPedido: 'mesa', mesaIdentificador: mesaIdentificador.trim() } : {};
+    const { customer: customerPedido, order, items } = buildOrderArgs(cart, form, enderecoEntrega, requestIdRef.current, enderecoId, resumoEnvio, extraPedido);
     /* GATE (fonte única de verdade): a persistência bem-sucedida é o evento que autoriza TODAS as ações
        seguintes. savePedido devolve { orderId, divergencia, deliveryFee, maquininhaFee }. */
     const resultado = await DS.savePedido(customerPedido, order, items, requestIdRef.current);
@@ -195,12 +214,12 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
       setLoading(false);
       submittingRef.current = false;
       setErr('Não foi possível registrar seu pedido. Confira o telefone e tente novamente.');
-      registrarBreadcrumb('checkout: falha ao persistir pedido', { itens: cart.items.length, retirada });
+      registrarBreadcrumb('checkout: falha ao persistir pedido', { itens: cart.items.length, retirada, tipoPedido: deliveryMode });
       return;
     }
     const orderId = resultado.orderId;
     setDivergencia(null);
-    registrarBreadcrumb('checkout: pedido criado', { orderId, itens: cart.items.length, retirada });
+    registrarBreadcrumb('checkout: pedido criado', { orderId, itens: cart.items.length, retirada, tipoPedido: deliveryMode });
     marcarPedido(orderId); // REF-SENTRY-01: tag pesquisável — acha no Sentry qualquer erro próximo deste pedido
     /* REF-CUSTOMER-01: so cacheia localmente p/ visitante — cliente logado ja tem o Supabase (customer)
        como fonte oficial, cachear aqui de novo criaria uma segunda fonte permanente do mesmo dado. */
@@ -216,7 +235,7 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
        REF-GOLIVE-01: deliveryEta (prop, vem de StoreApp -> useDeliveryEta, mesma fonte da DeliveryBar/
        SuccessPage) elimina o "35 a 45 min" fixo que a mensagem de confirmacao tinha antes. */
     const msg = buildOrderConfirmationMessage(customerPedido, order, items, orderId, {
-      companyInfo, troco: form.troco, enderecoEstruturado: retirada ? null : endereco,
+      companyInfo, troco: form.troco, enderecoEstruturado: semEntregaFisica ? null : endereco,
       deliveryEtaMin: deliveryEta,
     });
     setLoading(false);
@@ -230,12 +249,12 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
   /* REF-DELIVERY-FEE-01: só quebra em Subtotal/Entrega/Maquininha quando há alguma parcela a somar —
      retirada e "sem taxa" continuam com o resumo simples (itens + Total), zero mudança visual pra eles. */
   const mostrarDetalhamento = !!(view.entregaFmt || view.maquininhaFmt);
-  const entregaAConfirmar = !retirada && !view.entregaFmt && (resumo.status === 'sem_coordenadas' || resumo.status === 'fora_de_alcance');
+  const entregaAConfirmar = !semEntregaFisica && !view.entregaFmt && (resumo.status === 'sem_coordenadas' || resumo.status === 'fora_de_alcance');
   /* REF-STORE-ONBOARD-02 · Onda 2: distinto de entregaAConfirmar (falta DISTÂNCIA) -- aqui a distância e
      a faixa existem (status 'ok', valor calculado e cobrado normalmente), só a TABELA em si ainda não é
      própria da loja (fallback da plataforma). Nunca os dois juntos (status 'ok' exclui sem_coordenadas/
      fora_de_alcance por definição de montarResumoFinanceiro). */
-  const entregaConfigPadrao = !retirada && resumo.status === 'ok' && !resumo.configuracaoPropria;
+  const entregaConfigPadrao = !semEntregaFisica && resumo.status === 'ok' && !resumo.configuracaoPropria;
   const horarioConfigPadrao = !horario.configuracaoPropria;
   /* REF-DELIVERY-FEE-04 · Onda 2: view-model da divergência (buildDivergenciaView, G-CK2 — fmt()
      fica no order-domain, não aqui). null enquanto não houver divergência sinalizada. */
@@ -302,17 +321,28 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
           </span>
         )}
       </div>
-      <div className="form-group">
-        <label className="form-label">{retirada ? 'Retirada na loja' : 'Endereço de entrega *'}</label>
-        {/* REF-CHECKOUT-ADDRESS-01: resumo editavel da FONTE UNICA (mesmo objeto/modal do header). O que
-            aparece aqui e exatamente o que sera confirmado e persistido no pedido. */}
-        <AddressSummary
-          endereco={endereco}
-          retirada={retirada}
-          retiradaLabel={STORE_INFO.retirada}
-          onEditar={abrirModal}
-        />
-      </div>
+      {mesa ? (
+        /* REF-MESA-01 · Onda 2: mesa nao usa o dominio Address (nao e endereco fisico) -- identificacao
+           propria, estruturada (mesa_identificador na migration da Onda 1), nunca reaproveitando
+           `address` como texto livre pra decidir o tipo (essa e a fragilidade que a REF elimina). */
+        <div className="form-group">
+          <label className="form-label" htmlFor="checkout-mesa-input">Número da mesa *</label>
+          <input id="checkout-mesa-input" className="form-input" data-testid="checkout-mesa-identificador"
+            placeholder="Ex.: 07" value={mesaIdentificador} onChange={e => setMesaIdentificador(e.target.value)} />
+        </div>
+      ) : (
+        <div className="form-group">
+          <label className="form-label">{retirada ? 'Retirada na loja' : 'Endereço de entrega *'}</label>
+          {/* REF-CHECKOUT-ADDRESS-01: resumo editavel da FONTE UNICA (mesmo objeto/modal do header). O que
+              aparece aqui e exatamente o que sera confirmado e persistido no pedido. */}
+          <AddressSummary
+            endereco={endereco}
+            retirada={retirada}
+            retiradaLabel={STORE_INFO.retirada}
+            onEditar={abrirModal}
+          />
+        </div>
+      )}
       <div className="form-group">
         <label className="form-label" id="checkout-pagamento-label">Forma de pagamento</label>
         <div className="payment-opts" role="radiogroup" aria-labelledby="checkout-pagamento-label">

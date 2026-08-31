@@ -24,6 +24,7 @@ import { useCatalogNav } from '../hooks/useCatalogNav.js';         // REF-UI-CAT
 import { useSearchSuggestions } from '../hooks/useSearchSuggestions.js'; // REF-UI-SEARCH-01: motor de sugestoes (dados)
 import { useScrollToProduct } from '../hooks/useScrollToProduct.js';     // REF-UI-SEARCH-01: navegacao ate o produto + realce
 import { useDeliveryEta } from '../hooks/useDeliveryEta.js';             // REF-DELIVERY-01: tempo de entrega (config unica Supabase)
+import { useMesaConfig } from '../hooks/useMesaConfig.js';               // REF-MESA-01 · Onda 2: capacidade de Mesa por loja (fonte unica Supabase)
 import { useCompanyInfo } from '../hooks/useCompanyInfo.js';             // REF-COMPANY-01: dados institucionais (config unica Supabase)
 import { AddressProvider, useAddress } from '../address/index.js'; // REF-CHECKOUT-ADDRESS-01: fonte unica do endereco (provider)
 import { useAuth } from '../hooks/useAuth.js'; // REF-SEC-DATA-01 R12: detecta logout de verdade p/ limpar endereco/carrinho
@@ -80,6 +81,12 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
   const [waMsg,         setWaMsg]         = useState('');
   /* Estado visual do header — não afeta lógica */
   const [deliveryMode,   setDeliveryMode]   = useState('entrega');
+  /* REF-MESA-01 · Onda 2: identificacao da mesa (numero digitado pelo cliente), so usada quando
+     deliveryMode==='mesa'. Vive aqui (mesmo nivel de deliveryMode) para sobreviver a navegacao entre
+     o cardapio e o checkout, igual o proprio deliveryMode ja fazia. mesaConfig decide SE a opcao
+     "Mesa" aparece no seletor (DeliveryBar) — loja sem a capacidade nunca ve a opcao. */
+  const [mesaIdentificador, setMesaIdentificador] = useState('');
+  const mesaConfig = useMesaConfig();
   /* REF-CHECKOUT-ADDRESS-01: FONTE UNICA do endereco (contexto). O header apenas EXIBE o rotulo e abre
      o modal (abrirEndereco); a edicao/persistencia e do provider. Sem estado paralelo de endereco. */
   const { endereco: enderecoObj, temEndereco, abrirModal: abrirEndereco, limpar: limparEndereco } = useAddress();
@@ -230,8 +237,8 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
     },
   }), [page, modal, cartOpen, showLoyalty, loyaltyTeaser]);
 
-  if (page==='checkout') return <Suspense fallback={<Spinner/>}><CheckoutPage cart={cart} deliveryMode={deliveryMode} deliveryEta={deliveryEta} produtosVivos={rawProds} onBack={()=>setPage('home')} onSuccess={msg=>{setWaMsg(msg);setPage('success');}}/></Suspense>;
-  if (page==='success')  return <Suspense fallback={<Spinner/>}><SuccessPage  msg={waMsg} cart={cart} onBack={()=>setPage('home')} deliveryEta={deliveryEta} deliveryMode={deliveryMode} whatsapp={companyInfo.whatsapp} horario={horario}/></Suspense>;
+  if (page==='checkout') return <Suspense fallback={<Spinner/>}><CheckoutPage cart={cart} deliveryMode={deliveryMode} deliveryEta={deliveryEta} produtosVivos={rawProds} mesaIdentificador={mesaIdentificador} setMesaIdentificador={setMesaIdentificador} onBack={()=>setPage('home')} onSuccess={msg=>{setWaMsg(msg);setPage('success');}}/></Suspense>;
+  if (page==='success')  return <Suspense fallback={<Spinner/>}><SuccessPage  msg={waMsg} cart={cart} onBack={()=>setPage('home')} deliveryEta={deliveryEta} deliveryMode={deliveryMode} mesaIdentificador={mesaIdentificador} whatsapp={companyInfo.whatsapp} horario={horario}/></Suspense>;
 
   return (
     <div className="app">
@@ -383,6 +390,8 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
         onLimpar={limparEndereco}
         retiradaLabel={STORE_INFO.retirada}
         deliveryEta={deliveryEta}
+        mesaHabilitada={mesaConfig.habilitada}
+        mesaIdentificador={mesaIdentificador}
       />
 
       {/* ── Progresso de fidelidade mini (abaixo da barra de entrega) — so p/ cliente logado c/ programa ativo ── */}

@@ -18,7 +18,7 @@
    foi persistido antes desta tela em qualquer um dos 2 cenários — nunca bloqueia o checkout. */
 import { useState, useEffect, useRef } from 'react';
 
-export function SuccessPage({ msg, cart, onBack, deliveryEta, deliveryMode, whatsapp, horario }) {
+export function SuccessPage({ msg, cart, onBack, deliveryEta, deliveryMode, mesaIdentificador, whatsapp, horario }) {
   /* REF-COMPANY-01: numero SEMPRE vindo do cadastro da empresa (prop, unico ponto de consumo em
      StoreApp -> Single Source of Truth), nunca mais hardcoded/env var. */
   const temWhatsapp = !!whatsapp;
@@ -54,9 +54,19 @@ export function SuccessPage({ msg, cart, onBack, deliveryEta, deliveryMode, what
   }
 
   /* REF-DELIVERY-01: tempo estimado vem da CONFIG unica (deliveryEta), nao mais de um valor aleatorio.
-     Consciente do modo (igual a DeliveryBar): entrega usa a config; retirada usa o tempo fixo de retirada. */
+     Consciente do modo (igual a DeliveryBar): entrega usa a config; retirada usa o tempo fixo de retirada.
+     REF-MESA-01 · Onda 2: mesa NAO tem ETA de entrega/retirada nenhum (nao ha deslocamento) -- mostra
+     so a confirmacao de envio, sem inventar um tempo de preparo que nao existe em lugar nenhum do
+     sistema hoje. A trilha de status tambem NAO pode mostrar "Em entrega" pra mesa (regra explicita da
+     REF) -- variante propria, sem o passo de entrega. */
   const retirada = deliveryMode === 'retirada';
-  const steps = [
+  const mesa = deliveryMode === 'mesa';
+  const steps = mesa ? [
+    {label:'Recebido',   icon:'📥'},
+    {label:'Em preparo', icon:'👨‍🍳'},
+    {label:'Pronto',     icon:'✅'},
+    {label:'Servido',    icon:'🍽️'},
+  ] : [
     {label:'Recebido',   icon:'📥'},
     {label:'Em preparo', icon:'👨‍🍳'},
     {label:'Pronto',     icon:'✅'},
@@ -96,11 +106,13 @@ export function SuccessPage({ msg, cart, onBack, deliveryEta, deliveryMode, what
       }}>
         <div>
           <div style={{fontSize:12,color:'var(--amarelo)',fontWeight:600,marginBottom:2}}>
-            🕐 {retirada ? 'Tempo estimado para retirada' : 'Tempo estimado de entrega'}
+            🕐 {mesa ? `Pedido enviado${mesaIdentificador ? ' — Mesa ' + mesaIdentificador : ''}` : retirada ? 'Tempo estimado para retirada' : 'Tempo estimado de entrega'}
           </div>
-          <div style={{fontFamily:'var(--font-head)',fontSize:24,fontWeight:800,color:'var(--amarelo)'}}>
-            {retirada ? 20 : deliveryEta} min
-          </div>
+          {!mesa && (
+            <div style={{fontFamily:'var(--font-head)',fontSize:24,fontWeight:800,color:'var(--amarelo)'}}>
+              {retirada ? 20 : deliveryEta} min
+            </div>
+          )}
         </div>
         {/* REF-GOLIVE-01 (bloqueador 1): nada de horario fixo aqui — mesmo objeto `horario` do header
             (useBusinessHours, StoreApp), que ja resolve cronograma administravel + STORE_MODE + excecoes.
