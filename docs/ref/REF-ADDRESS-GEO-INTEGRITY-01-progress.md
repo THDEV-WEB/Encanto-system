@@ -263,9 +263,24 @@ Todas rodadas no projeto E2E dedicado, nenhuma em produção.
 - Fixtures de `auth.users`/admins reais de produção hardcoded em `loyalty-audit-01-onda1-test.mjs` e
   `saas01-onda1-authz-test.mjs` — precisam de fixtures E2E equivalentes para rodar 100% lá.
 
+## Onda 4 — Deploy em produção
+
+**Status: EXECUTADO. Parte 1 + Parte 2 aplicadas em produção em 2026-08-31. Registro completo em
+`docs/ref/REF-ADDRESS-GEO-INTEGRITY-01-gate-final-producao.md` (seção "Execução real").**
+
+Pré-check confirmou a base idêntica à assumida; ambas migrations aplicadas na ordem planejada (bbox
+→ ownership), cada uma validada por comparação `prosrc` byte-a-byte antes de prosseguir; smoke-test
+pós-deploy em produção (`BEGIN...ROLLBACK`, dados descartáveis) confirmou **10/10** das 8
+propriedades pedidas coexistindo ao vivo; `_resolve_item_pricing` (price-source-01/price-hardening-01)
+confirmada bit-a-bit intacta em 2 checagens; nenhum erro em `application_logs` na janela de
+aplicação. Nenhum rollback necessário. Push não realizado — commits locais, aguardando pedido
+explícito.
+
 ## Próximos passos (fora desta REF, não implementados)
 
-1. Aplicar Onda 2 (Parte 1 + Parte 2) em produção (aguarda aprovação/deploy separados).
-2. Decidir sobre os achados correlatos da Onda 3 (item 5 acima) — pertencem a outras REFs.
-3. Decidir sobre fechar a manipulação fina (texto ↔ coordenada) — geocodificação server-side via Edge
+1. Decidir sobre os achados correlatos da Onda 3 — pertencem a outras REFs (`HARDEN-ORDERS-RLS-step2`
+   ausente no E2E, grants de `loyalty_grant` desatualizados no E2E, incompatibilidades de scripts
+   legados).
+2. Decidir sobre fechar a manipulação fina (texto ↔ coordenada) — geocodificação server-side via Edge
    Function assíncrona, ou aceitar o risco residual documentado no item 4 da Onda 2.
+3. Push dos commits desta REF para `origin/main`, quando autorizado.

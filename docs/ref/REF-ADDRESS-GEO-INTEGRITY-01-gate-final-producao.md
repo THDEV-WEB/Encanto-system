@@ -1,9 +1,12 @@
 # REF-ADDRESS-GEO-INTEGRITY-01 — GATE FINAL DE PRODUÇÃO
 
-Consolida as Ondas 2 e 3. **Documento de planejamento — nenhuma migration foi aplicada em produção,
-nenhum push, nenhum código alterado além deste documento e das ferramentas de apoio (scripts de
-pré-check/smoke-test, que são leitura/`BEGIN...ROLLBACK`, nunca executados contra produção nesta
-preparação além do pré-check).**
+Consolida as Ondas 2 e 3.
+
+## STATUS: EXECUTADO EM PRODUÇÃO — 2026-08-31
+
+Ambas as migrations foram aplicadas em produção e validadas. Ver **"Execução real"** no fim deste
+documento para o registro completo (comandos, resultados, timestamps). Texto abaixo preservado como
+o plano original que foi seguido à risca.
 
 ## Resumo executivo
 
@@ -206,15 +209,70 @@ existia).
 
 ---
 
-## Checklist de execução (quando autorizado)
+## Checklist de execução
 
-1. [ ] Reexecutar `address-geo-integrity-01-gate-final-precheck.mjs` — confirmar PASS em tudo.
-2. [ ] Aplicar `REF-ADDRESS-GEO-INTEGRITY-01-onda2-parte1-bbox-delivery-fee.sql`.
-3. [ ] Aplicar `REF-ADDRESS-GEO-INTEGRITY-01-onda2-parte2-ownership-endereco.sql`.
-4. [ ] Rodar `address-geo-integrity-01-gate-final-smoke.mjs` — confirmar 10/10 + líquido zero.
-5. [ ] Confirmar `pg_get_functiondef` das duas funções bate com o conteúdo dos arquivos aplicados.
-6. [ ] Monitorar `application_logs` (contexto `create_order`) por um período após o deploy.
-7. [ ] Se qualquer passo falhar: aplicar os 2 `-rollback.sql` (ordem inversa: Parte 2 depois Parte 1).
+1. [x] Reexecutar `address-geo-integrity-01-gate-final-precheck.mjs` — PASS em tudo.
+2. [x] Aplicar `REF-ADDRESS-GEO-INTEGRITY-01-onda2-parte1-bbox-delivery-fee.sql`.
+3. [x] Aplicar `REF-ADDRESS-GEO-INTEGRITY-01-onda2-parte2-ownership-endereco.sql`.
+4. [x] Rodar `address-geo-integrity-01-gate-final-smoke.mjs` — 10/10 + líquido zero.
+5. [x] Confirmar `prosrc` das duas funções bate byte-a-byte com o conteúdo dos arquivos aplicados.
+6. [x] Checar `application_logs` (módulo `orders`) — 0 linhas nos 30min da janela de aplicação.
+7. [ ] Rollback — não acionado (nenhuma falha).
 
-**Este documento não autoriza a execução por si só — aguarda autorização explícita separada para
-aplicar em produção.**
+---
+
+## Execução real — 2026-08-31
+
+Ordem exata seguida, cada passo validado antes do próximo, nenhum atalho:
+
+| Passo | Ação | Resultado |
+|---|---|---|
+| 1 | Pré-check (reexecutado imediatamente antes de aplicar) | PASS em tudo — base confirmada idêntica à assumida |
+| 2 | Captura de baseline de `_resolve_item_pricing` (não tocada por esta REF, para comparação depois) | `prosrc` capturada, grants confirmados (`anon`/`authenticated` = false, ambos) |
+| 3 | Aplicar Parte 1 (bbox) em produção | Aplicada sem erro |
+| 4 | Validar Parte 1 | `_resolve_delivery_fee()` byte-a-byte com o arquivo aplicado; grants de `create_order`/`_resolve_delivery_fee` inalterados; `_resolve_item_pricing` idêntica à baseline |
+| 5 | Aplicar Parte 2 (ownership) em produção | Aplicada sem erro |
+| 6 | Validar Parte 2 | `create_order()` byte-a-byte com o arquivo aplicado; grants finais das 3 funções confirmados; `_resolve_delivery_fee` (Parte 1) confirmada intacta; `_resolve_item_pricing` confirmada intacta pela 2ª vez |
+| 7 | Smoke-test completo (`BEGIN...ROLLBACK`, produção) | **10/10** — todas as propriedades confirmadas ao vivo (ver abaixo) |
+| 8 | Checagem de `application_logs` (módulo `orders`, últimos 30min) | 0 linhas — nenhum erro real de pedido na janela |
+
+### Resultado do smoke-test em produção (10/10)
+
+```
+PASS  1 — OWNERSHIP+DELIVERY_FEE+DIVERGENCIA: endereco de C rejeitado -> autoritativo=0 -> diverge, nenhum pedido
+PASS  2a — BBOX+OWNERSHIP+DELIVERY_FEE: proprio endereco (dentro do bbox) aceito, delivery_fee=9.00
+PASS  2b — endereco_id vinculado = o PROPRIO de D
+PASS  2c — delivery_fee persistido = 9.00
+PASS  2d — PRECO AUTORITATIVO: price forjado (0.01) ignorado, banco gravou 18.50
+PASS  2e — FIDELIDADE: 0 na divergente, +1 na confirmada
+PASS  3a — IDEMPOTENCIA: retry mesmo request_id -> idempotent:true, mesmo order_id
+PASS  3b — IDEMPOTENCIA: retry NAO gera 2o loyalty_event
+PASS  4a — ISOLAMENTO: config propria de Y cobra R$40 (nao R$9 de X)
+PASS  4b — ISOLAMENTO: endereco de X em pedido de Y -> rejeitado, diverge
+
+10 passaram, 0 falharam.
+Verificacao pos-ROLLBACK: lojas de teste ainda existem no banco? NAO (liquido zero confirmado)
+```
+
+### price-source-01 / price-hardening-01 / delivery-fee-04 — confirmadas intactas
+
+- `_resolve_item_pricing()` (usada por ambas REFs de preço): `prosrc` idêntica à baseline capturada
+  **antes** de qualquer migration desta REF, confirmada em **2 momentos** (após Parte 1 e após Parte
+  2) — prova direta e definitiva de que nada foi alterado nela.
+- `_resolve_delivery_fee()`/lógica de divergência de `create_order()` (REF-DELIVERY-FEE-04): `prosrc`
+  byte-a-byte com os arquivos aplicados — a única mudança é exatamente o bloco inserido por esta REF,
+  nada mais.
+- Exercitadas **ativamente** no smoke-test: prova 2d confirma `_resolve_item_pricing` recusando
+  `price` forjado; provas 1/4b confirmam a mecânica de `divergencia_valor` (REF-DELIVERY-FEE-04 Onda
+  2) funcionando exatamente como antes.
+
+### Rollback
+
+Não foi necessário acionar — nenhuma falha em nenhum passo. Os 2 arquivos `-rollback.sql` seguem
+disponíveis e testados (usados no E2E) caso uma reversão seja necessária no futuro.
+
+### Push / CI
+
+**Não realizado nesta execução.** Seguindo a prática já estabelecida neste projeto (commits ficam
+locais até pedido explícito de push), os commits desta REF permanecem locais. Avise se quiser que
+eu empurre agora.
