@@ -11,7 +11,7 @@
    buildOrderArgs é byte-equivalente ao espelho congelado em tests/checkout.golden.mjs (por isso o golden
    troca o espelho pelo import real mantendo GOLDEN_PAYLOAD idêntico); buildOrderConfirmationMessage é
    coberta por tests/checkout.golden.mjs (§C) + tests/comanda.golden.mjs (view-model/texto). */
-import { precoUnitario, precoLinha } from './pricing.js';
+import { precoUnitario, precoLinha, precoBaseItem } from './pricing.js';
 import { fmt, precoTamanho } from './format.js';
 import { isUuid } from './ids.js';
 /* REF-CHECKOUT-02: reaproveita a MESMA camada de domínio da comanda (Admin) para montar a mensagem
@@ -149,4 +149,42 @@ export function buildDivergenciaView(resumoExibido, autoritativo) {
       : 'Atualizamos o valor do seu pedido — confira antes de continuar.',
     totalFmt: fmt(totalNovo),
   };
+}
+
+/* REF-CART-PRICE-DRIFT-01: aviso não-bloqueante quando o preço CONGELADO no carrinho (no instante
+   em que o item foi adicionado, ver ProductModalInner.jsx) diverge do preço ATUAL do mesmo produto
+   no catálogo vivo — pura transparência pro cliente, o servidor (create_order/_resolve_item_pricing)
+   já é a única autoridade financeira e sempre recalcula certo independente disto. Reaproveita
+   precoBaseItem (pricing.js) + precoTamanho/fmt (format.js) deste módulo (G-CK2: CheckoutPage não
+   importa pricing/format direto).
+   Escopo: preço BASE do produto (cheio, promoção, ou do tamanho escolhido) — adicionais ficam de
+   fora (mudança de preço de adicional é cenário mais raro; cobri-la exigiria carregar a lista viva
+   de adicionais no checkout, hoje não usada ali).
+   produtosVivos ausente/vazio (catálogo ainda carregando) -> null, nunca falso positivo. Produto do
+   carrinho sem correspondência em produtosVivos (removido do catálogo) -> ignorado (não é "preço
+   mudou", é "produto não existe mais", tratado à parte por create_order()). Item com tamanhos: acha
+   o tamanho escolhido comparando precoTamanho(t) === Number(item.preco) — MESMA técnica já usada em
+   buildOrderArgs (acima) para achar tamanho_label — e busca esse label no produto vivo; sem
+   correspondência de label, ignora esse item (evita falso positivo por rename/remoção do tamanho). */
+export function buildPrecoDivergenteView(cart, produtosVivos) {
+  if (!Array.isArray(produtosVivos) || produtosVivos.length === 0) return null;
+  const porId = new Map(produtosVivos.map(p => [p.id, p]));
+  const partes = [];
+  for (const item of cart.items) {
+    const vivo = porId.get(item.id);
+    if (!vivo) continue;
+    let precoAtual;
+    if (Array.isArray(item.tamanhos) && item.tamanhos.length > 0) {
+      const label = item.tamanhos.find(t => precoTamanho(t) === Number(item.preco))?.label;
+      const tamanhoVivo = label && Array.isArray(vivo.tamanhos) ? vivo.tamanhos.find(t => t.label === label) : null;
+      if (!tamanhoVivo) continue;
+      precoAtual = precoTamanho(tamanhoVivo);
+    } else {
+      precoAtual = Number(vivo.preco_promo || vivo.preco);
+    }
+    const precoAntigo = precoBaseItem(item);
+    if (precoAtual !== precoAntigo) partes.push(`${item.nome} de ${fmt(precoAntigo)} para ${fmt(precoAtual)}`);
+  }
+  if (partes.length === 0) return null;
+  return { mensagem: `Atualizamos o preço de ${partes.join(', ')}. O valor final é sempre conferido na confirmação.` };
 }

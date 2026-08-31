@@ -26,7 +26,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { totalCarrinho } from '../src/utils/pricing.js';
 import { fmt } from '../src/utils/format.js';
-import { buildOrderArgs, buildOrderConfirmationMessage, buildCheckoutView } from '../src/utils/orderPayload.js';
+import { buildOrderArgs, buildOrderConfirmationMessage, buildCheckoutView, buildPrecoDivergenteView } from '../src/utils/orderPayload.js';
 import { buildComanda } from '../src/components/admin/comanda/comandaModel.js';
 import { comandaTexto } from '../src/components/admin/comanda/comandaTexto.js';
 
@@ -264,6 +264,80 @@ pinSvc('rpc args p_customer/p_order/p_items/p_request_id', /p_customer:\s*client
 pinCk('cliente logado passa o proprio customer_id ao salvar (REF-ADDRESS-SEC-01)', /const\s+enderecoParaSalvar\s*=\s*\(isLogged\s*&&\s*customer\?\.\s*id\)\s*\?\s*\{\s*\.\.\.\s*endereco,\s*customerId:\s*customer\.id\s*\}\s*:\s*endereco;/);
 pinCk('endereco estruturado so persiste em entrega, nunca bloqueia (Onda 6)', /const\s+enderecoId\s*=\s*\(!retirada\s*&&\s*endereco\)\s*\?\s*await\s+addressRepository\.salvar\(enderecoParaSalvar\)\s*:\s*null;/);
 pinCk('buildOrderArgs recebe enderecoId + resumoEnvio (Onda 6 + REF-DELIVERY-FEE-01 + REF-DELIVERY-FEE-04 Onda 2)', /buildOrderArgs\(cart,\s*form,\s*enderecoEntrega,\s*requestIdRef\.current,\s*enderecoId,\s*resumoEnvio\)/);
+
+// ── (D) DIVERGÊNCIA DE PREÇO NO CARRINHO (REF-CART-PRICE-DRIFT-01) ──────────────────────────────
+console.error('— (D) DIVERGÊNCIA DE PREÇO NO CARRINHO');
+
+check('1. produtosVivos com os mesmos preços do carrinho -> null (sem banner)', () => {
+  const c = mkCart();
+  const vivos = [
+    { id: '11111111-1111-4111-8111-111111111111', preco: 18, preco_promo: null },
+    { id: 'pb-morango', preco: 12, preco_promo: null },
+  ];
+  assert.strictEqual(buildPrecoDivergenteView(c, vivos), null);
+});
+
+check('2. item com preço diferente no catálogo vivo -> mensagem com nome + preço antigo/novo', () => {
+  const c = mkCart();
+  const vivos = [
+    { id: '11111111-1111-4111-8111-111111111111', preco: 21, preco_promo: null },
+    { id: 'pb-morango', preco: 12, preco_promo: null },
+  ];
+  const v = buildPrecoDivergenteView(c, vivos);
+  assert.ok(v && /Açaí 500ml/.test(v.mensagem) && /18/.test(v.mensagem) && /21/.test(v.mensagem), JSON.stringify(v));
+});
+
+check('3. preco_promo novo no catálogo vivo (era null no carrinho) -> detectado', () => {
+  const c = mkCart();
+  const vivos = [
+    { id: '11111111-1111-4111-8111-111111111111', preco: 18, preco_promo: 15 },
+    { id: 'pb-morango', preco: 12, preco_promo: null },
+  ];
+  const v = buildPrecoDivergenteView(c, vivos);
+  assert.ok(v && /Açaí 500ml/.test(v.mensagem), JSON.stringify(v));
+});
+
+check('4. item com tamanhos: preço do tamanho escolhido mudou no catálogo vivo -> detectado', () => {
+  const c = {
+    items: [{ id: 'acai-tam', nome: 'Açaí com tamanho', qty: 1, preco: 26.9, preco_promo: null,
+      tamanhos: [{ label: '300 ml', preco: 17.9 }, { label: '500 ml', preco: 26.9 }], adicionais: [] }],
+  };
+  const vivos = [{ id: 'acai-tam', preco: 17.9, preco_promo: null,
+    tamanhos: [{ label: '300 ml', preco: 17.9 }, { label: '500 ml', preco: 29.9 }] }];
+  const v = buildPrecoDivergenteView(c, vivos);
+  assert.ok(v && /26,90/.test(v.mensagem) && /29,90/.test(v.mensagem), JSON.stringify(v));
+});
+
+check('5. item com tamanhos cujo label sumiu do produto vivo -> ignorado (sem falso positivo)', () => {
+  const c = {
+    items: [{ id: 'acai-tam2', nome: 'Açaí sumiu', qty: 1, preco: 26.9, preco_promo: null,
+      tamanhos: [{ label: '500 ml', preco: 26.9 }], adicionais: [] }],
+  };
+  const vivos = [{ id: 'acai-tam2', preco: 17.9, preco_promo: null,
+    tamanhos: [{ label: '300 ml', preco: 17.9 }] }];   // "500 ml" não existe mais
+  assert.strictEqual(buildPrecoDivergenteView(c, vivos), null);
+});
+
+check('6. produto do carrinho ausente em produtosVivos (removido do catálogo) -> ignorado', () => {
+  const c = mkCart();
+  const vivos = [{ id: 'outro-produto-qualquer', preco: 99, preco_promo: null }];
+  assert.strictEqual(buildPrecoDivergenteView(c, vivos), null);
+});
+
+check('7. produtosVivos vazio/undefined (catálogo ainda carregando) -> null', () => {
+  const c = mkCart();
+  assert.strictEqual(buildPrecoDivergenteView(c, []), null);
+  assert.strictEqual(buildPrecoDivergenteView(c, undefined), null);
+});
+
+check('8. pureza — não muta cart nem produtosVivos', () => {
+  const c = mkCart();
+  const vivos = [{ id: '11111111-1111-4111-8111-111111111111', preco: 99, preco_promo: null }, { id: 'pb-morango', preco: 12, preco_promo: null }];
+  const cSnap = JSON.stringify(c), vivosSnap = JSON.stringify(vivos);
+  buildPrecoDivergenteView(c, vivos);
+  assert.strictEqual(JSON.stringify(c), cSnap);
+  assert.strictEqual(JSON.stringify(vivos), vivosSnap);
+});
 
 console.error(fail === 0
   ? '\n✅ checkout.golden OK — payload + mensagem + invariantes congelados; montagem real fixada (pin de fonte)'

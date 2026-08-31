@@ -230,7 +230,7 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
     },
   }), [page, modal, cartOpen, showLoyalty, loyaltyTeaser]);
 
-  if (page==='checkout') return <Suspense fallback={<Spinner/>}><CheckoutPage cart={cart} deliveryMode={deliveryMode} deliveryEta={deliveryEta} onBack={()=>setPage('home')} onSuccess={msg=>{setWaMsg(msg);setPage('success');}}/></Suspense>;
+  if (page==='checkout') return <Suspense fallback={<Spinner/>}><CheckoutPage cart={cart} deliveryMode={deliveryMode} deliveryEta={deliveryEta} produtosVivos={rawProds} onBack={()=>setPage('home')} onSuccess={msg=>{setWaMsg(msg);setPage('success');}}/></Suspense>;
   if (page==='success')  return <Suspense fallback={<Spinner/>}><SuccessPage  msg={waMsg} cart={cart} onBack={()=>setPage('home')} deliveryEta={deliveryEta} deliveryMode={deliveryMode} whatsapp={companyInfo.whatsapp} horario={horario}/></Suspense>;
 
   return (

@@ -11,7 +11,7 @@ import { useCatalogoConfiavel } from '../../hooks/useCatalogoConfiavel.js';   //
 import { useDeliveryFeeConfig } from '../../hooks/useDeliveryFeeConfig.js';   // REF-DELIVERY-FEE-01: config da taxa por distancia
 import { STORAGE_KEYS } from '../../constants/storage.js';
 import { newRequestId } from '../../utils/ids.js';
-import { buildOrderArgs, buildOrderConfirmationMessage, buildCheckoutView, buildDivergenciaView } from '../../utils/orderPayload.js';
+import { buildOrderArgs, buildOrderConfirmationMessage, buildCheckoutView, buildDivergenciaView, buildPrecoDivergenteView } from '../../utils/orderPayload.js';
 import { DS } from '../../services/DataService.js';
 import { LOYALTY_EVENT } from '../../services/loyalty/index.js';   // REF-LOYALTY-01: avisa a loja p/ re-buscar o estado oficial
 import { STORE_INFO } from '../../constants/storeInfo.js';
@@ -25,7 +25,7 @@ import { registrarBreadcrumb, marcarPedido } from '../../lib/sentry.js'; // REF-
 // REF-LGPD-01 · Onda 3 (LGPD-R14): so' carrega o chunk se o cliente realmente abrir o aviso.
 const PrivacidadeScreen = lazy(() => import('../menu/PrivacidadeScreen.jsx').then(m => ({ default: m.PrivacidadeScreen })));
 
-export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEta }) {
+export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEta, produtosVivos }) {
   /* REF-CLIENTE-02 (vinculo pedido<->conta): create_order reusa o customer POR TELEFONE e nunca toca
      auth_user_id. Logo o pedido so aparece em "Meus Pedidos" se o telefone do checkout casar com o do
      cadastro (que carrega o auth_user_id). Para o cliente LOGADO, a identidade vem da conta e o telefone
@@ -240,6 +240,14 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
   /* REF-DELIVERY-FEE-04 · Onda 2: view-model da divergência (buildDivergenciaView, G-CK2 — fmt()
      fica no order-domain, não aqui). null enquanto não houver divergência sinalizada. */
   const divergenciaView = divergencia ? buildDivergenciaView(resumo, divergencia) : null;
+  /* REF-CART-PRICE-DRIFT-01: aviso não-bloqueante de preço de ITEM desatualizado no carrinho (o
+     preço foi congelado quando o cliente adicionou, ver useCart.js/ProductModalInner.jsx — o
+     carrinho persiste até 12h em localStorage sem revalidar). Gated por catalogoConfiavel: quando
+     o catálogo caiu no mock, o banner vermelho bloqueante abaixo já cobre isso — comparar contra
+     dado de mock só geraria ruído redundante. Não corrige o valor exibido (o servidor sempre
+     recalcula certo em create_order() de qualquer forma) — só avisa antes do cliente ser
+     surpreendido na confirmação. */
+  const precoDivergenteView = catalogoConfiavel ? buildPrecoDivergenteView(cart, produtosVivos) : null;
   return (
     <div className="checkout-page">
       <button onClick={onBack} style={{background:'none',color:'var(--gray-500)',fontSize:14,marginBottom:16,display:'flex',alignItems:'center',gap:6,cursor:'pointer',border:'none'}}>
@@ -376,6 +384,25 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
             </div>
             <div style={{fontSize:13,color:'#7F1D1D',marginTop:3,lineHeight:1.5}}>
               Atualize a página e tente novamente em instantes.
+            </div>
+          </div>
+        </div>
+      )}
+      {/* REF-CART-PRICE-DRIFT-01: preço de item do carrinho mudou desde que foi adicionado -- aviso
+          informativo (âmbar), não bloqueia o submit (o servidor sempre recalcula certo). */}
+      {precoDivergenteView && (
+        <div data-testid="checkout-preco-divergente" role="status" style={{
+          display:'flex',gap:10,alignItems:'flex-start',
+          background:'#FFFBEB',border:'1px solid #FDE68A',borderRadius:12,
+          padding:'12px 14px',marginBottom:12,
+        }}>
+          <span style={{fontSize:18,lineHeight:1.2,flexShrink:0}}>💡</span>
+          <div>
+            <div style={{fontWeight:700,fontSize:14,color:'#92400E',lineHeight:1.4}}>
+              Alguns preços foram atualizados
+            </div>
+            <div style={{fontSize:13,color:'#78350F',marginTop:3,lineHeight:1.5}}>
+              {precoDivergenteView.mensagem}
             </div>
           </div>
         </div>
