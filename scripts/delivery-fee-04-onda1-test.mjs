@@ -82,11 +82,15 @@ async function assertDivergeEntaoConfirma(labelBase, customer, orderForjado, ite
 
 // ── Coordenadas fixas p/ teste (Blumenau/SC, mesma regiao dos dados reais do projeto): loja em
 // (-26.9000,-48.6000). PERTO ~0.7km (faixa 1, ate 5km). LONGE ~7.8km (faixa 2, 5.1-10km). FORA DE
-// ALCANCE ~50km (alem da maior faixa cadastrada).
+// ALCANCE ~25km (alem da maior faixa cadastrada, mas DENTRO do bounding box de plausibilidade
+// introduzido pela REF-ADDRESS-GEO-INTEGRITY-01 Onda 2 -- GREATEST(10*3,50)=50km para estas faixas
+// -- preserva a intencao original deste Caso 7: "endereco real, so' fora de alcance", sem disparar a
+// rejeicao nova de coordenada GROSSEIRAMENTE implausivel, que e' um cenario coberto pelos testes
+// dedicados da Onda 2, scripts/address-geo-integrity-01-onda2-test.mjs G2).
 const LOJA_LAT = -26.9000, LOJA_LNG = -48.6000;
 const PERTO_LAT = -26.9060, PERTO_LNG = -48.6060;   // ~0.9km (haversine exato, conferido)
 const LONGE_LAT = -26.9450, LONGE_LNG = -48.6450;   // ~6.7km (haversine exato, conferido)
-const FORA_LAT  = -27.3500, FORA_LNG  = -49.0500;   // ~58km
+const FORA_LAT  = -27.0700, FORA_LNG  = -48.7700;   // ~25.3km (haversine exato, conferido)
 
 const FAIXAS = [{ de: 0, ate: 5, valor: 10.00 }, { de: 5.1, ate: 10, valor: 20.00 }];
 
@@ -200,7 +204,7 @@ async function main() {
     // ── Caso 7 — endereco FORA DE ALCANCE (>10km) -> delivery_fee=0 (mesmo fallback do client). ────
     await withTx(async () => {
       await comoLoja(STORE);
-      await assertDivergeEntaoConfirma('Caso 7 — endereco FORA DE ALCANCE (~58km) + fee forjado (999)',
+      await assertDivergeEntaoConfirma('Caso 7 — endereco FORA DE ALCANCE (~25km) + fee forjado (999)',
         { name: 'C7', phone: telefone() },
         { payment_method: 'dinheiro', address: 'Rua Fora, 3', endereco_id: END_FORA, delivery_fee: 999, maquininha_fee: 0 },
         item(), STORE, 0, 0);
