@@ -1,6 +1,6 @@
 # REF-MESA-01 — CHECKPOINT DE RETOMADA (ler isto primeiro numa nova sessão)
 
-**Atualizado em:** 2026-08-31, Onda 4 CONCLUÍDA, iniciando Onda 5.
+**Atualizado em:** 2026-08-31, Onda 5 CONCLUÍDA, iniciando Onda 6.
 **Se você é uma nova sessão/contexto retomando este trabalho:** leia este arquivo inteiro, depois
 rode `git log --oneline -12` e `git status --porcelain=v1` em `C:\Projetos\Encanto\encanto-react`
 para confirmar que o estado real do repositório bate com o descrito aqui ANTES de continuar. Não
@@ -15,15 +15,13 @@ resumos de conversa, só neste arquivo + no Git real.
 
 ## Onde estamos agora (resumo de 1 parágrafo)
 
-Ondas 0-4 (auditoria/plano, fundação banco/RPC, checkout/storefront, canal QR, canal Admin/garçom)
-estão **CONCLUÍDAS, TESTADAS E COMMITADAS LOCALMENTE** (não commitadas em produção, não pushed —
-commits `af50c3a`, `e972e1a`, `fff4946`, `287ee04`, `6875bf3`, `ddb0743`, `d1856c6`, `78e79f0`). Onda
-4 fechou 100% verde: lint 0 erros, typecheck limpo, `test:domain` 40/40, teste dedicado da Onda 4
-8/8, regressão completa de banco (Onda 1 26/26 + Onda 3 8/8 + 8 suites de outras REFs, 129 checks) +
-2 specs E2E novos (browser real, prova ponta-a-ponta do fluxo Admin) + 10 specs E2E existentes
-(checkout/admin-pedidos) confirmando zero regressão e zero vazamento de estado — tudo verde. Próxima:
-Onda 5 (propagar tipo_pedido estruturado pra Admin/Comanda/operação — hoje ainda mostram Mesa como
-"Entrega" via a regex antiga sobre `address`, gap deliberadamente adiado até aqui).
+Ondas 0-5 (auditoria/plano, fundação banco/RPC, checkout/storefront, canal QR, canal Admin/garçom,
+propagação pra Admin/Comanda) estão **CONCLUÍDAS, TESTADAS E COMMITADAS LOCALMENTE** (não commitadas
+em produção, não pushed — commits `af50c3a`, `e972e1a`, `fff4946`, `287ee04`, `6875bf3`, `ddb0743`,
+`d1856c6`, `78e79f0`, `5c05be1`, `67f4bd2`). Onda 5 fechou 100% verde, incluindo uma REGRESSÃO REAL
+encontrada e corrigida na mesma onda (não só registrada — ver seção Onda 5 abaixo). Próxima: Onda 6
+(Relatórios/Métricas — `admin_reports_summary`/`AdminRelatorios.jsx` ainda classificam Mesa como
+"Entrega" via a MESMA regex antiga sobre `address`, deliberadamente adiado até aqui).
 
 ---
 
@@ -222,45 +220,73 @@ Tudo descrito abaixo já foi implementado, testado e commitado. Não refazer.
 
 ---
 
-## PRÓXIMO PASSO EXATO (retomar por aqui) — Onda 5: Operação/Comanda/Admin
+## Onda 5 — Operação/Comanda/Admin (CONCLUÍDA, commit `67f4bd2`)
 
-Ainda NÃO iniciada. Objetivo: propagar `tipo_pedido`/`mesa_identificador` (estruturados desde a Onda
-1) pra toda a operação, ELIMINANDO os pontos que ainda dependem da regex antiga sobre `address` —
-hoje um pedido de mesa aparece como "🛵 Entrega" em todo lugar do Admin. Plano:
+- `migrations/REF-MESA-01-onda5-admin-orders-search.sql` (+rollback) — `admin_orders_search()` passa
+  a devolver `tipo_pedido`/`origem_pedido`/`mesa_identificador`. **Achado técnico:** mudar
+  `RETURNS TABLE(...)` exige `DROP FUNCTION` antes (CREATE OR REPLACE sozinho falha com "cannot change
+  return type") — e DROP apaga grants, precisou `GRANT EXECUTE ... TO PUBLIC` explícito depois.
+  `useOrdersPagina`/`DS.getPedidosPagina` não filtram campos, então as 3 colunas chegam em `order.*`
+  no Admin sem NENHUMA mudança de código JS na camada de dados.
+- `src/components/admin/comanda/comandaModel.js::tipoDoPedido` — lê `order.tipo_pedido` primeiro,
+  regex vira só fallback defensivo. `tipoLabel`/`tipoLabelCliente`/`previsao`/`previsaoLabel`/`endereco`
+  ganharam o 3º ramo explícito pra mesa (endereço nunca aparece; `previsao` mostra "Mesa {id}" em vez
+  de inventar um tempo de deslocamento).
+- `src/components/pedidos/pedidoStatus.js` — `FLUXO_MESA` novo (reusa os 4 status de retirada —
+  `orders.status` não tem valor próprio pra mesa, criar um exigiria migration de schema fora do
+  escopo desta onda). `fluxoDoTipo` deixou de ser ternário.
+- `src/components/admin/AdminPedidos.jsx` — badge virou mapa `TIPO_BADGE` de 3 entradas, mostra
+  `order.mesa_identificador` quando presente.
+- `src/services/delivery/deliveryEtaFormat.js::textoTempoEntrega` — texto neutro pra mesa ("preparo
+  em andamento"). Beneficia de graça `PedidoNotificacoes.jsx` (preview), mas a notificação AUTOMÁTICA
+  de verdade (SQL, `enc_render_message`/`enc_tempo_estimado`) só é corrigida na Onda 7 — até lá o
+  preview do Admin fica correto ANTES do envio real acompanhar (gap conhecido, registrado).
+- **Regressão REAL encontrada e CORRIGIDA nesta mesma onda** (não só registrada — era causada pela
+  própria mudança desta onda): `e2e/support/fixture-order.js` (`criarPedidoFixture`/
+  `criarPedidoAvulso`) criava pedidos "retirada" só via texto de endereço, sem o campo `retirada` no
+  payload — funcionava por acidente via regex antes; com `tipo_pedido` estruturado tendo prioridade,
+  esses fixtures passaram a persistir `tipo_pedido='entrega'` errado, quebrando 3 specs E2E
+  (admin-pedidos-lista/status/comanda). Corrigido pra mandar `retirada` explícito, igual o checkout
+  real já fazia.
+- Testes novos: 9 casos em `tests/comanda.golden.mjs`, 4 em `tests/order-status.guard.mjs`, 1 em
+  `tests/whatsapp-templates.golden.mjs`; `scripts/mesa-01-onda5-admin-orders-search-test.mjs` (4/4);
+  `e2e/tests/admin/admin-pedidos-novo-mesa.spec.js` estendido com prova visual real (badge "🍽️ Mesa
+  12" + comanda "MESA" via browser).
+- Regressão completa: `test:domain` 40/40, lint 0 erros, typecheck limpo, as 4 suites de banco
+  próprias da REF (26+8+8+4), 23 specs E2E (checkout + admin-pedidos + fidelidade + meus-pedidos) —
+  tudo verde.
 
-1. **Investigar primeiro (não presumir):** confirmar se `admin_orders_search()` (RPC usada por
-   `useOrdersPagina`/`AdminPedidos.jsx`) já devolve as colunas `tipo_pedido`/`origem_pedido`/
-   `mesa_identificador` no `RETURNS TABLE(...)` — a migration é `REF-ADMIN-03-orders-scale.sql`. Se
-   não devolver, é preciso uma migration nova (`REF-MESA-01-onda5-...`) só adicionando essas 3 colunas
-   ao retorno da RPC (sem mudar a lógica de busca/paginação em si). Mesma checagem para qualquer outra
-   RPC/`select` que alimenta `order` nas telas listadas abaixo (`admin_order_endereco`, o que
-   `DS.getPedidoEndereco` retorna, etc.).
-2. **`src/components/admin/comanda/comandaModel.js::tipoDoPedido(order)`** — hoje é
-   `RE_RETIRADA.test(order?.address)`. Trocar para: `order?.tipo_pedido` quando presente (sempre vai
-   estar, é `NOT NULL DEFAULT` desde a Onda 1 — todo pedido, histórico ou novo, tem o valor certo ou
-   o default seguro 'entrega'), com fallback pra regex SÓ se por algum motivo o campo não vier no
-   objeto (defesa, não o caminho normal). Isso já upgrade tudo que consome `tipoDoPedido` de graça:
-   `tipoLabel`/`tipoLabelCliente`/`previsaoLabel`/decisão de mostrar endereço em `buildComanda` — mas
-   cada um desses ainda é um `? :` de 2 vias (`retirada`/`entrega`), precisa virar 3 vias explícitas
-   (`entrega`/`retirada`/`mesa`) — ver auditoria original §9 pra lista exata dos pontos.
-3. **`src/components/pedidos/pedidoStatus.js`** — `FLUXO_ENTREGA`/`FLUXO_RETIRADA` precisam de um
-   `FLUXO_MESA` novo (provavelmente `recebido→preparo→pronto→servido`, sem "saiu para entrega" — mesmo
-   raciocínio já aplicado em `SuccessPage.jsx` na Onda 2). `fluxoDoTipo(tipo)` deixa de ser ternário.
-4. **`src/components/admin/AdminPedidos.jsx`** — badge do card (`tipo === 'retirada' ? '🏪' : '🛵'`)
-   vira mapa de 3 entradas incluindo `🍽️ Mesa`; exibir `order.mesa_identificador` quando presente
-   (ex.: "Mesa 07") em vez de/além do texto de `address`.
-5. **Comanda impressa/WhatsApp** (`comandaModel.js`/`comandaHtml.js`/`comandaTexto.js`) — endereço só
-   aparece se NÃO for mesa nem retirada; texto "Mesa {id}" em vez de tentar mostrar endereço vazio.
-6. **`tests/comanda.golden.mjs`/`tests/order-status.guard.mjs`** — vão precisar de um 3º fixture/caso
-   (`pedidoMesa`) — são os "pins de fonte" desta REF que precisarão de atualização deliberada, mesmo
-   padrão do que já aconteceu em `checkout.golden.mjs` na Onda 2.
-7. **NÃO tocar nesta onda** (deliberadamente fora, são Ondas 6/7): `AdminRelatorios.jsx`/
-   `admin_reports_summary` (rótulo "Entrega vs Retirada" no BI) e `enc_render_message`/
-   `enc_tempo_estimado` (notificação WhatsApp automática) — continuam classificando mesa como
-   "entrega" até essas ondas específicas.
-8. Fluxo de sempre: investigar → implementar → testar (domain + backend se migration nova + E2E pros
-   specs de Admin já existentes, mais um novo se fizer sentido) → revisar diff → `git add` explícito
-   → commit `feat(admin): REF-MESA-01 Onda 5 -- ...` → atualizar checkpoint → Onda 6.
+---
+
+## PRÓXIMO PASSO EXATO (retomar por aqui) — Onda 6: Relatórios/Métricas
+
+Ainda NÃO iniciada. Objetivo: `admin_reports_summary()`/`AdminRelatorios.jsx` ainda classificam Mesa
+como "Entrega" (achado mais grave da auditoria original, §10) via a MESMA regex sobre `address` —
+agora que `orders.tipo_pedido` está estruturado (Onda 1) e a solução do "DROP FUNCTION antes de mudar
+RETURNS TABLE" já está provada (Onda 5), esta onda deve ser direta:
+
+1. **Investigar primeiro:** ler a definição VIVA de `admin_reports_summary()` no E2E (mesmo padrão
+   das ondas anteriores — script de recon via `db.e2e.env`) antes de escrever a migration, para
+   confirmar a query exata da CTE `base`/`por_tipo` (a versão auditada está em
+   `migrations/REF-DASHBOARD-01-admin-reports.sql`, mas pode ter mudado desde então).
+2. **Migration nova** (`REF-MESA-01-onda6-admin-reports.sql`): a CTE `base` precisa incluir
+   `o.tipo_pedido` no SELECT; a CTE `por_tipo` troca `CASE WHEN address ~* 'retirada...' THEN
+   'retirada' ELSE 'entrega' END` por `o.tipo_pedido` direto (`GROUP BY o.tipo_pedido`) — elimina a
+   regex de vez neste ponto. Provavelmente NÃO muda `RETURNS jsonb` (é só `jsonb`, não `TABLE`), então
+   talvez baste `CREATE OR REPLACE` simples desta vez (confirmar antes de assumir).
+3. **`src/components/admin/AdminRelatorios.jsx`** (linha do card "Entrega vs. retirada", achado mais
+   grave da auditoria original: `t.tipo === 'retirada' ? '🏪 Retirada' : '🚚 Entrega'` — um 3º valor
+   cairia silenciosamente em "Entrega", distorcendo o BI sem erro visível). Trocar por mapa de 3
+   entradas — considerar reaproveitar/extrair o `TIPO_BADGE` já criado em `AdminPedidos.jsx` (Onda 5)
+   pra um módulo compartilhado, já que seria a 2ª tela precisando exatamente dos mesmos 3 rótulos
+   (evita duplicar/divergir label+emoji entre as duas telas).
+4. **Testes:** `scripts/dashboard01-admin-reports-test.mjs` já existe (REF-DASHBOARD-01) — verificar
+   se cobre `por_tipo` e estender com um caso de pedido de mesa; `tests/` não parece ter golden de
+   domínio puro pra `admin_reports_summary` (é só SQL) — confirmar antes de presumir.
+5. Fluxo de sempre: investigar → migration → frontend → testar (script SQL dedicado ou estendido +
+   regressão das ondas anteriores + E2E `admin-relatorios.spec.js` se existir) → revisar diff →
+   `git add` explícito → commit `feat(admin): REF-MESA-01 Onda 6 -- ...` → atualizar checkpoint →
+   Onda 7 (WhatsApp/notificações — a última peça que ainda depende da regex antiga).
 
 1. **Backend primeiro (mesmo padrão das Ondas 1/3):** nova migration
    `REF-MESA-01-onda4-canal-admin.sql`. Dentro de `create_order()`, quando `origem_pedido='admin_garcom'`:
