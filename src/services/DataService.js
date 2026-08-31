@@ -172,9 +172,23 @@ export const DS = {
      com o MESMO requestId — o servidor recalcula do zero, nunca confia no valor que ele mesmo acabou
      de informar. */
   async savePedido(cliente, order, itens, requestId) {
+    return this._executarCreateOrder(cliente, order, itens, requestId, buildStorefrontRpcParam());
+  },
+  /* REF-MESA-01 · Onda 4: variante Admin/garçom de savePedido -- MESMA RPC create_order (nunca um
+     segundo mecanismo de persistência de pedido), só troca qual singleton de loja ativa alimenta
+     p_store_id. savePedido (acima) usa buildStorefrontRpcParam() (só existe no bundle do cliente,
+     nunca resolve dentro do Admin); esta usa buildStoreRpcParam() de adminStore.js — o MESMO usado
+     por toda RPC exclusivamente-Admin desta classe (getPedidosStats/admin_order_endereco/orders_health
+     acima) — reflete a loja ATIVA do seletor multi-loja do Admin. Chamar savePedido (a de cima) de
+     dentro do Admin enviaria p_store_id vazio e o pedido cairia silenciosamente em default_store_id(),
+     ignorando a loja escolhida no seletor — por isso esta variante existe. */
+  async savePedidoAdmin(cliente, order, itens, requestId) {
+    return this._executarCreateOrder(cliente, order, itens, requestId, buildStoreRpcParam());
+  },
+  async _executarCreateOrder(cliente, order, itens, requestId, storeParam) {
     const call = () => this.run(d=>d.rpc('create_order', {
       p_customer: cliente, p_order: order, p_items: itens, p_request_id: requestId ?? null,
-      ...buildStorefrontRpcParam(),
+      ...storeParam,
     }));
     const withTimeout = p => Promise.race([p,
       new Promise(res => setTimeout(() => res({ data:null, error:{ message:'timeout' } }), RPC_TIMEOUT))]);

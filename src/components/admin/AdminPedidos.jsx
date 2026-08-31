@@ -29,6 +29,8 @@ import { ComandaModal } from './comanda/ComandaModal.jsx';
 import { tipoDoPedido } from './comanda/comandaModel.js';
 import { PedidoHistorico } from './PedidoHistorico.jsx';
 import { PedidoNotificacoes } from './PedidoNotificacoes.jsx';
+import { NovoPedidoMesaModal } from './NovoPedidoMesaModal.jsx'; // REF-MESA-01 · Onda 4: canal admin_garcom
+import { useMesaConfig } from '../../hooks/useMesaConfig.js';    // REF-MESA-01 · Onda 4: so mostra o botao com mesa_canal_admin=true
 
 /* cartoes-resumo (contadores por status) — a mesma trilha operacional + cancelado */
 const RESUMO = ['recebido', 'preparo', 'pronto', 'entrega', 'entregue', 'cancelado'];
@@ -143,6 +145,8 @@ export function AdminPedidos() {
   const { orders, loading, temMais, carregarMais, refresh } = useOrdersPagina({ busca, status: statusFiltro });
   const { stats, refresh: refreshStats } = useOrdersStats(0); // só agregados globais — a lista é a de useOrdersPagina
   const [comanda, setComanda] = useState(null);   // { order, count, endereco }
+  const mesaConfig = useMesaConfig();             // REF-MESA-01 · Onda 4
+  const [novoPedido, setNovoPedido] = useState(false);
 
   /* REF-COMANDA-ENDERECO-01: endereco estruturado só é útil em entrega (retirada não tem endereço do
      cliente — comandaModel já ignora); busca em paralelo com o contador, mesmo padrão de sempre. */
@@ -173,7 +177,17 @@ export function AdminPedidos() {
       <div className="admin-card">
         <div className="admin-card-header">
           <h3>Pedidos</h3>
-          <button className="btn-secondary" onClick={atualizar}>🔄 Atualizar</button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {/* REF-MESA-01 · Onda 4: canal admin_garcom -- so aparece se a loja ligou mesa_canal_admin
+                (get_mesa_config). Barreira de seguranca de verdade e' server-side (create_order); isto
+                e' so UX, mesmo padrao ja usado pra' esconder a opcao "Mesa" no storefront (DeliveryBar). */}
+            {mesaConfig.canal_admin && (
+              <button className="btn-secondary" data-testid="admin-novo-pedido-mesa" onClick={() => setNovoPedido(true)}>
+                🍽️ Novo pedido de mesa
+              </button>
+            )}
+            <button className="btn-secondary" onClick={atualizar}>🔄 Atualizar</button>
+          </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '12px 16px 0' }}>
           <input
@@ -220,6 +234,9 @@ export function AdminPedidos() {
       </div>
       {comanda && (
         <ComandaModal order={comanda.order} totalPedidos={comanda.count} endereco={comanda.endereco} onClose={() => setComanda(null)} />
+      )}
+      {novoPedido && (
+        <NovoPedidoMesaModal onClose={() => setNovoPedido(false)} onCriado={atualizar} />
       )}
     </div>
   );

@@ -51,4 +51,18 @@ export class AdminPedidosPage {
   get comandaCopiarButton()  { return this.comandaDialog.getByRole('button', { name: /Copiar|Copiado/ }); } // REF-REGRESSION-01 · P5
   get comandaWhatsappButton(){ return this.comandaDialog.getByRole('button', { name: /WhatsApp/ }); }       // REF-REGRESSION-01 · P5
   async fecharComanda() { await this.comandaFecharButton.click(); }
+
+  // ── Novo pedido de mesa (NovoPedidoMesaModal.jsx, REF-MESA-01 · Onda 4) ──────
+  get novoPedidoMesaButton() { return this.page.locator('[data-testid="admin-novo-pedido-mesa"]'); }
+  get novoPedidoDialog()     { return this.page.getByRole('dialog', { name: 'Novo pedido de mesa' }); }
+  get mesaNumeroInput()      { return this.novoPedidoDialog.locator('#admin-mesa-numero'); }
+  get mesaNomeInput()        { return this.novoPedidoDialog.locator('#admin-mesa-nome'); }
+  get mesaTelefoneInput()    { return this.novoPedidoDialog.locator('#admin-mesa-telefone'); }
+  get mesaCriarButton()      { return this.novoPedidoDialog.getByRole('button', { name: 'Criar pedido' }); }
+  get buscaProdutoInput() { return this.novoPedidoDialog.getByPlaceholder('Buscar produto…'); }
+  /** Fixture do E2E não tem produto com tamanhos (seed-catalog.sql) -- sempre 1 botão "+ Adicionar". */
+  produtoAdicionarButton(nomeProduto) {
+    return this.novoPedidoDialog.locator('div', { hasText: nomeProduto }).getByRole('button', { name: '+ Adicionar' });
+  }
+  async abrirNovoPedidoMesa() { await this.novoPedidoMesaButton.click(); }
 }
