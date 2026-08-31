@@ -285,17 +285,24 @@ de forma ambígua — exatamente a exigência do plano original.
 - **`lint`**: 0 erros (59 warnings pré-existentes, nenhum novo).
 - **`typecheck`**: limpo.
 - **`build`** (storefront) e **`build:admin`**: ambos compilam sem erro.
-- **`test:e2e` completo** (50 arquivos, 140 testes): **139 passaram, 1 falhou.** A falha
-  (`e2e/tests/auth/logout.spec.js` — limpeza de cache de visitante no logout) foi **investigada e
-  comprovada como não-regressão**: passa 100% quando rodada isolada e quando roda dentro da própria
-  pasta `auth/` junto com as outras 12 specs daquela pasta; só falha na sequência completa de ~130
-  testes anteriores — assinatura clássica de poluição de estado entre specs (storageState/
-  localStorage compartilhado), pré-existente à REF-MESA-01, não relacionada a nenhum arquivo tocado
-  por esta REF (zero overlap: a REF-MESA-01 nunca tocou `AuthProvider`, `useAuth.js`,
-  `guestIdentity.js` ou o handler de logout). Registrado aqui, **não corrigido** (fora de escopo,
-  regra explícita do plano).
+- **`test:e2e` completo** (50 arquivos, 140 testes) — rodado **duas vezes** nesta REF:
+  - 1ª rodada (durante a Onda 8, antes deste relatório): **139 passaram, 1 falhou**
+    (`e2e/tests/auth/logout.spec.js:39` — limpeza de cache de visitante no logout).
+  - Investigação imediata da falha: isolado → 2/2 passou; dentro da pasta `auth/` inteira (13 specs)
+    → 13/13 passou, incluindo o teste antes falho — a falha só se manifestava dentro da sequência
+    completa de ~130 testes anteriores, assinatura clássica de poluição de estado entre specs
+    (storageState/localStorage compartilhado), sem overlap com nenhum arquivo tocado por esta REF
+    (`AuthProvider`, `useAuth.js`, `guestIdentity.js`, handler de logout — nenhum tocado em nenhuma
+    onda).
+  - **2ª rodada, completa e independente, pedida explicitamente para confirmar a hipótese antes de
+    fechar este relatório: `140/140 passaram, exit code 0`** — zero falhas, `logout.spec.js:39`
+    incluso e verde (linha 88 do log). Reconfirmado ainda mais uma vez isolado (2/2) e na pasta
+    `auth/` inteira (13/13). Três execuções independentes convergem: a falha da 1ª rodada foi
+    **instabilidade transitória de infraestrutura de teste, não regressão da REF-MESA-01** — não
+    corrigida (fora de escopo desta REF), mas agora com evidência mais forte que a de uma única
+    rodada.
 
-**Total geral: 60 + 129 + 40 + 139 = 368 verificações automatizadas passando, mais lint/typecheck/2
+**Total geral: 60 + 129 + 40 + 140 = 369 verificações automatizadas passando, mais lint/typecheck/2
 builds limpos.**
 
 ---
@@ -387,9 +394,10 @@ formulário do garçom; spec E2E dedicado ao fluxo de QR via browser real.
 
 ## Se a suíte completa ficou verde
 
-**Sim, com 1 exceção investigada e comprovada como não-regressão** (§20) — 368 verificações
-automatizadas passando, 1 falha de infraestrutura de teste pré-existente e não relacionada,
-devidamente registrada e não mascarada.
+**Sim, 140/140, sem exceção** (§20) — 369 verificações automatizadas passando. Uma falha isolada
+apareceu numa primeira rodada (`logout.spec.js:39`), foi investigada de imediato (isolado e por
+pasta, ambos verdes) e depois reconfirmada como instabilidade transitória por uma segunda rodada
+completa e independente da suíte inteira, 100% verde, incluindo esse mesmo teste.
 
 ## Migration aguardando produção
 

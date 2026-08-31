@@ -322,7 +322,7 @@ final deste checkpoint/relatório)
 - **Regressão completa executada:** 60 (backend próprio da REF) + 129 (REFs relacionadas que
   compartilham `create_order`/`_resolve_delivery_fee`/`_resolve_item_pricing`) + 40 (`test:domain`) +
   lint (0 erros) + typecheck (limpo) + build storefront + build Admin (ambos OK) + suíte E2E completa
-  (`test:e2e`, 50 arquivos/140 testes): **139 passaram, 1 falhou**
+  (`test:e2e`, 50 arquivos/140 testes) — **1ª rodada: 139 passaram, 1 falhou**
   (`e2e/tests/auth/logout.spec.js:39`).
 - **A falha foi investigada e PROVADA não-regressão** (regra explícita do plano: provar a causa antes
   de classificar como não-regressão, nunca descartar sem evidência): rodada isolada → 2/2 passou; rodada
@@ -330,7 +330,13 @@ final deste checkpoint/relatório)
   dentro da sequência completa de ~130 testes anteriores — assinatura de poluição de estado
   (storageState/localStorage) entre specs, pré-existente, zero overlap com qualquer arquivo tocado por
   esta REF (`AuthProvider`, `useAuth.js`, `guestIdentity.js`, logout handler — nenhum tocado em nenhuma
-  onda). Registrada no relatório final, não corrigida (fora de escopo desta REF).
+  onda).
+- **Reconfirmação pedida pelo usuário antes de fechar o relatório:** nova rodada completa e
+  independente da suíte inteira (task `bea2utp89`) → **140/140 passaram, exit code 0**, zero falhas,
+  `logout.spec.js:39` incluso e verde. Reisolado (2/2) e por pasta `auth/` (13/13) de novo, ambos
+  verdes. Três execuções independentes convergem para a mesma conclusão: instabilidade transitória de
+  infraestrutura de teste, não regressão da REF-MESA-01. Registrada no relatório final (§20), não
+  corrigida (fora de escopo desta REF).
 - `docs/ref/REF-MESA-01-relatorio-final.md` (novo, 23 seções) — relatório consolidado completo, ver
   arquivo. Cobre: ondas, commits, arquivos, migrations, RPCs, modelo de dados, config por tenant, os 3
   fluxos (Delivery/Retirada/Mesa), canal QR, canal Garçom/Admin, Admin, Comanda, Relatórios, WhatsApp,
