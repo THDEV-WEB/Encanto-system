@@ -19,6 +19,11 @@ const PRESETS = [
   { id: '90d', label: '90 dias', dias: 90 },
 ];
 
+/* REF-MESA-01 · Onda 6: mapa de 3 entradas -- nunca mais um ternario de 2 vias que jogaria um 3º
+   valor (mesa) pro ramo "Entrega" por default (achado mais grave da auditoria original: o BI
+   contabilizaria/rotularia Mesa como Entrega silenciosamente, sem erro visivel). */
+const TIPO_LABEL = { mesa: '🍽️ Mesa', retirada: '🏪 Retirada', entrega: '🚚 Entrega' };
+
 /* Mesmos rótulos/ícones de CheckoutPage.jsx (`pays`) — mantidos aqui só como apresentação (nenhuma
    regra de negócio depende deles); se um novo método de pagamento nascer no checkout, aparece com o
    valor cru até alguém adicionar o rótulo aqui também. */
@@ -137,7 +142,7 @@ export function AdminRelatorios() {
               <h3 style={{ marginBottom: 12 }}>🚚 Entrega vs. retirada</h3>
               {dados.por_tipo.map((t, i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: i < dados.por_tipo.length - 1 ? '1px solid var(--gray-100)' : 'none' }}>
-                  <span>{t.tipo === 'retirada' ? '🏪 Retirada' : '🚚 Entrega'}</span>
+                  <span>{TIPO_LABEL[t.tipo] || TIPO_LABEL.entrega}</span>
                   <span><b>{fmt(t.receita)}</b> <span style={{ color: 'var(--gray-500)', fontSize: 12 }}>({t.pedidos})</span></span>
                 </div>
               ))}
