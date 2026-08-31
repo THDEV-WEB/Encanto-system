@@ -1,6 +1,7 @@
 # REF-MESA-01 — CHECKPOINT DE RETOMADA (ler isto primeiro numa nova sessão)
 
-**Atualizado em:** 2026-08-31, Onda 6 CONCLUÍDA, iniciando Onda 7.
+**Atualizado em:** 2026-08-31, Onda 7 CONCLUÍDA (todas as ondas de conteúdo 0-7 feitas), iniciando
+Onda 8 (auditoria final + regressão completa + relatório consolidado, PARAR NO GATE).
 **Se você é uma nova sessão/contexto retomando este trabalho:** leia este arquivo inteiro, depois
 rode `git log --oneline -12` e `git status --porcelain=v1` em `C:\Projetos\Encanto\encanto-react`
 para confirmar que o estado real do repositório bate com o descrito aqui ANTES de continuar. Não
