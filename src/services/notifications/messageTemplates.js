@@ -8,7 +8,7 @@
    WhatsApp Cloud API. O dispatcher mantem um espelho SQL destes templates (enc_render_message) — manter
    em sincronia; o snapshot em tests/whatsapp-templates.golden.mjs trava a copy canonica.
 
-   Placeholders suportados: {{cliente}} {{numero}} {{tempo}} {{empresa}}.
+   Placeholders suportados: {{cliente}} {{numero}} {{tempo}} {{empresa}} {{situacao}} (Onda 7).
    REF-COMPANY-02: {{empresa}} vem do NOME CURTO institucional (settings.company_info.nomeCurto),
    snapshotado no enqueue (enc_enqueue_notification) — mesmo modelo de frescor ja usado para
    cliente/numero/tempo (ver ADR REF-COMPANY-02 §Decisao B: staleness aceitavel, sem busca ao vivo
@@ -42,8 +42,7 @@ Em breve seguirá para a próxima etapa.`,
 
 Seu pedido #{{numero}}
 está pronto.
-Se for retirada, já pode ser buscado.
-Se for entrega, nosso entregador sairá em instantes.`,
+{{situacao}}`,
 
   entrega: `🛵 {{empresa}}
 
@@ -57,6 +56,18 @@ Seu pedido foi entregue.
 Esperamos que tenha gostado.
 Muito obrigado pela preferência.`,
 });
+
+/* REF-MESA-01 · Onda 7: o template de 'pronto' hedgeava "se for retirada... se for entrega..." porque
+   nunca recebia o tipo do pedido -- funcionava so' porque eram 2 opcoes e o cliente decidia sozinho
+   qual se aplicava. Com Mesa, o hedge nao escala (nenhuma frase generica seria reconhecivel como "sua
+   comida esta pronta na mesa"). {{situacao}} resolve ANTES do render (aqui, no enqueue) pro tipo
+   exato do pedido -- 3 ramos explicitos, nunca ternario de 2 vias. Espelhado byte-a-byte pelo CASE
+   dentro de enc_enqueue_notification (SQL, ver migrations/REF-MESA-01-onda7-notificacoes-mesa.sql). */
+export function situacaoPronto(tipo) {
+  if (tipo === 'retirada') return 'Já pode ser buscado.';
+  if (tipo === 'mesa') return 'Em breve será servido em sua mesa.';
+  return 'Nosso entregador sairá em instantes.';
+}
 
 /* Ha template (e portanto notificacao) para este status? 'cancelado' NAO tem template no spec -> sem envio. */
 export const temTemplate = (status) => Object.prototype.hasOwnProperty.call(NOTIFY_TEMPLATES, status);

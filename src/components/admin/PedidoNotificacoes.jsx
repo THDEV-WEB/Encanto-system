@@ -9,7 +9,7 @@ import { useEffect, useState } from 'react';
 import { DS } from '../../services/DataService.js';
 import { useCompanyInfo } from '../../hooks/useCompanyInfo.js';   // REF-COMPANY-02: nome curto na previa
 import { useDeliveryEta } from '../../hooks/useDeliveryEta.js';   // REF-GOLIVE-01: tempo real (nao mais constante local)
-import { renderTemplate } from '../../services/notifications/messageTemplates.js';
+import { renderTemplate, situacaoPronto } from '../../services/notifications/messageTemplates.js';
 import { textoTempoEntrega } from '../../services/delivery/deliveryEtaFormat.js';
 import { fluxoDoTipo, statusInfo } from '../pedidos/pedidoStatus.js';
 import { tipoDoPedido, refCurtaDoPedido } from './comanda/comandaModel.js';
@@ -52,7 +52,7 @@ export function PedidoNotificacoes({ order }) {
         <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Carregando…</div>
       ) : passos.map((st) => {
         const info = statusInfo(st);
-        const msg = renderTemplate(st, { cliente, numero, tempo, empresa: companyInfo.nomeCurto });
+        const msg = renderTemplate(st, { cliente, numero, tempo, empresa: companyInfo.nomeCurto, situacao: situacaoPronto(tipo) });
         if (!msg) return null;
         const row = porStatus[st];
         const est = ESTADO[row?.state] || ESTADO.previa;

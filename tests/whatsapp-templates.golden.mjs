@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { NOTIFY_TEMPLATES, renderTemplate, temTemplate } from '../src/services/notifications/messageTemplates.js';
+import { NOTIFY_TEMPLATES, renderTemplate, temTemplate, situacaoPronto } from '../src/services/notifications/messageTemplates.js';
 import { textoTempoEntrega } from '../src/services/delivery/deliveryEtaFormat.js';
 
 let fail = 0;
@@ -50,6 +50,21 @@ check('textoTempoEntrega: mesa e texto de status neutro (nunca herda "até Nmin"
   assert.equal(textoTempoEntrega('mesa', 45), 'preparo em andamento');
   assert.equal(textoTempoEntrega('mesa'), 'preparo em andamento');
 });
+/* REF-MESA-01 · Onda 7: fecha o hedge "se for retirada... se for entrega..." do template 'pronto' --
+   nunca escalaria pra 3 modos. situacaoPronto resolve ANTES do render, 3 ramos explicitos. */
+check('situacaoPronto: 3 ramos explicitos, nunca ternario de 2 vias', () => {
+  assert.equal(situacaoPronto('entrega'), 'Nosso entregador sairá em instantes.');
+  assert.equal(situacaoPronto('retirada'), 'Já pode ser buscado.');
+  assert.equal(situacaoPronto('mesa'), 'Em breve será servido em sua mesa.');
+});
+check("render 'pronto': usa {{situacao}}, NUNCA mais hedgeia 'se for retirada/se for entrega'", () => {
+  const txtMesa = renderTemplate('pronto', { numero: 'X9', situacao: situacaoPronto('mesa') });
+  assert.ok(txtMesa.includes('Em breve será servido em sua mesa.'));
+  assert.ok(!/se for retirada/i.test(txtMesa));
+  assert.ok(!/se for entrega/i.test(txtMesa));
+  const txtEntrega = renderTemplate('pronto', { numero: 'X9', situacao: situacaoPronto('entrega') });
+  assert.ok(txtEntrega.includes('Nosso entregador sairá em instantes.'));
+});
 check('render preparo/pronto/entrega usam numero/empresa', () => {
   for (const s of ['preparo', 'pronto', 'entrega']) {
     const txt = renderTemplate(s, { numero: 'X9', empresa: 'Empório Teste' });
@@ -71,10 +86,12 @@ check('placeholder sem valor vira vazio (nunca "{{x}}")', () => {
 /* PARIDADE JS (canonico) x SQL (enc_render_message, dispatcher SQL-nativo agendado via pg_cron — o
    caminho de envio provavelmente ativo em producao). REF-COMPANY-02: esta checagem NAO existia antes
    (a 3a copia das mensagens tinha ficado fora do golden desde a REF-ORDER-01b) — fecha essa lacuna.
-   So confere a migration NOVA (REF-COMPANY-02-notify-empresa.sql); a antiga (REF-ORDER-01b) fica
-   congelada como registro historico, nunca editada em vigor. */
-check('enc_render_message (SQL, migrations/REF-COMPANY-02-notify-empresa.sql) em sincronia com o canonico', () => {
-  const sqlPath = fileURLToPath(new URL('../migrations/REF-COMPANY-02-notify-empresa.sql', import.meta.url));
+   REF-MESA-01 · Onda 7: reaponta pra migration NOVA (o template de 'pronto' mudou, trocou o hedge
+   "se for retirada/se for entrega" por {{situacao}}) — mesmo padrao ja usado quando REF-COMPANY-02
+   sucedeu REF-ORDER-01b: a versao anterior (REF-COMPANY-02-notify-empresa.sql) fica congelada como
+   registro historico, nunca mais editada em vigor. */
+check('enc_render_message (SQL, migrations/REF-MESA-01-onda7-notificacoes-mesa.sql) em sincronia com o canonico', () => {
+  const sqlPath = fileURLToPath(new URL('../migrations/REF-MESA-01-onda7-notificacoes-mesa.sql', import.meta.url));
   const sql = readFileSync(sqlPath, 'utf8');
   for (const s of COM_TEMPLATE) {
     assert.ok(sql.includes(NOTIFY_TEMPLATES[s]), `template '${s}' divergente entre .js e enc_render_message`);
