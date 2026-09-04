@@ -19,16 +19,22 @@ export const DELIVERY_FEE_CONFIG_PADRAO = {
   version: 1,
   ativo: true,
   maquininha: { ativo: true, valor: 2.00 },
+  // REF-DELIVERY-FEE-05 · Onda 2: mesmo precedente "ja nasce ligado" da REF-DELIVERY-FEE-01 original.
+  adicionalPagamento: { ativo: true, valor: 2.00 },
+  // REF-DELIVERY-FEE-05 · Onda 1: tabela comercial OFICIAL fornecida pelo dono (2026-09-04) -- substitui
+  // a tabela antiga (era so' um modelo/exemplo). incrementoAcimaFaixas estende matematicamente a cobranca
+  // acima de 20km ("cada faixa completa de 1km acrescenta R$2,00", para sempre) -- ver
+  // resolverTaxaPorDistancia em deliveryFeeRules.js.
+  incrementoAcimaFaixas: 2.00,
   faixas: [
-    { de: 0.0, ate: 5.0, valor: 10.00 }, { de: 5.1, ate: 6.0, valor: 12.00 },
-    { de: 6.1, ate: 7.0, valor: 14.00 }, { de: 7.1, ate: 8.0, valor: 16.00 },
+    { de: 0.0, ate: 4.0, valor: 10.00 }, { de: 4.1, ate: 5.0, valor: 12.00 },
+    { de: 5.1, ate: 7.0, valor: 14.00 }, { de: 7.1, ate: 8.0, valor: 16.00 },
     { de: 8.1, ate: 9.0, valor: 18.00 }, { de: 9.1, ate: 10.0, valor: 20.00 },
     { de: 10.1, ate: 11.0, valor: 22.00 }, { de: 11.1, ate: 12.0, valor: 24.00 },
     { de: 12.1, ate: 13.0, valor: 26.00 }, { de: 13.1, ate: 14.0, valor: 28.00 },
     { de: 14.1, ate: 15.0, valor: 30.00 }, { de: 15.1, ate: 16.0, valor: 32.00 },
     { de: 16.1, ate: 17.0, valor: 34.00 }, { de: 17.1, ate: 18.0, valor: 36.00 },
     { de: 18.1, ate: 19.0, valor: 38.00 }, { de: 19.1, ate: 20.0, valor: 40.00 },
-    { de: 20.1, ate: 21.0, valor: 42.00 },
   ],
 };
 
