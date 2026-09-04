@@ -290,11 +290,32 @@ por instrução explícita.
 
 **REF-ADDRESS-GEO-INTEGRITY-01: CONCLUÍDA.**
 
+## Onda 6 — Correção pontual: paridade E2E de `loyalty_grant` (2026-09-04)
+
+Reconfirmado (dias depois, nova sessão) que os 2 achados correlatos da Onda 3 ainda existiam.
+Investigado `HARDEN-ORDERS-RLS-step2.sql` (a migration que eu supunha resolver o gap de
+`orders`/`customers`/`order_items`) e descoberto que ela está **desatualizada** — produção evoluiu
+essas policies por várias REFs posteriores (`SAAS-01`, `LGPD-01`, `AUTH-01`: policies atuais são
+`"Admin all X"` + `"Cliente le proprio(s) X"`, não as `"Auth all X" USING(true)` que aquela migration
+antiga cria). Reaplicar essa migration cegamente no E2E teria sido uma **regressão** (policies mais
+permissivas que as reais de produção). Escopo maior do que o previsto — não perseguido; registrado
+para investigação dedicada com mais tempo.
+
+Corrigido só o item simples e sem risco: `loyalty_grant()` estava com `EXECUTE` concedido a
+`anon`/`authenticated` no E2E (produção já tem `revoke all ... from public, anon, authenticated`,
+`REF-LOYALTY-01-loyalty.sql` linha 449). Aplicado o mesmo `REVOKE` diretamente no E2E (comando único,
+sem migration nova, sem qualquer mudança em produção). Confirmado: `loyalty-audit-01-onda1-test.mjs`
+caso `A4` (grants corretos) passou a **PASS** (antes `FAIL`). Suíte principal desta REF reconfirmada
+intacta (`address-geo-integrity-01-onda2-test.mjs` 14/14, `onda3-integration-test.mjs` 10/10).
+
 ## Próximos passos (fora desta REF, não implementados)
 
-1. Decidir sobre os achados correlatos da Onda 3 — pertencem a outras REFs (`HARDEN-ORDERS-RLS-step2`
-   ausente no E2E, grants de `loyalty_grant` desatualizados no E2E, incompatibilidades de scripts
-   legados).
-2. Decidir sobre fechar a manipulação fina (texto ↔ coordenada) — geocodificação server-side via Edge
+1. `HARDEN-ORDERS-RLS-step2` (migration antiga) permanece **não aplicável como está** — quem for
+   fechar a paridade de `orders`/`customers`/`order_items`/`order_events` no E2E precisa extrair o
+   estado exato e atual de produção (`pg_policies` + grants + `v_order_reconciliation`) e replicar via
+   SQL direto, não reaplicar migrations históricas em ordem.
+2. Incompatibilidades de scripts legados (`product_id` obrigatório vs. formato antigo, fixtures de
+   `auth.users`/admins reais de produção ausentes no E2E) — seguem como dívida de outras REFs.
+3. Decidir sobre fechar a manipulação fina (texto ↔ coordenada) — geocodificação server-side via Edge
    Function assíncrona, ou aceitar o risco residual documentado no item 4 da Onda 2.
 3. Investigar a falha pré-existente de `config-padrao-transparencia.spec.js` no CI (fora desta REF).
