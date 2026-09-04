@@ -87,7 +87,11 @@ async function main() {
       check('B2 entrega: 1 pedido, R$20', mapa.entrega?.pedidos === '1' || mapa.entrega?.pedidos === 1, JSON.stringify(mapa.entrega));
       check('B3 retirada: 1 pedido, R$20', mapa.retirada?.pedidos === '1' || mapa.retirada?.pedidos === 1, JSON.stringify(mapa.retirada));
       check('B4 mesa: 2 pedidos, R$40 -- NAO contabilizados como entrega', (mapa.mesa?.pedidos === '2' || mapa.mesa?.pedidos === 2) && Number(mapa.mesa?.receita) === 40, JSON.stringify(mapa.mesa));
-      check('B5 total_pedidos/total_receita agregam os 4 (agnostico a tipo, ja era assim)', r.rows[0].r.total_pedidos === 4 && Number(r.rows[0].r.total_receita) === 80, JSON.stringify({ total_pedidos: r.rows[0].r.total_pedidos, total_receita: r.rows[0].r.total_receita }));
+      // REF-MESA-01 Onda 8 (reconciliacao com REF-DELIVERY-FEE-05): o pedido "entrega" deste fixture
+      // paga em dinheiro -> ganha +R$2,00 de adicional_pagamento_fee (retirada/mesa continuam em
+      // R$0, confirmado por B3/B4 acima) -- 80 (4x R$20) + 2 = 82. Nao e' regressao de Mesa, e' a
+      // nova taxa da REF-DELIVERY-FEE-05 coexistindo corretamente.
+      check('B5 total_pedidos/total_receita agregam os 4 (agnostico a tipo, ja era assim)', r.rows[0].r.total_pedidos === 4 && Number(r.rows[0].r.total_receita) === 82, JSON.stringify({ total_pedidos: r.rows[0].r.total_pedidos, total_receita: r.rows[0].r.total_receita }));
     });
 
     await client.query(`SELECT set_config('request.jwt.claims', '{}', true)`);
