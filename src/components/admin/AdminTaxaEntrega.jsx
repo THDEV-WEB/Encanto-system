@@ -17,7 +17,7 @@ import { useStoreConfigStatus } from '../../hooks/useStoreConfigStatus.js';
 import { definirDeliveryFeeConfig } from '../../services/delivery/deliveryFeeConfig.js';
 import { salvarCompanyInfo } from '../../services/company/companyInfo.js';
 import { localizacaoLojaConfigurada } from '../../services/company/companyInfoRules.js';
-import { paraEditavel, paraPersistirFaixas, validarFaixas, valorMaquininhaValido } from '../../services/delivery/deliveryFeeConfigForm.js';
+import { paraEditavel, paraPersistirFaixas, validarFaixas, valorMaquininhaValido, valorAdicionalPagamentoValido } from '../../services/delivery/deliveryFeeConfigForm.js';
 import { carregarLeaflet, criarMapa, destruirMapa, formatarCoord, CENTRO_PADRAO } from '../../address/index.js';
 
 function Bloco({ icone, titulo, descricao, children }) {
@@ -246,17 +246,24 @@ function BlocoFaixas({ onSalvo }) {
   const [faixas, setFaixas] = useState(() => paraEditavel(config.faixas, nextId));
   const [maqAtivo, setMaqAtivo] = useState(config.maquininha?.ativo ?? true);
   const [maqValor, setMaqValor] = useState(String(config.maquininha?.valor ?? ''));
+  // REF-DELIVERY-FEE-05 · Onda 2: ausente no config oficial -> default "ja nasce ligado" (mesmo
+  // precedente da maquininha original), nunca aparece pro Admin como desligado/zerado sem ele ter
+  // mexido em nada.
+  const [adicAtivo, setAdicAtivo] = useState(config.adicionalPagamento?.ativo ?? true);
+  const [adicValor, setAdicValor] = useState(String(config.adicionalPagamento?.valor ?? 2.00));
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState(null);
 
   // quando a config OFICIAL muda de conteúdo (mount/sync/outro save), os campos refletem o novo oficial
   // — comparado por CONTEÚDO, para não descartar edição em andamento a cada poll de 60s.
-  const configKey = JSON.stringify({ ativo: config.ativo, maquininha: config.maquininha, faixas: config.faixas });
+  const configKey = JSON.stringify({ ativo: config.ativo, maquininha: config.maquininha, adicionalPagamento: config.adicionalPagamento, faixas: config.faixas });
   useEffect(() => {
     setAtivo(config.ativo);
     setFaixas(paraEditavel(config.faixas, nextId));
     setMaqAtivo(config.maquininha?.ativo ?? true);
     setMaqValor(String(config.maquininha?.valor ?? ''));
+    setAdicAtivo(config.adicionalPagamento?.ativo ?? true);
+    setAdicValor(String(config.adicionalPagamento?.valor ?? 2.00));
     setMsg(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [configKey]);
@@ -264,6 +271,7 @@ function BlocoFaixas({ onSalvo }) {
   const erros = useMemo(() => validarFaixas(faixas), [faixas]);
   const temErro = erros.size > 0;
   const maqValorOk = valorMaquininhaValido(maqValor);
+  const adicValorOk = valorAdicionalPagamentoValido(adicValor);
   const faixasOrdenadas = useMemo(
     () => faixas.slice().sort((a, b) => Number(a.de) - Number(b.de)),
     [faixas],
@@ -272,9 +280,10 @@ function BlocoFaixas({ onSalvo }) {
   const persistido = useMemo(() => ({
     ativo,
     maquininha: { ativo: maqAtivo, valor: maqValorOk ? Number(maqValor) : (config.maquininha?.valor ?? 0) },
+    adicionalPagamento: { ativo: adicAtivo, valor: adicValorOk ? Number(adicValor) : (config.adicionalPagamento?.valor ?? 2.00) },
     faixas: paraPersistirFaixas(faixas),
-  }), [ativo, maqAtivo, maqValor, maqValorOk, faixas, config.maquininha]);
-  const mudou = configKey !== JSON.stringify({ ativo: persistido.ativo, maquininha: persistido.maquininha, faixas: persistido.faixas });
+  }), [ativo, maqAtivo, maqValor, maqValorOk, adicAtivo, adicValor, adicValorOk, faixas, config.maquininha, config.adicionalPagamento]);
+  const mudou = configKey !== JSON.stringify({ ativo: persistido.ativo, maquininha: persistido.maquininha, adicionalPagamento: persistido.adicionalPagamento, faixas: persistido.faixas });
 
   const atualizarFaixa = (id, campo, valor) => { setFaixas((prev) => prev.map((f) => (f._id === id ? { ...f, [campo]: valor } : f))); setMsg(null); };
   const adicionarFaixa = () => {
@@ -288,7 +297,7 @@ function BlocoFaixas({ onSalvo }) {
   const semFaixas = faixasOrdenadas.length === 0;
 
   const salvar = async () => {
-    if (!mudou || temErro || !maqValorOk || semFaixas || salvando) return;
+    if (!mudou || temErro || !maqValorOk || !adicValorOk || semFaixas || salvando) return;
     setSalvando(true); setMsg(null);
     const r = await definirDeliveryFeeConfig(persistido);
     setSalvando(false);
@@ -296,7 +305,7 @@ function BlocoFaixas({ onSalvo }) {
     else setMsg({ tipo: 'erro', texto: r.error || 'Não foi possível salvar. Verifique seu acesso de administrador.' });
   };
 
-  const podeSalvar = mudou && !temErro && maqValorOk && !semFaixas && !salvando;
+  const podeSalvar = mudou && !temErro && maqValorOk && adicValorOk && !semFaixas && !salvando;
 
   return (
     <>
@@ -333,6 +342,19 @@ function BlocoFaixas({ onSalvo }) {
           <input className="form-input" type="number" step="0.01" min="0" value={maqValor} disabled={!maqAtivo}
             onChange={(e) => { setMaqValor(e.target.value); setMsg(null); }} />
           {!maqValorOk && <p style={{ fontSize: 11, color: '#DC2626', marginTop: 4 }}>Informe um valor válido (≥ 0).</p>}
+        </div>
+      </Bloco>
+
+      {/* REF-DELIVERY-FEE-05 · Onda 2: componente SEPARADO da maquininha (coexistem) — dinheiro E
+          cartão pagam este, mas só em entrega (retirada nunca aparece aqui, mesma regra de sempre). */}
+      <Bloco icone="💰" titulo="Adicional de pagamento na entrega"
+        descricao="Acréscimo cobrado em pedidos de ENTREGA pagos em Dinheiro, Débito ou Crédito. PIX nunca aciona esse acréscimo. Não se aplica à retirada.">
+        <ToggleRow titulo="Cobrar adicional de pagamento" ativo={adicAtivo} onChange={(v) => { setAdicAtivo(v); setMsg(null); }} />
+        <div className="form-group" style={{ marginTop: 14, maxWidth: 200 }}>
+          <label className="form-label">Valor (R$)</label>
+          <input className="form-input" type="number" step="0.01" min="0" value={adicValor} disabled={!adicAtivo}
+            onChange={(e) => { setAdicValor(e.target.value); setMsg(null); }} />
+          {!adicValorOk && <p style={{ fontSize: 11, color: '#DC2626', marginTop: 4 }}>Informe um valor válido (≥ 0).</p>}
         </div>
       </Bloco>
 

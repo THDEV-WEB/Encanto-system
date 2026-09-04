@@ -62,3 +62,10 @@ export function valorMaquininhaValido(valor) {
   const n = Number(valor);
   return Number.isFinite(n) && n >= 0;
 }
+
+/* REF-DELIVERY-FEE-05 · Onda 2: mesma validação (número finito >= 0), nome próprio para simetria de
+   leitura com o campo "adicional de pagamento" no Admin. */
+export function valorAdicionalPagamentoValido(valor) {
+  const n = Number(valor);
+  return Number.isFinite(n) && n >= 0;
+}

@@ -94,12 +94,14 @@ function OrderCard({ order, onChanged, onComanda }) {
         </div>
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontWeight: 800, fontSize: 15 }}>{fmt(order.total)}</div>
-          {/* REF-DELIVERY-FEE-01: entrega/maquininha, quando existirem (0 em retirada/pedidos sem taxa). */}
-          {(Number(order.delivery_fee) > 0 || Number(order.maquininha_fee) > 0) && (
+          {/* REF-DELIVERY-FEE-01: entrega/maquininha, quando existirem (0 em retirada/pedidos sem taxa).
+              REF-DELIVERY-FEE-05 · Onda 2: adicional de pagamento entra na mesma linha resumida. */}
+          {(Number(order.delivery_fee) > 0 || Number(order.maquininha_fee) > 0 || Number(order.adicional_pagamento_fee) > 0) && (
             <div style={{ fontSize: 10.5, color: 'var(--gray-500,#6B5D50)' }}>
               {[
                 Number(order.delivery_fee) > 0 ? `Entrega ${fmt(order.delivery_fee)}` : null,
                 Number(order.maquininha_fee) > 0 ? `Maquininha ${fmt(order.maquininha_fee)}` : null,
+                Number(order.adicional_pagamento_fee) > 0 ? `Adicional ${fmt(order.adicional_pagamento_fee)}` : null,
               ].filter(Boolean).join(' + ')}
             </div>
           )}

@@ -129,7 +129,8 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
   /* REF-DELIVERY-FEE-04 · Onda 2: create_order recalculou delivery_fee/maquininha_fee e o valor
      diverge do que esta tela mostrava (raro, perto de fronteira de faixa — client usa rota viária
      real, servidor só calcula haversine) — não persiste nada, exige reapresentar e confirmar de
-     novo. { deliveryFee, maquininhaFee } = valores AUTORITATIVOS devolvidos por DS.savePedido. */
+     novo. { deliveryFee, maquininhaFee, adicionalPagamentoFee } = valores AUTORITATIVOS devolvidos
+     por DS.savePedido (REF-DELIVERY-FEE-05 · Onda 2: terceiro componente incluído na mesma mecânica). */
   const [divergencia, setDivergencia] = useState(null);
   const submittingRef = useRef(false);   // trava reentrância (duplo clique / envio simultâneo)
   const requestIdRef  = useRef(null);    // idempotency key (estável por tentativa de checkout)
@@ -181,7 +182,8 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
        que o client DECLARA como expectativa. */
     const resumoEnvio = divergencia
       ? { ...resumo, deliveryFee: divergencia.deliveryFee, maquininhaFee: divergencia.maquininhaFee,
-          total: resumo.subtotal + divergencia.deliveryFee + divergencia.maquininhaFee }
+          adicionalPagamentoFee: divergencia.adicionalPagamentoFee,
+          total: resumo.subtotal + divergencia.deliveryFee + divergencia.maquininhaFee + divergencia.adicionalPagamentoFee }
       : resumo;
     /* Montagem do pedido no order-domain (Onda 5.2 · Trilha B): buildOrderArgs concentra a
        lógica pura que antes vivia inline aqui (precoUnitario por item, product_id uuid/null,
@@ -204,10 +206,11 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
          preserva requestId (mesma idempotency key) e o formulário intacto. */
       setLoading(false);
       submittingRef.current = false;
-      setDivergencia({ deliveryFee: resultado.deliveryFee, maquininhaFee: resultado.maquininhaFee });
+      setDivergencia({ deliveryFee: resultado.deliveryFee, maquininhaFee: resultado.maquininhaFee, adicionalPagamentoFee: resultado.adicionalPagamentoFee });
       registrarBreadcrumb('checkout: valor de entrega divergente, aguardando confirmação', {
         deliveryFeeAntigo: resumo.deliveryFee, deliveryFeeNovo: resultado.deliveryFee,
         maquininhaFeeAntigo: resumo.maquininhaFee, maquininhaFeeNovo: resultado.maquininhaFee,
+        adicionalPagamentoFeeAntigo: resumo.adicionalPagamentoFee, adicionalPagamentoFeeNovo: resultado.adicionalPagamentoFee,
       });
       return;
     }
@@ -252,7 +255,7 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
   const view = buildCheckoutView(cart, resumo);   // Onda 5.2: resumo consome o view-model do order-domain (não recalcula preço)
   /* REF-DELIVERY-FEE-01: só quebra em Subtotal/Entrega/Maquininha quando há alguma parcela a somar —
      retirada e "sem taxa" continuam com o resumo simples (itens + Total), zero mudança visual pra eles. */
-  const mostrarDetalhamento = !!(view.entregaFmt || view.maquininhaFmt);
+  const mostrarDetalhamento = !!(view.entregaFmt || view.maquininhaFmt || view.adicionalPagamentoFmt);
   const entregaAConfirmar = !semEntregaFisica && !view.entregaFmt && (resumo.status === 'sem_coordenadas' || resumo.status === 'fora_de_alcance');
   /* REF-STORE-ONBOARD-02 · Onda 2: distinto de entregaAConfirmar (falta DISTÂNCIA) -- aqui a distância e
      a faixa existem (status 'ok', valor calculado e cobrado normalmente), só a TABELA em si ainda não é
@@ -308,6 +311,9 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
         )}
         {view.maquininhaFmt && (
           <div className="summary-item"><span>Retorno da maquininha</span><span>{view.maquininhaFmt}</span></div>
+        )}
+        {view.adicionalPagamentoFmt && (
+          <div className="summary-item"><span>Adicional de pagamento</span><span>{view.adicionalPagamentoFmt}</span></div>
         )}
         <div className="summary-total"><span>Total</span><span>{view.total}</span></div>
       </div>

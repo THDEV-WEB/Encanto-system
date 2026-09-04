@@ -192,15 +192,16 @@ export const DS = {
     }));
     const withTimeout = p => Promise.race([p,
       new Promise(res => setTimeout(() => res({ data:null, error:{ message:'timeout' } }), RPC_TIMEOUT))]);
-    const vazio = { orderId: null, divergencia: false, deliveryFee: null, maquininhaFee: null };
+    const vazio = { orderId: null, divergencia: false, deliveryFee: null, maquininhaFee: null, adicionalPagamentoFee: null };
     let r = await withTimeout(call());
     if (r.error && requestId) r = await withTimeout(call());   // 1 retry seguro (mesma idempotency key)
     if (r.error) { console.error('[ENCANTO] create_order erro de rede/timeout:', r.error.message || r.error); return vazio; }
-    const res = r.data;   // {ok, order_id|error, sqlstate, idempotent, divergencia_valor?, delivery_fee?, maquininha_fee?}
+    const res = r.data;   // {ok, order_id|error, sqlstate, idempotent, divergencia_valor?, delivery_fee?, maquininha_fee?, adicional_pagamento_fee?}
     if (res && res.ok === false) {
       if (res.divergencia_valor) {
         // REF-DELIVERY-FEE-04 · Onda 2: fluxo esperado, não é erro — sem console.error/capturarDenyTenant.
-        return { orderId: null, divergencia: true, deliveryFee: res.delivery_fee, maquininhaFee: res.maquininha_fee };
+        // REF-DELIVERY-FEE-05 · Onda 2: adicionalPagamentoFee entra na mesma mecânica de transparência.
+        return { orderId: null, divergencia: true, deliveryFee: res.delivery_fee, maquininhaFee: res.maquininha_fee, adicionalPagamentoFee: res.adicional_pagamento_fee };
       }
       console.error('[ENCANTO] create_order falhou (rollback no banco):', res.error, '['+res.sqlstate+']');
       /* REF-OBS-02: os 2 DENY fail-closed de isolamento tenant (REF-ORDER-TENANT-01) não vêm com
@@ -212,7 +213,7 @@ export const DS = {
       }
       return vazio;
     }
-    return { orderId: res?.order_id ?? null, divergencia: false, deliveryFee: null, maquininhaFee: null };
+    return { orderId: res?.order_id ?? null, divergencia: false, deliveryFee: null, maquininhaFee: null, adicionalPagamentoFee: null };
   },
   /* REF-ADMIN-03 · Onda 3 — substitui o antigo getPedidos() (select direto, limit(100) fixo, sem
      paginacao/busca/filtro server-side). Causa raiz: aquele limit(100) capava SILENCIOSAMENTE tanto os

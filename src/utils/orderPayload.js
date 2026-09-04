@@ -35,6 +35,9 @@ export function buildOrderArgs(cart, form, endereco, requestId, enderecoId, resu
      servidor (create_order) sempre recalcula os dois primeiros do zero (_resolve_delivery_fee), ignorando
      por completo o que o client mandar; retirada (novo campo, derivado do MESMO resumo.status que ja
      existia) e o unico dos tres que o servidor de fato LE, pra decidir se zera a taxa incondicionalmente.
+     REF-DELIVERY-FEE-05 · Onda 2: adicional_pagamento_fee segue a MESMA filosofia ADVISORY de
+     delivery_fee/maquininha_fee — servidor sempre recalcula do zero, nunca confia neste valor pra
+     PERSISTIR (so' usa pra detectar divergencia, ver create_order/REF-DELIVERY-FEE-04 Onda 2).
      REF-MESA-01 · Onda 2: extra.tipoPedido/extra.mesaIdentificador sao OPCIONAIS (ausentes preservam
      100% o payload antigo, byte-a-byte — nenhum chamador existente, incluindo o golden test, precisa
      mudar). Quando tipoPedido='mesa', create_order() valida a capacidade da loja no servidor (fail-
@@ -46,6 +49,7 @@ export function buildOrderArgs(cart, form, endereco, requestId, enderecoId, resu
   const order = { total: resumo ? resumo.total : cart.total, status: 'recebido', payment_method: form.pagamento,
                   address: endereco, observacoes: form.obs || null, endereco_id: enderecoId ?? null,
                   delivery_fee: resumo ? resumo.deliveryFee : 0, maquininha_fee: resumo ? resumo.maquininhaFee : 0,
+                  adicional_pagamento_fee: resumo ? resumo.adicionalPagamentoFee : 0,
                   retirada: resumo ? resumo.status === 'retirada' : false,
                   ...(extra.tipoPedido ? { tipo_pedido: extra.tipoPedido } : {}),
                   ...(extra.mesaIdentificador ? { mesa_identificador: extra.mesaIdentificador } : {}),
@@ -106,9 +110,11 @@ export function buildOrderConfirmationMessage(customer, order, items, orderId, o
     order_items: items,
     customers: { name: customer.name, phone: customer.phone },
     /* REF-DELIVERY-FEE-01: mesmos valores JA calculados por buildOrderArgs/montarResumoFinanceiro (order
-       vem do MESMO submit, sem query nova) — a mensagem bate com o que foi persistido no pedido. */
+       vem do MESMO submit, sem query nova) — a mensagem bate com o que foi persistido no pedido.
+       REF-DELIVERY-FEE-05 · Onda 2: adicional_pagamento_fee entra no MESMO snapshot. */
     delivery_fee: order.delivery_fee,
     maquininha_fee: order.maquininha_fee,
+    adicional_pagamento_fee: order.adicional_pagamento_fee,
   };
   const vm = buildComanda(orderSnapshot, {
     companyInfo: opts.companyInfo,
@@ -135,6 +141,7 @@ export function buildCheckoutView(cart, resumo) {
     subtotal: fmt(resumo.subtotal),
     entregaFmt: resumo.deliveryFee > 0 ? fmt(resumo.deliveryFee) : null,
     maquininhaFmt: resumo.maquininhaFee > 0 ? fmt(resumo.maquininhaFee) : null,
+    adicionalPagamentoFmt: resumo.adicionalPagamentoFee > 0 ? fmt(resumo.adicionalPagamentoFee) : null,
     total: fmt(resumo.total),
   };
 }
@@ -153,7 +160,11 @@ export function buildDivergenciaView(resumoExibido, autoritativo) {
   if (autoritativo.maquininhaFee !== resumoExibido.maquininhaFee) {
     partes.push(`retorno da maquininha de ${fmt(resumoExibido.maquininhaFee)} para ${fmt(autoritativo.maquininhaFee)}`);
   }
-  const totalNovo = resumoExibido.subtotal + autoritativo.deliveryFee + autoritativo.maquininhaFee;
+  /* REF-DELIVERY-FEE-05 · Onda 2: terceiro componente na MESMA mecânica de transparência. */
+  if (autoritativo.adicionalPagamentoFee !== resumoExibido.adicionalPagamentoFee) {
+    partes.push(`adicional de pagamento de ${fmt(resumoExibido.adicionalPagamentoFee)} para ${fmt(autoritativo.adicionalPagamentoFee)}`);
+  }
+  const totalNovo = resumoExibido.subtotal + autoritativo.deliveryFee + autoritativo.maquininhaFee + autoritativo.adicionalPagamentoFee;
   return {
     mensagem: partes.length
       ? `Para garantir o valor correto, atualizamos o valor de ${partes.join(' e ')}.`

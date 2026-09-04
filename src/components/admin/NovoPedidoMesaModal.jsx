@@ -94,7 +94,7 @@ export function NovoPedidoMesaModal({ onClose, onCriado }) {
     const customer = { name: nome.trim(), phone: telefone.trim() };
     const order = {
       total: totalEstimado, status: 'recebido', payment_method: pagamento,
-      observacoes: null, delivery_fee: 0, maquininha_fee: 0,
+      observacoes: null, delivery_fee: 0, maquininha_fee: 0, adicional_pagamento_fee: 0,
       tipo_pedido: 'mesa', origem_pedido: 'admin_garcom', mesa_identificador: mesaIdentificador.trim(),
     };
     const items = itens.map(it => ({

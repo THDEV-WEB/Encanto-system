@@ -186,10 +186,13 @@ export function buildComanda(order, opts = {}) {
   /* REF-DELIVERY-FEE-01: entrega/maquininha sao campos EXPLICITOS persistidos no pedido
      (orders.delivery_fee/maquininha_fee) — nunca mais "adivinhados" da diferenca total-subtotal. Pedidos
      de ANTES desta ref (ou qualquer chamada sem esses campos) tem ambos em 0 por default de coluna,
-     entao o comportamento antigo (delta = total-subtotal) fica preservado para o historico. */
+     entao o comportamento antigo (delta = total-subtotal) fica preservado para o historico.
+     REF-DELIVERY-FEE-05 · Onda 2: adicionalPagamento e' o 3o campo EXPLICITO, mesma logica (0 por
+     default de coluna em pedidos anteriores a esta onda). */
   const entrega = Number(o?.delivery_fee) || 0;
   const maquininha = Number(o?.maquininha_fee) || 0;
-  const delta = Math.round((total - subtotal - entrega - maquininha) * 100) / 100;   // residuo AINDA nao explicado por item/entrega/maquininha
+  const adicionalPagamento = Number(o?.adicional_pagamento_fee) || 0;
+  const delta = Math.round((total - subtotal - entrega - maquininha - adicionalPagamento) * 100) / 100;   // residuo AINDA nao explicado por item/entrega/maquininha/adicional
 
   const totalPedidosCliente = Number.isFinite(opts.totalPedidosCliente) ? opts.totalPedidosCliente : null;
 
@@ -246,6 +249,9 @@ export function buildComanda(order, opts = {}) {
       maquininha,
       maquininhaFmt: fmt(maquininha),
       mostrarMaquininha: maquininha >= 0.01,
+      adicionalPagamento,
+      adicionalPagamentoFmt: fmt(adicionalPagamento),
+      mostrarAdicionalPagamento: adicionalPagamento >= 0.01,
       delta,
       deltaFmt: fmt(Math.abs(delta)),
       deltaLabel: delta > 0 ? 'Taxa de entrega / ajuste' : 'Desconto',
