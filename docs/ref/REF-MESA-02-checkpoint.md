@@ -1,7 +1,7 @@
 # REF-MESA-02 — CHECKPOINT (ler primeiro numa nova sessão/retomada)
 
-**Atualizado:** 2026-09-05, após commit `cd4b4ae` (Onda 15 concluída — 15 de 17 ondas do plano
-mestre). Execução autônoma noturna
+**Atualizado:** 2026-09-05, após commit `635d145` (Onda 16 concluída — 16 de 17 ondas do plano
+mestre, com 1 achado de segurança real corrigido). Execução autônoma noturna
 autorizada pelo dono do produto (2026-09-05, "quero ir dormir... deixar vc trabalhando a noite
 toda") — sem pausa obrigatória entre ondas. Hard constraints seguem valendo integralmente: nunca
 produção, nunca push, nunca reescrever histórico, 1 commit por subfase com `git add` explícito
@@ -15,6 +15,7 @@ falha de segurança séria).
 
 ## Estado do git (neste checkpoint)
 ```
+635d145 fix(mesa-02): revoga EXECUTE indevido de anon/PUBLIC em admin_reports_summary <- Onda 16
 cd4b4ae ref(mesa-02): implementa impressao do QR da mesa                   <- Onda 15
 e23d85e test(mesa-02): confirma notificacoes agnosticas a sessao (Onda 14)
 77ee4a0 test(mesa-02): confirma fidelidade agnostica a mesa/sessao (Onda 13)
@@ -34,9 +35,14 @@ b2d1ef8 ref(mesa-02): cria fundacao de mesa_sessions                         <- 
 c076591 ref(mesa-02): reconcilia REF-MESA-01 com REF-DELIVERY-FEE-05
 475cfef docs(mesa): REF-MESA-02 Onda 0 -- auditoria completa
 ```
-Ondas 0-15 concluídas (de 17 do plano mestre). Faltam: 16 (segurança/ataque), 17 (regressão
-completa final). R3 (achado mais grave da auditoria, QR previsível) já **resolvido** na Onda 5.
-R7 (BI de forma de pagamento pra mesa) já **resolvido** na Onda 12.
+Ondas 0-16 concluídas (de 17 do plano mestre). Falta só: 17 (regressão completa final +
+relatório de fechamento). R3 (achado mais grave da auditoria, QR previsível) já **resolvido** na
+Onda 5. R7 (BI de forma de pagamento pra mesa) já **resolvido** na Onda 12. Achado real de
+segurança (`admin_reports_summary` com `EXECUTE` indevido pra `anon`/`PUBLIC` desde
+`REF-DASHBOARD-01`, sem vazamento de dado real — `is_admin_of` já bloqueava — mas violava defesa em
+profundidade) **corrigido** na Onda 16; **também existe em produção hoje**, vale considerar aplicar
+essa correção isolada independente do rollout do resto desta REF (ver
+`docs/ref/REF-MESA-02-onda16-seguranca-ataque.md`).
 Todos LOCAIS, `origin/main` não avançou (ainda só `e972e1a`, ver `encanto-ref-mesa-01.md`). Working
 tree sempre tem 2 arquivos de OUTRAS sessões (nunca tocar): `src/constants/privacyPolicy.js`
 (modificado) e `scripts/loadtest-e2e.mjs` (untracked). Outras sessões seguem ativas neste mesmo
@@ -127,12 +133,14 @@ scripts/mesa-02-onda12-relatorio-reconciliacao-test.mjs 10/10
 scripts/mesa-02-onda13-fidelidade-confirmacao-test.mjs  12/12
 scripts/mesa-02-onda14-notificacoes-confirmacao-test.mjs 8/8
 scripts/mesa-02-onda15-impressao-qr-test.mjs      5/5
+scripts/mesa-02-onda16-seguranca-ataque-test.mjs 34/34
 scripts/delivery-fee-05-onda1-onda2-test.mjs    29/29
+scripts/dashboard01-admin-reports-test.mjs      13/13 (revalidada pos-REVOKE da Onda 16)
 npm run test:domain                             verde
 npm run lint / typecheck / build / build:admin  limpos
 e2e/tests/admin/admin-pedidos-novo-mesa.spec.js  2/2 (Playwright, ambiente E2E configurado)
 ```
-Total: 259 checks de banco + domain suite + builds + E2E. Banco-alvo: SOMENTE
+Total: 306 checks de banco + domain suite + builds + E2E. Banco-alvo: SOMENTE
 `C:/Users/00thi/.encanto/db.e2e.env` (bgzcro), NUNCA `db.env`/produção.
 
 ## Lições aprendidas HOJE sobre os próprios scripts de teste (não repetir)
@@ -167,46 +175,38 @@ Total: 259 checks de banco + domain suite + builds + E2E. Banco-alvo: SOMENTE
    (ex.: `status_sessao`), é uma exceção deliberada e válida (Onda 9) — documentar explicitamente
    PORQUE a exceção existe, não silenciosamente contrariar o comentário antigo.
 
-## PRÓXIMO PASSO EXATO — Onda 16: Segurança/ataque (auditoria adversarial dedicada)
+## PRÓXIMO PASSO EXATO — Onda 17: Regressão completa final + relatório de fechamento
 
-Objetivo: cada onda (2-15) já embutiu testes adversariais na própria suíte (cross-tenant, outsider
-sem `is_admin_of`, `sem permissao`, etc.) — esta onda é uma VARREDURA DEDICADA, específica pra achar
-o que ficou de fora dessas checagens onda-a-onda, espelhando o rigor já usado pra achar R3 (Onda 5).
-**Não deveria precisar de nenhuma migration** (é auditoria + teste, correção só SE algo for achado).
-
-Checklist mínimo pra `scripts/mesa-02-onda16-seguranca-ataque-test.mjs`:
-1. **Varredura de GRANTS de TODAS as funções novas desta REF** (Ondas 2-15) — consultar
-   `information_schema.routine_privileges`/`pg_proc`+`aclexplode` e confirmar, pra CADA uma:
-   `anon` e `PUBLIC` NUNCA têm `EXECUTE`, só `authenticated` (ou nenhum GRANT pras funções
-   internas `_*`, que devem ter ZERO grants, nem pra `authenticated`). Isso é exatamente o tipo de
-   bug que a Onda 6 quase deixou passar (lição 4 acima) — a varredura automatizada evita depender
-   de lembrar de conferir onda a onda.
-2. **`resolver_mesa_por_token()` continua fail-closed contra token forjado/aleatório** (não só o
-   teste feliz da Onda 5) — token válido de OUTRA loja, token bem-formado mas inexistente, token
-   nulo/vazio.
-3. **`admin_trocar_mesa_sessao`/`admin_juntar_mesa_sessao`/`admin_fechar_conta_mesa`**: confirmar
-   que NENHUMA delas aceita `p_store_id` de uma loja e `p_mesa_session_id`/mesa de OUTRA (já hà
-   teste disso onda-a-onda, mas confirmar aqui com uma sessão real tentando "vazar" pra outro
-   tenant via múltiplos parâmetros ao mesmo tempo, não só 1 por vez).
-4. **`admin_obter_url_storefront`**: confirmar que não vaza `dominio`/`slug` de loja alheia sob
-   nenhuma combinação de parâmetros.
-5. **RLS deny-all continua intacto** em `mesas`/`mesa_sessions`/`mesa_session_mesas` — `authenticated`
-   tentando `SELECT`/`INSERT`/`UPDATE` DIRETO nessas tabelas (bypassando toda RPC) continua batendo
-   em `permission denied` (não em RLS silenciosamente vazio — a defesa aqui é o `REVOKE ALL`, não
-   política de RLS, então confirmar que é `permission denied`, não 0 linhas).
-6. **Concorrência maliciosa**: 2 conexões tentando fechar a MESMA sessão ao mesmo tempo — confirmar
-   que só uma vence (a outra recebe `sessao ja fechada`, nunca um estado inconsistente/2 fechamentos
-   registrados). Reaproveitar a técnica de `pg_locks` da Onda 6 (lição 5), não timing de promise.
-7. Se QUALQUER achado real aparecer: decidir a correção como uma sub-migration desta mesma onda
-   (`REF-MESA-02-onda16-<slug>.sql`), nunca deixar um achado de segurança sem correção só
-   documentado.
-
-Depois da Onda 16, a última: **Onda 17 (regressão completa final)** — não é uma feature nova, é
-rodar TODAS as suítes acima mais uma vez do zero (útil pra pegar qualquer drift acumulado ao longo
-da noite), confirmar `git log`/`git status` finais, e escrever um relatório de fechamento
-(`docs/ref/REF-MESA-02-relatorio-final.md`, mesmo padrão de `REF-MESA-01-relatorio-final.md`) —
-aí sim a REF inteira (17 de 17 ondas) está concluída, ainda sem push/produção (autorização de
-push é decisão separada, sempre perguntar antes).
+Última onda — não é uma feature nova. Passos exatos:
+1. Confirmar `git log --oneline -25` e `git status --porcelain=v1` (drift de outras sessões, os 2
+   arquivos de sempre continuam intocados).
+2. Rodar TODAS as suítes de banco listadas acima, do zero, mais uma vez (útil pra pegar qualquer
+   drift acumulado ao longo da noite) — incluir também as suítes de REFs relacionadas que
+   compartilham `create_order`/`admin_reports_summary`/`_resolve_delivery_fee`/`_resolve_item_pricing`
+   (mesmo espírito do §20 do `REF-MESA-01-relatorio-final.md`: `dashboard01-admin-reports-test.mjs`
+   já revalidado na Onda 16, considerar rodar também as suítes de `REF-DELIVERY-FEE-0x`/`PRICE-*`
+   se ainda existirem e forem rápidas).
+3. `npm run test:domain`, `npm run lint`, `npm run typecheck`, `npm run build`, `npm run build:admin`
+   — todos do zero.
+4. Se sobrar orçamento/tempo, considerar rodar `npm run test:e2e` (suíte Playwright completa) — não
+   é obrigatório pra fechar (nenhuma onda anterior desta REF exigiu isso), mas o relatório final da
+   MESA-01 fez questão de 2 rodadas completas antes de fechar; decidir com base no tempo restante,
+   documentar a decisão se pular.
+5. Escrever `docs/ref/REF-MESA-02-relatorio-final.md` (mesmo formato de
+   `REF-MESA-01-relatorio-final.md`): tabela de ondas, lista de commits, arquivos principais,
+   migrations com tabela do que cada uma faz, modelo final de dados, decisões tomadas, gaps
+   registrados (ex.: "merge de 2 sessões já ativas" da Onda 10, "trocar/juntar exige mesa
+   `disponivel`"), o achado de segurança da Onda 16 (**destacar que também afeta produção hoje,
+   independente do rollout do resto desta REF**), contagem total de verificações, e a frase de
+   fechamento "PARADO NO GATE FINAL — nada foi pushed, nada foi aplicado em produção".
+6. Commitar o relatório (`docs(mesa-02): REF-MESA-02 Onda 17 -- regressao final + relatorio de
+   fechamento`) + atualizar este checkpoint uma última vez marcando 17/17 concluídas.
+7. **Não fazer push. Não aplicar produção. Não iniciar REF nova.** Isso são decisões separadas do
+   dono do produto — a autorização desta noite cobriu só "completar todas as ondas", não essas 3
+   ações seguintes. Ao final, resumir pro dono (quando ele acordar) o que foi feito, o achado de
+   segurança que também afeta produção (prioridade alta pra aplicar essa 1 linha de `REVOKE`
+   independente do resto), e as sugestões de próximo passo (rollout runbook de produção, por
+   exemplo) sem executá-las.
 
 Fluxo de sempre, sem pular etapa: investigar/decidir → migration+rollback (se precisar de banco) →
 aplicar SOMENTE E2E → testar (backend E2E + regressão completa de TODAS as suítes acima, sempre) →
