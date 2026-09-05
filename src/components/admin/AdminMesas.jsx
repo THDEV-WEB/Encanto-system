@@ -5,7 +5,8 @@
    QR, sessão/consulta de conta, lançar pedido, trocar mesa, juntar mesas, fechar conta, histórico,
    impressão — todas nesta mesma tela, por decisão já registrada (seção 18 da autorização). */
 import { useState, useEffect, useCallback } from 'react';
-import { listarMesas, criarMesa, setMesaStatus } from '../../services/mesa/mesasFisicas.js';
+import { listarMesas, criarMesa, setMesaStatus, consultarContaMesa } from '../../services/mesa/mesasFisicas.js';
+import { fmt } from '../../utils/format.js';
 
 const STATUS_LABEL = { disponivel: '🟢 Disponível', indisponivel: '⛔ Indisponível' };
 
@@ -16,6 +17,9 @@ export function AdminMesas() {
   const [criando, setCriando] = useState(false);
   const [erroCriar, setErroCriar] = useState('');
   const [alterando, setAlterando] = useState(null); // id da mesa com toggle em voo (evita duplo clique)
+  const [contaAberta, setContaAberta] = useState(null); // identificador da mesa com o modal de conta aberto
+  const [conta, setConta] = useState(null);
+  const [contaLoading, setContaLoading] = useState(false);
 
   const recarregar = useCallback(async () => {
     setLoading(true);
@@ -48,6 +52,17 @@ export function AdminMesas() {
     setAlterando(null);
     if (r.ok) recarregar();
   };
+
+  const onVerConta = async (mesa) => {
+    setContaAberta(mesa.identificador);
+    setContaLoading(true);
+    setConta(null);
+    const r = await consultarContaMesa(mesa.identificador);
+    setContaLoading(false);
+    setConta(r);
+  };
+
+  const fecharConta = () => { setContaAberta(null); setConta(null); };
 
   return (
     <div>
@@ -97,6 +112,11 @@ export function AdminMesas() {
                   <span style={{ fontSize: 12.5, fontWeight: 600, color: m.status === 'disponivel' ? '#15803D' : 'var(--gray-500)' }}>
                     {STATUS_LABEL[m.status] || m.status}
                   </span>
+                  {m.ocupada && (
+                    <button className="btn-sm" onClick={() => onVerConta(m)} data-testid={`mesa-ver-conta-${m.identificador}`}>
+                      🧾 Ver conta
+                    </button>
+                  )}
                   <button className="btn-sm" disabled={alterando === m.id} onClick={() => onToggleStatus(m)} data-testid={`mesa-toggle-${m.identificador}`}>
                     {alterando === m.id ? '…' : (m.status === 'disponivel' ? 'Marcar indisponível' : 'Marcar disponível')}
                   </button>
@@ -106,6 +126,53 @@ export function AdminMesas() {
           )}
         </div>
       </div>
+
+      {contaAberta && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }} data-testid="conta-mesa-dialog">
+          <div className="admin-card" style={{ width: 420, maxWidth: '92vw', maxHeight: '85vh', overflowY: 'auto' }}>
+            <div className="admin-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3>🧾 Conta — Mesa {contaAberta}</h3>
+              <button className="btn-sm" onClick={fecharConta}>Fechar</button>
+            </div>
+            <div style={{ padding: 20 }}>
+              {contaLoading ? (
+                <p style={{ color: 'var(--gray-500)', fontSize: 13 }}>Carregando…</p>
+              ) : !conta?.ok ? (
+                <p style={{ fontSize: 13, color: '#DC2626', fontWeight: 600 }}>
+                  {conta?.error === 'mesa nao encontrada' ? 'Mesa não encontrada.' : 'Não foi possível consultar a conta.'}
+                </p>
+              ) : !conta.aberta ? (
+                <p style={{ color: 'var(--gray-500)', fontSize: 13 }}>Esta mesa não tem sessão aberta no momento.</p>
+              ) : (
+                <>
+                  {conta.mesas?.length > 1 && (
+                    <p style={{ fontSize: 12.5, color: 'var(--gray-500)', marginBottom: 10 }}>
+                      Mesas nesta sessão: {conta.mesas.join(', ')}
+                    </p>
+                  )}
+                  {conta.pedidos.map((p) => (
+                    <div key={p.id} style={{ marginBottom: 14, opacity: p.status === 'cancelado' ? 0.5 : 1 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Pedido {p.status === 'cancelado' ? '(cancelado)' : ''}</span>
+                        <span>{fmt(Number(p.total))}</span>
+                      </div>
+                      {(p.itens || []).map((it, idx) => (
+                        <div key={idx} style={{ fontSize: 12.5, color: 'var(--gray-600)', display: 'flex', justifyContent: 'space-between', paddingLeft: 8 }}>
+                          <span>{it.quantity}x {it.nome_produto}{it.adicionais?.length ? ` (+${it.adicionais.length} adicional${it.adicionais.length > 1 ? 'is' : ''})` : ''}</span>
+                          <span>{fmt(Number(it.preco_unitario) * Number(it.quantity))}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                  <div style={{ borderTop: '1px solid var(--gray-100)', marginTop: 10, paddingTop: 10, textAlign: 'right', fontWeight: 800, fontSize: 15 }} data-testid="conta-mesa-total">
+                    Total: {fmt(Number(conta.total))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
