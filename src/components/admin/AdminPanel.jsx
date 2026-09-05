@@ -4,6 +4,7 @@ import { useAdminStore } from '../../hooks/useAdminStore.js';     // REF-SAAS-01
 import { AdminDashboard } from './AdminDashboard.jsx';
 import { AdminRelatorios } from './AdminRelatorios.jsx'; // REF-DASHBOARD-01: BI de negocio por periodo
 import { AdminPedidos } from './AdminPedidos.jsx';
+import { AdminMesas } from './AdminMesas.jsx'; // REF-MESA-02 · Onda 4: catalogo/status de mesas fisicas
 import { AdminProducts } from './AdminProducts.jsx';
 import { AdminCategorias } from './AdminCategorias.jsx';
 import { AdminAdicionais } from './AdminAdicionais.jsx';
@@ -24,6 +25,7 @@ export function AdminPanel({ admin, onExit, onLogout, onVoltarPlataforma }) {
     {id:'dashboard', icon:'📊', label:'Dashboard'},
     {id:'relatorios',icon:'📈', label:'Relatórios'},
     {id:'pedidos',   icon:'📋', label:'Pedidos'},
+    {id:'mesas',     icon:'🪑', label:'Mesas'},
     {id:'products',  icon:'🛍️', label:'Produtos'},
     {id:'categorias',icon:'🏷️', label:'Categorias'},
     {id:'adicionais',icon:'➕', label:'Adicionais'},
@@ -34,7 +36,7 @@ export function AdminPanel({ admin, onExit, onLogout, onVoltarPlataforma }) {
     {id:'saude',     icon:'🩺', label:'Saúde'},
     {id:'minhaconta',icon:'👤', label:'Minha Conta'},
   ];
-  const titles = {dashboard:'Dashboard',relatorios:'Relatórios',pedidos:'Pedidos',products:'Produtos',categorias:'Categorias',adicionais:'Adicionais',status:'Status da Loja',taxaentrega:'Taxa de Entrega',empresa:'Dados da Empresa',fidelidade:'Fidelidade',saude:'Saúde do Sistema',minhaconta:'Minha Conta'};
+  const titles = {dashboard:'Dashboard',relatorios:'Relatórios',pedidos:'Pedidos',mesas:'Mesas',products:'Produtos',categorias:'Categorias',adicionais:'Adicionais',status:'Status da Loja',taxaentrega:'Taxa de Entrega',empresa:'Dados da Empresa',fidelidade:'Fidelidade',saude:'Saúde do Sistema',minhaconta:'Minha Conta'};
   return (
     <div className="admin-layout">
       <div className="admin-sidebar">
@@ -115,6 +117,7 @@ export function AdminPanel({ admin, onExit, onLogout, onVoltarPlataforma }) {
           {tab==='dashboard'  && <AdminDashboard/>}
           {tab==='relatorios' && <AdminRelatorios/>}
           {tab==='pedidos'    && <AdminPedidos/>}
+          {tab==='mesas'      && <AdminMesas/>}
           {tab==='products'   && <AdminProducts/>}
           {tab==='categorias' && <AdminCategorias/>}
           {tab==='adicionais' && <AdminAdicionais/>}
