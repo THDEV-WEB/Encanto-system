@@ -5,8 +5,10 @@
    QR, sessão/consulta de conta, lançar pedido, trocar mesa, juntar mesas, fechar conta, histórico,
    impressão — todas nesta mesma tela, por decisão já registrada (seção 18 da autorização). */
 import { useState, useEffect, useCallback } from 'react';
-import { listarMesas, criarMesa, setMesaStatus, consultarContaMesa, trocarMesaSessao, juntarMesaSessao, fecharContaMesa } from '../../services/mesa/mesasFisicas.js';
+import QRCode from 'qrcode';
+import { listarMesas, criarMesa, setMesaStatus, consultarContaMesa, trocarMesaSessao, juntarMesaSessao, fecharContaMesa, obterUrlStorefront } from '../../services/mesa/mesasFisicas.js';
 import { fmt } from '../../utils/format.js';
+import { printComanda } from './comanda/printComanda.js';
 
 const STATUS_LABEL = { disponivel: '🟢 Disponível', indisponivel: '⛔ Indisponível' };
 // Mesmas 4 formas de pagamento de NovoPedidoMesaModal.jsx (REF-MESA-02 · Onda 7) -- nao inventa
@@ -35,6 +37,12 @@ export function AdminMesas() {
   const [pagamentoFechar, setPagamentoFechar] = useState('dinheiro');
   const [fechando, setFechando] = useState(false);
   const [erroFechar, setErroFechar] = useState('');
+  const [qrAberta, setQrAberta] = useState(null); // mesa (objeto) com o modal de QR aberto
+  const [qrDataUrl, setQrDataUrl] = useState(null);
+  const [qrLink, setQrLink] = useState('');
+  const [qrLoading, setQrLoading] = useState(false);
+  const [qrErro, setQrErro] = useState('');
+  const [urlLojaCache, setUrlLojaCache] = useState(null); // evita rechamar a RPC a cada mesa aberta
 
   const recarregar = useCallback(async () => {
     setLoading(true);
@@ -84,6 +92,46 @@ export function AdminMesas() {
     setNovaMesaTroca(''); setErroTrocar('');
     setNovaMesaJuntar(''); setErroJuntar('');
     setPagamentoFechar('dinheiro'); setErroFechar('');
+  };
+
+  const onVerQr = async (mesa) => {
+    setQrAberta(mesa);
+    setQrLoading(true); setQrErro(''); setQrDataUrl(null); setQrLink('');
+    let base = urlLojaCache;
+    if (!base) {
+      const r = await obterUrlStorefront();
+      if (!r.ok) { setQrLoading(false); setQrErro('Não foi possível obter a URL da loja.'); return; }
+      base = r.url;
+      setUrlLojaCache(base);
+    }
+    const link = `${base}/?mesa_token=${mesa.qr_token}`;
+    setQrLink(link);
+    try {
+      const dataUrl = await QRCode.toDataURL(link, { width: 320, margin: 2 });
+      setQrDataUrl(dataUrl);
+    } catch {
+      setQrErro('Não foi possível gerar o QR.');
+    }
+    setQrLoading(false);
+  };
+
+  const fecharQr = () => { setQrAberta(null); setQrDataUrl(null); setQrLink(''); setQrErro(''); };
+
+  const onImprimirQr = () => {
+    if (!qrDataUrl || !qrAberta) return;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>QR Mesa ${qrAberta.identificador}</title>
+      <style>
+        body{font-family:sans-serif;text-align:center;padding:40px;}
+        h1{font-size:28px;margin-bottom:4px;}
+        img{width:280px;height:280px;margin:24px 0;}
+        p{font-size:13px;color:#555;word-break:break-all;}
+      </style></head>
+      <body>
+        <h1>Mesa ${qrAberta.identificador}</h1>
+        <p>Aponte a câmera do celular para o código e faça seu pedido</p>
+        <img src="${qrDataUrl}" alt="QR da mesa ${qrAberta.identificador}" />
+      </body></html>`;
+    printComanda(html);
   };
 
   const onTrocarMesa = async () => {
@@ -187,6 +235,9 @@ export function AdminMesas() {
                       🧾 Ver conta
                     </button>
                   )}
+                  <button className="btn-sm" onClick={() => onVerQr(m)} data-testid={`mesa-ver-qr-${m.identificador}`}>
+                    🔲 QR
+                  </button>
                   <button className="btn-sm" disabled={alterando === m.id} onClick={() => onToggleStatus(m)} data-testid={`mesa-toggle-${m.identificador}`}>
                     {alterando === m.id ? '…' : (m.status === 'disponivel' ? 'Marcar indisponível' : 'Marcar disponível')}
                   </button>
@@ -303,6 +354,32 @@ export function AdminMesas() {
                     </button>
                     {erroFechar && <p style={{ fontSize: 12.5, color: '#DC2626', marginTop: 6, fontWeight: 600 }}>{erroFechar}</p>}
                   </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {qrAberta && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }} data-testid="qr-mesa-dialog">
+          <div className="admin-card" style={{ width: 380, maxWidth: '92vw', textAlign: 'center' }}>
+            <div className="admin-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3>🔲 QR — Mesa {qrAberta.identificador}</h3>
+              <button className="btn-sm" onClick={fecharQr}>Fechar</button>
+            </div>
+            <div style={{ padding: 20 }}>
+              {qrLoading ? (
+                <p style={{ color: 'var(--gray-500)', fontSize: 13 }}>Gerando…</p>
+              ) : qrErro ? (
+                <p style={{ fontSize: 13, color: '#DC2626', fontWeight: 600 }}>{qrErro}</p>
+              ) : (
+                <>
+                  <img src={qrDataUrl} alt={`QR da mesa ${qrAberta.identificador}`} style={{ width: 220, height: 220 }} data-testid="qr-mesa-imagem" />
+                  <p style={{ fontSize: 11.5, color: 'var(--gray-500)', wordBreak: 'break-all', marginTop: 10 }} data-testid="qr-mesa-link">{qrLink}</p>
+                  <button className="btn-primary" style={{ marginTop: 10, width: '100%' }} onClick={onImprimirQr} data-testid="qr-mesa-imprimir-btn">
+                    🖨️ Imprimir
+                  </button>
                 </>
               )}
             </div>

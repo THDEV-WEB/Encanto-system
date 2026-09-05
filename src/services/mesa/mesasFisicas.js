@@ -63,6 +63,16 @@ export async function fecharContaMesa(mesaSessionId, paymentMethod) {
   return data;
 }
 
+/* REF-MESA-02 · Onda 15: URL publica da propria loja, resolvida no servidor (Admin nao tem acesso
+   a stores.slug/dominio por outro caminho) -- usada junto com mesas[].qr_token pra montar o link
+   do QR (?mesa_token=<uuid>, mesmo parametro que useMesaFromQuery.js le desde a Onda 5). */
+export async function obterUrlStorefront() {
+  if (!db) return { ok: false, error: 'offline' };
+  const { data, error } = await db.rpc('admin_obter_url_storefront', buildStoreRpcParam());
+  if (error) return { ok: false, error: error.message };
+  return data;
+}
+
 /* REF-MESA-02 · Onda 5 (QR protegido): RPC publica (guest escaneando o QR, sem sessao/loja
    selecionada ainda) -- por isso NUNCA usa buildStoreRpcParam() aqui, o token sozinho ja resolve a
    loja no servidor. Nunca confiar no numero da mesa da URL crua -- so o que este RPC devolve. */
