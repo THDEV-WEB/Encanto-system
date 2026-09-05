@@ -5,7 +5,7 @@
    QR, sessão/consulta de conta, lançar pedido, trocar mesa, juntar mesas, fechar conta, histórico,
    impressão — todas nesta mesma tela, por decisão já registrada (seção 18 da autorização). */
 import { useState, useEffect, useCallback } from 'react';
-import { listarMesas, criarMesa, setMesaStatus, consultarContaMesa } from '../../services/mesa/mesasFisicas.js';
+import { listarMesas, criarMesa, setMesaStatus, consultarContaMesa, trocarMesaSessao } from '../../services/mesa/mesasFisicas.js';
 import { fmt } from '../../utils/format.js';
 
 const STATUS_LABEL = { disponivel: '🟢 Disponível', indisponivel: '⛔ Indisponível' };
@@ -20,6 +20,9 @@ export function AdminMesas() {
   const [contaAberta, setContaAberta] = useState(null); // identificador da mesa com o modal de conta aberto
   const [conta, setConta] = useState(null);
   const [contaLoading, setContaLoading] = useState(false);
+  const [novaMesaTroca, setNovaMesaTroca] = useState('');
+  const [trocando, setTrocando] = useState(false);
+  const [erroTrocar, setErroTrocar] = useState('');
 
   const recarregar = useCallback(async () => {
     setLoading(true);
@@ -57,12 +60,31 @@ export function AdminMesas() {
     setContaAberta(mesa.identificador);
     setContaLoading(true);
     setConta(null);
+    setNovaMesaTroca(''); setErroTrocar('');
     const r = await consultarContaMesa(mesa.identificador);
     setContaLoading(false);
     setConta(r);
   };
 
-  const fecharConta = () => { setContaAberta(null); setConta(null); };
+  const fecharConta = () => { setContaAberta(null); setConta(null); setNovaMesaTroca(''); setErroTrocar(''); };
+
+  const onTrocarMesa = async () => {
+    if (!novaMesaTroca || !conta?.sessao_id || trocando) return;
+    setTrocando(true); setErroTrocar('');
+    const r = await trocarMesaSessao(conta.sessao_id, novaMesaTroca);
+    setTrocando(false);
+    if (!r.ok) {
+      setErroTrocar(r.error === 'mesa ja ocupada' ? 'Essa mesa já está ocupada.' : r.error === 'mesa indisponivel' ? 'Essa mesa está indisponível.' : 'Não foi possível trocar de mesa.');
+      return;
+    }
+    setNovaMesaTroca('');
+    await recarregar();
+    setContaAberta(r.para);
+    setContaLoading(true);
+    const novaConta = await consultarContaMesa(r.para);
+    setContaLoading(false);
+    setConta(novaConta);
+  };
 
   return (
     <div>
@@ -166,6 +188,27 @@ export function AdminMesas() {
                   ))}
                   <div style={{ borderTop: '1px solid var(--gray-100)', marginTop: 10, paddingTop: 10, textAlign: 'right', fontWeight: 800, fontSize: 15 }} data-testid="conta-mesa-total">
                     Total: {fmt(Number(conta.total))}
+                  </div>
+
+                  <div style={{ borderTop: '1px solid var(--gray-100)', marginTop: 14, paddingTop: 14 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 8 }}>🔀 Trocar de mesa</div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <select
+                        className="form-input" style={{ flex: 1 }}
+                        value={novaMesaTroca}
+                        onChange={(e) => setNovaMesaTroca(e.target.value)}
+                        data-testid="conta-mesa-trocar-select"
+                      >
+                        <option value="">Selecione a mesa destino…</option>
+                        {mesas.filter((m) => m.status === 'disponivel' && !m.ocupada && m.identificador !== contaAberta).map((m) => (
+                          <option key={m.id} value={m.identificador}>Mesa {m.identificador}</option>
+                        ))}
+                      </select>
+                      <button className="btn-sm" disabled={!novaMesaTroca || trocando} onClick={onTrocarMesa} data-testid="conta-mesa-trocar-btn">
+                        {trocando ? '…' : 'Trocar'}
+                      </button>
+                    </div>
+                    {erroTrocar && <p style={{ fontSize: 12.5, color: '#DC2626', marginTop: 6, fontWeight: 600 }}>{erroTrocar}</p>}
                   </div>
                 </>
               )}

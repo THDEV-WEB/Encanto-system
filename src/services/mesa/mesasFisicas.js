@@ -36,6 +36,15 @@ export async function consultarContaMesa(identificador) {
   return data;
 }
 
+/* REF-MESA-02 · Onda 9: move uma sessao aberta de uma mesa fisica pra outra (cliente mudou de
+   lugar) sem fechar nada -- sessao/pedidos/total continuam os mesmos. */
+export async function trocarMesaSessao(mesaSessionId, novoIdentificador) {
+  if (!db) return { ok: false, error: 'offline' };
+  const { data, error } = await db.rpc('admin_trocar_mesa_sessao', { p_mesa_session_id: mesaSessionId, p_novo_identificador: novoIdentificador, ...buildStoreRpcParam() });
+  if (error) return { ok: false, error: error.message };
+  return data;
+}
+
 /* REF-MESA-02 · Onda 5 (QR protegido): RPC publica (guest escaneando o QR, sem sessao/loja
    selecionada ainda) -- por isso NUNCA usa buildStoreRpcParam() aqui, o token sozinho ja resolve a
    loja no servidor. Nunca confiar no numero da mesa da URL crua -- so o que este RPC devolve. */
