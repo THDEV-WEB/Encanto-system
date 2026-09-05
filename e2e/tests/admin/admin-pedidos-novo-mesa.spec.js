@@ -35,6 +35,9 @@ test.describe('Novo pedido de mesa (Admin/garçom)', { tag: '@writes' }, () => {
     await adminPedidosPage.mesaTelefoneInput.fill('38999990012');
     await adminPedidosPage.buscaProdutoInput.fill('Agua de Coco');
     await adminPedidosPage.produtoAdicionarButton('Agua de Coco').click();
+    // REF-MESA-02 · Onda 7: abre o editor de adicionais do item antes de ir pro resumo -- mesmo passo
+    // intermediário que o checkout do cliente já tem, agora reaproveitado aqui.
+    await adminPedidosPage.novoPedidoDialog.getByRole('button', { name: 'Adicionar ao pedido' }).click();
     await expect(adminPedidosPage.novoPedidoDialog.getByText('Total estimado')).toBeVisible();
 
     await adminPedidosPage.mesaCriarButton.click();

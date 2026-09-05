@@ -62,6 +62,7 @@ const DOMAIN_CONSUMERS = [
   'components/admin/AdminAdicionais.jsx', // REF-APP-01 · Onda 7.1 — consome MOCK_ADS de utils/addons (fallback do CRUD de adicionais)
   'pages/StoreApp.jsx',      // REF-APP-01 · Onda 9.1 — consome resolverAdicionais/selecionarFonteAdicionais de utils/addons (resolucao de adicionais do ProductModal)
   'utils/addonGroupLabels.js', // REF-REGRESSION-01 · P6 — consome GRUPOS de utils/addons (fonte unica de emoji/nome por grupo, UI fora do dominio)
+  'components/admin/NovoPedidoMesaModal.jsx', // REF-MESA-02 · Onda 7 — consome resolverAdicionais/ehAdicionalGratis/cotaGratis/resolverPrecoAdicionais (mesma logica de preco do checkout do cliente, sem duplicar)
   // Cada extração que importe pricing/addons adiciona a si mesma AQUI, no MESMO commit. Ex. (REF-APP-01):
   // 'pages/StoreApp.jsx', 'hooks/useCart.js', 'hooks/useAdicionais.js', 'components/ProductCard.jsx',
   // 'components/ProductModal/ProductModalInner.jsx', 'components/CartSidebar.jsx',
