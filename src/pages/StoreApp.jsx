@@ -94,7 +94,10 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
      parametro ?mesa= da URL (loja com mesa_canal_qr habilitado). create_order valida esse canal
      especificamente quando origem_pedido='qr_mesa' (ver migration da Onda 3). */
   const [origemPedido, setOrigemPedido] = useState('storefront');
-  useMesaFromQuery(mesaConfig, setDeliveryMode, setMesaIdentificador, setOrigemPedido);
+  /* REF-MESA-02 · Onda 5: token opaco resolvido a partir de ?mesa_token= -- create_order() exige e
+     confia SOMENTE nele para o canal qr_mesa (mesa_identificador do payload e ignorado nesse canal). */
+  const [mesaQrToken, setMesaQrToken] = useState(null);
+  useMesaFromQuery(mesaConfig, setDeliveryMode, setMesaIdentificador, setOrigemPedido, setMesaQrToken);
   /* REF-CHECKOUT-ADDRESS-01: FONTE UNICA do endereco (contexto). O header apenas EXIBE o rotulo e abre
      o modal (abrirEndereco); a edicao/persistencia e do provider. Sem estado paralelo de endereco. */
   const { endereco: enderecoObj, temEndereco, abrirModal: abrirEndereco, limpar: limparEndereco } = useAddress();
@@ -245,7 +248,7 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
     },
   }), [page, modal, cartOpen, showLoyalty, loyaltyTeaser]);
 
-  if (page==='checkout') return <Suspense fallback={<Spinner/>}><CheckoutPage cart={cart} deliveryMode={deliveryMode} deliveryEta={deliveryEta} produtosVivos={rawProds} mesaIdentificador={mesaIdentificador} setMesaIdentificador={setMesaIdentificador} origemPedido={origemPedido} onBack={()=>setPage('home')} onSuccess={msg=>{setWaMsg(msg);setPage('success');}}/></Suspense>;
+  if (page==='checkout') return <Suspense fallback={<Spinner/>}><CheckoutPage cart={cart} deliveryMode={deliveryMode} deliveryEta={deliveryEta} produtosVivos={rawProds} mesaIdentificador={mesaIdentificador} setMesaIdentificador={setMesaIdentificador} origemPedido={origemPedido} mesaQrToken={mesaQrToken} onBack={()=>setPage('home')} onSuccess={msg=>{setWaMsg(msg);setPage('success');}}/></Suspense>;
   if (page==='success')  return <Suspense fallback={<Spinner/>}><SuccessPage  msg={waMsg} cart={cart} onBack={()=>setPage('home')} deliveryEta={deliveryEta} deliveryMode={deliveryMode} mesaIdentificador={mesaIdentificador} whatsapp={companyInfo.whatsapp} horario={horario}/></Suspense>;
 
   return (

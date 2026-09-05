@@ -53,7 +53,10 @@ export function buildOrderArgs(cart, form, endereco, requestId, enderecoId, resu
                   retirada: resumo ? resumo.status === 'retirada' : false,
                   ...(extra.tipoPedido ? { tipo_pedido: extra.tipoPedido } : {}),
                   ...(extra.mesaIdentificador ? { mesa_identificador: extra.mesaIdentificador } : {}),
-                  ...(extra.origemPedido ? { origem_pedido: extra.origemPedido } : {}) };
+                  ...(extra.origemPedido ? { origem_pedido: extra.origemPedido } : {}),
+                  /* REF-MESA-02 · Onda 5: prova de posse do QR -- quando presente, create_order()
+                     IGNORA mesa_identificador do payload e resolve a mesa a partir deste token. */
+                  ...(extra.mesaQrToken ? { mesa_qr_token: extra.mesaQrToken } : {}) };
   const items = cart.items.map(i => {
     const pu = precoUnitario(i);
     return {

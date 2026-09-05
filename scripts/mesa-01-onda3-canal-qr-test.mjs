@@ -96,11 +96,17 @@ async function main() {
     const item = (prodId) => [{ product_id: prodId, nome_produto: 'Produto MESA-01 QR', quantity: 1 }];
 
     // B1 -- canal_qr=true: pedido de mesa via QR e aceito, gravado com origem_pedido='qr_mesa'.
+    // REF-MESA-02 · Onda 5 (QR protegido): create_order() passou a exigir mesa_qr_token pro canal
+    // qr_mesa (mesa_identificador cru do payload e' ignorado nesse canal) -- cria a mesa fisica de
+    // verdade (public.mesas) pra obter um token real, em vez de so mandar '12' solto.
+    const mesaQrRow = await client.query(
+      `INSERT INTO public.mesas (store_id, identificador) VALUES ($1,'12') RETURNING qr_token`, [STORE_QR_ON]);
+    const QR_TOKEN_12 = mesaQrRow.rows[0].qr_token;
     await withSavepoint(async () => {
       await setGuestOrigin(slugOn);
       const r = await callCreateOrder(
         { name: 'Cliente QR', phone: telefone() },
-        { payment_method: 'dinheiro', tipo_pedido: 'mesa', mesa_identificador: '12', origem_pedido: 'qr_mesa', total: 20 },
+        { payment_method: 'dinheiro', tipo_pedido: 'mesa', mesa_qr_token: QR_TOKEN_12, origem_pedido: 'qr_mesa', total: 20 },
         item(PROD_ON), STORE_QR_ON);
       const res = r.rows[0].res;
       check('B1a create_order (tipo_pedido=mesa, origem_pedido=qr_mesa, canal_qr=true) retorna ok', res.ok === true, JSON.stringify(res));
