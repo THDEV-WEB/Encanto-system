@@ -1,0 +1,385 @@
+-- ============================================================================
+-- REF-MESA-02 · Onda 6 — Abertura implícita da sessão de mesa
+-- ----------------------------------------------------------------------------
+-- Primeiro pedido válido de uma mesa abre (ou reaproveita) a sessão
+-- automaticamente -- sem exigir que o garçom aperte "Abrir sessão" antes.
+-- Justificativa (pedida explicitamente pela autorização): reduz operação
+-- manual, evita sessão aberta sem consumo, reduz erro operacional, e mantém
+-- a transação do primeiro pedido como ponto confiável de criação (mesma
+-- transação, sem janela de inconsistência entre "abrir" e "primeiro pedido").
+--
+-- Nova capability opt-in por loja: mesa_sessao_habilitada (independente de
+-- mesa_habilitada/canal_qr/canal_admin) -- enquanto desligada (default),
+-- tipo_pedido='mesa' se comporta EXATAMENTE como hoje (mesa_session_id fica
+-- sempre NULL). Mesmo padrão de todas as capabilities anteriores deste
+-- domínio -- nunca muda comportamento de loja que não optou.
+--
+-- _get_or_open_mesa_session(): função interna (sem GRANT a ninguém) chamada
+-- de dentro de create_order(). Resolve a corrida real "dois clientes pedindo
+-- na mesma mesa ao mesmo tempo, nenhuma sessão aberta ainda":
+--   1. tenta achar sessão já aberta (caminho feliz, sem lock ainda);
+--   2. se achou, adquire SELECT...FOR UPDATE na linha (serializa contra um
+--      fechamento concorrente -- RPC de fechar_conta_mesa, onda futura, vai
+--      adquirir o MESMO lock antes de mudar o status); reconfirma que ainda
+--      está aberta sob o lock (pode ter fechado entre o passo 1 e o lock);
+--   3. se não achou (ou fechou entre os passos), cria uma sessão nova +
+--      tenta anexar a mesa -- se OUTRA transação venceu a corrida no meio
+--      do caminho (unique_violation no índice parcial da Onda 2), descarta a
+--      sessão órfã que acabou de criar (nada mais referencia ela ainda) e
+--      usa a que venceu, sob lock.
+-- Nunca usa espera passiva/retry em loop -- o próprio unique_violation do
+-- Postgres é o mecanismo de arbitragem, sem corrida de leitura-depois-escrita
+-- sem proteção.
+--
+-- create_order(): quando tipo_pedido='mesa' E mesa_sessao_habilitada=true E
+-- origem_pedido IN ('qr_mesa','admin_garcom') (os 2 canais reais de mesa --
+-- 'storefront'+'mesa' é uma combinação hoje tecnicamente aceita mas sem
+-- canal correspondente, mantida sem sessão, comportamento intocado),
+-- resolve/abre a sessão e grava orders.mesa_session_id. Nenhuma mudança de
+-- payload exigida do client -- resolução inteiramente server-side.
+--
+-- Testes: scripts/mesa-02-onda6-abertura-implicita-test.mjs (E2E) -- inclui
+-- teste de concorrência REAL com 2 conexões Postgres simultâneas (SAVEPOINT
+-- não prova lock real -- FOR UPDATE só bloqueia entre transações
+-- DIFERENTES). Reaproveita como referência os precedentes reais já
+-- confirmados no repo: redeem_reward() (REF-LOYALTY-01) e
+-- enc_claim_notifications() (REF-ORDER-01, FOR UPDATE SKIP LOCKED).
+-- Rollback: REF-MESA-02-onda6-abertura-implicita-rollback.sql.
+-- ============================================================================
+
+BEGIN;
+
+-- get_mesa_config: corpo apenas, RETURNS jsonb inalterado -- CREATE OR REPLACE simples.
+CREATE OR REPLACE FUNCTION public.get_mesa_config(p_store_id uuid DEFAULT default_store_id())
+ RETURNS jsonb
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'public'
+AS $function$
+  SELECT jsonb_build_object(
+    'habilitada',  COALESCE((SELECT valor FROM public.store_settings WHERE store_id = p_store_id AND chave = 'mesa_habilitada'), 'false') <> 'false',
+    'canal_qr',    COALESCE((SELECT valor FROM public.store_settings WHERE store_id = p_store_id AND chave = 'mesa_canal_qr'), 'false') <> 'false',
+    'canal_admin', COALESCE((SELECT valor FROM public.store_settings WHERE store_id = p_store_id AND chave = 'mesa_canal_admin'), 'false') <> 'false',
+    'sessao_habilitada', COALESCE((SELECT valor FROM public.store_settings WHERE store_id = p_store_id AND chave = 'mesa_sessao_habilitada'), 'false') <> 'false'
+  );
+$function$;
+
+-- set_mesa_config: ganha o 4o parametro booleano -- assinatura muda (novo parametro antes do
+-- DEFAULT), exige DROP. Sem consumidor de UI ainda (gap ja registrado desde a REF-MESA-01), zero
+-- blast radius no frontend.
+DROP FUNCTION IF EXISTS public.set_mesa_config(boolean, boolean, boolean, uuid);
+
+CREATE OR REPLACE FUNCTION public.set_mesa_config(p_habilitada boolean, p_canal_qr boolean, p_canal_admin boolean, p_sessao_habilitada boolean, p_store_id uuid DEFAULT default_store_id())
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'public'
+AS $function$
+begin
+  if not public.is_admin_of(p_store_id) then return jsonb_build_object('ok', false, 'error', 'sem permissao'); end if;
+
+  insert into public.store_settings (store_id, chave, valor) values (p_store_id, 'mesa_habilitada', case when p_habilitada then 'true' else 'false' end)
+    on conflict (store_id, chave) do update set valor = excluded.valor;
+  insert into public.store_settings (store_id, chave, valor) values (p_store_id, 'mesa_canal_qr', case when p_canal_qr then 'true' else 'false' end)
+    on conflict (store_id, chave) do update set valor = excluded.valor;
+  insert into public.store_settings (store_id, chave, valor) values (p_store_id, 'mesa_canal_admin', case when p_canal_admin then 'true' else 'false' end)
+    on conflict (store_id, chave) do update set valor = excluded.valor;
+  insert into public.store_settings (store_id, chave, valor) values (p_store_id, 'mesa_sessao_habilitada', case when p_sessao_habilitada then 'true' else 'false' end)
+    on conflict (store_id, chave) do update set valor = excluded.valor;
+
+  return jsonb_build_object('ok', true, 'habilitada', p_habilitada, 'canal_qr', p_canal_qr, 'canal_admin', p_canal_admin, 'sessao_habilitada', p_sessao_habilitada);
+end;
+$function$;
+-- DROP FUNCTION apaga grants -- restaura exatamente o que existia (confirmado ao vivo antes desta
+-- migration: postgres+authenticated+service_role, NUNCA anon -- escrita e sempre gated por
+-- is_admin_of dentro do corpo, mas o GRANT em si ja era mais restrito que get_mesa_config).
+-- Supabase concede EXECUTE a PUBLIC por padrao em toda funcao NOVA do schema public (achado ja
+-- registrado pela REF-SEC-02) -- DROP+CREATE cria um objeto novo, entao precisa REVOKE explicito de
+-- novo (nao so GRANT ao papel certo), mesmo padrao ja usado na migration original da Onda 1.
+REVOKE EXECUTE ON FUNCTION public.set_mesa_config(boolean, boolean, boolean, boolean, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.set_mesa_config(boolean, boolean, boolean, boolean, uuid) FROM anon;
+GRANT EXECUTE ON FUNCTION public.set_mesa_config(boolean, boolean, boolean, boolean, uuid) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public._get_or_open_mesa_session(
+  p_store_id uuid, p_mesa_identificador text, p_origem_abertura text, p_opened_by_admin_user_id uuid
+) RETURNS uuid
+ LANGUAGE plpgsql
+ SET search_path TO 'pg_catalog', 'public'
+AS $function$
+DECLARE v_session_id uuid;
+BEGIN
+  SELECT mesa_session_id INTO v_session_id
+  FROM public.mesa_session_mesas
+  WHERE store_id = p_store_id AND mesa_identificador = p_mesa_identificador AND status_sessao = 'aberta'
+  LIMIT 1;
+
+  IF v_session_id IS NOT NULL THEN
+    PERFORM 1 FROM public.mesa_sessions WHERE id = v_session_id FOR UPDATE;
+    IF EXISTS (SELECT 1 FROM public.mesa_sessions WHERE id = v_session_id AND status = 'aberta') THEN
+      RETURN v_session_id;
+    END IF;
+    -- fechou entre a leitura sem lock e o lock -- trata como se nao tivesse achado nada.
+    v_session_id := NULL;
+  END IF;
+
+  INSERT INTO public.mesa_sessions (store_id, origem_abertura, opened_by_admin_user_id)
+  VALUES (p_store_id, p_origem_abertura, p_opened_by_admin_user_id)
+  RETURNING id INTO v_session_id;
+
+  BEGIN
+    INSERT INTO public.mesa_session_mesas (mesa_session_id, store_id, mesa_identificador)
+    VALUES (v_session_id, p_store_id, p_mesa_identificador);
+  EXCEPTION WHEN unique_violation THEN
+    -- outra transacao venceu a corrida entre nosso SELECT inicial e este INSERT -- descarta a
+    -- sessao orfa (nada a referencia ainda) e usa a que venceu, sob lock.
+    DELETE FROM public.mesa_sessions WHERE id = v_session_id;
+    SELECT mesa_session_id INTO v_session_id
+    FROM public.mesa_session_mesas
+    WHERE store_id = p_store_id AND mesa_identificador = p_mesa_identificador AND status_sessao = 'aberta'
+    LIMIT 1;
+    PERFORM 1 FROM public.mesa_sessions WHERE id = v_session_id FOR UPDATE;
+  END;
+
+  RETURN v_session_id;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public._get_or_open_mesa_session(uuid, text, text, uuid) FROM PUBLIC, anon, authenticated;
+
+-- ── create_order(): resolve mesa_session_id quando a loja tiver mesa_sessao_habilitada ──────────
+CREATE OR REPLACE FUNCTION public.create_order(p_customer jsonb, p_order jsonb, p_items jsonb, p_request_id uuid DEFAULT NULL::uuid, p_store_id uuid DEFAULT default_store_id())
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'public'
+AS $function$
+declare
+  v_customer_id uuid; v_order_id uuid;
+  v_name   text := nullif(btrim(p_customer->>'name'), '');
+  v_phone  text := public.normalize_phone(p_customer->>'phone');
+  v_total  numeric;
+  v_pay    text := nullif(btrim(p_order->>'payment_method'), '');
+  v_addr   text := nullif(btrim(p_order->>'address'), '');
+  v_status text := coalesce(nullif(btrim(p_order->>'status'), ''), 'recebido');
+  v_obs    text := nullif(btrim(p_order->>'observacoes'), '');
+  v_delivery_fee    numeric;
+  v_maquininha_fee  numeric;
+  v_adicional_pagamento_fee numeric;
+  v_retirada        boolean := coalesce((nullif(btrim(p_order->>'retirada'), ''))::boolean, false);
+  v_tipo_pedido     text := coalesce(nullif(btrim(p_order->>'tipo_pedido'), ''), case when v_retirada then 'retirada' else 'entrega' end);
+  v_origem_pedido   text := coalesce(nullif(btrim(p_order->>'origem_pedido'), ''), 'storefront');
+  v_mesa_identificador text := nullif(btrim(p_order->>'mesa_identificador'), '');
+  v_mesa_qr_token   uuid;
+  v_mesa_token_store uuid;
+  v_mesa_session_id uuid;
+  v_mesa_cfg        jsonb;
+  v_endereco_id     uuid := nullif(btrim(p_order->>'endereco_id'), '')::uuid;
+  v_fee_calc        jsonb;
+  v_elem   jsonb; v_err text; v_state text;
+  v_t0     timestamptz := clock_timestamp(); v_dur numeric;
+  v_log    jsonb := jsonb_build_object(
+              'n_items', case when jsonb_typeof(p_items)='array' then jsonb_array_length(p_items) else null end,
+              'total', p_order->>'total', 'has_request_id', (p_request_id is not null),
+              'tipo_pedido', v_tipo_pedido, 'origem_pedido', v_origem_pedido);
+  v_tenant       uuid := nullif(auth.jwt()->>'tenant_id', '')::uuid;
+  v_store_id     uuid;
+  v_items_resolved jsonb := '[]'::jsonb;
+  v_pid            uuid;
+  v_calc           jsonb;
+  v_item_price     numeric;
+begin
+  if p_request_id is not null then
+    select id into v_order_id from public.orders where request_id = p_request_id;
+    if v_order_id is not null then return jsonb_build_object('ok', true, 'order_id', v_order_id, 'idempotent', true); end if;
+  end if;
+
+  if not public._rate_limit_hit('create_order', 60, interval '10 minutes') then
+    return jsonb_build_object('ok', false, 'error', 'muitas tentativas, aguarde um momento');
+  end if;
+
+  if v_tenant is not null then
+    if v_tenant <> p_store_id then
+      return jsonb_build_object('ok', false, 'error', 'loja invalida');
+    end if;
+    v_store_id := p_store_id;
+  else
+    v_store_id := public.resolve_store_from_origin();
+    if v_store_id is null then
+      return jsonb_build_object('ok', false, 'error', 'loja nao identificada');
+    end if;
+  end if;
+
+  if v_tipo_pedido = 'mesa' then
+    v_mesa_cfg := public.get_mesa_config(v_store_id);
+    if not coalesce((v_mesa_cfg->>'habilitada')::boolean, false) then
+      return jsonb_build_object('ok', false, 'error', 'modalidade indisponivel para esta loja');
+    end if;
+    if v_origem_pedido = 'qr_mesa' then
+      if not coalesce((v_mesa_cfg->>'canal_qr')::boolean, false) then
+        return jsonb_build_object('ok', false, 'error', 'canal indisponivel para esta loja');
+      end if;
+      v_mesa_qr_token := nullif(btrim(p_order->>'mesa_qr_token'), '')::uuid;
+      if v_mesa_qr_token is null then
+        return jsonb_build_object('ok', false, 'error', 'canal indisponivel para esta loja');
+      end if;
+      select m.store_id, m.identificador into v_mesa_token_store, v_mesa_identificador
+        from public.mesas m where m.qr_token = v_mesa_qr_token;
+      if v_mesa_token_store is null or v_mesa_token_store <> v_store_id then
+        return jsonb_build_object('ok', false, 'error', 'canal indisponivel para esta loja');
+      end if;
+    end if;
+    if v_origem_pedido = 'admin_garcom' then
+      if not coalesce((v_mesa_cfg->>'canal_admin')::boolean, false) then
+        return jsonb_build_object('ok', false, 'error', 'canal indisponivel para esta loja');
+      end if;
+      if not public.is_admin_of(v_store_id) then
+        return jsonb_build_object('ok', false, 'error', 'sem permissao');
+      end if;
+    end if;
+  elsif v_origem_pedido in ('qr_mesa', 'admin_garcom') then
+    return jsonb_build_object('ok', false, 'error', 'canal indisponivel para esta loja');
+  end if;
+
+  begin
+    if p_customer is null or jsonb_typeof(p_customer) <> 'object' then raise exception 'p_customer ausente/invalido'; end if;
+    if v_name  is null then raise exception 'name do cliente e obrigatorio'; end if;
+    if v_phone is null then raise exception 'telefone do cliente e obrigatorio'; end if;
+    if p_order is null or jsonb_typeof(p_order) <> 'object' then raise exception 'p_order ausente/invalido'; end if;
+    if v_pay  is null then raise exception 'payment_method e obrigatorio'; end if;
+
+    if v_tipo_pedido not in ('entrega', 'retirada', 'mesa') then
+      raise exception 'tipo_pedido invalido';
+    end if;
+    if v_origem_pedido not in ('storefront', 'qr_mesa', 'admin_garcom') then
+      raise exception 'origem_pedido invalido';
+    end if;
+    if v_tipo_pedido = 'mesa' then
+      if v_mesa_identificador is null then raise exception 'identificacao da mesa e obrigatoria'; end if;
+      if v_addr is null then v_addr := 'Mesa ' || v_mesa_identificador; end if;
+    elsif v_mesa_identificador is not null then
+      raise exception 'mesa_identificador so e valido para tipo_pedido mesa';
+    end if;
+
+    if v_addr is null then raise exception 'address e obrigatorio'; end if;
+
+    if v_endereco_id is not null then
+      if auth.uid() is not null then
+        if not exists (
+          select 1 from public.addresses a
+          where a.id = v_endereco_id and a.store_id = v_store_id
+            and (a.customer_id is null or a.customer_id in (select c.id from public.customers c where c.auth_user_id = auth.uid()))
+        ) then
+          v_endereco_id := null;
+        end if;
+      else
+        if not exists (
+          select 1 from public.addresses a where a.id = v_endereco_id and a.store_id = v_store_id and a.customer_id is null
+        ) then
+          v_endereco_id := null;
+        end if;
+      end if;
+    end if;
+
+    v_fee_calc := public._resolve_delivery_fee(v_store_id, (v_tipo_pedido <> 'entrega'), v_pay, v_endereco_id);
+    v_delivery_fee := (v_fee_calc->>'delivery_fee')::numeric;
+    v_maquininha_fee := (v_fee_calc->>'maquininha_fee')::numeric;
+    v_adicional_pagamento_fee := (v_fee_calc->>'adicional_pagamento_fee')::numeric;
+
+    if (p_order ? 'delivery_fee' and round(coalesce((p_order->>'delivery_fee')::numeric,0)*100) <> round(v_delivery_fee*100))
+       or (p_order ? 'maquininha_fee' and round(coalesce((p_order->>'maquininha_fee')::numeric,0)*100) <> round(v_maquininha_fee*100))
+       or (p_order ? 'adicional_pagamento_fee' and round(coalesce((p_order->>'adicional_pagamento_fee')::numeric,0)*100) <> round(v_adicional_pagamento_fee*100))
+    then
+      return jsonb_build_object('ok', false, 'error', 'valor da entrega foi atualizado, confirme novamente',
+        'divergencia_valor', true, 'delivery_fee', v_delivery_fee, 'maquininha_fee', v_maquininha_fee,
+        'adicional_pagamento_fee', v_adicional_pagamento_fee);
+    end if;
+
+    -- REF-MESA-02 · Onda 6: abertura implicita da sessao -- so quando a loja tiver
+    -- mesa_sessao_habilitada=true (opt-in, default false, zero mudanca de comportamento pra quem
+    -- nao ligou) E o canal for um dos 2 reais de mesa (qr_mesa/admin_garcom -- 'storefront'+'mesa' e
+    -- uma combinacao residual sem canal, mantida sem sessao, comportamento intocado). Roda ANTES do
+    -- loop de itens (nao depende de precos) mas DEPOIS de toda validacao que independe da sessao --
+    -- minimiza a janela do lock que _get_or_open_mesa_session adquire.
+    if v_tipo_pedido = 'mesa' and coalesce((v_mesa_cfg->>'sessao_habilitada')::boolean, false)
+       and v_origem_pedido in ('qr_mesa', 'admin_garcom') then
+      v_mesa_session_id := public._get_or_open_mesa_session(
+        v_store_id, v_mesa_identificador, v_origem_pedido,
+        case when v_origem_pedido = 'admin_garcom' then auth.uid() else null end
+      );
+    end if;
+
+    if p_items is null or jsonb_typeof(p_items) <> 'array' then raise exception 'p_items deve ser um array'; end if;
+    if jsonb_array_length(p_items) = 0 then raise exception 'p_items nao pode ser vazio'; end if;
+    for v_elem in select value from jsonb_array_elements(p_items) loop
+      if nullif(btrim(v_elem->>'nome_produto'), '') is null then raise exception 'item sem nome_produto'; end if;
+      if nullif(btrim(v_elem->>'quantity'), '') is null or (v_elem->>'quantity')::numeric <= 0 then
+        raise exception 'item "%" com quantity invalida', v_elem->>'nome_produto'; end if;
+
+      v_pid := nullif(btrim(v_elem->>'product_id'), '')::uuid;
+      if v_pid is null then
+        raise exception 'item "%" sem produto valido', v_elem->>'nome_produto';
+      end if;
+
+      v_calc := public._resolve_item_pricing(v_store_id, v_pid, nullif(btrim(v_elem->>'tamanho_label'), ''),
+                                              coalesce(v_elem->'adicionais', '[]'::jsonb));
+      v_item_price := (v_calc->>'preco_unitario')::numeric;
+      v_items_resolved := v_items_resolved || jsonb_build_array(jsonb_build_object(
+        'product_id', v_pid, 'nome_produto', v_elem->>'nome_produto',
+        'quantity', (v_elem->>'quantity')::int, 'price', v_item_price, 'preco_unitario', v_item_price,
+        'adicionais', v_calc->'adicionais', 'observacoes', nullif(btrim(v_elem->>'observacoes'), '')
+      ));
+    end loop;
+
+    select coalesce(sum((item->>'preco_unitario')::numeric * (item->>'quantity')::numeric), 0)
+      into v_total
+      from jsonb_array_elements(v_items_resolved) as t(item);
+    v_total := v_total + v_delivery_fee + v_maquininha_fee + v_adicional_pagamento_fee;
+    if v_total <= 0 then raise exception 'total deve ser > 0 (recebido %)', v_total; end if;
+
+    insert into public.customers (name, phone, store_id) values (v_name, v_phone, v_store_id)
+      on conflict (store_id, phone) do update
+        set name = case
+          when public.customers.auth_user_id is null or public.customers.auth_user_id = auth.uid()
+            then excluded.name
+          else public.customers.name
+        end
+      returning id into v_customer_id;
+    insert into public.orders (customer_id, total, status, payment_method, address, observacoes, request_id, endereco_id, delivery_fee, maquininha_fee, adicional_pagamento_fee, store_id, tipo_pedido, origem_pedido, mesa_identificador, mesa_session_id)
+      values (v_customer_id, v_total, v_status, v_pay, v_addr, v_obs, p_request_id,
+              v_endereco_id, v_delivery_fee, v_maquininha_fee, v_adicional_pagamento_fee, v_store_id,
+              v_tipo_pedido, v_origem_pedido, v_mesa_identificador, v_mesa_session_id) returning id into v_order_id;
+    insert into public.order_items (order_id, product_id, nome_produto, quantity, price, preco_unitario, adicionais, observacoes, store_id)
+      select v_order_id, (item->>'product_id')::uuid, item->>'nome_produto',
+             (item->>'quantity')::int, (item->>'price')::numeric, (item->>'preco_unitario')::numeric,
+             coalesce(item->'adicionais','[]'::jsonb), item->>'observacoes', v_store_id
+      from jsonb_array_elements(v_items_resolved) as t(item);
+
+    begin
+      perform public.loyalty_grant(v_customer_id, v_order_id);
+    exception when others then
+      null;
+    end;
+
+    return jsonb_build_object('ok', true, 'order_id', v_order_id, 'mesa_session_id', v_mesa_session_id);
+  exception
+    when unique_violation then
+      if p_request_id is not null then
+        select id into v_order_id from public.orders where request_id = p_request_id;
+        if v_order_id is not null then return jsonb_build_object('ok', true, 'order_id', v_order_id, 'idempotent', true); end if;
+      end if;
+      v_err := sqlerrm; v_state := sqlstate; v_dur := extract(epoch from clock_timestamp()-v_t0)*1000;
+      begin insert into public.application_logs(module,operation,entity,entity_id,request_id,rpc,version,duration_ms,level,message,payload,sqlstate,context,origin)
+        values('orders','create_order','order',null,p_request_id,'create_order','mesa-02-onda6-abertura-implicita',v_dur,'error',v_err,v_log,v_state,'unique_violation',current_user);
+      exception when others then null; end;
+      return jsonb_build_object('ok', false, 'error', v_err, 'sqlstate', v_state);
+    when others then
+      v_err := sqlerrm; v_state := sqlstate; v_dur := extract(epoch from clock_timestamp()-v_t0)*1000;
+      begin insert into public.application_logs(module,operation,entity,entity_id,request_id,rpc,version,duration_ms,level,message,payload,sqlstate,context,origin)
+        values('orders','create_order','order',null,p_request_id,'create_order','mesa-02-onda6-abertura-implicita',v_dur,'error',v_err,v_log,v_state,'create_order',current_user);
+      exception when others then null; end;
+      return jsonb_build_object('ok', false, 'error', v_err, 'sqlstate', v_state);
+  end;
+end;$function$;
+
+NOTIFY pgrst, 'reload schema';
+
+COMMIT;

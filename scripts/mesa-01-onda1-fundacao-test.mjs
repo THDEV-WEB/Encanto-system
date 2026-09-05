@@ -236,7 +236,9 @@ async function main() {
     // tipo_pedido='mesa' (guest, via Origin real -- caminho fail-closed de producao, nao atalho).
     await withSavepoint(async () => {
       await setRole('authenticated', ADMIN_UID, null);
-      const rc = await client.query(`SELECT public.set_mesa_config($1,$2,$3,$4) AS res`, [true, false, false, STORE_A]);
+      // REF-MESA-02 · Onda 6: set_mesa_config ganhou o 4o parametro (p_sessao_habilitada) antes de
+      // p_store_id -- sessao fica desligada aqui de proposito (fora de escopo desta suite).
+      const rc = await client.query(`SELECT public.set_mesa_config($1,$2,$3,$4,$5) AS res`, [true, false, false, false, STORE_A]);
       check('B4a set_mesa_config(true) pelo admin da loja retorna ok', rc.rows[0].res.ok === true, JSON.stringify(rc.rows[0].res));
 
       const rg = await client.query(`SELECT public.get_mesa_config($1) AS res`, [STORE_A]);
