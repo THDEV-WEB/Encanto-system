@@ -5,10 +5,16 @@
    QR, sessão/consulta de conta, lançar pedido, trocar mesa, juntar mesas, fechar conta, histórico,
    impressão — todas nesta mesma tela, por decisão já registrada (seção 18 da autorização). */
 import { useState, useEffect, useCallback } from 'react';
-import { listarMesas, criarMesa, setMesaStatus, consultarContaMesa, trocarMesaSessao, juntarMesaSessao } from '../../services/mesa/mesasFisicas.js';
+import { listarMesas, criarMesa, setMesaStatus, consultarContaMesa, trocarMesaSessao, juntarMesaSessao, fecharContaMesa } from '../../services/mesa/mesasFisicas.js';
 import { fmt } from '../../utils/format.js';
 
 const STATUS_LABEL = { disponivel: '🟢 Disponível', indisponivel: '⛔ Indisponível' };
+// Mesmas 4 formas de pagamento de NovoPedidoMesaModal.jsx (REF-MESA-02 · Onda 7) -- nao inventa
+// um novo conjunto.
+const PAGAMENTOS = [
+  { id: 'dinheiro', label: 'Dinheiro' }, { id: 'pix', label: 'PIX' },
+  { id: 'cartao_debito', label: 'Débito' }, { id: 'cartao_credito', label: 'Crédito' },
+];
 
 export function AdminMesas() {
   const [mesas, setMesas] = useState([]);
@@ -26,6 +32,9 @@ export function AdminMesas() {
   const [novaMesaJuntar, setNovaMesaJuntar] = useState('');
   const [juntando, setJuntando] = useState(false);
   const [erroJuntar, setErroJuntar] = useState('');
+  const [pagamentoFechar, setPagamentoFechar] = useState('dinheiro');
+  const [fechando, setFechando] = useState(false);
+  const [erroFechar, setErroFechar] = useState('');
 
   const recarregar = useCallback(async () => {
     setLoading(true);
@@ -64,12 +73,18 @@ export function AdminMesas() {
     setContaLoading(true);
     setConta(null);
     setNovaMesaTroca(''); setErroTrocar(''); setNovaMesaJuntar(''); setErroJuntar('');
+    setPagamentoFechar('dinheiro'); setErroFechar('');
     const r = await consultarContaMesa(mesa.identificador);
     setContaLoading(false);
     setConta(r);
   };
 
-  const fecharConta = () => { setContaAberta(null); setConta(null); setNovaMesaTroca(''); setErroTrocar(''); setNovaMesaJuntar(''); setErroJuntar(''); };
+  const fecharModalConta = () => {
+    setContaAberta(null); setConta(null);
+    setNovaMesaTroca(''); setErroTrocar('');
+    setNovaMesaJuntar(''); setErroJuntar('');
+    setPagamentoFechar('dinheiro'); setErroFechar('');
+  };
 
   const onTrocarMesa = async () => {
     if (!novaMesaTroca || !conta?.sessao_id || trocando) return;
@@ -104,6 +119,19 @@ export function AdminMesas() {
     const novaConta = await consultarContaMesa(contaAberta);
     setContaLoading(false);
     setConta(novaConta);
+  };
+
+  const onFecharConta = async () => {
+    if (!conta?.sessao_id || fechando) return;
+    setFechando(true); setErroFechar('');
+    const r = await fecharContaMesa(conta.sessao_id, pagamentoFechar);
+    setFechando(false);
+    if (!r.ok) {
+      setErroFechar(r.error === 'forma de pagamento obrigatoria' ? 'Selecione a forma de pagamento.' : 'Não foi possível fechar a conta.');
+      return;
+    }
+    fecharModalConta();
+    recarregar();
   };
 
   return (
@@ -174,7 +202,7 @@ export function AdminMesas() {
           <div className="admin-card" style={{ width: 420, maxWidth: '92vw', maxHeight: '85vh', overflowY: 'auto' }}>
             <div className="admin-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3>🧾 Conta — Mesa {contaAberta}</h3>
-              <button className="btn-sm" onClick={fecharConta}>Fechar</button>
+              <button className="btn-sm" onClick={fecharModalConta}>Fechar</button>
             </div>
             <div style={{ padding: 20 }}>
               {contaLoading ? (
@@ -250,6 +278,30 @@ export function AdminMesas() {
                       </button>
                     </div>
                     {erroJuntar && <p style={{ fontSize: 12.5, color: '#DC2626', marginTop: 6, fontWeight: 600 }}>{erroJuntar}</p>}
+                  </div>
+
+                  <div style={{ borderTop: '1px solid var(--gray-100)', marginTop: 14, paddingTop: 14 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 8 }}>✅ Fechar conta</div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {PAGAMENTOS.map((o) => (
+                        <button
+                          key={o.id} type="button"
+                          onClick={() => setPagamentoFechar(o.id)}
+                          data-testid={`conta-mesa-pagamento-${o.id}`}
+                          style={{
+                            padding: '6px 12px', borderRadius: 8, fontSize: 12.5, fontWeight: 700, border: 'none', cursor: 'pointer',
+                            background: pagamentoFechar === o.id ? '#A62786' : '#F1EADF',
+                            color: pagamentoFechar === o.id ? '#fff' : '#6B5D50',
+                          }}
+                        >
+                          {o.label}
+                        </button>
+                      ))}
+                    </div>
+                    <button className="btn-primary" style={{ marginTop: 10, width: '100%' }} disabled={fechando} onClick={onFecharConta} data-testid="conta-mesa-fechar-btn">
+                      {fechando ? 'Fechando…' : `Fechar conta — ${fmt(Number(conta.total))}`}
+                    </button>
+                    {erroFechar && <p style={{ fontSize: 12.5, color: '#DC2626', marginTop: 6, fontWeight: 600 }}>{erroFechar}</p>}
                   </div>
                 </>
               )}

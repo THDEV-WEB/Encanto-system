@@ -54,6 +54,15 @@ export async function juntarMesaSessao(mesaSessionId, identificadorAdicional) {
   return data;
 }
 
+/* REF-MESA-02 · Onda 11: encerra a sessao (cliente pagou e foi embora) -- libera TODAS as mesas
+   associadas (inclusive juntadas/trocadas). paymentMethod pode ser null quando o total for 0. */
+export async function fecharContaMesa(mesaSessionId, paymentMethod) {
+  if (!db) return { ok: false, error: 'offline' };
+  const { data, error } = await db.rpc('admin_fechar_conta_mesa', { p_mesa_session_id: mesaSessionId, p_payment_method: paymentMethod || null, ...buildStoreRpcParam() });
+  if (error) return { ok: false, error: error.message };
+  return data;
+}
+
 /* REF-MESA-02 · Onda 5 (QR protegido): RPC publica (guest escaneando o QR, sem sessao/loja
    selecionada ainda) -- por isso NUNCA usa buildStoreRpcParam() aqui, o token sozinho ja resolve a
    loja no servidor. Nunca confiar no numero da mesa da URL crua -- so o que este RPC devolve. */
