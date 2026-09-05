@@ -5,7 +5,7 @@
    QR, sessão/consulta de conta, lançar pedido, trocar mesa, juntar mesas, fechar conta, histórico,
    impressão — todas nesta mesma tela, por decisão já registrada (seção 18 da autorização). */
 import { useState, useEffect, useCallback } from 'react';
-import { listarMesas, criarMesa, setMesaStatus, consultarContaMesa, trocarMesaSessao } from '../../services/mesa/mesasFisicas.js';
+import { listarMesas, criarMesa, setMesaStatus, consultarContaMesa, trocarMesaSessao, juntarMesaSessao } from '../../services/mesa/mesasFisicas.js';
 import { fmt } from '../../utils/format.js';
 
 const STATUS_LABEL = { disponivel: '🟢 Disponível', indisponivel: '⛔ Indisponível' };
@@ -23,6 +23,9 @@ export function AdminMesas() {
   const [novaMesaTroca, setNovaMesaTroca] = useState('');
   const [trocando, setTrocando] = useState(false);
   const [erroTrocar, setErroTrocar] = useState('');
+  const [novaMesaJuntar, setNovaMesaJuntar] = useState('');
+  const [juntando, setJuntando] = useState(false);
+  const [erroJuntar, setErroJuntar] = useState('');
 
   const recarregar = useCallback(async () => {
     setLoading(true);
@@ -60,13 +63,13 @@ export function AdminMesas() {
     setContaAberta(mesa.identificador);
     setContaLoading(true);
     setConta(null);
-    setNovaMesaTroca(''); setErroTrocar('');
+    setNovaMesaTroca(''); setErroTrocar(''); setNovaMesaJuntar(''); setErroJuntar('');
     const r = await consultarContaMesa(mesa.identificador);
     setContaLoading(false);
     setConta(r);
   };
 
-  const fecharConta = () => { setContaAberta(null); setConta(null); setNovaMesaTroca(''); setErroTrocar(''); };
+  const fecharConta = () => { setContaAberta(null); setConta(null); setNovaMesaTroca(''); setErroTrocar(''); setNovaMesaJuntar(''); setErroJuntar(''); };
 
   const onTrocarMesa = async () => {
     if (!novaMesaTroca || !conta?.sessao_id || trocando) return;
@@ -82,6 +85,23 @@ export function AdminMesas() {
     setContaAberta(r.para);
     setContaLoading(true);
     const novaConta = await consultarContaMesa(r.para);
+    setContaLoading(false);
+    setConta(novaConta);
+  };
+
+  const onJuntarMesa = async () => {
+    if (!novaMesaJuntar || !conta?.sessao_id || juntando) return;
+    setJuntando(true); setErroJuntar('');
+    const r = await juntarMesaSessao(conta.sessao_id, novaMesaJuntar);
+    setJuntando(false);
+    if (!r.ok) {
+      setErroJuntar(r.error === 'mesa ja ocupada' ? 'Essa mesa já está ocupada.' : r.error === 'mesa indisponivel' ? 'Essa mesa está indisponível.' : 'Não foi possível juntar a mesa.');
+      return;
+    }
+    setNovaMesaJuntar('');
+    await recarregar();
+    setContaLoading(true);
+    const novaConta = await consultarContaMesa(contaAberta);
     setContaLoading(false);
     setConta(novaConta);
   };
@@ -209,6 +229,27 @@ export function AdminMesas() {
                       </button>
                     </div>
                     {erroTrocar && <p style={{ fontSize: 12.5, color: '#DC2626', marginTop: 6, fontWeight: 600 }}>{erroTrocar}</p>}
+                  </div>
+
+                  <div style={{ borderTop: '1px solid var(--gray-100)', marginTop: 14, paddingTop: 14 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 8 }}>➕ Juntar mesa</div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <select
+                        className="form-input" style={{ flex: 1 }}
+                        value={novaMesaJuntar}
+                        onChange={(e) => setNovaMesaJuntar(e.target.value)}
+                        data-testid="conta-mesa-juntar-select"
+                      >
+                        <option value="">Selecione a mesa a juntar…</option>
+                        {mesas.filter((m) => m.status === 'disponivel' && !m.ocupada && !(conta.mesas || []).includes(m.identificador)).map((m) => (
+                          <option key={m.id} value={m.identificador}>Mesa {m.identificador}</option>
+                        ))}
+                      </select>
+                      <button className="btn-sm" disabled={!novaMesaJuntar || juntando} onClick={onJuntarMesa} data-testid="conta-mesa-juntar-btn">
+                        {juntando ? '…' : 'Juntar'}
+                      </button>
+                    </div>
+                    {erroJuntar && <p style={{ fontSize: 12.5, color: '#DC2626', marginTop: 6, fontWeight: 600 }}>{erroJuntar}</p>}
                   </div>
                 </>
               )}
