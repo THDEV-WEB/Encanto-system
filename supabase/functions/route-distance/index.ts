@@ -30,7 +30,7 @@
 // ler para tornar a distancia viaria AUTORITATIVA no servidor, sem nunca precisar de uma chamada HTTP
 // sincrona dentro de create_order() (pool de conexoes de producao/E2E e' pequeno — max_connections=60,
 // confirmado por introspeccao — bloquear uma conexao esperando o HeiGIT dentro da funcao mais chamada
-// do sistema seria um risco desproporcional). Grava via _upsert_delivery_route_cache(), SECURITY
+// do sistema seria um risco desproporcional). Grava via upsert_delivery_route_cache(), SECURITY
 // DEFINER com GRANT EXECUTE restrito a service_role (ver migration da Onda 3.1) — usa a
 // SUPABASE_SERVICE_ROLE_KEY, injetada automaticamente pela plataforma em toda Edge Function (mesmo
 // precedente de supabase/functions/invite-store-admin, nenhum secret novo a configurar).
@@ -103,19 +103,34 @@ const serviceClient = (SUPABASE_URL && SERVICE_ROLE_KEY)
    store_id+origem+destino em delivery_route_cache — _resolve_delivery_fee (Onda 3.3) le esta tabela
    para tornar a rota viaria AUTORITATIVA no servidor sem chamada HTTP dentro de create_order(). Chama
    a RPC (nao INSERT/upsert direto na tabela) porque o GRANT EXECUTE dela e' restrito a service_role
-   (ver migration da Onda 3.1) — nunca escreve na tabela via `.from(...)` diretamente. */
-async function gravarNoCache(storeId: string | null, origem: Coord, destino: Coord, distanceKm: number, durationMin: number): Promise<void> {
-  if (!serviceClient || !storeId) return;   // sem storeId nao ha tenant pra isolar a entrada — nao grava
+   (ver migration da Onda 3.1) — nunca escreve na tabela via `.from(...)` diretamente.
+   `.rpc()` do supabase-js NAO lanca excecao em erro de RPC (permission denied, tipo invalido etc.) —
+   devolve {data,error} normalmente; so' um erro de REDE/transporte vira excecao. O try/catch sozinho
+   nunca pegava esse `error` estruturado — bug real encontrado na validacao empirica desta Onda 3.2
+   (2026-09-05): a funcao respondia com sucesso ao client, mas nunca gravava no cache, e o motivo
+   nunca aparecia em lugar nenhum. Corrigido: loga (console.error, sem nenhum valor de secret) e
+   devolve um diagnostico ADITIVO na resposta (cacheGravado/cacheErro) -- nunca muda o formato que o
+   client ja consome (distanceKm/durationMin/provider/profile/cached), so' acrescenta. */
+async function gravarNoCache(storeId: string | null, origem: Coord, destino: Coord, distanceKm: number, durationMin: number): Promise<{ ok: boolean; motivo?: string }> {
+  if (!serviceClient) return { ok: false, motivo: "service_client_nao_inicializado" };
+  if (!storeId) return { ok: false, motivo: "sem_store_id" };
   try {
-    await serviceClient.rpc("_upsert_delivery_route_cache", {
+    const { error } = await serviceClient.rpc("upsert_delivery_route_cache", {
       p_store_id: storeId,
       p_origem_lat: origem.lat, p_origem_lng: origem.lng,
       p_destino_lat: destino.lat, p_destino_lng: destino.lng,
       p_distance_km: distanceKm, p_duration_min: durationMin,
       p_provider: "heigit", p_perfil: PERFIL,
     });
-  } catch {
-    // melhor esforco: falha ao gravar cache nunca derruba a resposta ja calculada ao client.
+    if (error) {
+      console.error("[route-distance] falha ao gravar delivery_route_cache:", error.message, error.code);
+      return { ok: false, motivo: error.message };
+    }
+    return { ok: true };
+  } catch (e) {
+    const msg = (e as { message?: string })?.message ?? "erro_desconhecido";
+    console.error("[route-distance] excecao ao gravar delivery_route_cache:", msg);
+    return { ok: false, motivo: msg };
   }
 }
 
@@ -194,8 +209,8 @@ Deno.serve(async (req) => {
        que o TTL de 24h do banco — sem este touch, apos 24h o servidor cairia no fallback Haversine
        mesmo com o client ainda mostrando "rota" na tela, uma divergencia silenciosa entre UX e cobranca
        real). Upsert e' barato (indice unico) e nunca bloqueia a resposta por mais que o try/catch interno. */
-    await gravarNoCache(storeId, origem, destino, cacheado.distanceKm, cacheado.durationMin);
-    return jsonResponse({ distanceKm: cacheado.distanceKm, durationMin: cacheado.durationMin, provider: "heigit", profile: PERFIL, cached: true });
+    const cacheResultado = await gravarNoCache(storeId, origem, destino, cacheado.distanceKm, cacheado.durationMin);
+    return jsonResponse({ distanceKm: cacheado.distanceKm, durationMin: cacheado.durationMin, provider: "heigit", profile: PERFIL, cached: true, cacheGravado: cacheResultado.ok, ...(cacheResultado.motivo ? { cacheErro: cacheResultado.motivo } : {}) });
   }
 
   // R14: so a partir daqui a chamada realmente vai gastar cota do HeiGIT — cache hit acima nunca conta.
@@ -222,7 +237,7 @@ Deno.serve(async (req) => {
   const distanceKm = resultado.distM / 1000;
   const durationMin = resultado.durS / 60;
   cacheSet(chave, { distanceKm, durationMin });
-  await gravarNoCache(storeId, origem, destino, distanceKm, durationMin);   // Onda 3.2
+  const cacheResultado = await gravarNoCache(storeId, origem, destino, distanceKm, durationMin);   // Onda 3.2
 
-  return jsonResponse({ distanceKm, durationMin, provider: "heigit", profile: PERFIL, cached: false });
+  return jsonResponse({ distanceKm, durationMin, provider: "heigit", profile: PERFIL, cached: false, cacheGravado: cacheResultado.ok, ...(cacheResultado.motivo ? { cacheErro: cacheResultado.motivo } : {}) });
 });
