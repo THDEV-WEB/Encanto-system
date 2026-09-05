@@ -1,6 +1,6 @@
 # REF-MESA-02 — CHECKPOINT (ler primeiro numa nova sessão/retomada)
 
-**Atualizado:** 2026-09-05, após commit `fc8d7da` (Onda 9 concluída — 9 de 17 ondas do plano
+**Atualizado:** 2026-09-05, após commit `0861d65` (Onda 10 concluída — 10 de 17 ondas do plano
 mestre). Execução autônoma noturna
 autorizada pelo dono do produto (2026-09-05, "quero ir dormir... deixar vc trabalhando a noite
 toda") — sem pausa obrigatória entre ondas. Hard constraints seguem valendo integralmente: nunca
@@ -15,6 +15,7 @@ falha de segurança séria).
 
 ## Estado do git (neste checkpoint)
 ```
+0861d65 ref(mesa-02): implementa juncao de mesas                          <- Onda 10
 fc8d7da ref(mesa-02): implementa troca de mesa de sessao aberta            <- Onda 9
 d144a29 ref(mesa-02): adiciona consulta do total corrente da mesa (conta)   <- Onda 8
 4a8d917 ref(mesa-02): adiciona adicionais pagos ao formulario do garcom     <- Onda 7
@@ -27,7 +28,7 @@ b2d1ef8 ref(mesa-02): cria fundacao de mesa_sessions                         <- 
 c076591 ref(mesa-02): reconcilia REF-MESA-01 com REF-DELIVERY-FEE-05
 475cfef docs(mesa): REF-MESA-02 Onda 0 -- auditoria completa
 ```
-Ondas 0-9 concluídas (de 17 do plano mestre). R3 (achado mais grave da auditoria, QR previsível) já
+Ondas 0-10 concluídas (de 17 do plano mestre). R3 (achado mais grave da auditoria, QR previsível) já
 **resolvido** na Onda 5.
 Todos LOCAIS, `origin/main` não avançou (ainda só `e972e1a`, ver `encanto-ref-mesa-01.md`). Working
 tree sempre tem 2 arquivos de OUTRAS sessões (nunca tocar): `src/constants/privacyPolicy.js`
@@ -77,6 +78,11 @@ tocar `create_order()`/`admin_orders_search()`/`_resolve_delivery_fee()` de novo
   2 — decisão documentada na migration). Histórico completo preservado (linha antiga não é
   apagada). Lock `FOR UPDATE` na sessão (mesmo padrão de `_get_or_open_mesa_session`). Seletor
   "Trocar de mesa" no modal de conta (`AdminMesas.jsx`).
+- **Junção de mesas (Onda 10)**: `admin_juntar_mesa_sessao(p_mesa_session_id,
+  p_identificador_adicional, p_store_id)` — igual à Onda 9 mas SEM fechar a linha antiga (as 2+
+  mesas ficam ocupadas pela mesma sessão ao mesmo tempo). Só junta mesa LIVRE — fundir 2 sessões
+  já ativas é fora de escopo (bloqueado por `orders.mesa_session_id` imutável, Onda 3). Seção
+  "Juntar mesa" no modal de conta.
 
 ## Suítes de teste ativas (rodar sempre antes de commitar qualquer onda nova)
 ```
@@ -95,12 +101,13 @@ scripts/mesa-02-onda6-abertura-implicita-test.mjs 12/12
 scripts/mesa-02-onda7-adicionais-garcom-test.mjs  3/3
 scripts/mesa-02-onda8-consulta-conta-test.mjs    12/12
 scripts/mesa-02-onda9-trocar-mesa-test.mjs       14/14
+scripts/mesa-02-onda10-juntar-mesas-test.mjs     13/13
 scripts/delivery-fee-05-onda1-onda2-test.mjs    29/29
 npm run test:domain                             verde
 npm run lint / typecheck / build / build:admin  limpos
 e2e/tests/admin/admin-pedidos-novo-mesa.spec.js  2/2 (Playwright, ambiente E2E configurado)
 ```
-Total: 198 checks de banco + domain suite + builds + E2E. Banco-alvo: SOMENTE
+Total: 211 checks de banco + domain suite + builds + E2E. Banco-alvo: SOMENTE
 `C:/Users/00thi/.encanto/db.e2e.env` (bgzcro), NUNCA `db.env`/produção.
 
 ## Lições aprendidas HOJE sobre os próprios scripts de teste (não repetir)
@@ -133,41 +140,49 @@ Total: 198 checks de banco + domain suite + builds + E2E. Banco-alvo: SOMENTE
    de fluxo de UI (passo intermediário novo, etc.) exige atualizar o spec E2E existente na hora, nunca
    deixar quebrado/skip.
 
-## PRÓXIMO PASSO EXATO — Onda 10: Junção de mesas
+## PRÓXIMO PASSO EXATO — Onda 11: Fechamento da conta
 
-Objetivo: adicionar uma mesa física LIVRE a uma sessão já aberta (grupo grande ocupa a mesa 5 e
-pede pra juntar a mesa 6 vazia) — as duas mesas passam a apontar pra MESMA sessão/conta, ambas
-"ocupadas" simultaneamente. É exatamente o caso de uso pra que `mesa_session_mesas` foi desenhada
-como N:1 desde a Onda 2 ("suporta junção de mesas desde a fundação").
+Objetivo: encerrar uma sessão aberta (cliente pagou e foi embora) — grava a forma de pagamento e o
+valor cobrado (snapshot de auditoria), libera TODAS as mesas físicas associadas (inclusive as
+juntadas na Onda 10 e a fechada-por-troca na Onda 9), e a sessão vira imutável (a trigger
+`_mesa_sessions_no_reopen` da Onda 2 já bloqueia qualquer alteração depois).
 
-**Escopo deliberadamente limitado (decidir e documentar, não parar)**: só é permitido juntar uma
-mesa que esteja LIVRE (catálogo `disponivel`, sem sessão aberta própria) — **NÃO** é escopo desta
-onda fundir DUAS sessões que já têm pedidos independentes cada uma. Motivo: `orders.mesa_session_id`
-é imutável desde a Onda 3 ("nunca reatribuída/limpa") — mover pedidos já existentes de uma sessão
-pra outra violaria essa invariante. Se um "merge de duas contas já ativas" for pedido depois, é uma
-decisão de produto nova que exige reconsiderar essa invariante — registrar como gap, não inventar
-agora.
+Implementação:
+1. Nova RPC `admin_fechar_conta_mesa(p_mesa_session_id, p_payment_method, p_store_id)`
+   (SECURITY DEFINER, `is_admin_of` + `WHERE store_id` explícito). Lock `FOR UPDATE` na sessão
+   (mesmo padrão das Ondas 6/9/10) — confirma existe/pertence à loja/está `aberta`.
+2. Calcula o total EXATAMENTE como `admin_consultar_conta_mesa` (Onda 8): `SUM(orders.total)`
+   `WHERE mesa_session_id = ... AND status <> 'cancelado'` — não duplicar a lógica, considerar
+   extrair pra uma função interna compartilhada (`_calcular_total_sessao_mesa`?) se fizer sentido,
+   decidir ao implementar.
+3. `p_payment_method`: obrigatório (não vazio) SE o total > 0; pode ser `NULL` se o total for 0
+   (sessão sem consumo real cobrável — mesma regra que a CHECK `mesa_sessions_coerencia_estado` da
+   Onda 2 já impõe: `valor_cobrado_snapshot = 0 OR payment_method IS NOT NULL`). Reaproveitar os
+   MESMOS 4 valores já usados em `NovoPedidoMesaModal.jsx` (`dinheiro`, `pix`, `cartao_debito`,
+   `cartao_credito`) — não inventar um novo conjunto.
+4. `UPDATE mesa_sessions SET status='fechada', closed_at=now(), closed_by_admin_user_id=auth.uid(),
+   payment_method=p_payment_method, valor_cobrado_snapshot=v_total WHERE id=...` — isso by design
+   já dispara a trigger `trg_mesa_sessions_sync_child_status` (Onda 2), que sincroniza TODAS as
+   linhas de `mesa_session_mesas` daquela sessão pra `status_sessao='fechada'` automaticamente
+   (inclusive as que a Onda 9 já tinha fechado manualmente — idempotente, sem problema). **Não
+   precisa tocar `mesa_session_mesas` nem `public.mesas` diretamente** — "ocupada" já é derivado
+   ao vivo, libera sozinho.
+5. Retorna `{ok:true, mesa_session_id, total, payment_method}`. Erros fail-closed: `sem permissao`,
+   `sessao nao encontrada`, `sessao ja fechada`, `forma de pagamento obrigatoria`.
 
-Implementação (quase idêntica à Onda 9, sem o passo de fechar a linha antiga):
-1. Nova RPC `admin_juntar_mesa_sessao(p_mesa_session_id, p_identificador_adicional, p_store_id)`
-   (SECURITY DEFINER, `is_admin_of` + `WHERE store_id` explícito).
-2. Lock a sessão (`SELECT ... FOR UPDATE`, mesmo padrão das Ondas 6/9) — confirma `aberta`.
-3. Confirma `p_identificador_adicional` existe no catálogo e está `disponivel` (mesma regra da
-   Onda 4/9).
-4. Se a mesa já estiver juntada a ESTA MESMA sessão, no-op amigável (mesmo padrão do "trocar pra
-   mesma mesa" da Onda 9).
-5. `INSERT` linha nova em `mesa_session_mesas` — índice único parcial da Onda 2 arbitra
-   concorrência via `unique_violation` (`mesa ja ocupada`), mesmo mecanismo de sempre. **Diferença
-   da Onda 9: NÃO fecha nenhuma linha existente** — as mesas antigas continuam `aberta`, é isso
-   que faz as duas ficarem "ocupadas" ao mesmo tempo pela mesma conta.
-6. Retorna `{ok:true, mesa_session_id, mesas:[...todos os identificadores abertos]}`.
+Ponto de atenção (checar ao implementar, não presumir): `valor_cobrado_snapshot` é auditoria do
+fechamento, **nunca** uma segunda fonte de receita agregável (`COMMENT ON COLUMN` da Onda 2,
+seção 3/R7 da auditoria) — nenhum relatório deve somar essa coluna, `SUM(orders.total)` continua
+sendo a única fonte de verdade de faturamento. Confirmar que nenhuma onda futura (12, relatório)
+introduza dupla contagem usando essa coluna.
 
-Frontend: no modal de conta (`AdminMesas.jsx`), ação "Juntar mesa" ao lado de "Trocar de mesa"
-(Onda 9) — mesmo componente de seleção, reaproveitar o filtro de mesas livres já escrito lá.
+Frontend: seção "Fechar conta" no modal de conta (`AdminMesas.jsx`) — seletor de forma de
+pagamento (reaproveitar os 4 valores/labels de `NovoPedidoMesaModal.jsx`) + confirmar. Ao suceder,
+fechar o modal e recarregar a lista de mesas (a mesa volta a aparecer livre).
 
-Depois da Onda 10, seguir literalmente a ordem do plano mestre (mensagem do dono, seção 32):
-Onda 11 (fechamento) → 12 (relatório/reconciliação) → 13 (fidelidade, só testes de confirmação) →
-14 (notificações) → 15 (impressão QR) → 16 (segurança/ataque) → 17 (regressão completa).
+Depois da Onda 11, seguir literalmente a ordem do plano mestre (mensagem do dono, seção 32):
+Onda 12 (relatório/reconciliação) → 13 (fidelidade, só testes de confirmação) → 14 (notificações)
+→ 15 (impressão QR) → 16 (segurança/ataque) → 17 (regressão completa).
 
 Fluxo de sempre, sem pular etapa: investigar/decidir → migration+rollback (se precisar de banco) →
 aplicar SOMENTE E2E → testar (backend E2E + regressão completa de TODAS as suítes acima, sempre) →
