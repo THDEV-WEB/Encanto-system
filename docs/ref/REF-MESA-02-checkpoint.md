@@ -1,6 +1,6 @@
 # REF-MESA-02 — CHECKPOINT (ler primeiro numa nova sessão/retomada)
 
-**Atualizado:** 2026-09-05, após commit `d144a29` (Onda 8 concluída — 8 de 17 ondas do plano
+**Atualizado:** 2026-09-05, após commit `fc8d7da` (Onda 9 concluída — 9 de 17 ondas do plano
 mestre). Execução autônoma noturna
 autorizada pelo dono do produto (2026-09-05, "quero ir dormir... deixar vc trabalhando a noite
 toda") — sem pausa obrigatória entre ondas. Hard constraints seguem valendo integralmente: nunca
@@ -15,6 +15,7 @@ falha de segurança séria).
 
 ## Estado do git (neste checkpoint)
 ```
+fc8d7da ref(mesa-02): implementa troca de mesa de sessao aberta            <- Onda 9
 d144a29 ref(mesa-02): adiciona consulta do total corrente da mesa (conta)   <- Onda 8
 4a8d917 ref(mesa-02): adiciona adicionais pagos ao formulario do garcom     <- Onda 7
 f489603 ref(mesa-02): implementa abertura implicita da sessao de mesa       <- Onda 6
@@ -26,7 +27,7 @@ b2d1ef8 ref(mesa-02): cria fundacao de mesa_sessions                         <- 
 c076591 ref(mesa-02): reconcilia REF-MESA-01 com REF-DELIVERY-FEE-05
 475cfef docs(mesa): REF-MESA-02 Onda 0 -- auditoria completa
 ```
-Ondas 0-8 concluídas (de 17 do plano mestre). R3 (achado mais grave da auditoria, QR previsível) já
+Ondas 0-9 concluídas (de 17 do plano mestre). R3 (achado mais grave da auditoria, QR previsível) já
 **resolvido** na Onda 5.
 Todos LOCAIS, `origin/main` não avançou (ainda só `e972e1a`, ver `encanto-ref-mesa-01.md`). Working
 tree sempre tem 2 arquivos de OUTRAS sessões (nunca tocar): `src/constants/privacyPolicy.js`
@@ -70,6 +71,12 @@ tocar `create_order()`/`admin_orders_search()`/`_resolve_delivery_fee()` de novo
   REF-DASHBOARD-01) mas eles continuam na lista `pedidos`. `mesas` já é array (suporta junção da
   Onda 10 sem mudar formato). `mesasFisicas.js::consultarContaMesa()` + botão "🧾 Ver conta" em
   `AdminMesas.jsx` (só aparece quando `m.ocupada`). Aditiva pura, não mexeu em `create_order()`.
+- **Troca de mesa (Onda 9)**: `admin_trocar_mesa_sessao(p_mesa_session_id, p_novo_identificador,
+  p_store_id)` — INSERT linha nova em `mesa_session_mesas` + UPDATE `status_sessao='fechada'` na
+  linha antiga (a ÚNICA escrita direta nessa coluna fora da trigger de sincronização desde a Onda
+  2 — decisão documentada na migration). Histórico completo preservado (linha antiga não é
+  apagada). Lock `FOR UPDATE` na sessão (mesmo padrão de `_get_or_open_mesa_session`). Seletor
+  "Trocar de mesa" no modal de conta (`AdminMesas.jsx`).
 
 ## Suítes de teste ativas (rodar sempre antes de commitar qualquer onda nova)
 ```
@@ -87,12 +94,13 @@ scripts/mesa-02-onda5-qr-protegido-test.mjs     12/12
 scripts/mesa-02-onda6-abertura-implicita-test.mjs 12/12
 scripts/mesa-02-onda7-adicionais-garcom-test.mjs  3/3
 scripts/mesa-02-onda8-consulta-conta-test.mjs    12/12
+scripts/mesa-02-onda9-trocar-mesa-test.mjs       14/14
 scripts/delivery-fee-05-onda1-onda2-test.mjs    29/29
 npm run test:domain                             verde
 npm run lint / typecheck / build / build:admin  limpos
 e2e/tests/admin/admin-pedidos-novo-mesa.spec.js  2/2 (Playwright, ambiente E2E configurado)
 ```
-Total: 184 checks de banco + domain suite + builds + E2E. Banco-alvo: SOMENTE
+Total: 198 checks de banco + domain suite + builds + E2E. Banco-alvo: SOMENTE
 `C:/Users/00thi/.encanto/db.e2e.env` (bgzcro), NUNCA `db.env`/produção.
 
 ## Lições aprendidas HOJE sobre os próprios scripts de teste (não repetir)
@@ -125,47 +133,41 @@ Total: 184 checks de banco + domain suite + builds + E2E. Banco-alvo: SOMENTE
    de fluxo de UI (passo intermediário novo, etc.) exige atualizar o spec E2E existente na hora, nunca
    deixar quebrado/skip.
 
-## PRÓXIMO PASSO EXATO — Onda 9: Troca de mesa
+## PRÓXIMO PASSO EXATO — Onda 10: Junção de mesas
 
-Objetivo: mover uma sessão ABERTA da mesa física A para a mesa física B (cliente muda de lugar),
-sem fechar a sessão nem os pedidos já feitos — o total/histórico continuam os mesmos, só a mesa
-física associada muda.
+Objetivo: adicionar uma mesa física LIVRE a uma sessão já aberta (grupo grande ocupa a mesa 5 e
+pede pra juntar a mesa 6 vazia) — as duas mesas passam a apontar pra MESMA sessão/conta, ambas
+"ocupadas" simultaneamente. É exatamente o caso de uso pra que `mesa_session_mesas` foi desenhada
+como N:1 desde a Onda 2 ("suporta junção de mesas desde a fundação").
 
-**Decisão de design já tomada (documentar na migration, não repetir a investigação)**: NÃO dá pra
-fazer isso com um `UPDATE mesa_session_mesas SET mesa_identificador=...` — a trigger
-`_mesa_session_mesas_immutable` (Onda 2) bloqueia explicitamente mudar `mesa_identificador` numa
-linha existente (auditoria/histórico permanente, por design). A abordagem correta, que preserva o
-histórico completo de por quais mesas a sessão passou:
-1. Nova RPC `admin_trocar_mesa_sessao(p_mesa_session_id, p_novo_identificador, p_store_id)`
+**Escopo deliberadamente limitado (decidir e documentar, não parar)**: só é permitido juntar uma
+mesa que esteja LIVRE (catálogo `disponivel`, sem sessão aberta própria) — **NÃO** é escopo desta
+onda fundir DUAS sessões que já têm pedidos independentes cada uma. Motivo: `orders.mesa_session_id`
+é imutável desde a Onda 3 ("nunca reatribuída/limpa") — mover pedidos já existentes de uma sessão
+pra outra violaria essa invariante. Se um "merge de duas contas já ativas" for pedido depois, é uma
+decisão de produto nova que exige reconsiderar essa invariante — registrar como gap, não inventar
+agora.
+
+Implementação (quase idêntica à Onda 9, sem o passo de fechar a linha antiga):
+1. Nova RPC `admin_juntar_mesa_sessao(p_mesa_session_id, p_identificador_adicional, p_store_id)`
    (SECURITY DEFINER, `is_admin_of` + `WHERE store_id` explícito).
-2. Lock a sessão (`SELECT ... FOR UPDATE` em `mesa_sessions`, mesmo padrão de
-   `_get_or_open_mesa_session` da Onda 6) — serializa contra fechamento concorrente.
-3. Confirma sessão existe, pertence à loja, está `aberta`.
-4. Confirma `p_novo_identificador` existe em `public.mesas` (catálogo) e está `disponivel` (mesma
-   regra de negócio já registrada na Onda 4: "mesa indisponível não recebe nova sessão" — troca
-   conta como "nova sessão" pra essa mesa).
-5. `INSERT` uma linha NOVA em `mesa_session_mesas` para `p_novo_identificador` (deixa o índice
-   único parcial da Onda 2 arbitrar concorrência via `unique_violation` se outra sessão já estiver
-   lá — mesmo mecanismo do `_get_or_open_mesa_session`, não inventar um novo).
-6. **Único ponto realmente novo**: `UPDATE mesa_session_mesas SET status_sessao='fechada' WHERE
-   id=<linha antiga>` — a ÚNICA escrita direta em `status_sessao` fora da trigger de sincronização
-   automática desde a Onda 2 (até aqui só `_mesa_session_mesas_sync_status` escrevia essa coluna).
-   É deliberado: sem isso, a mesa antiga nunca ficaria livre de novo enquanto a sessão seguisse
-   aberta. Documentar isso explicitamente no `COMMENT ON COLUMN`/migration — é uma mudança de
-   invariante que a Onda 2 registrou como "nunca escrito diretamente", então precisa ficar
-   rastreável por que essa exceção existe.
-7. Retorna `{ok:true, mesa_session_id, de:<identificador antigo>, para:<novo>}`. Erros no mesmo
-   estilo fail-closed já usado no domínio: `sem permissao`, `sessao nao encontrada`, `mesa nao
-   encontrada`, `mesa indisponivel`, `mesa ja ocupada`.
+2. Lock a sessão (`SELECT ... FOR UPDATE`, mesmo padrão das Ondas 6/9) — confirma `aberta`.
+3. Confirma `p_identificador_adicional` existe no catálogo e está `disponivel` (mesma regra da
+   Onda 4/9).
+4. Se a mesa já estiver juntada a ESTA MESMA sessão, no-op amigável (mesmo padrão do "trocar pra
+   mesma mesa" da Onda 9).
+5. `INSERT` linha nova em `mesa_session_mesas` — índice único parcial da Onda 2 arbitra
+   concorrência via `unique_violation` (`mesa ja ocupada`), mesmo mecanismo de sempre. **Diferença
+   da Onda 9: NÃO fecha nenhuma linha existente** — as mesas antigas continuam `aberta`, é isso
+   que faz as duas ficarem "ocupadas" ao mesmo tempo pela mesma conta.
+6. Retorna `{ok:true, mesa_session_id, mesas:[...todos os identificadores abertos]}`.
 
-Frontend: no modal de conta (`AdminMesas.jsx`, Onda 8) ou na linha da mesa ocupada, adicionar ação
-"Trocar de mesa" (dropdown/input com o identificador novo + confirmar) — decidir o lugar exato ao
-implementar, não é bloqueante para o backend funcionar primeiro.
+Frontend: no modal de conta (`AdminMesas.jsx`), ação "Juntar mesa" ao lado de "Trocar de mesa"
+(Onda 9) — mesmo componente de seleção, reaproveitar o filtro de mesas livres já escrito lá.
 
-Depois da Onda 9, seguir literalmente a ordem do plano mestre (mensagem do dono, seção 32):
-Onda 10 (junção de mesas) → 11 (fechamento) → 12 (relatório/reconciliação) → 13 (fidelidade, só
-testes de confirmação) → 14 (notificações) → 15 (impressão QR) → 16 (segurança/ataque) →
-17 (regressão completa).
+Depois da Onda 10, seguir literalmente a ordem do plano mestre (mensagem do dono, seção 32):
+Onda 11 (fechamento) → 12 (relatório/reconciliação) → 13 (fidelidade, só testes de confirmação) →
+14 (notificações) → 15 (impressão QR) → 16 (segurança/ataque) → 17 (regressão completa).
 
 Fluxo de sempre, sem pular etapa: investigar/decidir → migration+rollback (se precisar de banco) →
 aplicar SOMENTE E2E → testar (backend E2E + regressão completa de TODAS as suítes acima, sempre) →
