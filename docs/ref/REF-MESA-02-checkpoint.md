@@ -1,7 +1,12 @@
 # REF-MESA-02 — CHECKPOINT (ler primeiro numa nova sessão/retomada)
 
-**Atualizado:** 2026-09-05, após commit `635d145` (Onda 16 concluída — 16 de 17 ondas do plano
-mestre, com 1 achado de segurança real corrigido). Execução autônoma noturna
+**STATUS: REF CONCLUÍDA — 17 de 17 ondas do plano mestre, PARADA NO GATE FINAL.** Ver
+`docs/ref/REF-MESA-02-relatorio-final.md` para o relatório de fechamento completo. Este checkpoint
+fica mantido como referência histórica/de retomada, não há mais "próximo passo" desta REF — só
+decisões do dono do produto (push, produção, ou nova REF).
+
+**Atualizado:** 2026-09-05, após commit `7ec898d` (Onda 17 concluída — REF INTEIRA fechada).
+Execução autônoma noturna
 autorizada pelo dono do produto (2026-09-05, "quero ir dormir... deixar vc trabalhando a noite
 toda") — sem pausa obrigatória entre ondas. Hard constraints seguem valendo integralmente: nunca
 produção, nunca push, nunca reescrever histórico, 1 commit por subfase com `git add` explícito
@@ -15,6 +20,7 @@ falha de segurança séria).
 
 ## Estado do git (neste checkpoint)
 ```
+7ec898d docs(mesa-02): REF-MESA-02 Onda 17 -- regressao final + relatorio de fechamento <- Onda 17 (ULTIMA)
 635d145 fix(mesa-02): revoga EXECUTE indevido de anon/PUBLIC em admin_reports_summary <- Onda 16
 cd4b4ae ref(mesa-02): implementa impressao do QR da mesa                   <- Onda 15
 e23d85e test(mesa-02): confirma notificacoes agnosticas a sessao (Onda 14)
@@ -175,38 +181,26 @@ Total: 306 checks de banco + domain suite + builds + E2E. Banco-alvo: SOMENTE
    (ex.: `status_sessao`), é uma exceção deliberada e válida (Onda 9) — documentar explicitamente
    PORQUE a exceção existe, não silenciosamente contrariar o comentário antigo.
 
-## PRÓXIMO PASSO EXATO — Onda 17: Regressão completa final + relatório de fechamento
+## REF CONCLUÍDA — não há próxima onda
 
-Última onda — não é uma feature nova. Passos exatos:
-1. Confirmar `git log --oneline -25` e `git status --porcelain=v1` (drift de outras sessões, os 2
-   arquivos de sempre continuam intocados).
-2. Rodar TODAS as suítes de banco listadas acima, do zero, mais uma vez (útil pra pegar qualquer
-   drift acumulado ao longo da noite) — incluir também as suítes de REFs relacionadas que
-   compartilham `create_order`/`admin_reports_summary`/`_resolve_delivery_fee`/`_resolve_item_pricing`
-   (mesmo espírito do §20 do `REF-MESA-01-relatorio-final.md`: `dashboard01-admin-reports-test.mjs`
-   já revalidado na Onda 16, considerar rodar também as suítes de `REF-DELIVERY-FEE-0x`/`PRICE-*`
-   se ainda existirem e forem rápidas).
-3. `npm run test:domain`, `npm run lint`, `npm run typecheck`, `npm run build`, `npm run build:admin`
-   — todos do zero.
-4. Se sobrar orçamento/tempo, considerar rodar `npm run test:e2e` (suíte Playwright completa) — não
-   é obrigatório pra fechar (nenhuma onda anterior desta REF exigiu isso), mas o relatório final da
-   MESA-01 fez questão de 2 rodadas completas antes de fechar; decidir com base no tempo restante,
-   documentar a decisão se pular.
-5. Escrever `docs/ref/REF-MESA-02-relatorio-final.md` (mesmo formato de
-   `REF-MESA-01-relatorio-final.md`): tabela de ondas, lista de commits, arquivos principais,
-   migrations com tabela do que cada uma faz, modelo final de dados, decisões tomadas, gaps
-   registrados (ex.: "merge de 2 sessões já ativas" da Onda 10, "trocar/juntar exige mesa
-   `disponivel`"), o achado de segurança da Onda 16 (**destacar que também afeta produção hoje,
-   independente do rollout do resto desta REF**), contagem total de verificações, e a frase de
-   fechamento "PARADO NO GATE FINAL — nada foi pushed, nada foi aplicado em produção".
-6. Commitar o relatório (`docs(mesa-02): REF-MESA-02 Onda 17 -- regressao final + relatorio de
-   fechamento`) + atualizar este checkpoint uma última vez marcando 17/17 concluídas.
-7. **Não fazer push. Não aplicar produção. Não iniciar REF nova.** Isso são decisões separadas do
-   dono do produto — a autorização desta noite cobriu só "completar todas as ondas", não essas 3
-   ações seguintes. Ao final, resumir pro dono (quando ele acordar) o que foi feito, o achado de
-   segurança que também afeta produção (prioridade alta pra aplicar essa 1 linha de `REVOKE`
-   independente do resto), e as sugestões de próximo passo (rollout runbook de produção, por
-   exemplo) sem executá-las.
+Onda 17 (regressão completa final + relatório de fechamento) executada e commitada
+(`7ec898d`). Regressão do zero: 185/185 checks próprios (Ondas 2-16) + MESA-01 60/60 +
+DELIVERY-FEE-05 29/29 + `dashboard01-admin-reports` 13/13 + REFs relacionadas 63/63 +
+`test:domain`/lint/typecheck/2 builds limpos + E2E Playwright completo 139/140 (1 falha
+investigada e confirmada como fora de escopo — drift de `REF-DELIVERY-FEE-05`, sessão concorrente,
+nada a ver com esta REF). Detalhe completo em `docs/ref/REF-MESA-02-relatorio-final.md`.
+
+**Se uma sessão futura retomar este arquivo**: não há trabalho pendente desta REF. As únicas ações
+seguintes possíveis são decisões do dono do produto — nenhuma delas autorizada pela instrução
+"complete todas as ondas" desta noite:
+1. **Prioridade recomendada**: aplicar em produção a correção isolada de 1 linha da Onda 16
+   (`REVOKE ALL ON FUNCTION admin_reports_summary(date,date,uuid) FROM PUBLIC, anon;`) — risco
+   zero, sem dependência do resto do schema novo, corrige um gap que já existe em produção hoje.
+2. Decidir sobre aplicar as 12 migrations desta REF em produção (runbook de rollout ainda não
+   escrito — seria um próximo passo natural se pedido).
+3. `git push` dos 22+1 commits locais (nunca feito, aguardando autorização explícita).
+4. Nova REF (ex.: fechar o gap de "merge de 2 sessões já ativas" registrado no §10/11 do
+   relatório final, se virar prioridade de produto).
 
 Fluxo de sempre, sem pular etapa: investigar/decidir → migration+rollback (se precisar de banco) →
 aplicar SOMENTE E2E → testar (backend E2E + regressão completa de TODAS as suítes acima, sempre) →
