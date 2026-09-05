@@ -29,6 +29,10 @@ const TIPO_LABEL = { mesa: '🍽️ Mesa', retirada: '🏪 Retirada', entrega: '
    valor cru até alguém adicionar o rótulo aqui também. */
 const LABEL_PAGAMENTO = {
   dinheiro: '💵 Dinheiro', pix: '📲 PIX', cartao_debito: '💳 Débito', cartao_credito: '💳 Crédito',
+  // REF-MESA-02 · Onda 12: pedidos de uma mesa com sessao ainda aberta nao tem forma de pagamento
+  // real ainda (so' se sabe no fechamento) -- admin_reports_summary devolve este rotulo dedicado em
+  // vez de arriscar atribuir a forma errada (resolve R7 da auditoria).
+  '(conta em aberto)': '🍽️ Conta em aberto (mesa)',
 };
 
 export function AdminRelatorios() {
