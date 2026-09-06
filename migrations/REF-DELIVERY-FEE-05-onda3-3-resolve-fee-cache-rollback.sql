@@ -2,13 +2,19 @@
 -- EXATAMENTE como estava antes desta Onda (confirmado por introspeccao real do banco, 2026-09-04/05,
 -- byte-a-byte identico entre producao e E2E antes desta migration): Haversine sempre, sem
 -- delivery_route_cache, sem 'distancia_fonte' no retorno.
+--
+-- CORRIGIDO 2026-09-06 (INCIDENTE-01): a primeira versao deste rollback reproduzia a LOGICA original
+-- corretamente, mas omitia os comentarios explicativos que faziam parte do texto real de producao —
+-- resultava em hash diferente (57e84932...) do original (b9509db2...), apesar de comportamento
+-- identico. Esta versao e' o texto EXATO (incluindo comentarios), validado produzindo
+-- b9509db21d3fe410e59253e2de1aa442 quando aplicado.
 BEGIN;
 
 CREATE OR REPLACE FUNCTION public._resolve_delivery_fee(p_store_id uuid, p_retirada boolean, p_payment_method text, p_endereco_id uuid)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'pg_catalog', 'public'
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'public'
 AS $function$
 DECLARE
   v_config         jsonb;
@@ -36,11 +42,16 @@ DECLARE
   v_delivery_fee   numeric;
 BEGIN
   IF p_retirada THEN
+    -- retirada na loja: sem motoboy, sem maquininha -- mesma regra do client (montarResumoFinanceiro),
+    -- nunca dependeu de distancia. REF-DELIVERY-FEE-05: adicional de pagamento tambem zerado aqui --
+    -- mesma logica (sem motoboy, sem "levar/trazer troco/maquininha"). Zero ambiguidade, ignora
+    -- qualquer coisa que o client mande.
     RETURN jsonb_build_object('delivery_fee', 0, 'maquininha_fee', 0, 'adicional_pagamento_fee', 0);
   END IF;
 
   v_config := public.get_delivery_fee_config(p_store_id);
 
+  -- maquininha: puro lookup de tabela, independe de distancia/endereco -- fecha 100%. INTOCADO.
   v_maq := v_config->'maquininha';
   v_maq_ativo := COALESCE((v_maq->>'ativo')::boolean, false);
   v_maq_valor := COALESCE((v_maq->>'valor')::numeric, 0);
@@ -48,6 +59,10 @@ BEGIN
     v_maquininha_fee := v_maq_valor;
   END IF;
 
+  -- REF-DELIVERY-FEE-05: adicional de pagamento -- dinheiro/debito/credito, SO' EM ENTREGA (ja
+  -- garantido por nao termos retornado no ramo p_retirada acima). Componente SEPARADO de maquininha
+  -- (coexistem, nunca somados num campo so). Ausente em v_config -> default "ja nasce ligado" (mesmo
+  -- precedente da REF-DELIVERY-FEE-01 original) -- ver cabecalho da migration.
   v_adic := v_config->'adicionalPagamento';
   IF v_adic IS NULL THEN
     v_adic_ativo := true;
@@ -60,14 +75,22 @@ BEGIN
     v_adicional_pagamento_fee := v_adic_valor;
   END IF;
 
+  -- Cobranca automatica desligada no Admin -- mesmo fallback do client (status 'desativado'). So'
+  -- afeta delivery_fee (distancia) -- maquininha/adicional de pagamento sao independentes disso,
+  -- mesma regra ja existente pra maquininha.
   IF NOT COALESCE((v_config->>'ativo')::boolean, false) THEN
     RETURN jsonb_build_object('delivery_fee', 0, 'maquininha_fee', v_maquininha_fee, 'adicional_pagamento_fee', v_adicional_pagamento_fee);
   END IF;
 
+  -- Sem endereco_id: nada para validar distancia -- mesmo fallback do client honesto
+  -- (status 'sem_coordenadas' -> R$0 na taxa de distancia). Decisao explicita do dono (2026-08-29).
   IF p_endereco_id IS NULL THEN
     RETURN jsonb_build_object('delivery_fee', 0, 'maquininha_fee', v_maquininha_fee, 'adicional_pagamento_fee', v_adicional_pagamento_fee);
   END IF;
 
+  -- Endereco escopado ao MESMO store_id (nunca de outra loja) -- mesma anti-enumeracao de
+  -- _resolve_item_pricing: NOT FOUND cai no mesmo fallback silencioso de "sem coordenadas", nao
+  -- revela se o id existe em outra loja.
   SELECT latitude, longitude INTO v_lat_end, v_lng_end
     FROM public.addresses
    WHERE id = p_endereco_id AND store_id = p_store_id;
@@ -80,18 +103,27 @@ BEGIN
   v_lat_loja := NULLIF(v_company->>'lojaLat', '')::double precision;
   v_lng_loja := NULLIF(v_company->>'lojaLng', '')::double precision;
 
+  -- Loja sem pino cadastrado (StatusLocalizacaoLoja ainda pendente, REF-DELIVERY-FEE-02) -- mesmo
+  -- fallback do client (sem coordenadas da loja = sem distancia calculavel).
   IF v_lat_loja IS NULL OR v_lng_loja IS NULL THEN
     RETURN jsonb_build_object('delivery_fee', 0, 'maquininha_fee', v_maquininha_fee, 'adicional_pagamento_fee', v_adicional_pagamento_fee);
   END IF;
 
+  -- Haversine (km) -- mesma formula/precisao do dominio Address no client
+  -- (src/address/utils/coordinates.js). Motor de distancia autoritativo (viaria) e' escopo da Onda 3
+  -- desta mesma REF, nao tocado aqui.
   v_dist_raw := 6371 * 2 * asin(sqrt(
       power(sin(radians(v_lat_end - v_lat_loja) / 2), 2) +
       cos(radians(v_lat_loja)) * cos(radians(v_lat_end)) *
       power(sin(radians(v_lng_end - v_lng_loja) / 2), 2)
   ));
 
+  -- REF-DELIVERY-FEE-05 · Onda 1 (preservado): arredonda para 1 casa decimal ANTES de qualquer
+  -- comparacao -- ver politica de precisao no cabecalho da migration da Onda 1.
   v_dist_km := round(v_dist_raw::numeric, 1);
 
+  -- REF-ADDRESS-GEO-INTEGRITY-01 · Onda 2, Parte 1: bounding box de plausibilidade, ISOLADO POR
+  -- TENANT. INTOCADO nesta onda -- reavaliacao de base (Haversine vs viaria) e' a Onda 4 desta REF.
   v_maior_ate := (SELECT max((f->>'ate')::numeric) FROM jsonb_array_elements(COALESCE(v_config->'faixas', '[]'::jsonb)) f);
   v_raio_bbox_km := GREATEST(COALESCE(v_maior_ate, 0) * 3, 50);
 
@@ -100,6 +132,8 @@ BEGIN
       v_dist_km, v_raio_bbox_km;
   END IF;
 
+  -- localizarFaixa (regra pura, client): menor "ate" que seja >= distancia (faixas contiguas por
+  -- design).
   SELECT f INTO v_faixa
     FROM jsonb_array_elements(COALESCE(v_config->'faixas', '[]'::jsonb)) f
    WHERE v_dist_km <= (f->>'ate')::numeric
@@ -109,6 +143,8 @@ BEGIN
   IF v_faixa IS NOT NULL THEN
     v_delivery_fee := COALESCE((v_faixa->>'valor')::numeric, 0);
   ELSE
+    -- REF-DELIVERY-FEE-05 · Onda 1 (preservado): extrapolacao matematica acima da maior faixa
+    -- cadastrada -- ver formula/justificativa completa no cabecalho da migration da Onda 1.
     v_maior_faixa := (
       SELECT f FROM jsonb_array_elements(COALESCE(v_config->'faixas', '[]'::jsonb)) f
       ORDER BY (f->>'ate')::numeric DESC LIMIT 1
@@ -128,6 +164,7 @@ BEGIN
     'adicional_pagamento_fee', v_adicional_pagamento_fee
   );
 END;
-$function$;
+$function$
+;
 
 COMMIT;
