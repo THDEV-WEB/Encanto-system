@@ -26,6 +26,7 @@ import { useScrollToProduct } from '../hooks/useScrollToProduct.js';     // REF-
 import { useDeliveryEta } from '../hooks/useDeliveryEta.js';             // REF-DELIVERY-01: tempo de entrega (config unica Supabase)
 import { useMesaConfig } from '../hooks/useMesaConfig.js';               // REF-MESA-01 · Onda 2: capacidade de Mesa por loja (fonte unica Supabase)
 import { useMesaFromQuery } from '../hooks/useMesaFromQuery.js';         // REF-MESA-01 · Onda 3: aplica ?mesa= da URL (canal QR)
+import { useBrowserBackClose } from '../hooks/useBrowserBackClose.js';   // REF-UX-BACKBUTTON-01: "voltar" do navegador fecha overlay em vez de sair do site
 import { useCompanyInfo } from '../hooks/useCompanyInfo.js';             // REF-COMPANY-01: dados institucionais (config unica Supabase)
 import { AddressProvider, useAddress } from '../address/index.js'; // REF-CHECKOUT-ADDRESS-01: fonte unica do endereco (provider)
 import { useAuth } from '../hooks/useAuth.js'; // REF-SEC-DATA-01 R12: detecta logout de verdade p/ limpar endereco/carrinho
@@ -100,9 +101,13 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
   useMesaFromQuery(mesaConfig, setDeliveryMode, setMesaIdentificador, setOrigemPedido, setMesaQrToken);
   /* REF-CHECKOUT-ADDRESS-01: FONTE UNICA do endereco (contexto). O header apenas EXIBE o rotulo e abre
      o modal (abrirEndereco); a edicao/persistencia e do provider. Sem estado paralelo de endereco. */
-  const { endereco: enderecoObj, temEndereco, abrirModal: abrirEndereco, limpar: limparEndereco } = useAddress();
+  const { endereco: enderecoObj, temEndereco, abrirModal: abrirEndereco, limpar: limparEndereco,
+          modalAberto: enderecoModalAberto, fecharModal: fecharEnderecoModal } = useAddress();
   const [showLoyalty,    setShowLoyalty]     = useState(false);
   const [loyaltyTeaser,  setLoyaltyTeaser]   = useState(false);   // dialog de estado do chip fidelidade (nao-autenticado: convite pra login | programa inativo: aviso) -- dialog proprio, nao alert() nativo (que sempre mostraria o dominio em vez do nome da loja)
+  // REF-UX-BACKBUTTON-01: reativo (nao imperativo) -- alimenta useBrowserBackClose. StoreMenu
+  // continua expondo temAlgoAberto()/fecharTudo() por ref, so' para o Capacitor (useImperativeHandle abaixo).
+  const [menuAberto, setMenuAberto] = useState(false);
   /* ── Programa de Fidelidade (REF-LOYALTY-01) ── fonte unica: Supabase (get_my_loyalty), por CLIENTE.
      O visitante nao-logado ve zeros (fidelidade nao pertence ao navegador). O cliente logado ve o
      PROPRIO saldo, sincronizado entre dispositivos. localStorage e so cache (dentro do hook). */
@@ -232,21 +237,41 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
     });
   }, [companyInfo.corPrimaria, companyInfo.corSecundaria, companyInfo.corDestaque, companyInfo.faviconUrl]);
 
-  // REF-CAP-01 · Onda 4: resumo imperativo do que está "aberto" na loja, na ordem em que o botão físico
-  // "voltar" do Android deve fechar (o mais recente/por cima primeiro). Nenhum estado novo — só expõe o
-  // que já existe acima (page/modal/cartOpen/showLoyalty) + o que o StoreMenu já expõe (menu/telas).
+  // REF-CAP-01 · Onda 4 (+ REF-UX-BACKBUTTON-01): fecha a camada de UI aberta na loja, na ordem em
+  // que "voltar" deve fechar (mais recente/por cima primeiro). Compartilhada por DOIS consumidores:
+  // o botão físico do Android (useCapacitorBackButton, via useImperativeHandle abaixo) e o botão/
+  // gesto "voltar" do NAVEGADOR (useBrowserBackClose, fora do Capacitor). AddressModal entra aqui
+  // pela primeira vez (achado: também faltava no Capacitor — abre por cima de tudo, inclusive do
+  // checkout, mas nunca foi tratado como camada fechável).
   const storeMenuRef = useRef(null);
+  const camadasAbertas = useMemo(() => [
+    enderecoModalAberto,
+    page === 'checkout' || page === 'success',
+    !!modal,
+    loyaltyTeaser,
+    cartOpen,
+    showLoyalty,
+    menuAberto,
+  ], [enderecoModalAberto, page, modal, loyaltyTeaser, cartOpen, showLoyalty, menuAberto]);
+  const fecharTopo = useCallback(() => {
+    if (enderecoModalAberto) { fecharEnderecoModal(); return; }
+    if (page === 'checkout' || page === 'success') { setPage('home'); return; }
+    if (modal) { setModal(null); return; }
+    if (loyaltyTeaser) { setLoyaltyTeaser(false); return; }
+    if (cartOpen) { setCartOpen(false); return; }
+    if (showLoyalty) { setShowLoyalty(false); return; }
+    storeMenuRef.current?.fecharTudo();
+  }, [enderecoModalAberto, fecharEnderecoModal, page, modal, loyaltyTeaser, cartOpen, showLoyalty]);
+
+  // REF-UX-BACKBUTTON-01: fora do Capacitor (navegador/PWA — WhatsApp in-app browser incluído), o
+  // app nunca empurrava nada no histórico ao abrir produto/carrinho/endereço/checkout/menu — o botão
+  // físico "voltar" do Android saía do site direto, sem fechar a camada aberta primeiro.
+  useBrowserBackClose(camadasAbertas, fecharTopo);
+
   useImperativeHandle(ref, () => ({
-    temAlgoAberto: () => page === 'checkout' || page === 'success' || !!modal || cartOpen || showLoyalty || loyaltyTeaser || !!storeMenuRef.current?.temAlgoAberto(),
-    fecharTopo: () => {
-      if (page === 'checkout' || page === 'success') { setPage('home'); return; }
-      if (modal) { setModal(null); return; }
-      if (loyaltyTeaser) { setLoyaltyTeaser(false); return; }
-      if (cartOpen) { setCartOpen(false); return; }
-      if (showLoyalty) { setShowLoyalty(false); return; }
-      storeMenuRef.current?.fecharTudo();
-    },
-  }), [page, modal, cartOpen, showLoyalty, loyaltyTeaser]);
+    temAlgoAberto: () => camadasAbertas.some(Boolean) || !!storeMenuRef.current?.temAlgoAberto(),
+    fecharTopo,
+  }), [camadasAbertas, fecharTopo]);
 
   if (page==='checkout') return <Suspense fallback={<Spinner/>}><CheckoutPage cart={cart} deliveryMode={deliveryMode} deliveryEta={deliveryEta} produtosVivos={rawProds} mesaIdentificador={mesaIdentificador} setMesaIdentificador={setMesaIdentificador} origemPedido={origemPedido} mesaQrToken={mesaQrToken} onBack={()=>setPage('home')} onSuccess={msg=>{setWaMsg(msg);setPage('success');}}/></Suspense>;
   if (page==='success')  return <Suspense fallback={<Spinner/>}><SuccessPage  msg={waMsg} cart={cart} onBack={()=>setPage('home')} deliveryEta={deliveryEta} deliveryMode={deliveryMode} mesaIdentificador={mesaIdentificador} whatsapp={companyInfo.whatsapp} horario={horario}/></Suspense>;
@@ -354,7 +379,7 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
             🛒{cart.count>0&&<span> {fmt(cart.total)}</span>}
             {cart.count>0&&<span className="cart-badge">{cart.count}</span>}
           </button>
-          <StoreMenu ref={storeMenuRef} onRecomprar={recomprar} />
+          <StoreMenu ref={storeMenuRef} onRecomprar={recomprar} onAbertoChange={setMenuAberto} />
         </div>
 
       </header>

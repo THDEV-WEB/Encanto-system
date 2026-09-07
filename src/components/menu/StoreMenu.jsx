@@ -1,7 +1,7 @@
 /* components/menu/StoreMenu.jsx — botão ☰ do header + orquestração do drawer e telas (LOGIN-ARCH-02).
    Auto-contido: StoreApp só renderiza <StoreMenu/> no header (App.jsx intocado). O botão reusa a
    classe do header (mesmo padding/tamanho/raio/hover que carrinho e engrenagem). */
-import { useState, forwardRef, useImperativeHandle, lazy, Suspense } from 'react';
+import { useState, useEffect, forwardRef, useImperativeHandle, lazy, Suspense } from 'react';
 import { CompletarCadastro } from './CompletarCadastro.jsx'; // sempre ativo (auto-oculta) — nunca atras de `tela`, fica eager
 
 /* REF-PERF-01: code splitting — nenhuma destas telas e necessaria pra 1a renderizacao da loja (so
@@ -20,11 +20,17 @@ const MinhaContaScreen   = lazy(() => import('../conta/MinhaContaScreen.jsx').th
 // existia (drawer/tela) — nada é movido/renomeado. Único consumidor: o botão físico "voltar" do Android
 // (hooks/useCapacitorBackButton.js), que precisa saber "tem algo aberto aqui?" sem StoreApp/App.jsx
 // precisarem conhecer os detalhes do menu.
-export const StoreMenu = forwardRef(function StoreMenu({ onRecomprar }, ref) {
+export const StoreMenu = forwardRef(function StoreMenu({ onRecomprar, onAbertoChange }, ref) {
   const [drawer, setDrawer] = useState(false);
   const [tela, setTela] = useState(null); // login | pedidos | conta | contato | sobre | termos | privacidade | fidelidade
   const navegar = (t) => { setDrawer(false); setTela(t); };
   const fechar = () => setTela(null);
+
+  /* REF-UX-BACKBUTTON-01: avisa StoreApp (reativo, nao imperativo) sempre que drawer/tela mudam --
+     o botao/gesto "voltar" do navegador (useBrowserBackClose) precisa saber, EM TEMPO REAL, se este
+     menu esta aberto pra decidir se empurra/consome uma entrada de historico. temAlgoAberto()
+     (abaixo) continua existindo, imperativo, so' para o Capacitor (que consulta sob demanda). */
+  useEffect(() => { onAbertoChange?.(drawer || !!tela); }, [drawer, tela, onAbertoChange]);
 
   useImperativeHandle(ref, () => ({
     temAlgoAberto: () => drawer || !!tela,

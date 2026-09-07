@@ -73,7 +73,12 @@ export function AddressProvider({ children }) {
     selecionar,
     limpar,
     abrirModal,
-  }), [endereco, selecionar, limpar, abrirModal]);
+    /* REF-UX-BACKBUTTON-01: modalAberto/fecharModal expostos para o botao/gesto "voltar" do
+       navegador (useBrowserBackClose, ver StoreApp.jsx) tratar este overlay como mais uma camada
+       fechavel — sem isso, voltar com o AddressModal aberto sai do site inteiro. */
+    modalAberto,
+    fecharModal,
+  }), [endereco, selecionar, limpar, abrirModal, modalAberto, fecharModal]);
 
   return (
     <AddressContext.Provider value={value}>
