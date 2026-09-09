@@ -1,20 +1,25 @@
 # REF-PAGAMENTO-01 — CHECKPOINT (ler primeiro numa nova sessão/retomada)
 
 **STATUS: Onda 0 (auditoria) + Onda 1 (schema) + Onda 2 (fundação do webhook) + Onda 3 (criação de
-cobrança REAL) + Onda 4 (webhook receiver REAL, Edge Function pública) CONCLUÍDAS e commitadas.
-Onda 5 (Payment Brick no frontend) ainda não iniciada.**
+cobrança REAL) + Onda 4 (webhook receiver REAL, com fix de bug real pós-secret-verdadeiro)
+CONCLUÍDAS e commitadas. Onda 5 (Payment Brick no frontend) ainda não iniciada.**
 
-**Atualizado:** 2026-09-09, após commit `1e8b438` (Onda 4). Execução autônoma autorizada pelo dono.
-Hard constraints seguem valendo: nunca produção, nunca push sem autorização explícita do gate, 1
-commit por onda com `git add` explícito, nunca tocar arquivo de outra sessão.
+**Atualizado:** 2026-09-09, após commit `c3ba5db` (fix pós-Onda 4). Execução autônoma autorizada
+pelo dono. Hard constraints seguem valendo: nunca produção, nunca push sem autorização explícita do
+gate, 1 commit por onda com `git add` explícito, nunca tocar arquivo de outra sessão.
 
-## Pendência nova: secret REAL do webhook
+## Secret REAL do webhook — CONFIGURADO e VALIDADO
 
-`MP_WEBHOOK_SECRET` hoje tem um valor de **TESTE** (gerado localmente por mim, nunca uma credencial
-do Mercado Pago — configurado só pra provar o mecanismo de ponta a ponta, ver Onda 4 abaixo). O
-valor REAL só existe depois que o dono registrar a URL `https://bgzcrovskjbktdxkhemd.supabase.co/
-functions/v1/mp-webhook` no painel "Webhooks" da aplicação do Mercado Pago — passo manual dele,
-documentado em `supabase/functions/mp-webhook/README.md`.
+O dono registrou a URL `https://bgzcrovskjbktdxkhemd.supabase.co/functions/v1/mp-webhook` no painel
+"Webhooks" da aplicação (ambiente Teste) e configurou o `MP_WEBHOOK_SECRET` real via
+`supabase secrets set` (nunca visto por mim, mesmo mecanismo do Access Token).
+
+**Achado real crítico encontrado logo depois**: com o secret real em uso, os 2 primeiros webhooks
+reais do Mercado Pago vieram **401 (assinatura inválida)** apesar do HMAC estar matematicamente
+correto — bug de UNIDADE do timestamp (`ts` vem em segundos, código assumia milissegundos), corrigido
+no commit `c3ba5db` (ver seção própria abaixo). **Confirmado corrigido**: os 2 pagamentos reais
+criados depois do fix vieram **200 (Entregue)** no painel de Webhooks do Mercado Pago — validação
+real, não simulada, do ciclo completo com o secret verdadeiro.
 
 ## Credenciais de teste do Mercado Pago — DESBLOQUEADO
 
@@ -40,6 +45,7 @@ pela outra sessão, ambos verificados por patch-id de novo. `main` local está h
 
 ## Estado do git
 ```
+c3ba5db fix(pagamento-01): unidade do timestamp na assinatura do webhook (segundos, nao ms)
 1e8b438 feat(pagamento-01): Onda 4 -- webhook receiver real (Edge Function publica, sandbox MP)
 14db132 feat(pagamento-01): Onda 3 -- criacao de cobranca real (E2E, sandbox Mercado Pago)
 3592718 docs(pagamento-01): arquitetura tecnica -- integracao Mercado Pago
@@ -57,8 +63,10 @@ executado pela outra sessão, com autorização direta do dono, não por mim.
 ## Arquivos criados nesta etapa (Onda 4)
 - `supabase/functions/mp-webhook/index.ts` + `README.md` (nova Edge Function, `--no-verify-jwt`)
 - `scripts/pagamento-01-onda4-webhook-real-test.mjs` (chamada REAL, sandbox MP)
+- `migrations/REF-PAGAMENTO-01-onda4-fix-timestamp-assinatura.sql` + `-rollback.sql` (fix do bug de
+  unidade do timestamp, achado real pós-secret-verdadeiro — ver seção de testes)
 
-Zero migration nova nesta onda — reaproveita 100% das funções SQL já criadas/testadas na Onda 2.
+Zero migration nova na construção original da onda — só o fix posterior precisou de uma.
 
 ## Arquivos criados na Onda 3 (referência)
 - `migrations/REF-PAGAMENTO-01-onda3-criacao-cobranca.sql` + `-rollback.sql`
@@ -81,29 +89,39 @@ Zero migration nova nesta onda — reaproveita 100% das funções SQL já criada
   documentada pelo MP para uso com Payment Brick). Nunca confia em store_id/order_id/amount vindos
   do corpo da requisição — sempre relê de `payment_intents` via `service_role`.
 
-## Testes executados e resultados (Onda 4)
-- `pagamento-01-onda4-webhook-real-test.mjs`: **8/8 — CHAMADA REAL**, não simulada. Cria uma
-  cobrança Pix real (reaproveita `mp-criar-cobranca`, Onda 3), envia uma notificação assinada com
-  secret de TESTE pra função `mp-webhook` DEPLOYADA de verdade — assinatura inválida rejeitada (401,
-  banco intocado), assinatura válida processada com **GET real** a `api.mercadopago.com/v1/payments/
-  {id}`, resolução real de `store_id`, RPC real da Onda 2, replay idempotente, `payment_intent`
-  inexistente ignorado (200, nunca gera retry do MP), `payment_intents` confirmado atualizado no
-  banco com o status cru real do Mercado Pago.
-- Regressão: Onda 1 (20/20), Onda 2 (29/29), Onda 3 A+B (19/19), `test:domain` limpo, lint 61
-  warnings pré-existentes (0 novo, 0 erro), build limpo.
+## Testes executados e resultados (Onda 4 + fix)
+- `pagamento-01-onda4-webhook-real-test.mjs`: 8/8 na 1ª rodada (secret de teste, antes do dono
+  configurar o real). Depois que o secret real substituiu o de teste, esse script específico passou
+  a não servir mais pra validar a função deployada (ele assina com um secret que já não é o
+  configurado no ambiente) — mantido no repo como regressão útil caso um novo secret de teste seja
+  configurado no futuro; a validação real agora vem do próprio painel do Mercado Pago (ver abaixo).
+- **Achado real crítico + correção**: os 2 primeiros webhooks reais do Mercado Pago vieram 401.
+  Diagnóstico temporário (removido depois, nunca expôs o secret) confirmou que o HMAC recalculado
+  batia exatamente com o `v1` do header — o problema era só a janela de frescor comparando `ts` como
+  se fosse milissegundos quando na verdade é segundos. Corrigido em `_validar_assinatura_webhook_mp`
+  (SQL) e `validarAssinatura` (TS, `mp-webhook`). **Prova real pós-fix**: 2 pagamentos criados depois
+  → painel de Webhooks do Mercado Pago mostrou **200 - Entregue** para os dois (commit `c3ba5db`).
+- Achado à parte (mesma leva de regressão, não relacionado ao timestamp): teste `E2` de
+  `pagamento-01-onda1-fundacao-test.mjs` era instável (`ORDER BY criada_em` com empate real de
+  timestamp entre 2 linhas da mesma transação) — corrigido buscando cada fatia pelo próprio id.
+  Confirmado estável em 3 execuções seguidas (20/20 x3) depois do fix.
+- Regressão final: Onda 1 (20/20 x3), Onda 2 (29/29, com `ts` de teste corrigido pra segundos), Onda
+  3 A+B (19/19), `test:domain` limpo, lint 60 warnings pré-existentes (0 novo, 0 erro), build limpo.
+  Apply→rollback→reapply confirmado pra migration do fix.
 
 ## O que foi REALMENTE validado (vs. simulado) — atualizado
-- **Onda 3 e Onda 4 juntas fecham o ciclo real de ponta a ponta**: criar cobrança real → Mercado
-  Pago processa → notificação chega (simulada com secret de teste, mas todo o resto do pipeline é
-  real) → função pública valida/consulta/processa → banco atualizado. Não é mais só
-  matemática/simulação em nenhuma das duas pontas.
-- Ainda NÃO validado: que o Mercado Pago de fato envia webhooks nesse formato/timing quando chamado
-  por ELE mesmo (depende do secret REAL, ver pendência no topo deste documento), Payment Brick
-  tokenizando no navegador (frontend, Onda 5), split/OAuth (fora do escopo até segunda ordem).
+- **O ciclo completo está validado de ponta a ponta com credenciais e eventos 100% reais**: criar
+  cobrança real (Onda 3) → Mercado Pago processa → Mercado Pago ENVIA o webhook de verdade (não mais
+  simulado) → `mp-webhook` valida a assinatura real, consulta a API real, resolve o tenant, processa
+  via a máquina de estados da Onda 2 → banco atualizado. Confirmado com evidência do próprio painel
+  do Mercado Pago (200 - Entregue), não só por scripts locais.
+- Ainda NÃO validado: Payment Brick tokenizando no navegador (frontend, Onda 5), um pagamento
+  efetivamente sendo APROVADO de ponta a ponta (os testes até aqui usaram Pix, que fica `pendente`
+  até alguém realmente pagar — o caminho de aprovação real só deve aparecer naturalmente na Onda 5,
+  testando com cartão de teste "APRO" dentro do próprio Payment Brick), split/OAuth (fora do escopo
+  até segunda ordem).
 
 ## Próximo gate necessário
 
-Duas coisas podem avançar em paralelo: (1) o dono registrar a URL do `mp-webhook` no painel de
-Webhooks do Mercado Pago pra obter o secret REAL (destrava a validação 100% real do webhook), e/ou
-(2) autorizar a Onda 5 (Payment Brick no frontend) — ainda em E2E/sandbox, produção continua
-bloqueada até autorização explícita separada.
+Autorizar a Onda 5 (Payment Brick no frontend) — ainda em E2E/sandbox, produção continua bloqueada
+até autorização explícita separada. Nenhuma pendência de credencial neste momento.
