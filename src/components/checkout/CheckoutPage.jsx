@@ -318,7 +318,7 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
           <div className="summary-item"><span>Retorno da maquininha</span><span>{view.maquininhaFmt}</span></div>
         )}
         {view.adicionalPagamentoFmt && (
-          <div className="summary-item"><span>Adicional de pagamento</span><span>{view.adicionalPagamentoFmt}</span></div>
+          <div className="summary-item"><span>Retorno do dinheiro ao estabelecimento</span><span>{view.adicionalPagamentoFmt}</span></div>
         )}
         <div className="summary-total"><span>Total</span><span>{view.total}</span></div>
       </div>

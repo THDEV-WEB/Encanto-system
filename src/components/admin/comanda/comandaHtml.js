@@ -55,7 +55,7 @@ export function comandaHTML(vm, opts = {}) {
   const maquininhaLinha = t.mostrarMaquininha
     ? `<div class="tot-l"><span>Retorno maquininha</span><span>${esc(t.maquininhaFmt)}</span></div>` : '';
   const adicionalPagamentoLinha = t.mostrarAdicionalPagamento
-    ? `<div class="tot-l"><span>Adicional de pagamento</span><span>${esc(t.adicionalPagamentoFmt)}</span></div>` : '';
+    ? `<div class="tot-l"><span>Retorno do dinheiro ao estabelecimento</span><span>${esc(t.adicionalPagamentoFmt)}</span></div>` : '';
   const ajuste = t.mostrarAjuste
     ? `<div class="tot-l"><span>${esc(t.deltaLabel)}</span><span>${t.delta < 0 ? '-' : ''}${esc(t.deltaFmt)}</span></div>` : '';
 
