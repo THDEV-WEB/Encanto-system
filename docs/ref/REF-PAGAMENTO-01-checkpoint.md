@@ -1,127 +1,126 @@
 # REF-PAGAMENTO-01 — CHECKPOINT (ler primeiro numa nova sessão/retomada)
 
-**STATUS: Onda 0 (auditoria) + Onda 1 (schema) + Onda 2 (fundação do webhook) + Onda 3 (criação de
-cobrança REAL) + Onda 4 (webhook receiver REAL, com fix de bug real pós-secret-verdadeiro)
-CONCLUÍDAS e commitadas. Onda 5 (Payment Brick no frontend) ainda não iniciada.**
+**STATUS: Onda 0 (auditoria) + Onda 1 (schema) + Onda 2 (webhook fundação) + Onda 3 (cobrança real) +
+Onda 4 (webhook real) + Onda 5 (Payment Brick/Pix no frontend, VALIDADO EM NAVEGADOR REAL)
+CONCLUÍDAS e commitadas. Split/OAuth/cartão online/produção seguem fora do escopo até autorização
+explícita.**
 
-**Atualizado:** 2026-09-09, após commit `c3ba5db` (fix pós-Onda 4). Execução autônoma autorizada
-pelo dono. Hard constraints seguem valendo: nunca produção, nunca push sem autorização explícita do
-gate, 1 commit por onda com `git add` explícito, nunca tocar arquivo de outra sessão.
+**Atualizado:** 2026-09-09, após commit `02bc8a3` (Onda 5). Execução autônoma autorizada pelo dono.
+Hard constraints seguem valendo: nunca produção, nunca push sem autorização explícita do gate, 1
+commit por onda com `git add` explícito, nunca tocar arquivo de outra sessão.
 
-## Secret REAL do webhook — CONFIGURADO e VALIDADO
+## Onda 5 — Payment Brick (Pix) no frontend, checkout real testado com o dono
+
+**Escopo desta onda: só Pix online.** Cartão online fica para uma onda futura — não por causa da
+antiga preocupação de taxa de maquininha vazando (isso já se resolveu sozinho, `_resolve_delivery_fee`
+usa lista de permissão, qualquer `payment_method` novo cai em R$0 de taxa extra automaticamente, sem
+precisar mexer em nada da REF-DELIVERY-FEE-05) — só para não somar a complexidade do formulário de
+cartão do Brick nesta primeira validação real.
+
+**O que foi construído:**
+- Capability `pagamento_online_habilitada` (opt-in por loja, default desligado — nenhuma loja ganha
+  isso sem configurar) + `mp_public_key` gravados em `store_settings` (RPC `get_pagamento_config`,
+  Onda 5 backend).
+- "Pix agora" como 5ª opção de pagamento no checkout, só aparece quando a loja liga a capability. COD
+  continua 100% disponível e é o default sempre.
+- Pedido nasce `aguardando_pagamento` (não `recebido`) quando pago online — `buildOrderArgs` ganhou um
+  override opcional (`extra.status`), `create_order()` **não foi alterado** (já aceitava esse campo
+  desde sempre, achado confirmado já na Onda 0).
+- `PagamentoPixPage.jsx`: Brick só coleta e-mail/CPF do pagador (customization restringe a
+  `bankTransfer`) — o QR Code e a tela de espera são **tela própria** (não dependem do Brick
+  renderizar isso sozinho), com polling em `consultar_status_pagamento` até `aprovado`.
+- **WhatsApp/SuccessPage só disparam DEPOIS da confirmação real do pagamento** — nunca antes, para a
+  loja não começar a preparar um pedido que pode nunca ser pago (Pix pode expirar sem ser escaneado).
+- `mp-criar-cobranca` (Onda 3) ganhou o campo `pix` na resposta (`qr_code`/`qr_code_base64`/
+  `ticket_url`) — necessário para o frontend renderizar o QR, não existia antes desta onda.
+
+## 3 achados reais — API de inicialização do Payment Brick rejeitava `'none'`
+
+Testando ao vivo com o dono no navegador (Edge, modo E2E — nunca produção), 3 rodadas de erro 422
+consecutivas: `creditCard`/`debitCard`/`prepaidCard`/`ticket` **não aceitam a string `'none'`** — só
+`'all'` ou uma lista de opções específicas (ex.: "options for (credit_card): amex, elo, master,
+visa"). **Lista vazia (`[]`) é a forma correta de desabilitar** esses campos — `mercadoPago` (saldo
+da carteira) foi o único campo realmente booleano que aceitou `'none'` sem erro. Documentação oficial
+do Mercado Pago (fetchada durante o planejamento) mostrava `'none'` como válido para todos — não bate
+com o comportamento real observado, por isso a importância de ter testado ao vivo em vez de confiar
+só na doc.
+
+## Validação real de ponta a ponta (com o dono, ao vivo)
+
+Pedido criado no checkout → Brick coletou e-mail → QR Pix **real** gerado (copia-e-cola genuíno do
+Mercado Pago, valor batendo com o carrinho) → aprovação simulada via banco (mesma função interna que
+o webhook usaria) → **polling detectou sozinho, sem reload** → tela de sucesso + WhatsApp abriram
+automaticamente. `orders.status='recebido'`/`payment_status='aprovado'` confirmados no banco depois.
+Dados de teste (4 pedidos + 1 cliente + a capability temporária) limpos da loja `encanto`
+compartilhada do E2E ao final — capability voltou ao padrão desligado (mesma convenção já usada por
+`mesa_habilitada`, que também fica off por padrão no fixture compartilhado).
+
+## CSP (vercel.json) — best-effort, não testável localmente
+
+Liberado `sdk.mercadopago.com` (script), `*.mercadopago.com`/`*.mlstatic.com` (connect/img/frame) —
+baseado no que o Brick de fato carregou durante o teste real (`http2.mlstatic.com` confirmado via
+DevTools). CSP só é aplicado pelo Vercel em produção/preview (dev local não aplica) — **não foi
+possível validar esta lista de verdade**, pode precisar de ajuste fino quando a REF chegar no gate de
+deploy real.
+
+## Secret REAL do webhook (Onda 4) — CONFIGURADO e VALIDADO
 
 O dono registrou a URL `https://bgzcrovskjbktdxkhemd.supabase.co/functions/v1/mp-webhook` no painel
 "Webhooks" da aplicação (ambiente Teste) e configurou o `MP_WEBHOOK_SECRET` real via
-`supabase secrets set` (nunca visto por mim, mesmo mecanismo do Access Token).
+`supabase secrets set` (nunca visto por mim). Achado crítico (bug de unidade do timestamp, `ts` em
+segundos não milissegundos) encontrado e corrigido no commit `c3ba5db` — confirmado com 2 pagamentos
+reais retornando 200 no painel do Mercado Pago depois do fix.
 
-**Achado real crítico encontrado logo depois**: com o secret real em uso, os 2 primeiros webhooks
-reais do Mercado Pago vieram **401 (assinatura inválida)** apesar do HMAC estar matematicamente
-correto — bug de UNIDADE do timestamp (`ts` vem em segundos, código assumia milissegundos), corrigido
-no commit `c3ba5db` (ver seção própria abaixo). **Confirmado corrigido**: os 2 pagamentos reais
-criados depois do fix vieram **200 (Entregue)** no painel de Webhooks do Mercado Pago — validação
-real, não simulada, do ciclo completo com o secret verdadeiro.
+## Credenciais de teste do Mercado Pago — todas em uso
 
-## Credenciais de teste do Mercado Pago — DESBLOQUEADO
-
-- **Public Key de teste**: fornecida pelo dono, anotada (não é segredo, é pública por design do MP).
-- **Access Token de teste**: primeiro colocado no Vault do Postgres (erro, corrigido na Onda 3),
-  agora vive como secret de Edge Function no projeto E2E (`bgzcrovskjbktdxkhemd`):
-  `supabase secrets set MP_ACCESS_TOKEN=...`. **Nunca visto por mim em texto — só o hash que o CLI
-  mostra.**
-- CLI do Supabase logada e linkada ao projeto **E2E** (confirmado por `project-ref` local e por
-  `supabase secrets list` mostrando só o projeto correto).
-
-## Reconciliação de histórico (fora do escopo desta REF, mas afetou a `main`)
-
-Durante esta sessão, outra sessão fez o rollout de produção de REF-DELIVERY-FEE-05 (fix real do
-bug de taxa de cartão dobrada, commit `80a55e4`, verificado independentemente) e, a pedido do dono
-(com o dono no loop direto com as duas sessões), replantou os 7 commits desta REF por cima do
-`origin/main` atualizado (cherry-pick puro, conteúdo verificado byte a byte via patch-id antes e
-depois da sincronização — **um erro meu no meio do processo**: pedi o replantio de só 5 dos 7
-commits na primeira tentativa, os 2 mais antigos [`459bd8c`/`2b5015e`, descoberta+arquitetura]
-ficaram órfãos após meu `git reset --hard`, recuperados via `git cherry-pick` local + 2º replantio
-pela outra sessão, ambos verificados por patch-id de novo. `main` local está hoje idêntica a
-`origin/main`, nenhum trabalho foi perdido.
+- **Public Key de teste**: gravada em `store_settings` (por loja, via `mp_public_key`) — pública por
+  design do MP, sem risco.
+- **Access Token de teste**: secret de Edge Function (`MP_ACCESS_TOKEN`), projeto E2E.
+- **Webhook secret real**: secret de Edge Function (`MP_WEBHOOK_SECRET`), projeto E2E.
+- Nenhuma dessas três foi vista por mim em texto — só os hashes que o CLI mostra, ou (no caso da
+  Public Key) o próprio valor porque é seguro por design.
 
 ## Estado do git
 ```
+02bc8a3 feat(pagamento-01): Onda 5 -- Payment Brick (Pix) no frontend, validado em navegador real
+e7e2dd7 feat(pagamento-01): Onda 5 (parte 1) -- RPCs client-facing p/ config e status de pagamento
+59cbf7b docs(pagamento-01): checkpoint apos fix de timestamp -- webhook validado com secret real
 c3ba5db fix(pagamento-01): unidade do timestamp na assinatura do webhook (segundos, nao ms)
+fbba06e docs(pagamento-01): checkpoint apos Onda 4 -- webhook receiver real validado
 1e8b438 feat(pagamento-01): Onda 4 -- webhook receiver real (Edge Function publica, sandbox MP)
 14db132 feat(pagamento-01): Onda 3 -- criacao de cobranca real (E2E, sandbox Mercado Pago)
-3592718 docs(pagamento-01): arquitetura tecnica -- integracao Mercado Pago
-6d8b59b docs(pagamento-01): descoberta completa -- gateway de pagamento online
-b403598 docs(pagamento-01): checkpoint apos Onda 2 -- webhook credential-independent concluido
-6c2b339 feat(pagamento-01): Onda 2 -- fundacao do webhook (credential-independent)
-15c66bf docs(pagamento-01): checkpoint apos Onda 1 -- bloqueio de credencial documentado
-bac4591 feat(pagamento-01): Onda 1 -- fundacao de schema (payment_intents + divisao de conta de Mesa)
-9b59123 docs(pagamento-01): Onda 0 -- auditoria pre-implementacao
 ```
-Todos já em `origin/main` (reconciliados, ver seção acima) — não há mais divergência local/remoto
-específica desta REF. Nenhum push adicional foi feito por mim; o replantio/push de `origin/main` foi
-executado pela outra sessão, com autorização direta do dono, não por mim.
+Todos em `origin/main` até `3592718` (reconciliados, ver histórico anterior deste doc); os commits
+mais recentes (a partir de `14db132`) ainda são **locais**, aguardando o mesmo gate de reconciliação
+já estabelecido — nenhum push sem autorização explícita.
 
-## Arquivos criados nesta etapa (Onda 4)
-- `supabase/functions/mp-webhook/index.ts` + `README.md` (nova Edge Function, `--no-verify-jwt`)
-- `scripts/pagamento-01-onda4-webhook-real-test.mjs` (chamada REAL, sandbox MP)
-- `migrations/REF-PAGAMENTO-01-onda4-fix-timestamp-assinatura.sql` + `-rollback.sql` (fix do bug de
-  unidade do timestamp, achado real pós-secret-verdadeiro — ver seção de testes)
+## Reconciliação de histórico (contexto de sessões anteriores, não repetido aqui)
 
-Zero migration nova na construção original da onda — só o fix posterior precisou de uma.
+Ver revisões anteriores deste arquivo no git log — resumo: outra sessão fez rollout de produção da
+REF-DELIVERY-FEE-05 e replantou os commits desta REF por cima do `origin/main` atualizado, com
+autorização direta do dono. `main` local está idêntica a `origin/main` até esse ponto, nenhum
+trabalho foi perdido (verificado por patch-id).
 
-## Arquivos criados na Onda 3 (referência)
-- `migrations/REF-PAGAMENTO-01-onda3-criacao-cobranca.sql` + `-rollback.sql`
-- `scripts/pagamento-01-onda3-criacao-cobranca-test.mjs` (RPC + função interna, credential-independent)
-- `scripts/pagamento-01-onda3-edge-function-real-test.mjs` (chamada REAL, sandbox MP)
-- `supabase/functions/mp-criar-cobranca/index.ts` + `README.md` (nova Edge Function)
-
-## Migrations/objetos criados (Onda 3)
-- `iniciar_pagamento_pedido(order_id, store_id)` — RPC client-facing (anon+authenticated, mesma
-  exposição de `create_order`), gate por capability `pagamento_online_habilitada` em
-  `store_settings` (padrão EAV já usado por `mesa_habilitada` etc. — ausente = desligado, opt-in por
-  loja). Reaproveita tentativa `pendente` existente pro mesmo pedido em vez de duplicar.
-- `_registrar_criacao_pagamento(...)` — função interna (Edge Function via `service_role`), grava a
-  1ª resposta real da API de criação (distinta da idempotência de replay do webhook — todo
-  `payment_intent` nasce `pendente`, e a 1ª resposta do MP também costuma vir `pendente`; não é
-  replay, é a 1ª escrita). Delega pra `_processar_webhook_payment_intent` (Onda 2) só numa 2ª
-  chamada com o MESMO `mp_payment_id`.
-- Edge Function `mp-criar-cobranca`: único ponto que fala com `api.mercadopago.com/v1/payments`
-  (decisão tomada nesta onda: API clássica, não a Orders API — é a integração oficialmente
-  documentada pelo MP para uso com Payment Brick). Nunca confia em store_id/order_id/amount vindos
-  do corpo da requisição — sempre relê de `payment_intents` via `service_role`.
-
-## Testes executados e resultados (Onda 4 + fix)
-- `pagamento-01-onda4-webhook-real-test.mjs`: 8/8 na 1ª rodada (secret de teste, antes do dono
-  configurar o real). Depois que o secret real substituiu o de teste, esse script específico passou
-  a não servir mais pra validar a função deployada (ele assina com um secret que já não é o
-  configurado no ambiente) — mantido no repo como regressão útil caso um novo secret de teste seja
-  configurado no futuro; a validação real agora vem do próprio painel do Mercado Pago (ver abaixo).
-- **Achado real crítico + correção**: os 2 primeiros webhooks reais do Mercado Pago vieram 401.
-  Diagnóstico temporário (removido depois, nunca expôs o secret) confirmou que o HMAC recalculado
-  batia exatamente com o `v1` do header — o problema era só a janela de frescor comparando `ts` como
-  se fosse milissegundos quando na verdade é segundos. Corrigido em `_validar_assinatura_webhook_mp`
-  (SQL) e `validarAssinatura` (TS, `mp-webhook`). **Prova real pós-fix**: 2 pagamentos criados depois
-  → painel de Webhooks do Mercado Pago mostrou **200 - Entregue** para os dois (commit `c3ba5db`).
-- Achado à parte (mesma leva de regressão, não relacionado ao timestamp): teste `E2` de
-  `pagamento-01-onda1-fundacao-test.mjs` era instável (`ORDER BY criada_em` com empate real de
-  timestamp entre 2 linhas da mesma transação) — corrigido buscando cada fatia pelo próprio id.
-  Confirmado estável em 3 execuções seguidas (20/20 x3) depois do fix.
-- Regressão final: Onda 1 (20/20 x3), Onda 2 (29/29, com `ts` de teste corrigido pra segundos), Onda
-  3 A+B (19/19), `test:domain` limpo, lint 60 warnings pré-existentes (0 novo, 0 erro), build limpo.
-  Apply→rollback→reapply confirmado pra migration do fix.
+## Testes executados e resultados (acumulado)
+- Onda 1: 20/20. Onda 2: 29/29. Onda 3 A+B: 19/19. Onda 5 config/status: 7/7.
+- Onda 3/4 "chamada real" (scripts dedicados): validados quando escritos, hoje presos a secrets já
+  substituídos (documentado nos próprios scripts) — a validação real atual vem do teste manual desta
+  Onda 5 e do painel do Mercado Pago (200 nos webhooks).
+- `test:domain` limpo, lint 60 warnings pré-existentes (0 novo, 0 erro), build limpo.
+- Pin do golden de checkout (`tests/checkout.golden.mjs`) atualizado conscientemente para refletir o
+  override opcional de `status`.
 
 ## O que foi REALMENTE validado (vs. simulado) — atualizado
-- **O ciclo completo está validado de ponta a ponta com credenciais e eventos 100% reais**: criar
-  cobrança real (Onda 3) → Mercado Pago processa → Mercado Pago ENVIA o webhook de verdade (não mais
-  simulado) → `mp-webhook` valida a assinatura real, consulta a API real, resolve o tenant, processa
-  via a máquina de estados da Onda 2 → banco atualizado. Confirmado com evidência do próprio painel
-  do Mercado Pago (200 - Entregue), não só por scripts locais.
-- Ainda NÃO validado: Payment Brick tokenizando no navegador (frontend, Onda 5), um pagamento
-  efetivamente sendo APROVADO de ponta a ponta (os testes até aqui usaram Pix, que fica `pendente`
-  até alguém realmente pagar — o caminho de aprovação real só deve aparecer naturalmente na Onda 5,
-  testando com cartão de teste "APRO" dentro do próprio Payment Brick), split/OAuth (fora do escopo
-  até segunda ordem).
+
+**Esta é a primeira onda com validação real em NAVEGADOR** (não só scripts Node): criação de pedido,
+Payment Brick, geração de QR Pix real, e confirmação automática via polling — tudo testado ao vivo
+pelo dono, com achados reais corrigidos na hora (os 3 erros 422 do Brick). Ainda NÃO validado: cartão
+online (fora do escopo desta onda), split/OAuth (fora do escopo até segunda ordem), qualquer coisa em
+produção (bloqueado, gate separado).
 
 ## Próximo gate necessário
 
-Autorizar a Onda 5 (Payment Brick no frontend) — ainda em E2E/sandbox, produção continua bloqueada
-até autorização explícita separada. Nenhuma pendência de credencial neste momento.
+Decisão do dono: (1) autorizar cartão online (Payment Brick completo) como próxima onda, (2) decidir
+sobre o gate de reconciliação/push que segue pendente desde a Onda 3, ou (3) considerar a REF pronta
+para uma avaliação de piloto controlado em produção (Onda 6 do plano original — ainda bloqueada por
+padrão, precisa de autorização explícita separada e nova).
