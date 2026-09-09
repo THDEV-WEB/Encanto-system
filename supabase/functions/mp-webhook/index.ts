@@ -63,8 +63,12 @@ export async function validarAssinatura(dataId: string, xRequestId: string, xSig
   if (!tsMatch || !v1Match) return false;
   const ts = tsMatch[1];
   const v1 = v1Match[1].toLowerCase();
-  const tsMs = Number(ts);
-  if (!Number.isFinite(tsMs)) return false;
+  // FIX Onda 4: "ts" do Mercado Pago vem em SEGUNDOS desde epoch (confirmado empiricamente contra
+  // um webhook real -- ver migration REF-PAGAMENTO-01-onda4-fix-timestamp-assinatura.sql), nao
+  // milissegundos como Date.now(). Converte pra ms antes de comparar.
+  const tsSegundos = Number(ts);
+  if (!Number.isFinite(tsSegundos)) return false;
+  const tsMs = tsSegundos * 1000;
   const agora = Date.now();
   if (tsMs < agora - JANELA_PASSADO_MS || tsMs > agora + JANELA_FUTURO_MS) return false;
   const manifest = `id:${dataId};request-id:${xRequestId};ts:${ts};`;

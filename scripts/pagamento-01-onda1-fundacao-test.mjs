@@ -193,8 +193,15 @@ async function main() {
       const res2 = await client.query(`SELECT public.admin_registrar_pagamento_alocacao($1::uuid, 'dinheiro', $2::uuid) AS res`, [fatia1Id, STORE_A]);
       check('E3 confirmar fatia ja paga -> rejeitado', res2.rows[0].res.ok === false && res2.rows[0].res.error === 'alocacao ja paga', JSON.stringify(res2.rows[0].res));
       await resetRole();   // verificacao direta na tabela precisa de role sem RLS (deny-all confirmado em C1-C3)
-      const status = await client.query(`SELECT id, status, metodo FROM public.mesa_session_payment_allocations WHERE mesa_session_id=$1 ORDER BY criada_em`, [aberto.mesa_session_id]);
-      check('E2 1a fatia paga, 2a continua pendente', status.rows[0].status === 'pago' && status.rows[0].metodo === 'pix' && status.rows[1].status === 'pendente', JSON.stringify(status.rows));
+      // FIX (achado ao rodar, nao relacionado a nenhuma onda especifica): ambas as fatias nascem na
+      // MESMA transacao de admin_dividir_conta_mesa, entao criada_em (now(), constante durante toda
+      // a transacao) EMPATA entre as duas -- ORDER BY criada_em sozinho nao e' deterministico nesse
+      // empate. Busca cada fatia pelo proprio id (ja conhecido, fatia1Id/fatia2Id) em vez de
+      // depender de ordem fisica de retorno.
+      const status = await client.query(`SELECT id, status, metodo FROM public.mesa_session_payment_allocations WHERE mesa_session_id=$1`, [aberto.mesa_session_id]);
+      const statusFatia1 = status.rows.find(r => r.id === fatia1Id);
+      const statusFatia2 = status.rows.find(r => r.id === fatia2Id);
+      check('E2 1a fatia paga, 2a continua pendente', statusFatia1?.status === 'pago' && statusFatia1?.metodo === 'pix' && statusFatia2?.status === 'pendente', JSON.stringify(status.rows));
     });
 
     // F1: admin_fechar_conta_mesa -- com fatia pendente, BLOQUEADO (guarda nova).

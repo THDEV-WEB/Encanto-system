@@ -38,10 +38,12 @@ const TEST_SECRET_PATH = 'C:/Users/00thi/AppData/Local/Temp/claude/c--Projetos/b
 let pass = 0, fail = 0;
 function check(label, cond, extra = '') { if (cond) { pass++; console.log(`PASS  ${label}`); } else { fail++; console.log(`FAIL  ${label}  ${extra}`); } }
 
-function assinar(dataId, xRequestId, tsMs, secret) {
-  const manifest = `id:${dataId};request-id:${xRequestId};ts:${tsMs};`;
+// FIX Onda 4: "ts" do Mercado Pago vem em SEGUNDOS desde epoch (achado real desta onda, ver
+// migration REF-PAGAMENTO-01-onda4-fix-timestamp-assinatura.sql) -- recebe segundos, nao ms.
+function assinar(dataId, xRequestId, tsSegundos, secret) {
+  const manifest = `id:${dataId};request-id:${xRequestId};ts:${tsSegundos};`;
   const v1 = createHmac('sha256', secret).update(manifest).digest('hex');
-  return `ts=${tsMs},v1=${v1}`;
+  return `ts=${tsSegundos},v1=${v1}`;
 }
 
 async function main() {
@@ -78,7 +80,7 @@ async function main() {
 
     // ── D1: assinatura invalida (secret errado) -> 401, NUNCA processa ──────────────────────────
     {
-      const ts = Date.now();
+      const ts = Math.floor(Date.now() / 1000);
       const reqId = randomUUID();
       const sigErrada = assinar(mpPaymentId, reqId, ts, 'secret-completamente-errado');
       const r = await fetch(`${WEBHOOK_URL}?data.id=${mpPaymentId}&type=payment`, {
@@ -91,7 +93,7 @@ async function main() {
 
     // ── D2: assinatura valida (secret de TESTE), data_id do pagamento REAL -> processa de verdade ──
     {
-      const ts = Date.now();
+      const ts = Math.floor(Date.now() / 1000);
       const reqId = randomUUID();
       const sigValida = assinar(mpPaymentId, reqId, ts, SECRET_TESTE);
       const r = await fetch(`${WEBHOOK_URL}?data.id=${mpPaymentId}&type=payment`, {
@@ -106,7 +108,7 @@ async function main() {
 
     // ── D3: mesma notificacao de novo (replay) -> continua ok:true, idempotente (nao duplica efeito) ──
     {
-      const ts = Date.now();
+      const ts = Math.floor(Date.now() / 1000);
       const reqId = randomUUID();
       const sigValida = assinar(mpPaymentId, reqId, ts, SECRET_TESTE);
       const r = await fetch(`${WEBHOOK_URL}?data.id=${mpPaymentId}&type=payment`, {
@@ -120,7 +122,7 @@ async function main() {
     // ── D4: data_id inexistente (nao corresponde a nenhum payment_intent nosso) -> 200 ignorado, nunca erro ──
     {
       const idFalso = '999999999999';
-      const ts = Date.now();
+      const ts = Math.floor(Date.now() / 1000);
       const reqId = randomUUID();
       const sigValida = assinar(idFalso, reqId, ts, SECRET_TESTE);
       const r = await fetch(`${WEBHOOK_URL}?data.id=${idFalso}&type=payment`, {

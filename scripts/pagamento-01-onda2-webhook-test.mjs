@@ -34,11 +34,14 @@ async function withSavepoint(fn) {
 }
 
 // ── SIMULACAO local do webhook do Mercado Pago (secret de TESTE, nunca real) ──────────────────
+// FIX Onda 4: "ts" do Mercado Pago vem em SEGUNDOS desde epoch (confirmado empiricamente contra um
+// webhook real, ver migration REF-PAGAMENTO-01-onda4-fix-timestamp-assinatura.sql) -- este helper
+// recebe SEGUNDOS agora (antes recebia milissegundos, mesma suposicao errada que o codigo tinha).
 const SECRET_TESTE = 'segredo-de-teste-nao-e-do-mercadopago-' + randomUUID();
-function assinarWebhook(dataId, xRequestId, tsMs, secret = SECRET_TESTE) {
-  const manifest = `id:${dataId};request-id:${xRequestId};ts:${tsMs};`;
+function assinarWebhook(dataId, xRequestId, tsSegundos, secret = SECRET_TESTE) {
+  const manifest = `id:${dataId};request-id:${xRequestId};ts:${tsSegundos};`;
   const v1 = createHmac('sha256', secret).update(manifest).digest('hex');
-  return `ts=${tsMs},v1=${v1}`;
+  return `ts=${tsSegundos},v1=${v1}`;
 }
 
 async function main() {
@@ -72,7 +75,7 @@ async function main() {
     await withSavepoint(async () => {
       const dataId = '987654321';
       const reqId = randomUUID();
-      const tsAgora = Date.now();
+      const tsAgora = Math.floor(Date.now() / 1000);
       const sigValida = assinarWebhook(dataId, reqId, tsAgora);
 
       const r1 = await client.query(`SELECT public._validar_assinatura_webhook_mp($1,$2,$3,$4) AS ok`, [dataId, reqId, sigValida, SECRET_TESTE]);
@@ -94,12 +97,12 @@ async function main() {
       const r6 = await client.query(`SELECT public._validar_assinatura_webhook_mp($1,$2,$3,$4) AS ok`, [dataId, reqId, sigMaiuscula, SECRET_TESTE]);
       check('H6 v1 em maiuscula (case-insensitive) -> ainda aceita', r6.rows[0].ok === true);
 
-      const tsVelho = Date.now() - 15 * 60 * 1000; // 15min atras -- fora da janela de 10min
+      const tsVelho = Math.floor((Date.now() - 15 * 60 * 1000) / 1000); // 15min atras -- fora da janela de 10min
       const sigVelha = assinarWebhook(dataId, reqId, tsVelho);
       const r7 = await client.query(`SELECT public._validar_assinatura_webhook_mp($1,$2,$3,$4) AS ok`, [dataId, reqId, sigVelha, SECRET_TESTE]);
       check('H7 timestamp com 15min (fora da janela de frescor de 10min) -> rejeitada mesmo com assinatura matematicamente correta', r7.rows[0].ok === false);
 
-      const tsFuturo = Date.now() + 5 * 60 * 1000; // 5min no futuro -- fora da janela de 2min
+      const tsFuturo = Math.floor((Date.now() + 5 * 60 * 1000) / 1000); // 5min no futuro -- fora da janela de 2min
       const sigFutura = assinarWebhook(dataId, reqId, tsFuturo);
       const r8 = await client.query(`SELECT public._validar_assinatura_webhook_mp($1,$2,$3,$4) AS ok`, [dataId, reqId, sigFutura, SECRET_TESTE]);
       check('H8 timestamp 5min no futuro (fora da janela de 2min) -> rejeitada', r8.rows[0].ok === false);
@@ -181,7 +184,7 @@ async function main() {
       const pedidoIntacto = (await client.query(`SELECT status FROM public.orders WHERE id=$1`, [orderId])).rows[0];
       check('L2 pedido NUNCA foi tocado (assinatura invalida barra ANTES de qualquer leitura/escrita de payment_intent)', pedidoIntacto.status === 'aguardando_pagamento');
 
-      const tsAgora = Date.now();
+      const tsAgora = Math.floor(Date.now() / 1000);
       const sigValida = assinarWebhook(mpId, reqId, tsAgora, SECRET_TESTE);
       const res2 = await client.query(`SELECT public._webhook_mercadopago_recebido($1,$2,$3,'aprovado','accredited',$4,$5,NULL) AS res`, [mpId, reqId, sigValida, STORE_A, SECRET_TESTE]);
       check('L3 assinatura valida -> processa de verdade (entry point completo)', res2.rows[0].res.ok === true, JSON.stringify(res2.rows[0].res));
