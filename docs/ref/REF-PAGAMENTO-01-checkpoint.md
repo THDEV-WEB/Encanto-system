@@ -1,127 +1,98 @@
 # REF-PAGAMENTO-01 — CHECKPOINT (ler primeiro numa nova sessão/retomada)
 
-**STATUS: Onda 0 (auditoria) + Onda 1 (schema) + Onda 2 (fundação do webhook,
-credential-independent) CONCLUÍDAS e commitadas. Onda 2-REAL/3 em diante BLOQUEADA por
-credencial — não é algo que autonomia resolve.**
+**STATUS: Onda 0 (auditoria) + Onda 1 (schema) + Onda 2 (fundação do webhook) + Onda 3 (criação de
+cobrança REAL, sandbox Mercado Pago) CONCLUÍDAS e commitadas. Onda 4 (webhook receiver como Edge
+Function pública) em diante ainda não iniciada.**
 
-**Atualizado:** 2026-09-09, após commit `985200e` (Onda 2). Execução autônoma autorizada pelo dono.
-Hard constraints seguem valendo: nunca produção, nunca push, 1 commit por onda com `git add`
-explícito, nunca tocar arquivo de outra sessão (`src/constants/privacyPolicy.js`,
-`supabase/functions/route-distance/index.ts` — REF-DELIVERY-FEE-05 ativa agora —,
-`scripts/loadtest-e2e.mjs`).
+**Atualizado:** 2026-09-09, após commit `14db132` (Onda 3). Execução autônoma autorizada pelo dono.
+Hard constraints seguem valendo: nunca produção, nunca push sem autorização explícita do gate, 1
+commit por onda com `git add` explícito, nunca tocar arquivo de outra sessão.
+
+## Credenciais de teste do Mercado Pago — DESBLOQUEADO
+
+- **Public Key de teste**: fornecida pelo dono, anotada (não é segredo, é pública por design do MP).
+- **Access Token de teste**: primeiro colocado no Vault do Postgres (erro, corrigido na Onda 3),
+  agora vive como secret de Edge Function no projeto E2E (`bgzcrovskjbktdxkhemd`):
+  `supabase secrets set MP_ACCESS_TOKEN=...`. **Nunca visto por mim em texto — só o hash que o CLI
+  mostra.**
+- CLI do Supabase logada e linkada ao projeto **E2E** (confirmado por `project-ref` local e por
+  `supabase secrets list` mostrando só o projeto correto).
+
+## Reconciliação de histórico (fora do escopo desta REF, mas afetou a `main`)
+
+Durante esta sessão, outra sessão fez o rollout de produção de REF-DELIVERY-FEE-05 (fix real do
+bug de taxa de cartão dobrada, commit `80a55e4`, verificado independentemente) e, a pedido do dono
+(com o dono no loop direto com as duas sessões), replantou os 7 commits desta REF por cima do
+`origin/main` atualizado (cherry-pick puro, conteúdo verificado byte a byte via patch-id antes e
+depois da sincronização — **um erro meu no meio do processo**: pedi o replantio de só 5 dos 7
+commits na primeira tentativa, os 2 mais antigos [`459bd8c`/`2b5015e`, descoberta+arquitetura]
+ficaram órfãos após meu `git reset --hard`, recuperados via `git cherry-pick` local + 2º replantio
+pela outra sessão, ambos verificados por patch-id de novo. `main` local está hoje idêntica a
+`origin/main`, nenhum trabalho foi perdido.
 
 ## Estado do git
 ```
-985200e feat(pagamento-01): Onda 2 -- fundacao do webhook (credential-independent)
-7f4d771 docs(pagamento-01): checkpoint apos Onda 1 -- bloqueio de credencial documentado
-20e29be feat(pagamento-01): Onda 1 -- fundacao de schema (payment_intents + divisao de conta de Mesa)
-282d449 docs(pagamento-01): Onda 0 -- auditoria pre-implementacao
-2b5015e docs(pagamento-01): arquitetura tecnica -- integracao Mercado Pago
-459bd8c docs(pagamento-01): descoberta completa -- gateway de pagamento online
+14db132 feat(pagamento-01): Onda 3 -- criacao de cobranca real (E2E, sandbox Mercado Pago)
+3592718 docs(pagamento-01): arquitetura tecnica -- integracao Mercado Pago
+6d8b59b docs(pagamento-01): descoberta completa -- gateway de pagamento online
+b403598 docs(pagamento-01): checkpoint apos Onda 2 -- webhook credential-independent concluido
+6c2b339 feat(pagamento-01): Onda 2 -- fundacao do webhook (credential-independent)
+15c66bf docs(pagamento-01): checkpoint apos Onda 1 -- bloqueio de credencial documentado
+bac4591 feat(pagamento-01): Onda 1 -- fundacao de schema (payment_intents + divisao de conta de Mesa)
+9b59123 docs(pagamento-01): Onda 0 -- auditoria pre-implementacao
 ```
-Todos LOCAIS, `origin/main` não avançou (nota: outra sessão fez um rebase+reset temporário no
-`main` compartilhado durante a Onda 1 desta REF, verificado independentemente como neutro — ver
-transcript, hash de `main` nunca mudou no resultado final). Working tree só tem os 3 arquivos de
-outras sessões acima (nunca tocados por mim).
+Todos já em `origin/main` (reconciliados, ver seção acima) — não há mais divergência local/remoto
+específica desta REF. Nenhum push adicional foi feito por mim; o replantio/push de `origin/main` foi
+executado pela outra sessão, com autorização direta do dono, não por mim.
 
-## Arquivos alterados/criados nesta etapa (Onda 2)
-- `migrations/REF-PAGAMENTO-01-onda2-webhook-fundacao.sql` (novo)
-- `migrations/REF-PAGAMENTO-01-onda2-webhook-fundacao-rollback.sql` (novo)
-- `scripts/pagamento-01-onda2-webhook-test.mjs` (novo)
-- `docs/ref/REF-PAGAMENTO-01-checkpoint.md` (este arquivo, atualizado)
+## Arquivos criados nesta etapa (Onda 3)
+- `migrations/REF-PAGAMENTO-01-onda3-criacao-cobranca.sql` + `-rollback.sql`
+- `scripts/pagamento-01-onda3-criacao-cobranca-test.mjs` (RPC + função interna, credential-independent)
+- `scripts/pagamento-01-onda3-edge-function-real-test.mjs` (chamada REAL, sandbox MP)
+- `supabase/functions/mp-criar-cobranca/index.ts` + `README.md` (nova Edge Function)
 
-## Migrations/objetos criados (Onda 2)
-- `_hmac_sha256_hex(text, text)` — wrapper puro sobre `extensions.hmac()` (pgcrypto vive no schema
-  `extensions` no Supabase, não em `public`/`pg_catalog` — achado real, chamada schema-qualificada).
-- `_validar_assinatura_webhook_mp(data_id, x_request_id, x_signature, secret)` — HMAC-SHA256 do
-  manifest EXATO documentado oficialmente pelo Mercado Pago
-  (`id:{data.id};request-id:{x-request-id};ts:{ts};`), mais uma janela de frescor de 10min
-  (passado)/2min (futuro) — **essa janela é decisão nossa, documentada como tal, não exigida pela
-  doc oficial**.
-- `_transicao_payment_status_valida(de, para)` — máquina de estados fechada (7 transições válidas,
-  todo o resto rejeitado, incluindo qualquer regressão de estado terminal).
-- `_processar_webhook_payment_intent(...)` — idempotente (mesmo status 2x = no-op), valida tenant
-  antes de qualquer escrita, promove `orders.status` (aguardando_pagamento→recebido) ou fatia de
-  mesa (pendente→pago) só em aprovação.
-- `_webhook_mercadopago_recebido(...)` — entry point único: assinatura inválida nunca toca o banco.
-- `_expirar_payment_intents_pendentes()` — job de expiração de 15min, agendado via `pg_cron`
-  (`encanto-pagamento-expira-intents`, a cada 5min — mesmo mecanismo de REF-ORDER-01/
-  REF-DELIVERY-FEE-05).
-- **Achado real corrigido**: `orders.status` tem um CHECK (`orders_status_valid`) que as Ondas 0/1
-  não tinham detectado — lista fechada (recebido/preparo/pronto/entrega/entregue/cancelado), sem
-  `aguardando_pagamento`. Corrigido de forma aditiva (`ALTER TABLE ... ADD CONSTRAINT` com a lista
-  + o valor novo) — `create_order()` continua intocado, ele nunca grava esse valor hoje.
-- Todas as 6 funções são **internas** (prefixo `_`), zero GRANT a ninguém.
+## Migrations/objetos criados (Onda 3)
+- `iniciar_pagamento_pedido(order_id, store_id)` — RPC client-facing (anon+authenticated, mesma
+  exposição de `create_order`), gate por capability `pagamento_online_habilitada` em
+  `store_settings` (padrão EAV já usado por `mesa_habilitada` etc. — ausente = desligado, opt-in por
+  loja). Reaproveita tentativa `pendente` existente pro mesmo pedido em vez de duplicar.
+- `_registrar_criacao_pagamento(...)` — função interna (Edge Function via `service_role`), grava a
+  1ª resposta real da API de criação (distinta da idempotência de replay do webhook — todo
+  `payment_intent` nasce `pendente`, e a 1ª resposta do MP também costuma vir `pendente`; não é
+  replay, é a 1ª escrita). Delega pra `_processar_webhook_payment_intent` (Onda 2) só numa 2ª
+  chamada com o MESMO `mp_payment_id`.
+- Edge Function `mp-criar-cobranca`: único ponto que fala com `api.mercadopago.com/v1/payments`
+  (decisão tomada nesta onda: API clássica, não a Orders API — é a integração oficialmente
+  documentada pelo MP para uso com Payment Brick). Nunca confia em store_id/order_id/amount vindos
+  do corpo da requisição — sempre relê de `payment_intents` via `service_role`.
 
 ## Testes executados e resultados
-- `scripts/pagamento-01-onda2-webhook-test.mjs`: **29/29** — HMAC (SQL bate com `crypto` nativo do
-  Node), assinatura válida/inválida/adulterada (data_id/request_id/secret)/malformada/maiúscula/
-  fora da janela de frescor (passado e futuro), máquina de estados (7 válidas + 6 inválidas),
-  processamento (aprovar delivery, idempotência de replay, bloqueio de regressão via replay
-  antigo), cross-tenant, não encontrado, entry point (assinatura forjada nunca toca o banco),
-  aprovação de fatia de mesa online, job de expiração (expira só quem passou de 15min, nunca toca
-  quem já está aprovado).
-- Regressão: `pagamento-01-onda1-fundacao-test.mjs` 20/20, MESA-01 (7 suítes) 100%, MESA-02 (13
-  suítes, incluindo Onda 16 segurança 34/34) 100%, `test:domain` limpo (**exceto 1 achado
-  investigado, ver seção própria abaixo**), lint (61 warnings pré-existentes, 0 novo, 0 erro),
-  build limpo.
-- Apply→rollback→reapply testado 2x (antes e depois do fix da CHECK constraint), incluindo
-  confirmação de que o rollback restaura `orders_status_valid` ao texto exato de antes.
+- `pagamento-01-onda3-criacao-cobranca-test.mjs`: **19/19** (RPC + função interna, sem chamada
+  externa) — capability desligada/ligada, caminho feliz, reaproveita tentativa pendente, pedido
+  inexistente, pedido não aguardando pagamento, cross-tenant, associação de `mp_payment_id`,
+  reassociação a ID diferente rejeitada, efeitos em `orders`/mesa por aprovação/recusa.
+- `pagamento-01-onda3-edge-function-real-test.mjs`: **8/8 — CHAMADA REAL**, não simulada. Pix criado
+  de verdade no sandbox do Mercado Pago via a Edge Function implantada, `mp_payment_id` genuíno
+  devolvido pela API (ex.: `1328123632`), `payment_intents` gravado corretamente no banco,
+  idempotência confirmada via **dedupe real da própria API do MP** pela `X-Idempotency-Key` (2ª
+  chamada devolve o MESMO `mp_payment_id`, nunca cria um 2º pagamento).
+- Achado durante o teste real: o Mercado Pago rejeita e-mail de pagador com domínio `@testuser.com`
+  ("Payer email forbidden") — corrigido usando domínio comum (`@gmail.com`) no e-mail de teste, sem
+  nenhum dado real de pessoa.
+- Regressão: Onda 1 (20/20), Onda 2 (29/29), `test:domain` limpo, lint 61 warnings pré-existentes (0
+  novo, 0 erro), build limpo. Apply→rollback→reapply confirmado.
 
-## O que foi REALMENTE validado (vs. simulado)
-- A **matemática** da validação HMAC está correta (2 implementações independentes — SQL e
-  `crypto` nativo do Node — concordam) e seu comportamento contra manipulação está provado
-  (rejeita qualquer adulteração de data_id/request_id/secret/timestamp).
-- A **máquina de estados e idempotência** estão provadas contra replay real (mesmo webhook 2x,
-  tentativa de regressão via webhook antigo).
-- **NÃO validado** (e não pode ser, sem credencial): que o Mercado Pago realmente envia webhooks
-  nesse formato exato em produção, que o simulador oficial de webhooks aceita nossa validação, que
-  a API de criação de pagamento (Onda 2-real) funciona. Todo teste desta onda usa
-  `payment_intents` **inseridos manualmente** (nunca criados pela API real) e webhooks **assinados
-  por nós mesmos** com um secret de teste gerado localmente no processo Node — nunca uma credencial
-  do Mercado Pago.
-
-## Achado incidental — teste de outra REF conectou em produção (não é meu, não é novo)
-
-Durante a regressão completa, `scripts/dashboard01-admin-reports-test.mjs` (pré-existente, de
-REF-DASHBOARD-01, faz parte da bateria padrão de regressão desde a REF-MESA-02) **conecta em
-produção por design** (`ENV_PATH` hardcoded pra `db.env`, linha 20 do próprio script — não é bug,
-não é o padrão do INCIDENTE-01) — roda tudo dentro de `BEGIN...ROLLBACK`, com a própria suíte
-confirmando `mutação líquida = 0` (lojas/admins/pedidos fictícios: 0 residuais). Isso sempre foi
-assim, inclusive durante toda a execução da REF-MESA-02 — só notei agora porque parei pra ler a
-linha de fingerprint do relatório. **Nenhuma escrita persistiu, mas registro aqui por
-transparência** (o dono deve saber que esse script específico, entre os ~20 da bateria de
-regressão, sempre leu de produção).
-
-**Resultado do teste**: 12/13 — ITEM 3 (classificação entrega/retirada no `admin_reports_summary`)
-falhou: um pedido de retirada fictício foi classificado como "entrega". Investigação preliminar
-(só leitura do próprio script de teste, sem tocar produção de novo): o teste é anterior à
-REF-MESA-01, que introduziu `orders.tipo_pedido`/`origem_pedido` como fonte estrutural — é
-plausível que `admin_reports_summary` em produção já tenha migrado pra usar `tipo_pedido` como
-autoritativo, e o teste (não atualizado) ainda dependa só do texto do endereço pra inferir
-retirada. **Não investigado a fundo nem corrigido — fora do escopo desta REF** (mesmo padrão da
-REF-MESA-02 Onda 17 com o achado de drift da REF-DELIVERY-FEE-05: documentado, não mascarado, não
-consertado por quem não é dono daquela REF).
-
-## BLOQUEIO REAL — Onda 2-real/3 em diante
-
-**Não posso criar uma aplicação no painel do Mercado Pago Developers nem gerar credenciais de
-teste.** Sem isso: nenhuma chamada real à API (criar cobrança, consultar pagamento), nenhum
-Payment Brick renderizando/tokenizando de verdade, nenhum teste contra o simulador oficial de
-webhooks do Mercado Pago.
-
-**Classificação: BLOQUEADO POR CREDENCIAL.**
-
-## Trabalho credential-independent que ainda resta (se o dono quiser mais antes de fornecer credencial)
-- Testes de concorrência da divisão de conta de Mesa (2 admins tentando dividir a mesma sessão ao
-  mesmo tempo — lock já existe via `FOR UPDATE`, mas sem teste de 2 conexões reais provando).
-- Arredondamento de centavos ímpares na divisão de conta (ex.: R$100 dividido em 3 partes iguais).
-- Revisão do achado do `dashboard01` (fora do escopo desta REF, mas vale reportar pro dono decidir
-  quem investiga).
+## O que foi REALMENTE validado (vs. simulado) — atualizado
+- **Onda 3 é a primeira validação real de ponta a ponta desta REF**: RPC → Edge Function → API real
+  do Mercado Pago → resposta real → gravação no banco. Não é mais só matemática/simulação.
+- Ainda NÃO validado: Payment Brick tokenizando no navegador (frontend, Onda 5), webhook recebendo
+  notificação assíncrona de verdade do Mercado Pago (Onda 4 — a Onda 2 só validou a lógica SQL da
+  validação de assinatura, nunca um webhook real batendo na porta), split/OAuth (fora do escopo até
+  segunda ordem).
 
 ## Próximo gate necessário
 
-Decisão do dono: (1) criar a aplicação de teste do Mercado Pago e fornecer credenciais via
-Supabase Secrets (nunca chat) para destravar Onda 2-real/3, OU (2) autorizar mais trabalho
-credential-independent da lista acima, OU (3) decidir quem investiga o achado do `dashboard01`
-(não é desta REF).
+Onda 4 (webhook receiver como Edge Function pública, registrar a URL no painel do MP pra obter o
+secret do webhook) ou Onda 5 (Payment Brick no frontend) — ambas ainda em E2E/sandbox, produção
+continua bloqueada até autorização explícita separada. Nenhuma decisão pendente do dono nesta etapa
+além de autorizar a próxima onda.
