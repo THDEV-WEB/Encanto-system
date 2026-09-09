@@ -210,5 +210,17 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: false, error: "falha_ao_registrar_localmente", mp_payment_id: mpPaymentId, status_mercadopago: mpJson.status }, 500);
   }
 
-  return jsonResponse({ ok: true, payment_intent_id: paymentIntentId, mp_payment_id: mpPaymentId, status: statusInterno, status_detail: statusDetail });
+  // Onda 5: dados do QR Pix (quando o metodo for pix) -- o Brick sozinho nao exibe o QR quando o
+  // onSubmit e' tratado por conta propria (fluxo client-facing desta REF); o frontend precisa desses
+  // campos crus da API pra renderizar o QR/copia-e-cola pro cliente.
+  const pontoInteracao = mpJson.point_of_interaction as { transaction_data?: { qr_code?: unknown; qr_code_base64?: unknown; ticket_url?: unknown } } | undefined;
+  const dadosPix = pontoInteracao?.transaction_data
+    ? {
+        qr_code: typeof pontoInteracao.transaction_data.qr_code === "string" ? pontoInteracao.transaction_data.qr_code : null,
+        qr_code_base64: typeof pontoInteracao.transaction_data.qr_code_base64 === "string" ? pontoInteracao.transaction_data.qr_code_base64 : null,
+        ticket_url: typeof pontoInteracao.transaction_data.ticket_url === "string" ? pontoInteracao.transaction_data.ticket_url : null,
+      }
+    : null;
+
+  return jsonResponse({ ok: true, payment_intent_id: paymentIntentId, mp_payment_id: mpPaymentId, status: statusInterno, status_detail: statusDetail, ...(dadosPix ? { pix: dadosPix } : {}) });
 });

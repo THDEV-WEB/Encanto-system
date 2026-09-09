@@ -45,8 +45,13 @@ export function buildOrderArgs(cart, form, endereco, requestId, enderecoId, resu
      REF-MESA-01 · Onda 3: extra.origemPedido (tambem opcional, default implicito 'storefront' do
      lado do servidor quando ausente) so vira 'qr_mesa' quando o pedido nasceu de um link de QR de
      mesa escaneado (ver hooks/useMesaFromQuery.js) — create_order valida esse canal especificamente
-     contra a capacidade da loja (mesa_canal_qr), alem da checagem geral de mesa_habilitada. */
-  const order = { total: resumo ? resumo.total : cart.total, status: 'recebido', payment_method: form.pagamento,
+     contra a capacidade da loja (mesa_canal_qr), alem da checagem geral de mesa_habilitada.
+     REF-PAGAMENTO-01 · Onda 5: extra.status (tambem OPCIONAL, mesmo espirito aditivo dos demais campos
+     de extra) permite ao pagamento online declarar 'aguardando_pagamento' em vez do 'recebido' padrao
+     -- create_order() ja aceita p_order->>'status' como override desde sempre (Onda 0 desta REF so'
+     confirmou que o hook ja existia, sem precisar mudar a RPC). Ausente preserva 100% o comportamento
+     anterior (COD sempre 'recebido'). */
+  const order = { total: resumo ? resumo.total : cart.total, status: extra.status || 'recebido', payment_method: form.pagamento,
                   address: endereco, observacoes: form.obs || null, endereco_id: enderecoId ?? null,
                   delivery_fee: resumo ? resumo.deliveryFee : 0, maquininha_fee: resumo ? resumo.maquininhaFee : 0,
                   adicional_pagamento_fee: resumo ? resumo.adicionalPagamentoFee : 0,

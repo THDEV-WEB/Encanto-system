@@ -5,6 +5,7 @@
    (utils/ids) e STORAGE_KEYS (constants) sao dependencias PRE-EXISTENTES do submit (idempotency key/localStorage). */
 import { useState, useRef, useEffect, useMemo, lazy, Suspense } from 'react';
 import { useAuth } from '../../hooks/useAuth.js';
+import { usePagamentoConfig } from '../../hooks/usePagamentoConfig.js';   // REF-PAGAMENTO-01 · Onda 5: capability de pagamento online (opt-in por loja)
 import { useCompanyInfo } from '../../hooks/useCompanyInfo.js';   // REF-COMPANY-02: nome curto na mensagem do WhatsApp
 import { useBusinessHours } from '../../hooks/useBusinessHours.js';   // REF-BUSINESS-HOURS-01: bloqueio fora do horario
 import { useCatalogoConfiavel } from '../../hooks/useCatalogoConfiavel.js';   // REF-PRICE-SOURCE-01 · Onda 2: bloqueio quando o catalogo caiu no mock
@@ -24,6 +25,9 @@ import { registrarBreadcrumb, marcarPedido } from '../../lib/sentry.js'; // REF-
 
 // REF-LGPD-01 · Onda 3 (LGPD-R14): so' carrega o chunk se o cliente realmente abrir o aviso.
 const PrivacidadeScreen = lazy(() => import('../menu/PrivacidadeScreen.jsx').then(m => ({ default: m.PrivacidadeScreen })));
+// REF-PAGAMENTO-01 · Onda 5: so' carrega o chunk (+ o SDK do Mercado Pago, la dentro) quando o
+// cliente de fato escolhe pagar online -- nunca no bundle principal do checkout.
+const PagamentoPixPage = lazy(() => import('./PagamentoPixPage.jsx').then(m => ({ default: m.PagamentoPixPage })));
 
 export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEta, produtosVivos, mesaIdentificador, setMesaIdentificador, origemPedido, mesaQrToken }) {
   /* REF-CLIENTE-02 (vinculo pedido<->conta): create_order reusa o customer POR TELEFONE e nunca toca
@@ -33,6 +37,12 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
      Guest (nao logado) segue 100% editavel: guest checkout intocado. */
   const { isLogged, customer, status } = useAuth();
   const companyInfo = useCompanyInfo();
+  const pagamentoConfig = usePagamentoConfig();   // REF-PAGAMENTO-01 · Onda 5: {habilitada, public_key}
+  /* REF-PAGAMENTO-01 · Onda 5: quando setado, SUBSTITUI o formulario pela tela de Pix (QR/espera) --
+     o pedido ja foi criado (status 'aguardando_pagamento') nesse ponto, so falta o pagamento em si.
+     onVoltar limpa e devolve pro formulario (o pedido ja criado fica orfao/nao pago, mesmo
+     comportamento de qualquer checkout abandonado hoje -- create_order nao tem "cancelamento"). */
+  const [pagamentoPixPendente, setPagamentoPixPendente] = useState(null); // {orderId, msg} | null
   const [mostrarPrivacidade, setMostrarPrivacidade] = useState(false); // REF-LGPD-01 · Onda 3 (LGPD-R14)
   const feeConfig = useDeliveryFeeConfig();   // REF-DELIVERY-FEE-01: config administravel (faixas/maquininha)
   /* REF-CHECKOUT-ADDRESS-01: o endereco de entrega vem da FONTE UNICA (dominio Address, mesmo objeto do
@@ -135,11 +145,15 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
   const submittingRef = useRef(false);   // trava reentrância (duplo clique / envio simultâneo)
   const requestIdRef  = useRef(null);    // idempotency key (estável por tentativa de checkout)
   const upd = (k,v) => setForm(f=>({...f,[k]:v}));
+  /* REF-PAGAMENTO-01 · Onda 5: "Pix agora" só aparece quando a loja ligou a capability (opt-in,
+     default desligado -- nenhuma loja existente ganha isso sem configurar). Nunca some/some nenhum
+     dos 4 métodos já existentes (COD continua 100% disponível e é o default, nunca escondido). */
   const pays = [
     {id:'dinheiro',label:'Dinheiro',icon:'💵'},
     {id:'pix',label:'PIX',icon:'📲'},
     {id:'cartao_debito',label:'Débito',icon:'💳'},
     {id:'cartao_credito',label:'Crédito',icon:'💳'},
+    ...(pagamentoConfig.habilitada ? [{id:'pix_online',label:'Pix agora',icon:'⚡'}] : []),
   ];
   const submit = async () => {
     if (submittingRef.current || loading) return;   // impede envio simultâneo
@@ -197,10 +211,15 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
        ignora mesaIdentificador do payload nesse canal e resolve a mesa a partir do token (prova de
        posse do QR físico). mesaIdentificador continua enviado por compatibilidade/exibição, mas
        nunca é a fonte de verdade quando há token. */
-    const extraPedido = mesa
-      ? { tipoPedido: 'mesa', mesaIdentificador: mesaIdentificador.trim(), origemPedido,
-          ...(origemPedido === 'qr_mesa' && mesaQrToken ? { mesaQrToken } : {}) }
-      : {};
+    /* REF-PAGAMENTO-01 · Onda 5: pedido pago online nasce 'aguardando_pagamento' (nunca 'recebido' --
+       a loja so deve ser notificada/comecar a preparar DEPOIS da confirmacao real do pagamento, ver
+       PagamentoPixPage.jsx). */
+    const pagamentoOnline = form.pagamento === 'pix_online';
+    const extraPedido = {
+      ...(mesa ? { tipoPedido: 'mesa', mesaIdentificador: mesaIdentificador.trim(), origemPedido,
+          ...(origemPedido === 'qr_mesa' && mesaQrToken ? { mesaQrToken } : {}) } : {}),
+      ...(pagamentoOnline ? { status: 'aguardando_pagamento' } : {}),
+    };
     const { customer: customerPedido, order, items } = buildOrderArgs(cart, form, enderecoEntrega, requestIdRef.current, enderecoId, resumoEnvio, extraPedido);
     /* GATE (fonte única de verdade): a persistência bem-sucedida é o evento que autoriza TODAS as ações
        seguintes. savePedido devolve { orderId, divergencia, deliveryFee, maquininhaFee }. */
@@ -255,6 +274,10 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
     requestIdRef.current = null;   // próximo pedido recebe nova idempotency key
     try { localStorage.removeItem(STORAGE_KEYS.REQ_ID); } catch (e) {}
     cart.clear();
+    /* REF-PAGAMENTO-01 · Onda 5: pedido já persistido (igual ao COD) — só a NOTIFICAÇÃO (WhatsApp)
+       espera a confirmação real do pagamento. PagamentoPixPage chama este MESMO onSuccess(msg) quando
+       o polling confirmar 'aprovado' — StoreApp.jsx não precisa saber que existe um caminho online. */
+    if (pagamentoOnline) { setPagamentoPixPendente({ orderId, msg }); return; }
     onSuccess(msg);
   };
   const view = buildCheckoutView(cart, resumo);   // Onda 5.2: resumo consome o view-model do order-domain (não recalcula preço)
@@ -279,6 +302,16 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
      recalcula certo em create_order() de qualquer forma) — só avisa antes do cliente ser
      surpreendido na confirmação. */
   const precoDivergenteView = catalogoConfiavel ? buildPrecoDivergenteView(cart, produtosVivos) : null;
+  /* REF-PAGAMENTO-01 · Onda 5: pedido já criado, aguardando o pagamento Pix -- substitui TODO o
+     formulário (não um passo a mais dentro dele) pela tela de QR/espera. */
+  if (pagamentoPixPendente) {
+    return (
+      <Suspense fallback={null}>
+        <PagamentoPixPage orderId={pagamentoPixPendente.orderId} msg={pagamentoPixPendente.msg}
+          onSuccess={onSuccess} onVoltar={() => setPagamentoPixPendente(null)} />
+      </Suspense>
+    );
+  }
   return (
     <div className="checkout-page">
       <button onClick={onBack} style={{background:'none',color:'var(--gray-500)',fontSize:14,marginBottom:16,display:'flex',alignItems:'center',gap:6,cursor:'pointer',border:'none'}}>
@@ -487,6 +520,8 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
         {lojaFechada ? '🔒 Loja fechada no momento'
           : !catalogoConfiavel ? '⚠️ Catálogo indisponível no momento'
           : divergenciaView ? (loading ? 'Enviando...' : `Continuar com novo valor • ${divergenciaView.totalFmt}`)
+          /* REF-PAGAMENTO-01 · Onda 5: rótulo do Pix agora não promete WhatsApp -- o QR aparece antes. */
+          : form.pagamento === 'pix_online' ? (loading ? 'Enviando...' : `Gerar Pix • ${view.total}`)
           : (loading ? 'Enviando...' : `Confirmar via WhatsApp • ${view.total}`)}
       </button>
       <Suspense fallback={null}>

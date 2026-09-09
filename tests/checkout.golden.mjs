@@ -245,7 +245,9 @@ const CK  = readFileSync(new URL('../src/components/checkout/CheckoutPage.jsx', 
 const pinOD  = (m, re) => check('pin: ' + m, () => assert.ok(re.test(OD),  'expressão-chave ausente/alterada no order-domain — atualize o golden: ' + m));
 const pinSvc = (m, re) => check('pin: ' + m, () => assert.ok(re.test(SVC), 'expressão-chave ausente/alterada no savePedido (DataService) — atualize o golden: ' + m));
 const pinCk  = (m, re) => check('pin: ' + m, () => assert.ok(re.test(CK),  'expressão-chave ausente/alterada no submit (CheckoutPage) — atualize o golden: ' + m));
-pinOD("order.status 'recebido'",        /status:\s*'recebido'/);
+/* REF-PAGAMENTO-01 · Onda 5: status ganhou override OPCIONAL (extra.status) para o fluxo de pagamento
+   online declarar 'aguardando_pagamento' -- ausente preserva 100% o 'recebido' de sempre (COD). */
+pinOD("order.status = extra.status || 'recebido' (REF-PAGAMENTO-01 Onda 5)", /status:\s*extra\.status\s*\|\|\s*'recebido'/);
 pinOD('order.total = resumo?.total : cart.total (REF-DELIVERY-FEE-01)', /total:\s*resumo\s*\?\s*resumo\.total\s*:\s*cart\.total/);
 pinOD('order.delivery_fee/maquininha_fee vem do resumo (REF-DELIVERY-FEE-01)', /delivery_fee:\s*resumo\s*\?\s*resumo\.deliveryFee\s*:\s*0,\s*maquininha_fee:\s*resumo\s*\?\s*resumo\.maquininhaFee\s*:\s*0/);
 pinOD('order.observacoes = obs||null',  /observacoes:\s*form\.obs\s*\|\|\s*null/);
