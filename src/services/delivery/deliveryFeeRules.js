@@ -119,8 +119,14 @@ export function calcularMaquininhaFee(paymentMethod, maquininhaConfig) {
    `retirada` (gate de modalidade) e' decidido pelo CHAMADOR (montarResumoFinanceiro), nunca aqui — esta
    funcao so responde "essa forma de pagamento paga o adicional, supondo que ha entrega fisica?".
    config ausente -> {ativo:true, valor:2.00} (nao {} vazio) — "ja nasce ligado", ver cabecalho do
-   arquivo; diferente de calcularMaquininhaFee, cujo precedente historico e' ausencia = desligado. */
-export function calcularAdicionalPagamentoFee(paymentMethod, adicionalPagamentoConfig) {
+   arquivo; diferente de calcularMaquininhaFee, cujo precedente historico e' ausencia = desligado.
+   REF-DELIVERY-FEE-05 · Onda 4: MUTUAMENTE EXCLUSIVO com maquininhaFee (espelha _resolve_delivery_fee
+   SQL) — so' cobra quando a maquininha ja NAO se aplicou a este pedido (maquininhaFee=0). Achado do
+   dono em teste ao vivo: as duas ativas ao mesmo tempo cobravam R$4 no cartao (R$2+R$2); agora cartao
+   cobra so' R$2 (via maquininha), dinheiro continua cobrando R$2 (via adicional, maquininha nunca
+   cobre dinheiro) — nunca R$4. */
+export function calcularAdicionalPagamentoFee(paymentMethod, adicionalPagamentoConfig, maquininhaFee = 0) {
+  if (Number(maquininhaFee) > 0) return 0;
   const cfg = adicionalPagamentoConfig || { ativo: true, valor: 2.00 };
   if (!cfg.ativo) return 0;
   if (!ADICIONAL_PAGAMENTO_METODOS.includes(paymentMethod)) return 0;
@@ -163,7 +169,7 @@ export function montarResumoFinanceiro({ subtotal, retirada, distanciaKm, config
   }
 
   const maquininhaFee = calcularMaquininhaFee(paymentMethod, cfg.maquininha);
-  const adicionalPagamentoFee = calcularAdicionalPagamentoFee(paymentMethod, cfg.adicionalPagamento);
+  const adicionalPagamentoFee = calcularAdicionalPagamentoFee(paymentMethod, cfg.adicionalPagamento, maquininhaFee);
   const acrescimos = maquininhaFee + adicionalPagamentoFee;
 
   if (!cfg.ativo) {

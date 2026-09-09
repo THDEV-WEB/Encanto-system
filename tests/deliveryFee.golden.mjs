@@ -182,6 +182,13 @@ check('adicional de pagamento: config ausente -> {ativo:true,valor:2.00} ("já n
 check('ADICIONAL_PAGAMENTO_METODOS é exatamente [dinheiro, cartao_debito, cartao_credito] (oposto de MAQUININHA_METODOS)', () => {
   assert.deepStrictEqual(ADICIONAL_PAGAMENTO_METODOS, ['dinheiro', 'cartao_debito', 'cartao_credito']);
 });
+check('adicional de pagamento: mutuamente exclusivo com maquininha (REF-DELIVERY-FEE-05 Onda 4) -- nunca soma R$4', () => {
+  assert.strictEqual(calcularAdicionalPagamentoFee('cartao_credito', ADIC_ATIVO, 2.00), 0);
+  assert.strictEqual(calcularAdicionalPagamentoFee('cartao_debito', ADIC_ATIVO, 2.00), 0);
+  // dinheiro nunca aciona maquininha -- continua cobrando o adicional normalmente mesmo se um
+  // valor de maquininha fosse (hipoteticamente) passado.
+  assert.strictEqual(calcularAdicionalPagamentoFee('dinheiro', ADIC_ATIVO, 0), 2.00);
+});
 
 /* ── (D) montarResumoFinanceiro ──────────────────────────────────────────────────────────────── */
 check('resumo: retirada nunca tem taxa, maquininha nem adicional de pagamento (mesmo com cartão)', () => {
@@ -198,12 +205,12 @@ check('resumo: configuracaoPropria false quando config.configuracao_propria === 
   assert.strictEqual(r.status, 'ok');
   assert.strictEqual(r.configuracaoPropria, false);
 });
-check('resumo: feature desativada -> sem taxa de entrega, mas maquininha e adicional de pagamento continuam independentes', () => {
+check('resumo: feature desativada -> sem taxa de entrega, maquininha e adicional continuam mutuamente exclusivos', () => {
   const r = montarResumoFinanceiro({ subtotal: 50, retirada: false, distanciaKm: 3, config: { ...CONFIG_PADRAO, ativo: false }, paymentMethod: 'cartao_credito' });
   assert.strictEqual(r.deliveryFee, 0);
   assert.strictEqual(r.maquininhaFee, 2.00);
-  assert.strictEqual(r.adicionalPagamentoFee, 2.00);
-  assert.strictEqual(r.total, 54.00);
+  assert.strictEqual(r.adicionalPagamentoFee, 0);   // REF-DELIVERY-FEE-05 Onda 4: exclusivo com maquininha
+  assert.strictEqual(r.total, 52.00);
   assert.strictEqual(r.status, 'desativado');
 });
 check('resumo: sem coordenadas -> taxa 0 + status honesto, checkout nunca bloqueia', () => {
@@ -220,7 +227,7 @@ check('resumo: fora de alcance (incrementoAcimaFaixas explicitamente 0/desativad
   const r = montarResumoFinanceiro({ subtotal: 50, retirada: false, distanciaKm: 25, config: cfg, paymentMethod: 'cartao_debito' });
   assert.strictEqual(r.deliveryFee, 0);
   assert.strictEqual(r.maquininhaFee, 2.00);
-  assert.strictEqual(r.adicionalPagamentoFee, 2.00);
+  assert.strictEqual(r.adicionalPagamentoFee, 0);   // REF-DELIVERY-FEE-05 Onda 4: exclusivo com maquininha
   assert.strictEqual(r.status, 'fora_de_alcance');
 });
 check('resumo: PIX dentro da faixa -> taxa de entrega, sem maquininha nem adicional de pagamento', () => {
@@ -241,22 +248,22 @@ check('resumo: dinheiro dentro da faixa -> taxa de entrega + adicional de pagame
   assert.strictEqual(r.total, 46.00);
   assert.strictEqual(r.status, 'ok');
 });
-check('resumo: crédito dentro da faixa -> taxa de entrega + maquininha + adicional de pagamento, todos somados e RASTREÁVEIS separadamente', () => {
+check('resumo: crédito dentro da faixa -> taxa de entrega + maquininha, SEM adicional (REF-DELIVERY-FEE-05 Onda 4: mutuamente exclusivos, nunca R$4 somados)', () => {
   const r = montarResumoFinanceiro({ subtotal: 30, retirada: false, distanciaKm: 16.5, config: CONFIG_PADRAO, paymentMethod: 'cartao_credito' });
   assert.strictEqual(r.deliveryFee, 34.00);
   assert.strictEqual(r.maquininhaFee, 2.00);
-  assert.strictEqual(r.adicionalPagamentoFee, 2.00);
-  assert.strictEqual(r.total, 68.00);
+  assert.strictEqual(r.adicionalPagamentoFee, 0);
+  assert.strictEqual(r.total, 66.00);
   assert.strictEqual(r.status, 'ok');
 });
-check('resumo: extrapolação acima de 20km reflete no resumo completo (25km, crédito)', () => {
+check('resumo: extrapolação acima de 20km reflete no resumo completo (25km, crédito, sem dobrar acréscimo)', () => {
   const r = montarResumoFinanceiro({ subtotal: 30, retirada: false, distanciaKm: 25.0, config: CONFIG_PADRAO, paymentMethod: 'cartao_credito' });
   assert.strictEqual(r.deliveryFee, 50.00);
   assert.strictEqual(r.faixaExtrapolada, true);
   assert.strictEqual(r.faixa, null);
   assert.strictEqual(r.maquininhaFee, 2.00);
-  assert.strictEqual(r.adicionalPagamentoFee, 2.00);
-  assert.strictEqual(r.total, 84.00);
+  assert.strictEqual(r.adicionalPagamentoFee, 0);
+  assert.strictEqual(r.total, 82.00);
   assert.strictEqual(r.status, 'ok');
 });
 check('resumo: maquininha desligada no config -> só a taxa de entrega + adicional de pagamento, mesmo em débito', () => {

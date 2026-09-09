@@ -153,11 +153,14 @@ async function main() {
     });
 
     // ══ ONDA 2: adicional de pagamento -- matriz completa via create_order (fluxo real) ═════════════
+    // REF-DELIVERY-FEE-05 · Onda 4 (2026-09-09): maquininha_fee e adicional_pagamento_fee sao
+    // MUTUAMENTE EXCLUSIVOS -- cartao so' cobra maquininha (adicional some), nunca os R$4 somados
+    // que a Onda 2 original produzia. Achado do dono em teste ao vivo, corrigido na Onda 4.
     const enderecoPerto = enderecos['4.0km'];
     const matriz = [
       ['entrega+dinheiro', false, 'dinheiro', 10.00, 0, 2.00],
-      ['entrega+debito',   false, 'cartao_debito', 10.00, 2.00, 2.00],
-      ['entrega+credito',  false, 'cartao_credito', 10.00, 2.00, 2.00],
+      ['entrega+debito',   false, 'cartao_debito', 10.00, 2.00, 0],
+      ['entrega+credito',  false, 'cartao_credito', 10.00, 2.00, 0],
       ['entrega+pix',      false, 'pix', 10.00, 0, 0],
     ];
     for (const [label, retirada, pay, dExp, mExp, aExp] of matriz) {
