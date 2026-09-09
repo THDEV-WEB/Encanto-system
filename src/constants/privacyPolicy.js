@@ -12,11 +12,16 @@
    IMPORTANTE (regra da REF-LGPD-01, secao 13 do prompt de execucao): este documento NAO declara
    conformidade juridica, NAO inventa base legal, NAO inventa prazo de retencao. Itens que dependem de
    interpretacao juridica estao marcados explicitamente como pendentes de validacao juridica/DPO -- ver
-   a secao final ("aviso"). Zero IO (sem Supabase/window) -- mesmo padrao puro de companyInfoRules.js. */
+   a secao final ("aviso"). Zero IO (sem Supabase/window) -- mesmo padrao puro de companyInfoRules.js.
 
-export const PRIVACY_POLICY_VERSION = '1.0';
-export const PRIVACY_POLICY_UPDATED_AT = '2026-08-19';
-export const PRIVACY_POLICY_UPDATED_AT_HUMANO = '19 de agosto de 2026';
+   v1.1 (2026-08-23, Plano de Fechamento REF-LGPD-01, Fase 1): corrige "Seus direitos hoje" -- o texto
+   ainda dizia que exclusao/portabilidade estavam "em implementacao", mas ambas ja sao self-service desde
+   a Onda 1/2 da propria REF-LGPD-01 (lgpd_delete_my_data / lgpd_export_my_data), confirmadas ao vivo em
+   producao. Correcao puramente factual, nenhuma base legal/prazo foi alterado ou inventado. */
+
+export const PRIVACY_POLICY_VERSION = '1.1';
+export const PRIVACY_POLICY_UPDATED_AT = '2026-08-23';
+export const PRIVACY_POLICY_UPDATED_AT_HUMANO = '23 de agosto de 2026';
 
 export const PRIVACY_POLICY_SECTIONS = [
   {
@@ -66,8 +71,9 @@ export const PRIVACY_POLICY_SECTIONS = [
     titulo: 'Seus direitos hoje',
     paragrafos: [
       'Acesso e correção: você pode ver e editar seu nome, telefone, e-mail e endereços salvos a qualquer momento na tela "Minha Conta".',
-      'Exclusão: um mecanismo para solicitar a remoção dos seus dados está em implementação. Enquanto isso, fale pelo canal de contato desta loja.',
-      'Portabilidade e oposição: ainda não têm um canal formal dedicado — fale pelo canal de contato desta loja para tratar destes pedidos manualmente.',
+      'Exclusão: você pode pedir a remoção (anonimização) dos seus dados a qualquer momento, na tela "Minha Conta", com confirmação em duas etapas. Pedidos já feitos são preservados como histórico da transação, não como dado pessoal identificável a você.',
+      'Portabilidade: você pode baixar uma cópia de todos os seus dados (cadastro, endereços, pedidos e fidelidade) a qualquer momento na tela "Minha Conta".',
+      'Oposição e revogação: ainda não têm um canal próprio de autoatendimento — fale pelo canal de contato desta loja para tratar destes pedidos manualmente.',
     ],
   },
   {
