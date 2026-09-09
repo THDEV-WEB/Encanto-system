@@ -92,9 +92,15 @@ check('placeholder sem valor vira vazio (nunca "{{x}}")', () => {
    registro historico, nunca mais editada em vigor. */
 check('enc_render_message (SQL, migrations/REF-MESA-01-onda7-notificacoes-mesa.sql) em sincronia com o canonico', () => {
   const sqlPath = fileURLToPath(new URL('../migrations/REF-MESA-01-onda7-notificacoes-mesa.sql', import.meta.url));
-  const sql = readFileSync(sqlPath, 'utf8');
+  // Normaliza CRLF->LF antes de comparar (achado 2026-09-09): o arquivo .sql no checkout deste
+  // repo tem quebra de linha estilo Windows (\r\n), mas um template literal JS SEMPRE normaliza
+  // \r\n/\r pra \n ao ser interpretado (regra da propria especificacao ECMAScript) -- sem isso, a
+  // comparacao falhava para os 5 templates (nao so' 'recebido', que e' so' o primeiro do loop e
+  // interrompe o assert.ok na primeira falha), mesmo com o TEXTO em si identico nos dois lados.
+  const semCrlf = (s) => s.replace(/\r\n/g, '\n');
+  const sql = semCrlf(readFileSync(sqlPath, 'utf8'));
   for (const s of COM_TEMPLATE) {
-    assert.ok(sql.includes(NOTIFY_TEMPLATES[s]), `template '${s}' divergente entre .js e enc_render_message`);
+    assert.ok(sql.includes(semCrlf(NOTIFY_TEMPLATES[s])), `template '${s}' divergente entre .js e enc_render_message`);
   }
 });
 
