@@ -142,6 +142,14 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
      novo. { deliveryFee, maquininhaFee, adicionalPagamentoFee } = valores AUTORITATIVOS devolvidos
      por DS.savePedido (REF-DELIVERY-FEE-05 · Onda 2: terceiro componente incluído na mesma mecânica). */
   const [divergencia, setDivergencia] = useState(null);
+  /* BUG REAL encontrado ao vivo (2026-09-10): se o cliente troca forma de pagamento (ou endereço, ou
+     entrega/retirada) DEPOIS que uma divergência já foi sinalizada, a divergência antiga ficava presa
+     -- o retry misturava o payment_method NOVO com maquininha_fee/adicional_pagamento_fee calculados
+     pro método ANTIGO (resumoEnvio usa `divergencia.*`, não recalcula), gerando um novo desacordo com
+     o servidor a cada tentativa (parecia loop infinito, números "trocados" entre maquininha/adicional).
+     Qualquer input que de fato entra no cálculo do servidor (_resolve_delivery_fee) invalida a
+     divergência pendente -- força reapresentar o resumo do zero, nunca reusa expectativa velha. */
+  useEffect(() => { setDivergencia(null); }, [form.pagamento, semEntregaFisica, endereco]);
   const submittingRef = useRef(false);   // trava reentrância (duplo clique / envio simultâneo)
   const requestIdRef  = useRef(null);    // idempotency key (estável por tentativa de checkout)
   const upd = (k,v) => setForm(f=>({...f,[k]:v}));
