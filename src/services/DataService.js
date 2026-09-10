@@ -5,8 +5,20 @@
    via `import { DS } from './services/DataService.js'` (objeto único; nunca desestruturar → preserva this).
    Camada services: importa só lib/supabase (db, RPC_TIMEOUT), constants/catalogConfig, utils/catalog
    (prodInCat) e lib/sentry (observabilidade, REF-SENTRY-01) — nunca pricing/addons/format (D2 / G-CK1
-   do test:deps permanecem verdes). */
+   do test:deps permanecem verdes).
+
+   BUG REAL corrigido (achado ao vivo, REF-PAGAMENTO-01 · Onda 7): savePedido (create_order do
+   storefront) chamava sempre `db` (sessão do ADMIN, storageKey própria — nunca carrega a sessão do
+   CLIENTE, ver lib/supabase.js) em vez de `dbCliente` (sessão real do cliente logado, mesma instância
+   que AuthService/addressRepository já usavam). Resultado: para QUALQUER cliente logado que pedisse
+   entrega, create_order sempre via auth.uid() nulo — a checagem de posse do endereço (create_order,
+   migration ORDER-TENANT-01) recusava vincular o endereco_id (que a addressRepository, corretamente
+   via dbCliente, já tinha salvo com o customer_id certo), e a taxa de entrega saía R$0 silenciosamente.
+   Confirmado com um teste controlado (simulação de auth.uid() real, dentro de transação sempre
+   revertida): com a sessão certa, o mesmo endereço resolve a taxa corretamente. savePedidoAdmin (Admin)
+   NUNCA foi afetado — sempre usou `db` de propósito (é a sessão certa pra esse contexto). */
 import { db, RPC_TIMEOUT } from '../lib/supabase.js';
+import { dbCliente } from '../lib/dbCliente.js';
 import { PRODUCTS_PAGE_SIZE, PRODUCTS_PAGINATE, PRODUCTS_CACHE_TTL } from '../constants/catalogConfig.js';
 import { prodInCat } from '../utils/catalog.js';
 import { emitProductsChanged } from './productCacheBus.js';
@@ -172,7 +184,22 @@ export const DS = {
      com o MESMO requestId — o servidor recalcula do zero, nunca confia no valor que ele mesmo acabou
      de informar. */
   async savePedido(cliente, order, itens, requestId) {
-    return this._executarCreateOrder(cliente, order, itens, requestId, buildStorefrontRpcParam());
+    return this._executarCreateOrder(cliente, order, itens, requestId, buildStorefrontRpcParam(), (fn) => this.runCliente(fn));
+  },
+  /* Mesmo contrato/tratamento de erro de run() (offline -> {data:null,error}, exceção real ->
+     capturarErroDados + {data:null,error}), mas via dbCliente (sessão do CLIENTE) em vez de db (sessão
+     do Admin) -- ver comentário de cabeçalho acima (achado real: create_order do storefront precisa
+     enxergar auth.uid() do cliente de verdade, não sempre null). Só savePedido usa isto hoje;
+     savePedidoAdmin continua em run()/db de propósito. */
+  async runCliente(fn) {
+    if (!dbCliente) return { data: null, error: { message: 'offline' } };
+    try {
+      return await fn(dbCliente);
+    } catch (e) {
+      console.warn('[DS]', e?.message || e);
+      capturarErroDados(e, {});
+      return { data: null, error: e };
+    }
   },
   /* REF-MESA-01 · Onda 4: variante Admin/garçom de savePedido -- MESMA RPC create_order (nunca um
      segundo mecanismo de persistência de pedido), só troca qual singleton de loja ativa alimenta
@@ -185,8 +212,8 @@ export const DS = {
   async savePedidoAdmin(cliente, order, itens, requestId) {
     return this._executarCreateOrder(cliente, order, itens, requestId, buildStoreRpcParam());
   },
-  async _executarCreateOrder(cliente, order, itens, requestId, storeParam) {
-    const call = () => this.run(d=>d.rpc('create_order', {
+  async _executarCreateOrder(cliente, order, itens, requestId, storeParam, runner = (fn) => this.run(fn)) {
+    const call = () => runner(d=>d.rpc('create_order', {
       p_customer: cliente, p_order: order, p_items: itens, p_request_id: requestId ?? null,
       ...storeParam,
     }));
