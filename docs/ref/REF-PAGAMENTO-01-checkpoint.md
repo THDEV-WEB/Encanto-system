@@ -9,6 +9,27 @@ EM NAVEGADOR REAL com o dono. Split/OAuth/produção seguem fora do escopo até 
 autorizada pelo dono. Hard constraints seguem valendo: nunca produção, nunca push sem autorização
 explícita do gate, 1 commit por onda com `git add` explícito, nunca tocar arquivo de outra sessão.
 
+## Achado colateral (fora do escopo desta REF) — bug real de sessão em create_order
+
+Testando a Onda 7 em produção pela primeira vez, o dono achou `delivery_fee=R$0` inesperado num
+pedido de entrega. Investigação (ver histórico do chat) revelou um bug REAL, PRÉ-EXISTENTE, **não
+relacionado a pagamento**: `DataService.savePedido` (create_order do storefront) sempre chamava a RPC
+via `db` (cliente Supabase do ADMIN, `lib/supabase.js`) em vez de `dbCliente` (sessão real do cliente,
+`lib/dbCliente.js`) — `db` nunca carrega a sessão de um cliente logado no bundle da loja. Resultado:
+`auth.uid()` sempre nulo dentro de `create_order`, então a checagem de posse do endereço (Onda
+ORDER-TENANT-01) recusava vincular `endereco_id` sempre que o endereço já tinha um `customer_id`
+(salvo corretamente por `addressRepository`, que já usava `dbCliente`) — e a taxa de entrega saía
+R$0 silenciosamente pra QUALQUER cliente logado que pedisse entrega. Confirmado num pedido real de
+07/09 (antes desta sessão), então não é regressão desta REF nem desta sessão — só foi descoberto
+agora por acaso.
+
+**Fix** (`src/services/DataService.js`): `savePedido` passou a rodar via um runner dedicado
+(`runCliente`, novo) que usa `dbCliente`; `savePedidoAdmin` continua via `db`/`run()`, intocado.
+Zero migration — mudança client-side pura. Validado com `scripts/pagamento-01-onda7-fix-sessao-
+checkout-test.mjs`: login real (supabase-js) como cliente fixture do E2E, salva endereço, cria pedido
+— confirma `endereco_id` preenchido e `delivery_fee > 0` (6/6). `test:domain`/lint/build (web+admin)
+limpos. Commit separado do resto da Onda 7 (bug não é sobre pagamento).
+
 ## Onda 7 — Aba "Pagamento" no Admin (self-service), validada com o dono ao vivo
 
 Primeira tela de self-service desta REF — até aqui, ligar a capability/editar a chave pública exigia
