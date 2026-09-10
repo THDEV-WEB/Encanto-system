@@ -176,12 +176,15 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
      disponível, só deixa de ser o primeiro da lista quando o pagamento online está ligado --
      posicionamento pedido pelo dono ao vivo em produção, 2026-09-10: destaca a opção que confirma
      o pedido sozinha, sem depender do dono confirmar manualmente no WhatsApp). */
+  /* REF-MESA-02 · Onda 17: "Pague na hora da entrega" não faz sentido pra mesa (não tem entrega, é
+     conta que o garçom fecha depois -- inclusive podendo ser dividida entre quem estava na mesa). */
+  const notaPresencial = mesa ? 'Vai para a conta da mesa' : 'Pague na hora da entrega';
   const pays = [
     ...(pagamentoConfig.habilitada ? [{id:'online',label:'Pagar agora',icon:'⚡',nota:'Sem taxa extra'}] : []),
-    {id:'dinheiro',label:'Dinheiro',icon:'💵',nota:'Pague na hora da entrega'},
-    {id:'pix',label:'PIX',icon:'📲',nota:'Pague na hora da entrega'},
-    {id:'cartao_debito',label:'Débito',icon:'💳',nota:'Pague na hora da entrega'},
-    {id:'cartao_credito',label:'Crédito',icon:'💳',nota:'Pague na hora da entrega'},
+    {id:'dinheiro',label:'Dinheiro',icon:'💵',nota:notaPresencial},
+    {id:'pix',label:'PIX',icon:'📲',nota:notaPresencial},
+    {id:'cartao_debito',label:'Débito',icon:'💳',nota:notaPresencial},
+    {id:'cartao_credito',label:'Crédito',icon:'💳',nota:notaPresencial},
   ];
   const submit = async () => {
     if (submittingRef.current || loading) return;   // impede envio simultâneo
