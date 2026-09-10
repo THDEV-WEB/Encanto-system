@@ -129,7 +129,7 @@ com pagamentos reais retornando 200 no painel do Mercado Pago depois do fix.
 
 ## Estado do git
 ```
-(novo) feat(pagamento-01): Onda 7 -- aba Pagamento no Admin (self-service), validado em navegador real
+eb6954b feat(pagamento-01): Onda 7 -- aba Pagamento no Admin (self-service), validado em navegador real
 64e40df feat(pagamento-01): Onda 6 (parte 2) -- cartao online (Payment Brick completo), validado em navegador real
 e6e2921 feat(pagamento-01): Onda 6 (parte 1) -- orders.payment_method reflete o metodo real (pix/cartao)
 02bc8a3 feat(pagamento-01): Onda 5 -- Payment Brick (Pix) no frontend, validado em navegador real
@@ -138,9 +138,11 @@ e7e2dd7 feat(pagamento-01): Onda 5 (parte 1) -- RPCs client-facing p/ config e s
 c3ba5db fix(pagamento-01): unidade do timestamp na assinatura do webhook (segundos, nao ms)
 14db132 feat(pagamento-01): Onda 3 -- criacao de cobranca real (E2E, sandbox Mercado Pago)
 ```
-Todos em `origin/main` até `3592718` (reconciliados, ver histórico git anterior deste doc para
-detalhes); os commits a partir de `14db132` (inclusive o novo da Onda 7) ainda são **locais**,
-aguardando o mesmo gate de reconciliação já estabelecido — nenhum push sem autorização explícita.
+**PUSHED em 2026-09-09** (`3592718..eb6954b`, fast-forward, sem divergência com `origin/main`) — dono
+autorizou explicitamente. Deploy automático na Vercel disparado pelo push; capability
+`pagamento_online_habilitada` segue desligada por padrão em toda loja, e as Edge Functions
+`mp-criar-cobranca`/`mp-webhook` só existem hoje no projeto Supabase de E2E — produção real segue
+bloqueada por um gate totalmente separado (credenciais + deploy das Edge Functions em produção).
 
 ## Testes executados e resultados (acumulado)
 - Onda 1: 20/20. Onda 2: 29/29. Onda 3 A+B: 19/19. Onda 5 config/status: 7/7. Onda 6 payment_method: 7/7.
