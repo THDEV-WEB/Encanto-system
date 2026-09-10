@@ -1172,6 +1172,7 @@ img{display:block;max-width:100%}
 .payment-opt:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(166,39,134,.22)}
 .payment-opt .icon{font-size:22px;margin-bottom:4px}
 .payment-opt .label{font-size:13px;font-weight:600;letter-spacing:0}
+.payment-opt .nota{font-size:10.5px;color:var(--gray-500);margin-top:2px;line-height:1.25;font-weight:400}
 .order-summary{
   background:var(--white);border-radius:var(--radius-md);
   padding:16px;margin-bottom:24px;box-shadow:var(--shadow-sm);
