@@ -353,17 +353,39 @@ em si. Itens em aberto, nenhum bloqueante:
   `cancelado`/`expirado` no nosso banco — dono decidiu conscientemente não reconciliar manualmente
   (ver gap abaixo).
 
-**Gap novo encontrado (não corrigido, baixo risco, documentado)**: `_transicao_payment_status_valida`
-não permite `('expirado', 'aprovado')` — se o cliente demorar mais que os 15min da expiração interna
-(`_expirar_payment_intents_pendentes`) pra confirmar um Pix, e o Mercado Pago só notificar a aprovação
-DEPOIS desse cancelamento automático, o sistema recusa aplicar a confirmação (pedido já cancelado,
-dinheiro já recebido, sem reconciliação automática). Foi exatamente o que aconteceu com o pedido
-`a9c06490...` acima — a expiração interna rodou antes do fix do `MP_WEBHOOK_SECRET` chegar a tempo.
-Caso real, baixo risco (janela de 15min é generosa pra Pix, que normalmente confirma em segundos), mas
-vale considerar numa REF futura: permitir `('expirado', 'aprovado')` como transição válida (reabre o
-pedido cancelado) ou, no mínimo, alertar o dono quando isso acontecer.
+**Gap encontrado aqui — FECHADO pela REF-PAYMENT-SEC-02 Onda 4 (ver abaixo)**: `_transicao_payment_status_valida`
+não permitia `('expirado', 'aprovado')` — se o cliente demorasse mais que os 15min da expiração interna
+(`_expirar_payment_intents_pendentes`) pra confirmar um Pix, e o Mercado Pago só notificasse a
+aprovação DEPOIS desse cancelamento automático, o sistema recusava aplicar a confirmação. Foi
+exatamente o que aconteceu com o pedido `a9c06490...` acima. Corrigido em produção em 2026-09-10:
+transição agora é aceita (o pedido não é reaberto automaticamente — decisão de escopo — mas o fato
+financeiro é registrado e um log WARN de reconciliação é gravado). O pedido `a9c06490...`
+especificamente continua sem reconciliar (decisão explícita do dono, não retroativa).
 
 Gap real que segue aberto (documentado, não escondido): Access Token ainda é 1 segredo GLOBAL — uma
 loja nova que ligar o pagamento online hoje manda o dinheiro pra MESMA conta Mercado Pago de sempre
 (hoje, a conta do dono do Encanto). Resolver isso (cada loja com a própria conta, via Split/OAuth) é
 escopo de uma REF futura separada, fora desta onda por decisão explícita do dono.
+
+## Pós-piloto: auditoria de segurança + hardening (REF-PAYMENT-SEC-01/02, 2026-09-10)
+
+Depois do piloto real acima, o dono autorizou uma auditoria de segurança completa (read-only) da área
+de pagamentos/fidelidade — `docs/ref/REF-PAYMENT-SEC-01-auditoria.md`. Achados: núcleo financeiro
+(amount/total/fees) 100% recalculado server-side, sem caminho de tamper encontrado; 2 achados HIGH
+(selo de fidelidade concedido antes de pagamento confirmado; `refunded`/`charged_back` nunca
+revertiam o selo) e 3 MEDIUM (ownership ausente em `iniciar_pagamento_pedido`; transição
+`expirado→aprovado` ausente — o gap real documentado acima; admin podia gravar `payment_status`
+direto via REST).
+
+Todos os 5 achados foram corrigidos, testados e aplicados em produção pela REF-PAYMENT-SEC-02 (6
+ondas — a 6ª é um achado adicional encontrado depois, não da auditoria original: pagamento recusado
+sem retry do cliente travava o pedido pra sempre). Detalhes completos, evidências e veredito final em
+`docs/ref/REF-PAYMENT-SEC-02.md`. Durante o rollout, a Onda 3 (ownership) expôs um bug de frontend
+pré-existente (`pagamentoService.js` usava a sessão do Admin em vez da sessão do cliente) que bloqueou
+pagamentos de clientes logados por um período — corrigido no mesmo dia, validado pelo dono com
+pagamento real depois do deploy.
+
+**Estado em 2026-09-10**: as 6 correções + o fix de frontend estão ao vivo em produção. Nenhum novo
+gap conhecido na área de pagamentos além dos riscos residuais já documentados (guest×guest em
+`iniciar_pagamento_pedido`, ausência de `CHECK` de banco em total/amount, reconciliação manual do
+caso expirado→aprovado tardio).

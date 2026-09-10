@@ -1,11 +1,12 @@
 # REF-PAYMENT-SEC-02 — HARDENING PÓS-AUDITORIA (Pagamentos/Fidelidade)
 
-**Status: as 5 ondas de correção (0-5) estão CONCLUÍDAS, testadas e commitadas — todas validadas
-apenas contra o projeto E2E. Produção NÃO foi tocada em nenhum momento desta REF.** Não fazer push
-nem deploy sem autorização explícita separada.
+**Status: 6 ondas de correção (0-6) CONCLUÍDAS, testadas, commitadas, pushadas e APLICADAS EM
+PRODUÇÃO (2026-09-10)** — migrations + Edge Functions (`mp-webhook`, `mp-criar-cobranca`) deployadas
+e validadas por introspecção direta do banco real. Onda 6 é um achado adicional (fora dos 5 originais
+da auditoria SEC-01), sinalizado pela sessão paralela `projetos-f4` durante a REF-LOYALTY-02.
 
-Segue diretamente a auditoria `docs/ref/REF-PAYMENT-SEC-01-auditoria.md` — corrige exclusivamente os
-5 achados autorizados ali (2 HIGH + 3 MEDIUM). Nada além disso foi alterado.
+Segue diretamente a auditoria `docs/ref/REF-PAYMENT-SEC-01-auditoria.md` — corrige os 5 achados
+autorizados ali (2 HIGH + 3 MEDIUM) mais 1 achado adicional (Onda 6, ver seção própria).
 
 ## Coordenação com a sessão paralela (projetos-f4, REF-LOYALTY-02)
 
@@ -40,9 +41,11 @@ nenhuma linha** — só o *momento* em que `loyalty_grant` é chamado mudou.
 | MEDIUM-02 | MEDIUM | 4 | `3aabcc9` | Transição `expirado→aprovado` ausente (já causou incidente real) |
 | HIGH-01 | HIGH | 1 | `80ca72c` | Selo de fidelidade concedido antes da confirmação de pagamento |
 | HIGH-02 | HIGH | 2 | `5d00c83` | `refunded`/`charged_back` não revertiam o selo |
+| (adicional) | MEDIUM | 6 | `cd21646` | Pagamento `recusado` sem retry deixava o pedido preso pra sempre |
 
 (Implementadas fora de ordem numérica — 3/4/5 primeiro, por serem independentes e não exigirem
-coordenação; 1/2 por último, após a liberação da sessão paralela.)
+coordenação; 1/2 por último, após a liberação da sessão paralela; 6 por último de todas, achado
+encontrado só depois, durante a REF-LOYALTY-02 Onda 5 da sessão paralela.)
 
 ---
 
@@ -174,6 +177,50 @@ nada, mapeamento dos 2 `.ts` confirmado por leitura de código.
 
 ---
 
+## (Achado adicional) Onda 6 — pagamento recusado abandonado
+
+**Causa raiz**: `_processar_webhook_payment_intent` (branch `'recusado'`, Onda 2) deliberadamente
+preserva `orders.status='aguardando_pagamento'` quando um pagamento é recusado — pra permitir retry
+com o mesmo pedido. Mas se o cliente nunca reenvia, o pedido fica preso pra sempre: `'recusado'` é
+estado TERMINAL na máquina de `payment_intents` (nenhuma transição sai dele), então o cron
+`_expirar_payment_intents_pendentes` (a cada 5min) nunca o alcança — esse cron só cobre
+`status='pendente'`.
+
+**Como foi encontrado**: não fazia parte dos 5 achados da auditoria SEC-01. Sinalizado pela sessão
+paralela `projetos-f4`, ao revisar a interação entre a Onda 2 desta REF e a REF-LOYALTY-02 Onda 5
+deles (que também lida com estados terminais de pedido).
+
+**Correção**: estende o MESMO cron já em produção (mesmo espírito do branch `'expirado'` já
+existente) — pedidos em `aguardando_pagamento` cujo `payment_intent` MAIS RECENTE está `'recusado'`
+há mais de 15 minutos (mesma janela) são cancelados. `payment_status` não é reescrito (já reflete
+`'recusado'` corretamente, gravado pelo webhook quando a recusa aconteceu). Se o cliente retentar
+antes dos 15min, o `payment_intent` mais novo passa a ser o considerado (join lateral por
+`created_at DESC`), então o pedido fica automaticamente fora do escopo da limpeza.
+
+**Arquivos**: `migrations/REF-PAYMENT-SEC-02-onda6-recusado-abandonado.sql` (+rollback),
+`scripts/payment-sec-02-onda6-recusado-abandonado-test.mjs`.
+
+**Testes**: 9/9 — prova o achado antes (versão antiga do cron não cancela), confirma a correção
+depois, e regressão: janela ainda não vencida, cliente retentou (pendente novo), cliente retentou e
+foi aprovado, múltiplos `recusado` (só o mais recente importa), e o caso `'expirado'` pré-existente
+continua intacto.
+
+## (Incidente real, não um achado de auditoria) Bug de frontend exposto pela Onda 3
+
+Depois da Onda 3 (ownership) ir para produção, todo cliente **logado** tentando pagar online passou a
+receber `"pedido nao encontrado"` — bloqueado pelo próprio guard de posse que a Onda 3 introduziu.
+Causa raiz: `src/pagamento/services/pagamentoService.js` chamava as 3 RPCs/Edge Function de pagamento
+via `db` (cliente Supabase da sessão do **Admin**) em vez de `dbCliente` (sessão real do cliente
+logado) — bug pré-existente desde a criação do arquivo (REF-PAGAMENTO-01 Onda 5), inofensivo até a
+Onda 3 checar posse pela primeira vez (sem checagem, não importava qual client chamava). Mesma classe
+de bug já corrigida antes só pra `create_order` (commit `0ab4107`).
+
+**Correção**: trocado `db` por `dbCliente` nas 3 chamadas (`iniciarPagamento`, `criarCobranca`,
+`consultarStatusPagamento`). Commit `fd0ecb4`. Reproduzido e confirmado corrigido via E2E real (login
+real de cliente fixture + duas chamadas a `iniciar_pagamento_pedido`, uma por client anônimo —
+reproduz o bug — e uma pelo client autenticado — confirma o fix). Validado em produção pelo próprio
+dono depois do deploy: pagamento voltou a funcionar.
+
 ## Testes obrigatórios (seção 12 da REF) — mapa de cobertura
 
 | # | Requisito | Onde foi provado |
@@ -195,25 +242,28 @@ nada, mapeamento dos 2 `.ts` confirmado por leitura de código.
 
 ## Produção
 
-**PRODUÇÃO ALTERADA: NÃO.** Toda migration/teste desta REF rodou exclusivamente contra o projeto
-E2E (`PGHOST` verificado terminar em `pooler.supabase.com`, conexão sempre via `db.e2e.env`). Nenhum
-`INSERT`/`UPDATE`/`DELETE`/DDL mutável foi executado contra o banco de produção
-(`hvbcdxsagkjtfjwvnslo`). As Edge Functions atualizadas (`mp-webhook`, `mp-criar-cobranca`) **não
-foram deployadas** em lugar nenhum ainda — só o código-fonte foi alterado e commitado.
+**PRODUÇÃO ALTERADA: SIM (2026-09-10).** As 6 migrations (Ondas 1-6) foram aplicadas em produção
+(`hvbcdxsagkjtfjwvnslo`) uma a uma, na ordem de dependência real (3→5→4→1→2, depois 6 separadamente),
+cada uma validada por introspecção direta (`pg_get_functiondef`) contra o "antes" salvo num preflight
+antes de começar. As 2 Edge Functions (`mp-webhook`, `mp-criar-cobranca`) foram deployadas e
+confirmadas por download direto do bundle real (não só o log do CLI). O incidente de frontend
+(`pagamentoService.js`, ver seção própria acima) foi corrigido, deployado via Vercel e validado pelo
+dono com um pagamento real depois do deploy. Nenhum dado de pagamento (`payment_intents`) foi alterado
+por nenhuma dessas operações — só estrutura/funções/lógica.
 
 ## Riscos residuais (documentados, não escondidos)
 
 1. **Guest × guest** (Onda 3): um guest ainda pode iniciar pagamento de outro pedido guest se souber
    o `order_id` — sem infraestrutura de sessão de guest pra fechar sem reescrever arquitetura.
+   *Continua em aberto, aceito.*
 2. **Reconciliação manual** (Onda 4): pagamentos aprovados tardiamente pra um pedido já
    expirado/cancelado ficam registrados (`payment_status`) mas não reabrem o pedido sozinhos — depende
    de alguém ler o log WARN "RECONCILIACAO NECESSARIA". Nenhum canal de alerta automático (e-mail/
-   WhatsApp pro dono) foi criado — fora do escopo autorizado.
-3. **Deploy pendente**: os 2 arquivos `.ts` das Edge Functions (Onda 2) precisam de
-   `supabase functions deploy` (E2E e, depois, produção) pra o mapeamento de refund/chargeback
-   funcionar de ponta a ponta com o Mercado Pago real — gate separado, não incluído nesta REF.
+   WhatsApp pro dono) foi criado — fora do escopo autorizado. *Continua em aberto, aceito.*
+3. ~~Deploy pendente~~ — **FECHADO**: Edge Functions deployadas em produção, confirmadas por download.
 4. **Constraints de banco** (achado da própria SEC-01, não coberto aqui por estar fora do escopo dos
    5 achados autorizados): `total`/`amount` ainda não têm `CHECK` explícito no banco, só na aplicação.
+   *Continua em aberto, aceito.*
 
 ## Veredito Final
 
@@ -229,12 +279,15 @@ foram deployadas** em lugar nenhum ainda — só o código-fonte foi alterado e 
 | H | Existe nova possibilidade de cross-tenant? | **NÃO** | Nenhuma alteração tocou RLS/tenant scoping; Onda 3 reforça isolamento, não afrouxa |
 | I | Existe nova exposição sensível? | **NÃO** | Nenhum log/mensagem de erro novo expõe segredo ou dado sensível além do já existente |
 | J | Existe regressão? | **NÃO** | 14/14 itens da tabela de cobertura acima verdes |
-| K | Existem riscos residuais? | **SIM** | Ver seção "Riscos residuais" acima (4 itens, todos documentados) |
-| L | Produção foi alterada? | **NÃO** | Ver seção "Produção" acima |
+| K | Existem riscos residuais? | **SIM** | Ver seção "Riscos residuais" acima (3 itens em aberto, 1 fechado) |
+| L | Produção foi alterada? | **SIM** (2026-09-10) | Ver seção "Produção" acima |
+| M | Onda 6 (achado adicional) corrigida? | **SIM** | 9/9, commit `cd21646` |
+| N | Incidente de frontend (pagamentoService.js) corrigido? | **SIM** | Commit `fd0ecb4`, validado em produção pelo dono |
 
-Os vetores auditados foram mitigados conforme as evidências obtidas nos testes realizados.
+Os vetores auditados foram mitigados conforme as evidências obtidas nos testes realizados, e as 6
+correções + o fix de frontend estão ao vivo em produção.
 
-## Commits (nesta ordem cronológica de implementação)
+## Commits (ordem cronológica de implementação)
 
 ```
 d48ff05 fix(payment-sec-02): Onda 3 -- ownership em iniciar_pagamento_pedido (MEDIUM-01)
@@ -242,8 +295,12 @@ f82af03 fix(payment-sec-02): Onda 5 -- guard de orders.payment_status (MEDIUM-03
 3aabcc9 fix(payment-sec-02): Onda 4 -- transicao expirado->aprovado sem reabrir pedido (MEDIUM-02)
 80ca72c fix(payment-sec-02): Onda 1 -- selo de fidelidade so apos pagamento confirmado (HIGH-01)
 5d00c83 fix(payment-sec-02): Onda 2 -- refunded/charged_back revertem fidelidade (HIGH-02)
+fd0ecb4 fix(pagamento): iniciarPagamento/criarCobranca/consultarStatus usam dbCliente, nao db
+cd21646 fix(payment-sec-02): Onda 6 -- pedido recusado abandonado deixa de ficar preso pra sempre
 ```
 
-Mais `e5c9372` (doc da auditoria SEC-01, commitada antes da Onda 3). Nenhum push feito. Nenhum
-rebase/cherry-pick/reset destrutivo. Todos os commits contêm migration + rollback + script de teste
-dedicado (exceto Onda 2, que também inclui os 2 arquivos `.ts` das Edge Functions).
+Mais `e5c9372` (doc da auditoria SEC-01, commitada antes da Onda 3). Todos pushados pra `origin/main`
+(via merge `ceb79e1` + pushes subsequentes) e aplicados em produção em 2026-09-10. Nenhum
+rebase/cherry-pick/reset destrutivo em nenhum momento. Todos os commits de correção contêm migration +
+rollback + script de teste dedicado (exceto Onda 2, que também inclui os 2 arquivos `.ts` das Edge
+Functions, e `fd0ecb4`, que é frontend puro sem migration).
