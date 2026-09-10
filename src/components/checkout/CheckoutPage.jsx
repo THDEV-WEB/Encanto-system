@@ -25,9 +25,9 @@ import { registrarBreadcrumb, marcarPedido } from '../../lib/sentry.js'; // REF-
 
 // REF-LGPD-01 · Onda 3 (LGPD-R14): so' carrega o chunk se o cliente realmente abrir o aviso.
 const PrivacidadeScreen = lazy(() => import('../menu/PrivacidadeScreen.jsx').then(m => ({ default: m.PrivacidadeScreen })));
-// REF-PAGAMENTO-01 · Onda 5: so' carrega o chunk (+ o SDK do Mercado Pago, la dentro) quando o
+// REF-PAGAMENTO-01 · Onda 5/6: so' carrega o chunk (+ o SDK do Mercado Pago, la dentro) quando o
 // cliente de fato escolhe pagar online -- nunca no bundle principal do checkout.
-const PagamentoPixPage = lazy(() => import('./PagamentoPixPage.jsx').then(m => ({ default: m.PagamentoPixPage })));
+const PagamentoOnlinePage = lazy(() => import('./PagamentoOnlinePage.jsx').then(m => ({ default: m.PagamentoOnlinePage })));
 
 export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEta, produtosVivos, mesaIdentificador, setMesaIdentificador, origemPedido, mesaQrToken }) {
   /* REF-CLIENTE-02 (vinculo pedido<->conta): create_order reusa o customer POR TELEFONE e nunca toca
@@ -42,7 +42,7 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
      o pedido ja foi criado (status 'aguardando_pagamento') nesse ponto, so falta o pagamento em si.
      onVoltar limpa e devolve pro formulario (o pedido ja criado fica orfao/nao pago, mesmo
      comportamento de qualquer checkout abandonado hoje -- create_order nao tem "cancelamento"). */
-  const [pagamentoPixPendente, setPagamentoPixPendente] = useState(null); // {orderId, msg} | null
+  const [pagamentoOnlinePendente, setPagamentoOnlinePendente] = useState(null); // {orderId, msg} | null
   const [mostrarPrivacidade, setMostrarPrivacidade] = useState(false); // REF-LGPD-01 · Onda 3 (LGPD-R14)
   const feeConfig = useDeliveryFeeConfig();   // REF-DELIVERY-FEE-01: config administravel (faixas/maquininha)
   /* REF-CHECKOUT-ADDRESS-01: o endereco de entrega vem da FONTE UNICA (dominio Address, mesmo objeto do
@@ -145,15 +145,17 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
   const submittingRef = useRef(false);   // trava reentrância (duplo clique / envio simultâneo)
   const requestIdRef  = useRef(null);    // idempotency key (estável por tentativa de checkout)
   const upd = (k,v) => setForm(f=>({...f,[k]:v}));
-  /* REF-PAGAMENTO-01 · Onda 5: "Pix agora" só aparece quando a loja ligou a capability (opt-in,
-     default desligado -- nenhuma loja existente ganha isso sem configurar). Nunca some/some nenhum
-     dos 4 métodos já existentes (COD continua 100% disponível e é o default, nunca escondido). */
+  /* REF-PAGAMENTO-01 · Onda 5/6: "Pagar agora" só aparece quando a loja ligou a capability
+     (opt-in, default desligado -- nenhuma loja existente ganha isso sem configurar). A escolha
+     entre Pix/cartão acontece DENTRO do Payment Brick (PagamentoOnlinePage.jsx), não aqui -- esta
+     é só a porta de entrada. Nunca some nenhum dos 4 métodos já existentes (COD continua 100%
+     disponível e é o default, nunca escondido). */
   const pays = [
     {id:'dinheiro',label:'Dinheiro',icon:'💵'},
     {id:'pix',label:'PIX',icon:'📲'},
     {id:'cartao_debito',label:'Débito',icon:'💳'},
     {id:'cartao_credito',label:'Crédito',icon:'💳'},
-    ...(pagamentoConfig.habilitada ? [{id:'pix_online',label:'Pix agora',icon:'⚡'}] : []),
+    ...(pagamentoConfig.habilitada ? [{id:'online',label:'Pagar agora',icon:'⚡'}] : []),
   ];
   const submit = async () => {
     if (submittingRef.current || loading) return;   // impede envio simultâneo
@@ -213,8 +215,8 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
        nunca é a fonte de verdade quando há token. */
     /* REF-PAGAMENTO-01 · Onda 5: pedido pago online nasce 'aguardando_pagamento' (nunca 'recebido' --
        a loja so deve ser notificada/comecar a preparar DEPOIS da confirmacao real do pagamento, ver
-       PagamentoPixPage.jsx). */
-    const pagamentoOnline = form.pagamento === 'pix_online';
+       PagamentoOnlinePage.jsx). */
+    const pagamentoOnline = form.pagamento === 'online';
     const extraPedido = {
       ...(mesa ? { tipoPedido: 'mesa', mesaIdentificador: mesaIdentificador.trim(), origemPedido,
           ...(origemPedido === 'qr_mesa' && mesaQrToken ? { mesaQrToken } : {}) } : {}),
@@ -275,9 +277,9 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
     try { localStorage.removeItem(STORAGE_KEYS.REQ_ID); } catch (e) {}
     cart.clear();
     /* REF-PAGAMENTO-01 · Onda 5: pedido já persistido (igual ao COD) — só a NOTIFICAÇÃO (WhatsApp)
-       espera a confirmação real do pagamento. PagamentoPixPage chama este MESMO onSuccess(msg) quando
+       espera a confirmação real do pagamento. PagamentoOnlinePage chama este MESMO onSuccess(msg) quando
        o polling confirmar 'aprovado' — StoreApp.jsx não precisa saber que existe um caminho online. */
-    if (pagamentoOnline) { setPagamentoPixPendente({ orderId, msg }); return; }
+    if (pagamentoOnline) { setPagamentoOnlinePendente({ orderId, msg }); return; }
     onSuccess(msg);
   };
   const view = buildCheckoutView(cart, resumo);   // Onda 5.2: resumo consome o view-model do order-domain (não recalcula preço)
@@ -304,11 +306,11 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
   const precoDivergenteView = catalogoConfiavel ? buildPrecoDivergenteView(cart, produtosVivos) : null;
   /* REF-PAGAMENTO-01 · Onda 5: pedido já criado, aguardando o pagamento Pix -- substitui TODO o
      formulário (não um passo a mais dentro dele) pela tela de QR/espera. */
-  if (pagamentoPixPendente) {
+  if (pagamentoOnlinePendente) {
     return (
       <Suspense fallback={null}>
-        <PagamentoPixPage orderId={pagamentoPixPendente.orderId} msg={pagamentoPixPendente.msg}
-          onSuccess={onSuccess} onVoltar={() => setPagamentoPixPendente(null)} />
+        <PagamentoOnlinePage orderId={pagamentoOnlinePendente.orderId} msg={pagamentoOnlinePendente.msg}
+          onSuccess={onSuccess} onVoltar={() => setPagamentoOnlinePendente(null)} />
       </Suspense>
     );
   }
@@ -520,8 +522,8 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
         {lojaFechada ? '🔒 Loja fechada no momento'
           : !catalogoConfiavel ? '⚠️ Catálogo indisponível no momento'
           : divergenciaView ? (loading ? 'Enviando...' : `Continuar com novo valor • ${divergenciaView.totalFmt}`)
-          /* REF-PAGAMENTO-01 · Onda 5: rótulo do Pix agora não promete WhatsApp -- o QR aparece antes. */
-          : form.pagamento === 'pix_online' ? (loading ? 'Enviando...' : `Gerar Pix • ${view.total}`)
+          /* REF-PAGAMENTO-01 · Onda 5/6: rótulo do pagamento online não promete WhatsApp -- o Brick aparece antes. */
+          : form.pagamento === 'online' ? (loading ? 'Enviando...' : `Pagar agora • ${view.total}`)
           : (loading ? 'Enviando...' : `Confirmar via WhatsApp • ${view.total}`)}
       </button>
       <Suspense fallback={null}>
