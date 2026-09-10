@@ -1,13 +1,82 @@
 # REF-PAGAMENTO-01 — CHECKPOINT (ler primeiro numa nova sessão/retomada)
 
-**STATUS: Onda 0 (auditoria) + Onda 1 (schema) + Onda 2 (webhook fundação) + Onda 3 (cobrança real) +
-Onda 4 (webhook real) + Onda 5 (Payment Brick/Pix no frontend) + Onda 6 (cartão online, Payment Brick
-completo) + Onda 7 (aba "Pagamento" no Admin, self-service) CONCLUÍDAS e commitadas — TODAS VALIDADAS
-EM NAVEGADOR REAL com o dono. Split/OAuth/produção seguem fora do escopo até autorização explícita.**
+**STATUS: PILOTO DE PRODUÇÃO COM PAGAMENTO REAL LIGADO E VALIDADO (2026-09-10).** Ondas 0-7 (auditoria,
+schema, webhook fundação, cobrança real, webhook real, Payment Brick Pix, cartão online, Admin
+self-service) CONCLUÍDAS. Onda 8 (piloto de produção — deploy real das Edge Functions, credenciais de
+produção, webhook real registrado) também CONCLUÍDA e validada com um pagamento Pix real de ponta a
+ponta (dinheiro creditado na conta Mercado Pago do dono, pedido confirmado automaticamente no banco).
+Split/OAuth (cada loja com sua própria conta MP) segue fora do escopo, deferido pra REF futura.
 
-**Atualizado:** 2026-09-09, após o commit local da Onda 7 (admin self-service). Execução autônoma
-autorizada pelo dono. Hard constraints seguem valendo: nunca produção, nunca push sem autorização
-explícita do gate, 1 commit por onda com `git add` explícito, nunca tocar arquivo de outra sessão.
+**Atualizado:** 2026-09-10, após o piloto de produção ir ao ar e ser validado com pagamento real.
+Execução autônoma autorizada pelo dono. Hard constraints seguem valendo: nunca push sem autorização
+explícita, nunca aplicar em produção sem autorização explícita (progressivamente concedida nesta sessão
+para o piloto), 1 commit por subfase com `git add` explícito, nunca tocar arquivo de outra sessão
+concorrente, segredos/credenciais NUNCA colados no chat (o dono roda `supabase secrets set` no próprio
+terminal).
+
+## Onda 8 — Piloto de produção com pagamento real (2026-09-10)
+
+Depois das Ondas 0-7 validadas só em ambiente de teste (E2E), o dono autorizou ligar pagamento real em
+produção: (1) deploy das Edge Functions `mp-criar-cobranca`/`mp-webhook` pro projeto de produção
+(`hvbcdxsagkjtfjwvnslo`), (2) registro da URL do webhook no painel real do Mercado Pago, (3) dono
+configurou `MP_ACCESS_TOKEN`/`MP_WEBHOOK_SECRET` de produção via `supabase secrets set` no próprio
+terminal (nunca vistos por mim em texto), (4) Public Key de produção salva na aba Pagamento do Admin,
+(5) teste com Pix real de valor baixo.
+
+**3 bugs reais encontrados e corrigidos durante o piloto ao vivo** (além do "Achado colateral #1" de
+sessão, já documentado abaixo, e do "Achado colateral #2" de CSP, também abaixo):
+
+**a) Divergência de taxa presa ao trocar forma de pagamento depois de um aviso.** O mecanismo de
+segurança da REF-DELIVERY-FEE-04 (nunca confia no valor do client, recusa e reapresenta o valor
+autoritativo) guardava o valor divergente em `state`, mas nada limpava esse estado quando o cliente
+trocava de forma de pagamento/endereço/modalidade DEPOIS do aviso — a tentativa seguinte misturava o
+método NOVO com a taxa VELHA, produzindo avisos repetidos com valores "trocados" (maquininha/adicional
+invertidos). Fix: `useEffect(() => setDivergencia(null), [form.pagamento, semEntregaFisica, endereco])`
+em `CheckoutPage.jsx`. Commit `8476b9c`/pushed `0d1440b`.
+
+**b) CSP bloqueava o Payment Brick em produção (tela branca eterna)** — ver "Achado colateral #2"
+abaixo para a investigação completa (Playwright/Chromium real). Commit `1d37dcb`/pushed `8a5e8b2`.
+
+**c) MAIS CRÍTICO — `MP_WEBHOOK_SECRET` configurado com o MESMO valor de `MP_ACCESS_TOKEN`.** Depois do
+piloto ir ao ar, o dono fez um Pix real de R$2, o dinheiro caiu confirmado na conta Mercado Pago dele,
+mas o pedido nunca saiu de `aguardando_pagamento`. Diagnóstico sem nunca ver nenhum segredo em texto:
+comparei os HASHES retornados por `supabase secrets list` (a CLI mostra um digest, nunca o valor real)
+e os hashes de `MP_ACCESS_TOKEN` e `MP_WEBHOOK_SECRET` eram IDÊNTICOS — duas credenciais que deveriam
+ser completamente diferentes (uma é o bearer token da API, a outra é o segredo HMAC de assinatura do
+webhook, obtido numa tela separada do painel do Mercado Pago) tinham o mesmo valor, quase certamente
+por causa da confusão entre os vários tipos de credencial durante a configuração inicial (Public Key,
+Access Token, Client ID+Secret, Chave secreta do webhook). Confirmado com `application_logs`: **zero**
+eventos `webhook_mercadopago` processados com sucesso em toda a sessão, para NENHUM pagamento de teste
+— toda notificação real do Mercado Pago estava sendo rejeitada com assinatura inválida (401) antes de
+tocar no banco (`mp-webhook/index.ts` valida a assinatura ANTES de qualquer leitura, por design —
+nenhum log de erro chega no `application_logs`, só no runtime da Edge Function). Ou seja: **o fluxo de
+confirmação automática de pagamento esteve quebrado silenciosamente durante toda a sessão de testes**,
+mascarado porque nenhum teste anterior tinha ficado esperando confirmação tempo suficiente pra ser
+notado (os pedidos de teste com cartão são aprovados na hora, sem depender do webhook pro fluxo
+visível — só o Pix real expôs o problema).
+
+**Fix**: dono reconfigurou `MP_WEBHOOK_SECRET` com o valor correto (copiado da tela "Webhooks" do
+painel do Mercado Pago, nunca visto por mim) via `supabase secrets set` no terminal; `mp-webhook`
+reimplantado pra garantir que pegasse o novo valor. **Validado com um SEGUNDO Pix real**: pedido
+`989068cd...`, R$2,00, `payment_intents.status` foi de `pendente` pra `aprovado` automaticamente
+(`status_detail: 'accredited'`), `orders.status` virou `recebido`, `application_logs` registrou a
+primeira transição `webhook_mercadopago` bem-sucedida da sessão. Fluxo end-to-end (cobrança → webhook →
+confirmação → pedido pago) confirmado funcionando em produção com dinheiro real.
+
+**d) Refinamentos de UX pedidos pelo dono ao vivo, durante o piloto**: "Pagar agora" (pagamento
+antecipado, sem taxa de maquininha) movido pra primeira posição na lista de formas de pagamento
+(antes era a última, depois de Dinheiro/PIX/Débito/Crédito); e-mail do cliente logado pré-preenchido no
+Payment Brick (`initialization.payer.email`) — o Brick some com a pergunta "insira seu e-mail pra
+receber o código Pix" quando o e-mail já é conhecido, evitando que o cliente desista achando que
+precisa esperar um e-mail chegar. Commit `3b1870e`/pushed `9e6026a`. Pequena legenda abaixo de cada
+nome de forma de pagamento também adicionada ("Pague na hora da entrega" nas 4 opções físicas, "Sem
+taxa extra" no Pagar agora) — reforça visualmente por que pagar antecipado é vantajoso. Commit
+`83c5907`/pushed `b4ecbae`.
+
+**Pedidos de teste descartáveis** (loja real `encanto`, valores baixos de R$2-58, a maioria cancelada
+por expiração do Pix de 15min ou confirmada depois do fix do webhook) ficaram no histórico do cliente
+de teste do dono — não foram limpos automaticamente (são pedidos reais, mesmo que de valor simbólico;
+limpar exigiria autorização explícita separada).
 
 ## Achado colateral #2 — CSP bloqueava o Payment Brick em produção (tela branca)
 
@@ -175,13 +244,38 @@ o `MP_WEBHOOK_SECRET` real via `supabase secrets set` (nunca visto por mim). Ach
 unidade do timestamp, `ts` em segundos não milissegundos) corrigido no commit `c3ba5db` — confirmado
 com pagamentos reais retornando 200 no painel do Mercado Pago depois do fix.
 
-## Credenciais de teste do Mercado Pago — todas em uso, nenhuma vista por mim em texto
+## Credenciais — todas configuradas pelo dono, nenhuma vista por mim em texto
 
-- **Public Key de teste**: em `store_settings` (por loja) — pública por design do MP.
-- **Access Token de teste**: secret de Edge Function (`MP_ACCESS_TOKEN`), projeto E2E.
-- **Webhook secret real**: secret de Edge Function (`MP_WEBHOOK_SECRET`), projeto E2E.
+**Teste (projeto E2E, `bgzcrovskjbktdxkhemd`)**:
+- Public Key de teste: em `store_settings` (por loja) — pública por design do MP.
+- Access Token de teste: secret de Edge Function (`MP_ACCESS_TOKEN`).
+- Webhook secret de teste: secret de Edge Function (`MP_WEBHOOK_SECRET`).
+
+**Produção (projeto `hvbcdxsagkjtfjwvnslo`, Onda 8)**:
+- Public Key de produção: salva na aba Pagamento do Admin, loja `encanto`.
+- Access Token de produção: secret de Edge Function (`MP_ACCESS_TOKEN`) — precisou de ativação prévia
+  das "Credenciais de produção" no painel do Mercado Pago (formulário único: Setor/Site/privacidade/
+  reCAPTCHA) antes de existir.
+- Webhook secret de produção: secret de Edge Function (`MP_WEBHOOK_SECRET`) — configurado errado
+  inicialmente (mesmo valor do Access Token, ver Onda 8 item "c"), corrigido e validado com pagamento
+  real em 2026-09-10.
 
 ## Estado do git
+
+**Onda 8 (piloto de produção, commits locais isolados e pushed nesta sessão, 2026-09-10)**:
+```
+9e6026a feat(pagamento-01): Pagar agora em 1o lugar + pre-preenche email do Pix pra cliente logado
+0d1440b fix(checkout): divergencia de taxa presa ao trocar forma de pagamento/endereco depois do aviso
+8a5e8b2 fix(pagamento-01): CSP bloqueava o Payment Brick em producao (tela branca) + timeout de seguranca
+e2e17cc fix(checkout): create_order do storefront usa dbCliente (sessao real), nao db (sessao do Admin)
+```
+`b4ecbae` (legenda "pague na hora da entrega"/"sem taxa extra") e `87d0fb4` (REF-DELIVERY-FEE-05 Onda 5,
+PIX na maquininha física custa igual cartão — achado do dono durante o piloto, tratado como REF
+separada, ver `migrations/REF-DELIVERY-FEE-05-onda5-*`) também pushed, mas não são estritamente desta
+REF. A correção do `MP_WEBHOOK_SECRET` (Onda 8 item "c") foi só configuração de secret + redeploy da
+Edge Function — sem commit de código associado.
+
+**Ondas 0-7 (2026-09-09)**:
 ```
 eb6954b feat(pagamento-01): Onda 7 -- aba Pagamento no Admin (self-service), validado em navegador real
 64e40df feat(pagamento-01): Onda 6 (parte 2) -- cartao online (Payment Brick completo), validado em navegador real
@@ -200,11 +294,18 @@ explicitamente após achado ao vivo: o Admin tentou salvar na aba Pagamento em p
 `Could not find the function public.set_pagamento_config(...) in the schema cache` — nenhuma migration
 desta REF tinha sido aplicada em produção até então, só no projeto E2E). Confirmado por introspecção
 antes/depois: banco de produção estava 100% limpo desta REF antes (nenhuma tabela/função), as 7
-migrations aplicaram sem erro, e a capability `get_pagamento_config` continua `habilitada:false,
-public_key:null` para as 2 lojas reais (`encanto`, `aquariosbar`) depois — nada mudou no comportamento
-real de nenhuma loja, só a aba Pagamento do Admin passou a salvar de verdade. As Edge Functions
-`mp-criar-cobranca`/`mp-webhook` continuam só no projeto E2E — cobrança real em produção segue
-bloqueada por um gate totalmente separado (Access Token de produção + deploy dessas Edge Functions).
+migrations aplicaram sem erro, e a capability `get_pagamento_config` continuava `habilitada:false,
+public_key:null` para as 2 lojas reais (`encanto`, `aquariosbar`) logo depois de aplicar — nada mudou
+no comportamento real de nenhuma loja naquele momento, só a aba Pagamento do Admin passou a salvar de
+verdade.
+
+**Edge Functions e credenciais de PRODUÇÃO — LIGADAS (Onda 8, ver acima)**: `mp-criar-cobranca` e
+`mp-webhook` deployadas no projeto de produção (`hvbcdxsagkjtfjwvnslo`), webhook registrado no painel
+real do Mercado Pago, `MP_ACCESS_TOKEN`/`MP_WEBHOOK_SECRET`/Public Key de produção configurados pelo
+dono. A loja `encanto` ligou a capability pra pilotar com pagamento real — cobrança real em produção
+JÁ NÃO está mais bloqueada, está validada e funcionando (ver Onda 8). Nenhuma outra loja real ligou o
+recurso ainda; o gap do Access Token global (ver "Próximo gate" abaixo) segue valendo pra qualquer loja
+nova que ligar o pagamento online.
 
 ## Testes executados e resultados (acumulado)
 - Onda 1: 20/20. Onda 2: 29/29. Onda 3 A+B: 19/19. Onda 5 config/status: 7/7. Onda 6 payment_method: 7/7.
@@ -221,18 +322,48 @@ bloqueada por um gate totalmente separado (Access Token de produção + deploy d
 pedido, Payment Brick completo (Pix + cartão), QR Pix real, cartão de teste aprovado na hora,
 confirmação automática via polling, `orders.payment_method` refletindo o método real. 2 bugs reais
 encontrados e corrigidos durante os testes (customização inválida do Brick, remontagem indevida por
-dependências instáveis). Ainda NÃO validado: split/OAuth (fora do escopo até segunda ordem), qualquer
-coisa em produção (bloqueado, gate separado), boleto/carteira Mercado Pago (fora do escopo,
-decisão consciente — não fazem sentido pro negócio hoje).
+dependências instáveis).
+
+**Onda 8 foi validada em PRODUÇÃO REAL, com dinheiro real**: dono fez 2 Pix reais de R$2,00 pra sua
+própria conta Mercado Pago. O primeiro expôs o bug do `MP_WEBHOOK_SECRET` (dinheiro creditado, mas
+pedido preso em `aguardando_pagamento` — ver Onda 8 acima); o segundo, já com o secret corrigido,
+confirmou o ciclo completo funcionando: `payment_intents.status` `pendente` → `aprovado`
+(`status_detail: 'accredited'`), `orders.status` → `recebido`, `application_logs` registrando a
+transição via webhook. Único ponto ainda não confirmado visualmente pelo dono: o WhatsApp automático
+pós-confirmação (o redirecionamento em si foi bloqueado como pop-up pelo navegador mobile, mas o pedido
+foi confirmado e registrado corretamente — não depende do WhatsApp abrir).
+
+Ainda NÃO validado: split/OAuth (fora do escopo até segunda ordem), boleto/carteira Mercado Pago (fora
+do escopo, decisão consciente — não fazem sentido pro negócio hoje), qualquer LOJA além de `encanto`
+com pagamento online ligado em produção.
 
 ## Próximo gate necessário
 
-Decisão do dono: (1) decidir sobre o gate de reconciliação/push pendente desde a Onda 3, ou
-(2) considerar a REF pronta para uma avaliação de piloto controlado em produção (ainda bloqueada por
-padrão, precisa de autorização explícita separada e nova). Tecnicamente, o fluxo completo (Pix + cartão
-+ configuração self-service no Admin) já está validado ponta a ponta em ambiente de teste.
+**Piloto de produção já está no ar e validado** (Onda 8) — não há mais gate bloqueando o fluxo técnico
+em si. Itens em aberto, nenhum bloqueante:
+
+- **Pendente de confirmação do dono**: se o preço do produto de teste (baixado pra testar pagamento
+  real) já foi revertido ao valor normal.
+- **Cosmético, não bloqueante**: em alguns navegadores mobile, o redirecionamento automático pro
+  WhatsApp pós-pagamento é bloqueado como pop-up (já existe fallback com botão "Abrir WhatsApp
+  novamente" — comportamento aceitável, não investigado a fundo ainda).
+- **Pedidos de teste** com Pix real de valor baixo (R$2-58) ficaram no histórico da loja `encanto` —
+  não foram limpos (decisão consciente, exige autorização separada pra apagar pedidos reais). Um deles
+  (`a9c06490...`, R$2,00) tem dinheiro REAL confirmado na conta Mercado Pago do dono mas ficou
+  `cancelado`/`expirado` no nosso banco — dono decidiu conscientemente não reconciliar manualmente
+  (ver gap abaixo).
+
+**Gap novo encontrado (não corrigido, baixo risco, documentado)**: `_transicao_payment_status_valida`
+não permite `('expirado', 'aprovado')` — se o cliente demorar mais que os 15min da expiração interna
+(`_expirar_payment_intents_pendentes`) pra confirmar um Pix, e o Mercado Pago só notificar a aprovação
+DEPOIS desse cancelamento automático, o sistema recusa aplicar a confirmação (pedido já cancelado,
+dinheiro já recebido, sem reconciliação automática). Foi exatamente o que aconteceu com o pedido
+`a9c06490...` acima — a expiração interna rodou antes do fix do `MP_WEBHOOK_SECRET` chegar a tempo.
+Caso real, baixo risco (janela de 15min é generosa pra Pix, que normalmente confirma em segundos), mas
+vale considerar numa REF futura: permitir `('expirado', 'aprovado')` como transição válida (reabre o
+pedido cancelado) ou, no mínimo, alertar o dono quando isso acontecer.
 
 Gap real que segue aberto (documentado, não escondido): Access Token ainda é 1 segredo GLOBAL — uma
-loja nova que ligar o pagamento online hoje manda o dinheiro pra MESMA conta Mercado Pago de sempre.
-Resolver isso (cada loja com a própria conta, via Split/OAuth) é escopo de uma REF futura separada,
-fora desta onda por decisão explícita do dono.
+loja nova que ligar o pagamento online hoje manda o dinheiro pra MESMA conta Mercado Pago de sempre
+(hoje, a conta do dono do Encanto). Resolver isso (cada loja com a própria conta, via Split/OAuth) é
+escopo de uma REF futura separada, fora desta onda por decisão explícita do dono.
