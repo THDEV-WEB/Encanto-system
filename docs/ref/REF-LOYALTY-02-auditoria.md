@@ -609,18 +609,45 @@ Só entra em vigor **após aprovação explícita** e com as decisões do §19 r
   incluindo prova real de concorrência com 2 conexões pg) + regressão (14/14 Onda 1, E2E fidelidade
   10/10, checkout/mesa/taxa-entrega 12/13 — 1 falha pré-existente não relacionada).
 - **Onda 3 — fechada via REF-PAYMENT-SEC-02** (ver acima), não implementada nesta REF.
+- **Onda 4 — CONCLUÍDA.** Checkout aplica a recompensa automaticamente (sem checkbox, sem decisão
+  no meio — `usar_recompensa_fidelidade` enviado sempre que disponível); removidos o botão "Usar
+  desconto agora" e o texto "informe ao atendente" (`StoreApp.jsx`); nova linha "Desconto
+  fidelidade: -R$X" na comanda (`comandaModel.js`/`comandaTexto.js`). Commit local `83b174b`.
+  23/23 E2E (o teste de resgate foi reescrito pra dirigir um checkout real em vez do botão
+  retirado) + `test:domain` inteiro + lint/typecheck/build verdes.
+- **Onda 5 — CONCLUÍDA (achado novo, fora do plano original).** Ao revisar a interação entre a
+  Onda 2 e o HIGH-01 da REF-PAYMENT-SEC-02, confirmado por leitura de código: o HIGH-01 deferiu a
+  CONCESSÃO de selo pra pedido online até o pagamento confirmar (correção real e boa, fecha um
+  abuso genuíno), mas o bloco de RESGATE da Onda 2 debita `stamps` incondicionalmente, sem
+  checagem de status — nenhuma simetria com o lado ganho. Consequência: `loyalty_void_on_cancel`
+  já soma eventos pra reverter num cancelamento, mas só quando a soma é positiva — um evento
+  `redeemed` (delta negativo) é ignorado silenciosamente pelo guard `> 0`. **Qualquer pedido**
+  (online ou físico, cron de expiração ou cancelamento manual do admin) que tivesse consumido uma
+  recompensa e fosse cancelado nunca devolvia a recompensa ao cliente. Fix aditivo puro, só dentro
+  de `loyalty_void_on_cancel` (zero linha do lado ganho alterada; `create_order`/webhook/
+  `redeem_reward`/`loyalty_grant` intocados de propósito, para não conflitar com a
+  REF-PAYMENT-SEC-02 em andamento em paralelo — avisada antes de aplicar). Commit local `4442541`.
+  7/7 testes novos (`scripts/loyalty-02-onda5-test.mjs`) + regressão completa (onda1 14/14, onda2
+  12/12, `test:domain`, 26/26 E2E incluindo a trilha de cancelar/reabrir pedido).
+  **Residual conhecido, não fechado:** pagamento `'recusado'` nunca reenviado deixa `orders.status`
+  preso em `'aguardando_pagamento'` pra sempre (o `payment_intent` fica terminal em `'recusado'`,
+  fora do alcance do cron de expiração de 15min) — o trigger só reage a uma mudança real de
+  `status`, que nunca acontece nesse caso específico. Fecharia isso exigiria tocar o webhook de
+  pagamento, propriedade de outra REF — registrado, não resolvido aqui.
 - Nenhuma migration foi aplicada em produção em nenhuma das ondas — só no projeto E2E
   (`bgzcrovskjbktdxkhemd`), sempre com alvo confirmado antes de qualquer mutação.
 - **Coordenação entre sessões:** durante a Onda 2, uma sessão paralela (`projetos-58`) trabalhando
   na REF-PAYMENT-SEC-01/02 no mesmo repositório local identificou e resolveu independentemente o
-  mesmo achado do §14. As duas sessões se coordenaram (mensagens diretas) antes de qualquer migration
-  de produção ser cogitada; o dono decidiu a divisão de escopo. `git diff` confirmou os arquivos desta
-  REF byte-a-byte idênticos antes/depois do merge (`ceb79e1`) que consolidou as duas frentes em
-  `origin/main`.
+  mesmo achado do §14 (Onda 3). As duas sessões se coordenaram (mensagens diretas) antes de qualquer
+  migration de produção ser cogitada; o dono decidiu a divisão de escopo. `git diff` confirmou os
+  arquivos desta REF byte-a-byte idênticos antes/depois do merge (`ceb79e1`) que consolidou as duas
+  frentes em `origin/main`. Na Onda 5, o achado da interação Onda2×HIGH-01 foi comunicado à outra
+  sessão antes da implementação (mesmo protocolo), com escopo explicitamente limitado a
+  `loyalty_void_on_cancel` para não colidir com o trabalho dela em `create_order`/webhook.
 
 ## Gate final (Onda 0)
 
 Auditoria concluída. Nenhuma alteração foi feita em código, migration, RPC, RLS, configuração ou dado
 real nesta onda. Nenhum commit, nenhum push, nenhuma consulta ao banco de produção foi realizada
-nesta sessão. As ondas de implementação subsequentes (1-4) estão documentadas na seção "Execução"
+nesta sessão. As ondas de implementação subsequentes (1-5) estão documentadas na seção "Execução"
 acima.
