@@ -11,14 +11,14 @@
    `{invocar}` injetado em cada função — mesmo precedente de criarCalculadoraDistancia
    (routeDistanceService.js) — permite testar toda a orquestração com fakes determinísticos, sem rede/
    Supabase real. */
-import { db } from '../../lib/supabase.js';
+import { dbCliente } from '../../lib/dbCliente.js';
 import { buildStorefrontRpcParam } from '../../services/storefrontStore.js';
 
 const TIMEOUT_MS = 15000; // mesma ordem de grandeza do timeout da própria Edge Function (Onda 3)
 
 async function invocarIniciarPagamento(orderId) {
-  if (!db) return { data: null, error: new Error('supabase_indisponivel') };
-  return db.rpc('iniciar_pagamento_pedido', { p_order_id: orderId, ...buildStorefrontRpcParam() });
+  if (!dbCliente) return { data: null, error: new Error('supabase_indisponivel') };
+  return dbCliente.rpc('iniciar_pagamento_pedido', { p_order_id: orderId, ...buildStorefrontRpcParam() });
 }
 export function criarIniciarPagamento({ invocar = invocarIniciarPagamento } = {}) {
   return async function iniciarPagamento(orderId) {
@@ -34,8 +34,8 @@ export function criarIniciarPagamento({ invocar = invocarIniciarPagamento } = {}
 export const iniciarPagamento = criarIniciarPagamento();
 
 async function invocarCriarCobranca(body, timeoutMs) {
-  if (!db) return { data: null, error: new Error('supabase_indisponivel') };
-  return db.functions.invoke('mp-criar-cobranca', { body, timeout: timeoutMs });
+  if (!dbCliente) return { data: null, error: new Error('supabase_indisponivel') };
+  return dbCliente.functions.invoke('mp-criar-cobranca', { body, timeout: timeoutMs });
 }
 export function criarCriarCobranca({ invocar = invocarCriarCobranca, timeoutMs = TIMEOUT_MS } = {}) {
   return async function criarCobranca({ paymentIntentId, paymentMethodId, token, installments, issuerId, payer }) {
@@ -55,8 +55,8 @@ export function criarCriarCobranca({ invocar = invocarCriarCobranca, timeoutMs =
 export const criarCobranca = criarCriarCobranca();
 
 async function invocarConsultarStatus(paymentIntentId) {
-  if (!db) return { data: null, error: new Error('supabase_indisponivel') };
-  return db.rpc('consultar_status_pagamento', { p_payment_intent_id: paymentIntentId });
+  if (!dbCliente) return { data: null, error: new Error('supabase_indisponivel') };
+  return dbCliente.rpc('consultar_status_pagamento', { p_payment_intent_id: paymentIntentId });
 }
 export function criarConsultarStatusPagamento({ invocar = invocarConsultarStatus } = {}) {
   return async function consultarStatusPagamento(paymentIntentId) {
