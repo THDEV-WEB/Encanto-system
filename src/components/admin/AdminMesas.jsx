@@ -1,14 +1,117 @@
-/* components/admin/AdminMesas.jsx — REF-MESA-02 · Onda 4.
-   Aba "Mesas" do Admin (nome já decidido pelo dono do produto). Nesta onda: cadastro/consulta de
-   mesas físicas (identificador + status disponível/indisponível) e visualização de ocupação
-   (derivada de mesa_session_mesas no servidor, nunca calculada aqui). Ondas futuras adicionam:
-   QR, sessão/consulta de conta, lançar pedido, trocar mesa, juntar mesas, fechar conta, histórico,
-   impressão — todas nesta mesma tela, por decisão já registrada (seção 18 da autorização). */
-import { useState, useEffect, useCallback } from 'react';
+/* components/admin/AdminMesas.jsx — REF-MESA-02 · Onda 4 (+ REF-MESA-01 · Onda 9: bloco de config).
+   Aba "Mesas" do Admin (nome já decidido pelo dono do produto). Cadastro/consulta de mesas físicas
+   (identificador + status disponível/indisponível), visualização de ocupação (derivada de
+   mesa_session_mesas no servidor, nunca calculada aqui), QR, sessão/consulta de conta, trocar/juntar
+   mesas, fechar conta — todas nesta mesma tela, por decisão já registrada (seção 18 da autorização).
+
+   Onda 9 fecha o gap registrado desde a REF-MESA-01 (services/mesa/mesaConfig.js, comentário original):
+   a loja liga/desliga Mesa (e os 2 canais de pedido) por conta própria — antes só dava via SQL direto.
+   Mesmo padrão pendente-com-"Salvar Alterações" do AdminPagamento (não é toggle instantâneo, porque
+   os 4 campos são interdependentes: os 3 de baixo só fazem sentido com "habilitada" ligado). */
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import QRCode from 'qrcode';
 import { listarMesas, criarMesa, setMesaStatus, consultarContaMesa, trocarMesaSessao, juntarMesaSessao, fecharContaMesa, obterUrlStorefront } from '../../services/mesa/mesasFisicas.js';
+import { useMesaConfig } from '../../hooks/useMesaConfig.js';
+import { definirMesaConfig } from '../../services/mesa/mesaConfig.js';
 import { fmt } from '../../utils/format.js';
 import { printComanda } from './comanda/printComanda.js';
+
+function paraFormConfig(cfg) {
+  return { habilitada: !!cfg.habilitada, canalQr: !!cfg.canal_qr, canalAdmin: !!cfg.canal_admin, sessaoHabilitada: !!cfg.sessao_habilitada };
+}
+
+function ToggleLinha({ testId, titulo, descricao, checked, disabled, onChange }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+      padding: '12px 16px', background: 'var(--gray-50)', borderRadius: 10, opacity: disabled ? 0.5 : 1,
+    }}>
+      <div>
+        <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--gray-700)' }}>{titulo}</div>
+        {descricao && <div style={{ fontSize: 11.5, color: 'var(--gray-500)', marginTop: 2 }}>{descricao}</div>}
+      </div>
+      <label className="toggle-switch">
+        <input data-testid={testId} type="checkbox" checked={checked} disabled={disabled} onChange={onChange} />
+        <span className="toggle-slider" />
+      </label>
+    </div>
+  );
+}
+
+function ConfigMesa() {
+  const oficial = useMesaConfig();
+  const [form, setForm] = useState(() => paraFormConfig(oficial));
+  const [salvando, setSalvando] = useState(false);
+  const [msg, setMsg] = useState(null); // { tipo:'ok'|'erro', texto }
+
+  const oficialKey = useMemo(() => JSON.stringify(paraFormConfig(oficial)), [oficial]);
+  useEffect(() => { setForm(paraFormConfig(oficial)); }, [oficialKey]);
+
+  const mudou = oficialKey !== JSON.stringify(form);
+  const podeSalvar = mudou && !salvando;
+
+  const marcar = (campo) => (e) => {
+    const v = e.target.checked;
+    setMsg(null);
+    setForm((f) => {
+      const novo = { ...f, [campo]: v };
+      // desligar "habilitada" desliga os 3 canais junto (nunca fica um canal ligado sem Mesa habilitada).
+      if (campo === 'habilitada' && !v) return { habilitada: false, canalQr: false, canalAdmin: false, sessaoHabilitada: false };
+      return novo;
+    });
+  };
+
+  const salvar = async () => {
+    if (!podeSalvar) return;
+    setSalvando(true); setMsg(null);
+    const r = await definirMesaConfig(form);
+    setSalvando(false);
+    if (r.ok) setMsg({ tipo: 'ok', texto: 'Configuração de Mesa salva com sucesso.' });
+    else setMsg({ tipo: 'erro', texto: r.error || 'Não foi possível salvar.' });
+  };
+
+  return (
+    <div className="admin-card" style={{ marginBottom: 20 }}>
+      <div className="admin-card-header"><h3>⚙️ Configuração de Mesa</h3></div>
+      <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <ToggleLinha
+          testId="mesa-config-toggle-habilitada" checked={form.habilitada}
+          titulo="Atendimento por Mesa" descricao="Com desligado, a loja atende só entrega/retirada — o cliente nunca vê a opção Mesa."
+          onChange={marcar('habilitada')}
+        />
+        <ToggleLinha
+          testId="mesa-config-toggle-canal-qr" checked={form.canalQr} disabled={!form.habilitada}
+          titulo="Autoatendimento por QR Code" descricao="O cliente escaneia o QR na própria mesa e faz o pedido sozinho — o garçom só confirma/entrega."
+          onChange={marcar('canalQr')}
+        />
+        <ToggleLinha
+          testId="mesa-config-toggle-canal-admin" checked={form.canalAdmin} disabled={!form.habilitada}
+          titulo="Lançamento manual pelo garçom" descricao="O garçom registra o pedido da mesa pelo Admin, sem depender do cliente usar QR nenhum."
+          onChange={marcar('canalAdmin')}
+        />
+        <ToggleLinha
+          testId="mesa-config-toggle-sessao" checked={form.sessaoHabilitada} disabled={!form.habilitada}
+          titulo="Conta por sessão de mesa" descricao="Agrupa vários pedidos da mesma mesa numa única conta (trocar/juntar mesas, fechar tudo junto)."
+          onChange={marcar('sessaoHabilitada')}
+        />
+        {form.habilitada && !form.canalQr && !form.canalAdmin && (
+          <p style={{ fontSize: 12.5, color: '#B45309', fontWeight: 600, margin: 0 }}>
+            ⚠️ Mesa está ligada, mas nenhum canal de pedido (QR ou garçom) está ativo — o cliente não vai conseguir pedir por mesa ainda.
+          </p>
+        )}
+        <div style={{ textAlign: 'right', marginTop: 4 }}>
+          <button className="btn-primary" onClick={salvar} disabled={!podeSalvar} data-testid="mesa-config-salvar-btn">
+            💾 {salvando ? 'Salvando…' : 'Salvar Alterações'}
+          </button>
+          {!mudou && !msg && <p style={{ fontSize: 12, color: 'var(--gray-400)', marginTop: 8 }}>Nenhuma alteração pendente.</p>}
+          {msg && (
+            <p data-testid="mesa-config-msg" style={{ fontSize: 13, marginTop: 8, fontWeight: 600, color: msg.tipo === 'ok' ? '#16A34A' : '#DC2626' }}>{msg.texto}</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const STATUS_LABEL = { disponivel: '🟢 Disponível', indisponivel: '⛔ Indisponível' };
 // Mesmas 4 formas de pagamento de NovoPedidoMesaModal.jsx (REF-MESA-02 · Onda 7) -- nao inventa
@@ -184,6 +287,8 @@ export function AdminMesas() {
 
   return (
     <div>
+      <ConfigMesa/>
+
       <div className="admin-card" style={{ marginBottom: 20 }}>
         <div className="admin-card-header"><h3>🪑 Cadastrar mesa</h3></div>
         <div style={{ padding: 20 }}>
