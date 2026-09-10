@@ -41,7 +41,7 @@ function descreverRecusa(statusDetail) {
   return mapa[statusDetail] || 'Pagamento não aprovado. Tente outro cartão ou outra forma de pagamento.';
 }
 
-export function PagamentoOnlinePage({ orderId, msg, onSuccess, onVoltar }) {
+export function PagamentoOnlinePage({ orderId, msg, payerEmail, onSuccess, onVoltar }) {
   const pagamentoConfig = usePagamentoConfig();
   const [fase, setFase] = useState('iniciando'); // iniciando | coletando | aguardando | erro
   const [erro, setErro] = useState('');
@@ -96,7 +96,13 @@ export function PagamentoOnlinePage({ orderId, msg, onSuccess, onVoltar }) {
       const mp = obterInstanciaMercadoPago(pagamentoConfig.public_key);
       if (!mp) { clearTimeout(timeoutMontagem); setErro('Não foi possível carregar o pagamento online.'); setFase('erro'); return; }
       mp.bricks().create('payment', BRICK_CONTAINER_ID, {
-        initialization: { amount },
+        /* ACHADO REAL (dono ao vivo em produção, 2026-09-10): o formulário de Pix do Brick pede
+           "e-mail para receber o código" antes de gerar o QR -- assusta cliente (parece que vai
+           demorar/depender de e-mail chegar, quando na verdade o QR aparece na hora). Documentação
+           oficial confirma: initialization.payer.email, quando preenchido, faz o Brick ESCONDER
+           esse campo por completo. payerEmail só existe pra cliente LOGADO com e-mail cadastrado
+           (CheckoutPage.jsx) -- convidado continua vendo o campo normalmente, sem regressão. */
+        initialization: { amount, ...(payerEmail ? { payer: { email: payerEmail } } : {}) },
         customization: {
           paymentMethods: {
             bankTransfer: 'all',           // Pix
@@ -146,7 +152,7 @@ export function PagamentoOnlinePage({ orderId, msg, onSuccess, onVoltar }) {
       brickControllerRef.current?.unmount?.();
       brickControllerRef.current = null;
     };
-  }, [fase, paymentIntentId, amount, pagamentoConfig.public_key]);
+  }, [fase, paymentIntentId, amount, pagamentoConfig.public_key, payerEmail]);
 
   /* 3) Polling do status real (webhook/criação já gravam no banco — aqui só lemos). Só entra em
      jogo pra pagamentos que nasceram 'pendente' (Pix, na prática). */

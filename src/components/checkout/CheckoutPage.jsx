@@ -157,13 +157,15 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
      (opt-in, default desligado -- nenhuma loja existente ganha isso sem configurar). A escolha
      entre Pix/cartão acontece DENTRO do Payment Brick (PagamentoOnlinePage.jsx), não aqui -- esta
      é só a porta de entrada. Nunca some nenhum dos 4 métodos já existentes (COD continua 100%
-     disponível e é o default, nunca escondido). */
+     disponível, só deixa de ser o primeiro da lista quando o pagamento online está ligado --
+     posicionamento pedido pelo dono ao vivo em produção, 2026-09-10: destaca a opção que confirma
+     o pedido sozinha, sem depender do dono confirmar manualmente no WhatsApp). */
   const pays = [
+    ...(pagamentoConfig.habilitada ? [{id:'online',label:'Pagar agora',icon:'⚡'}] : []),
     {id:'dinheiro',label:'Dinheiro',icon:'💵'},
     {id:'pix',label:'PIX',icon:'📲'},
     {id:'cartao_debito',label:'Débito',icon:'💳'},
     {id:'cartao_credito',label:'Crédito',icon:'💳'},
-    ...(pagamentoConfig.habilitada ? [{id:'online',label:'Pagar agora',icon:'⚡'}] : []),
   ];
   const submit = async () => {
     if (submittingRef.current || loading) return;   // impede envio simultâneo
@@ -318,6 +320,7 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
     return (
       <Suspense fallback={null}>
         <PagamentoOnlinePage orderId={pagamentoOnlinePendente.orderId} msg={pagamentoOnlinePendente.msg}
+          payerEmail={isLogged ? customer?.email || null : null}
           onSuccess={onSuccess} onVoltar={() => setPagamentoOnlinePendente(null)} />
       </Suspense>
     );
