@@ -2,12 +2,61 @@
 
 **STATUS: Onda 0 (auditoria) + Onda 1 (schema) + Onda 2 (webhook fundação) + Onda 3 (cobrança real) +
 Onda 4 (webhook real) + Onda 5 (Payment Brick/Pix no frontend) + Onda 6 (cartão online, Payment Brick
-completo) CONCLUÍDAS e commitadas — TODAS VALIDADAS EM NAVEGADOR REAL com o dono. Split/OAuth/
-produção seguem fora do escopo até autorização explícita.**
+completo) + Onda 7 (aba "Pagamento" no Admin, self-service) CONCLUÍDAS e commitadas — TODAS VALIDADAS
+EM NAVEGADOR REAL com o dono. Split/OAuth/produção seguem fora do escopo até autorização explícita.**
 
-**Atualizado:** 2026-09-10, após commit `64e40df` (Onda 6). Execução autônoma autorizada pelo dono.
-Hard constraints seguem valendo: nunca produção, nunca push sem autorização explícita do gate, 1
-commit por onda com `git add` explícito, nunca tocar arquivo de outra sessão.
+**Atualizado:** 2026-09-09, após o commit local da Onda 7 (admin self-service). Execução autônoma
+autorizada pelo dono. Hard constraints seguem valendo: nunca produção, nunca push sem autorização
+explícita do gate, 1 commit por onda com `git add` explícito, nunca tocar arquivo de outra sessão.
+
+## Onda 7 — Aba "Pagamento" no Admin (self-service), validada com o dono ao vivo
+
+Primeira tela de self-service desta REF — até aqui, ligar a capability/editar a chave pública exigia
+mim rodando SQL direto (nenhuma das Ondas 0-6 tinha RPC de escrita). Fecha esse gap com o mesmo padrão
+já usado por `set_company_info` (REF-SAAS-01 · Onda 6.2): `set_pagamento_config(p_habilitada, p_public_key,
+p_store_id)`, `is_admin_of(p_store_id)`, upsert em `store_settings`, `RAISE EXCEPTION` com ERRCODE pro
+cliente distinguir erro de validação.
+
+**Escopo decidido explicitamente pelo dono** (pergunta feita antes de começar, ver AskUserQuestion desta
+sessão): só o que já é seguro circular pela tela — toggle + Public Key (pública por design do próprio
+Mercado Pago). O Access Token continua FORA do Admin (segredo de Edge Function, configurado à parte) —
+a tela é transparente sobre isso no bloco "Como funciona hoje": hoje existe 1 única conta Mercado Pago
+recebendo o dinheiro de todas as lojas que ligarem o recurso, mesmo com chave pública própria por loja.
+Resolver isso de vez (cada loja com a própria conta) é escopo de uma REF futura de Split/OAuth.
+
+**Validações server-side** (cobertas por `scripts/pagamento-01-onda7-admin-config-test.mjs`, 13/13):
+não-admin é barrado (`is_admin_of`); não deixa habilitar sem chave; formato da chave é validado por
+regex (`TEST-`/`APP_USR-` + UUID) — pega o erro real mais provável (colar o Access Token, que tem
+formato bem diferente, no lugar da Public Key); limpar o campo (string vazia) remove a linha de
+`store_settings` em vez de deixar lixo; upsert idempotente.
+
+**Achado no teste do script** (não afeta o RPC em si): o SELECT de verificação direto em
+`store_settings` feito pelo script de teste, rodando como role `authenticated` (simulando o admin via
+`SET LOCAL role` + `request.jwt.claims`), voltava 0 linhas mesmo após a escrita confirmada — RLS da
+tabela filtra o quê o role `authenticated` pode ver diretamente; `RESET ROLE` antes da leitura de
+verificação resolveu. `get_pagamento_config`/`set_pagamento_config` (SECURITY DEFINER) nunca foram
+afetados — é uma particularidade só do SELECT cru feito pelo próprio script de teste.
+
+**Frontend**: `pagamentoConfig.js` ganhou `salvarPagamentoConfig(habilitada, publicKey)` (mesmo padrão
+TRUTHFUL de `salvarCompanyInfo` — só atualiza o cache com o valor confirmado pelo servidor).
+`AdminPagamento.jsx` (aba nova, ícone 💳) segue o padrão visual/de fluxo de `AdminEmpresa.jsx` (form
+pendente + "Salvar Alterações" único, não toggle instantâneo — aqui o toggle e a chave são
+interdependentes, precisam ser confirmados juntos): bloco de Status com toggle, bloco da Public Key com
+validação client-side + badge de ambiente detectado pelo prefixo da chave (🧪 Teste / ✅ Produção),
+bloco "Como funciona hoje" (transparência sobre a limitação do Access Token global) e um bloco
+informativo de referência de taxas do Mercado Pago (valores de mercado, com aviso explícito pra
+confirmar sempre no painel real da conta — não uma promessa de taxa exata).
+
+**Validado ao vivo com o dono**: subi o servidor local em modo `admin` (pra ter `base:'/'`, servindo
+`/admin.html` na raiz) com as credenciais do Supabase injetadas via env var inline pra apontar pro
+projeto E2E (não existe `.env.admin` dedicado — `--mode e2e` sozinho não ativa `isAdmin`, os dois
+precisam ser combinados manualmente pra testar o Admin contra o banco de testes). Login com a conta
+fixture já existente (`e2e-admin@teste.encanto.local`, `e2e/support/fixture-accounts.js` — não foi
+preciso criar nada novo). Dono testou ao vivo: habilitar sem chave bloqueia com a mensagem certa,
+salvar com a chave de teste real (`TEST-25c32e88-...`) mostra o badge "Ambiente de Teste" e a mensagem
+de sucesso, desligar + limpar a chave reverte tudo — confirmado também via SELECT direto no banco
+(`pagamento_online_habilitada='false'`, sem linha de `mp_public_key`) antes do commit, mesma convenção
+de sempre (loja de teste volta ao padrão desligado).
 
 ## Onda 6 — Cartão online (Payment Brick completo), validado com o dono ao vivo
 
@@ -80,6 +129,7 @@ com pagamentos reais retornando 200 no painel do Mercado Pago depois do fix.
 
 ## Estado do git
 ```
+(novo) feat(pagamento-01): Onda 7 -- aba Pagamento no Admin (self-service), validado em navegador real
 64e40df feat(pagamento-01): Onda 6 (parte 2) -- cartao online (Payment Brick completo), validado em navegador real
 e6e2921 feat(pagamento-01): Onda 6 (parte 1) -- orders.payment_method reflete o metodo real (pix/cartao)
 02bc8a3 feat(pagamento-01): Onda 5 -- Payment Brick (Pix) no frontend, validado em navegador real
@@ -89,12 +139,15 @@ c3ba5db fix(pagamento-01): unidade do timestamp na assinatura do webhook (segund
 14db132 feat(pagamento-01): Onda 3 -- criacao de cobranca real (E2E, sandbox Mercado Pago)
 ```
 Todos em `origin/main` até `3592718` (reconciliados, ver histórico git anterior deste doc para
-detalhes); os commits a partir de `14db132` ainda são **locais**, aguardando o mesmo gate de
-reconciliação já estabelecido — nenhum push sem autorização explícita.
+detalhes); os commits a partir de `14db132` (inclusive o novo da Onda 7) ainda são **locais**,
+aguardando o mesmo gate de reconciliação já estabelecido — nenhum push sem autorização explícita.
 
 ## Testes executados e resultados (acumulado)
 - Onda 1: 20/20. Onda 2: 29/29. Onda 3 A+B: 19/19. Onda 5 config/status: 7/7. Onda 6 payment_method: 7/7.
-- `test:domain` limpo, lint 60 warnings pré-existentes (0 novo, 0 erro), build limpo em todas as ondas.
+  Onda 7 admin config: 13/13.
+- `test:domain` limpo, lint 61 warnings pré-existentes (0 novo de comportamento — só o mesmo warning
+  `react-hooks/exhaustive-deps` já aceito em `AdminEmpresa.jsx`, replicado por design em
+  `AdminPagamento.jsx`; 0 erro), build limpo (web + admin) em todas as ondas.
 - Pin do golden de checkout (`tests/checkout.golden.mjs`) atualizado conscientemente (override de
   `status`).
 
@@ -111,6 +164,11 @@ decisão consciente — não fazem sentido pro negócio hoje).
 ## Próximo gate necessário
 
 Decisão do dono: (1) decidir sobre o gate de reconciliação/push pendente desde a Onda 3, ou
-(2) considerar a REF pronta para uma avaliação de piloto controlado em produção (Onda 7 do plano —
-ainda bloqueada por padrão, precisa de autorização explícita separada e nova). Tecnicamente, o
-fluxo completo (Pix + cartão) já está validado ponta a ponta em ambiente de teste.
+(2) considerar a REF pronta para uma avaliação de piloto controlado em produção (ainda bloqueada por
+padrão, precisa de autorização explícita separada e nova). Tecnicamente, o fluxo completo (Pix + cartão
++ configuração self-service no Admin) já está validado ponta a ponta em ambiente de teste.
+
+Gap real que segue aberto (documentado, não escondido): Access Token ainda é 1 segredo GLOBAL — uma
+loja nova que ligar o pagamento online hoje manda o dinheiro pra MESMA conta Mercado Pago de sempre.
+Resolver isso (cada loja com a própria conta, via Split/OAuth) é escopo de uma REF futura separada,
+fora desta onda por decisão explícita do dono.

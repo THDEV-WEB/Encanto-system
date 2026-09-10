@@ -13,6 +13,7 @@ import { AdminBusinessHours } from './AdminBusinessHours.jsx'; // REF-BUSINESS-H
 import { AdminDeliveryEta } from './AdminDeliveryEta.jsx';   // REF-DELIVERY-01: config do tempo de entrega
 import { AdminTaxaEntrega } from './AdminTaxaEntrega.jsx';   // REF-DELIVERY-FEE-01: taxa de entrega automatica por distancia
 import { AdminEmpresa } from './AdminEmpresa.jsx';           // REF-COMPANY-01: dados institucionais da empresa
+import { AdminPagamento } from './AdminPagamento.jsx';       // REF-PAGAMENTO-01 · Onda 7: pagamento online (Pix/cartao) por loja
 import { AdminFidelidade } from './AdminFidelidade.jsx';
 import { AdminHealth } from './AdminHealth.jsx';
 import { AdminMinhaConta } from './AdminMinhaConta.jsx'; // REF-CUSTOMER-01 · Parte 3
@@ -32,11 +33,12 @@ export function AdminPanel({ admin, onExit, onLogout, onVoltarPlataforma }) {
     {id:'status',    icon:'🏪', label:'Status'},
     {id:'taxaentrega',icon:'🚚', label:'Taxa de Entrega'},
     {id:'empresa',   icon:'🏢', label:'Empresa'},
+    {id:'pagamento', icon:'💳', label:'Pagamento'},
     {id:'fidelidade',icon:'🎁', label:'Fidelidade'},
     {id:'saude',     icon:'🩺', label:'Saúde'},
     {id:'minhaconta',icon:'👤', label:'Minha Conta'},
   ];
-  const titles = {dashboard:'Dashboard',relatorios:'Relatórios',pedidos:'Pedidos',mesas:'Mesas',products:'Produtos',categorias:'Categorias',adicionais:'Adicionais',status:'Status da Loja',taxaentrega:'Taxa de Entrega',empresa:'Dados da Empresa',fidelidade:'Fidelidade',saude:'Saúde do Sistema',minhaconta:'Minha Conta'};
+  const titles = {dashboard:'Dashboard',relatorios:'Relatórios',pedidos:'Pedidos',mesas:'Mesas',products:'Produtos',categorias:'Categorias',adicionais:'Adicionais',status:'Status da Loja',taxaentrega:'Taxa de Entrega',empresa:'Dados da Empresa',pagamento:'Pagamento',fidelidade:'Fidelidade',saude:'Saúde do Sistema',minhaconta:'Minha Conta'};
   return (
     <div className="admin-layout">
       <div className="admin-sidebar">
@@ -124,6 +126,7 @@ export function AdminPanel({ admin, onExit, onLogout, onVoltarPlataforma }) {
           {tab==='status'     && <><AdminStatus/><AdminBusinessHours/><AdminDeliveryEta/></>}
           {tab==='taxaentrega'&& <AdminTaxaEntrega/>}
           {tab==='empresa'    && <AdminEmpresa/>}
+          {tab==='pagamento'  && <AdminPagamento/>}
           {tab==='fidelidade' && <AdminFidelidade/>}
           {tab==='saude'      && <AdminHealth/>}
           {tab==='minhaconta' && <AdminMinhaConta admin={admin}/>}
