@@ -110,8 +110,13 @@ async function main() {
 
     // ── I: _transicao_payment_status_valida -- matriz de transicoes ────────────────────────────
     await withSavepoint(async () => {
-      const casosValidos = [['pendente', 'aprovado'], ['pendente', 'recusado'], ['pendente', 'expirado'], ['aprovado', 'em_contestacao'], ['aprovado', 'estornado'], ['em_contestacao', 'estornado'], ['em_contestacao', 'aprovado']];
-      const casosInvalidos = [['aprovado', 'pendente'], ['recusado', 'aprovado'], ['expirado', 'aprovado'], ['estornado', 'aprovado'], ['estornado', 'pendente'], ['pendente', 'em_contestacao']];
+      // REF-PAYMENT-SEC-02 · Onda 4 (2026-09-10): expirado->aprovado passou a ser uma transicao
+      // VALIDA de proposito (achado MEDIUM-02 da REF-PAYMENT-SEC-01 -- webhook de aprovacao pode
+      // chegar depois da expiracao interna de 15min; recusar so' escondia o fato, nunca desfazia o
+      // pagamento real). Cobertura dedicada da Onda 4: scripts/payment-sec-02-onda4-expirado-
+      // aprovado-test.mjs.
+      const casosValidos = [['pendente', 'aprovado'], ['pendente', 'recusado'], ['pendente', 'expirado'], ['aprovado', 'em_contestacao'], ['aprovado', 'estornado'], ['em_contestacao', 'estornado'], ['em_contestacao', 'aprovado'], ['expirado', 'aprovado']];
+      const casosInvalidos = [['aprovado', 'pendente'], ['recusado', 'aprovado'], ['estornado', 'aprovado'], ['estornado', 'pendente'], ['pendente', 'em_contestacao']];
       let okValidos = true, okInvalidos = true;
       for (const [de, para] of casosValidos) {
         const r = await client.query(`SELECT public._transicao_payment_status_valida($1,$2) AS ok`, [de, para]);
@@ -121,8 +126,8 @@ async function main() {
         const r = await client.query(`SELECT public._transicao_payment_status_valida($1,$2) AS ok`, [de, para]);
         if (r.rows[0].ok !== false) { okInvalidos = false; console.log(`   -> esperava invalida: ${de}->${para}`); }
       }
-      check('I1 todas as 7 transicoes validas aceitas', okValidos);
-      check('I2 todas as 6 transicoes invalidas/regressivas rejeitadas', okInvalidos);
+      check('I1 todas as 8 transicoes validas aceitas', okValidos);
+      check('I2 todas as 5 transicoes invalidas/regressivas rejeitadas', okInvalidos);
     });
 
     // ── J: _processar_webhook_payment_intent -- delivery/retirada, caso feliz + idempotencia ──
