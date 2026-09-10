@@ -1,4 +1,4 @@
-/* tests/deliveryFee.golden.mjs — REF-DELIVERY-FEE-01 (+05 · Ondas 1/2) · roda com:
+/* tests/deliveryFee.golden.mjs — REF-DELIVERY-FEE-01 (+05 · Ondas 1/2/4/5) · roda com:
    node tests/deliveryFee.golden.mjs
    Valida a camada UNICA de regra de negocio da taxa de entrega por distancia (services/delivery/
    deliveryFeeRules.js) + o haversine (address/utils/coordinates.js):
@@ -6,9 +6,10 @@
    (B) localizarFaixa — tabela comercial OFICIAL (16 faixas), mudanca entre faixas, fora de alcance
    (B2) arredondarDistanciaKm / resolverTaxaPorDistancia — precisao de 1 casa decimal, extrapolacao
        matematica acima de 20km (REF-DELIVERY-FEE-05 · Onda 1)
-   (C) calcularMaquininhaFee — dinheiro/PIX/debito/credito, toggle desligado
-   (C2) calcularAdicionalPagamentoFee — dinheiro/debito/credito cobram, PIX nao, toggle desligado
-       (REF-DELIVERY-FEE-05 · Onda 2)
+   (C) calcularMaquininhaFee — dinheiro NAO cobra, debito/credito/PIX cobram (Onda 5: PIX na
+       maquininha fisica passa a se comportar como cartao), toggle desligado
+   (C2) calcularAdicionalPagamentoFee — dinheiro/debito/credito/PIX cobram (Onda 5), mutuamente
+       exclusivo com a maquininha (Onda 4), toggle desligado (REF-DELIVERY-FEE-05 · Onda 2/4/5)
    (D) montarResumoFinanceiro — retirada, desativado, sem coordenadas, fora de alcance, ok (com/sem taxa,
        com/sem maquininha, com/sem adicional de pagamento), extrapolacao, pureza (nao muta input)
    (E) deliveryFeeConfigForm — paraEditavel/paraPersistirFaixas/validarFaixas (Admin: sobreposicao, inicio
@@ -146,30 +147,31 @@ check('maquininha: débito e crédito cobram', () => {
   assert.strictEqual(calcularMaquininhaFee('cartao_debito', MAQ_ATIVA), 2.00);
   assert.strictEqual(calcularMaquininhaFee('cartao_credito', MAQ_ATIVA), 2.00);
 });
-check('maquininha: dinheiro e PIX NÃO cobram (não usam o aparelho)', () => {
-  assert.strictEqual(calcularMaquininhaFee('dinheiro', MAQ_ATIVA), 0);
-  assert.strictEqual(calcularMaquininhaFee('pix', MAQ_ATIVA), 0);
+check('maquininha: PIX pago na maquininha física cobra igual débito/crédito (REF-DELIVERY-FEE-05 Onda 5)', () => {
+  assert.strictEqual(calcularMaquininhaFee('pix', MAQ_ATIVA), 2.00);
 });
-check('maquininha: toggle desligado nunca cobra, mesmo em cartão', () => {
+check('maquininha: dinheiro NÃO cobra (nunca usa o aparelho)', () => {
+  assert.strictEqual(calcularMaquininhaFee('dinheiro', MAQ_ATIVA), 0);
+});
+check('maquininha: toggle desligado nunca cobra, mesmo em cartão/PIX', () => {
   assert.strictEqual(calcularMaquininhaFee('cartao_credito', { ativo: false, valor: 2.00 }), 0);
+  assert.strictEqual(calcularMaquininhaFee('pix', { ativo: false, valor: 2.00 }), 0);
 });
 check('maquininha: config ausente -> 0 (nunca lança)', () => {
   assert.strictEqual(calcularMaquininhaFee('cartao_credito', null), 0);
   assert.strictEqual(calcularMaquininhaFee('cartao_credito', undefined), 0);
 });
-check('MAQUININHA_METODOS é exatamente [cartao_debito, cartao_credito]', () => {
-  assert.deepStrictEqual(MAQUININHA_METODOS, ['cartao_debito', 'cartao_credito']);
+check('MAQUININHA_METODOS é exatamente [cartao_debito, cartao_credito, pix]', () => {
+  assert.deepStrictEqual(MAQUININHA_METODOS, ['cartao_debito', 'cartao_credito', 'pix']);
 });
 
 /* ── (C2) calcularAdicionalPagamentoFee — REF-DELIVERY-FEE-05 · Onda 2 ──────────────────────────── */
 const ADIC_ATIVO = { ativo: true, valor: 2.00 };
-check('adicional de pagamento: dinheiro, débito e crédito cobram', () => {
+check('adicional de pagamento: dinheiro, débito, crédito e PIX cobram (Onda 5: PIX entra na lista)', () => {
   assert.strictEqual(calcularAdicionalPagamentoFee('dinheiro', ADIC_ATIVO), 2.00);
   assert.strictEqual(calcularAdicionalPagamentoFee('cartao_debito', ADIC_ATIVO), 2.00);
   assert.strictEqual(calcularAdicionalPagamentoFee('cartao_credito', ADIC_ATIVO), 2.00);
-});
-check('adicional de pagamento: PIX NÃO cobra', () => {
-  assert.strictEqual(calcularAdicionalPagamentoFee('pix', ADIC_ATIVO), 0);
+  assert.strictEqual(calcularAdicionalPagamentoFee('pix', ADIC_ATIVO), 2.00);
 });
 check('adicional de pagamento: toggle desligado nunca cobra, mesmo em dinheiro', () => {
   assert.strictEqual(calcularAdicionalPagamentoFee('dinheiro', { ativo: false, valor: 2.00 }), 0);
@@ -177,14 +179,15 @@ check('adicional de pagamento: toggle desligado nunca cobra, mesmo em dinheiro',
 check('adicional de pagamento: config ausente -> {ativo:true,valor:2.00} ("já nasce ligado"), nunca 0 por engano', () => {
   assert.strictEqual(calcularAdicionalPagamentoFee('dinheiro', null), 2.00);
   assert.strictEqual(calcularAdicionalPagamentoFee('dinheiro', undefined), 2.00);
-  assert.strictEqual(calcularAdicionalPagamentoFee('pix', null), 0);   // PIX continua de fora mesmo no default
+  assert.strictEqual(calcularAdicionalPagamentoFee('pix', null), 2.00);   // Onda 5: PIX também "já nasce ligado"
 });
-check('ADICIONAL_PAGAMENTO_METODOS é exatamente [dinheiro, cartao_debito, cartao_credito] (oposto de MAQUININHA_METODOS)', () => {
-  assert.deepStrictEqual(ADICIONAL_PAGAMENTO_METODOS, ['dinheiro', 'cartao_debito', 'cartao_credito']);
+check('ADICIONAL_PAGAMENTO_METODOS é exatamente [dinheiro, cartao_debito, cartao_credito, pix] (MAQUININHA_METODOS + dinheiro, Onda 5)', () => {
+  assert.deepStrictEqual(ADICIONAL_PAGAMENTO_METODOS, ['dinheiro', 'cartao_debito', 'cartao_credito', 'pix']);
 });
-check('adicional de pagamento: mutuamente exclusivo com maquininha (REF-DELIVERY-FEE-05 Onda 4) -- nunca soma R$4', () => {
+check('adicional de pagamento: mutuamente exclusivo com maquininha (REF-DELIVERY-FEE-05 Onda 4) -- nunca soma R$4, agora também vale pra PIX (Onda 5)', () => {
   assert.strictEqual(calcularAdicionalPagamentoFee('cartao_credito', ADIC_ATIVO, 2.00), 0);
   assert.strictEqual(calcularAdicionalPagamentoFee('cartao_debito', ADIC_ATIVO, 2.00), 0);
+  assert.strictEqual(calcularAdicionalPagamentoFee('pix', ADIC_ATIVO, 2.00), 0);
   // dinheiro nunca aciona maquininha -- continua cobrando o adicional normalmente mesmo se um
   // valor de maquininha fosse (hipoteticamente) passado.
   assert.strictEqual(calcularAdicionalPagamentoFee('dinheiro', ADIC_ATIVO, 0), 2.00);
@@ -230,15 +233,22 @@ check('resumo: fora de alcance (incrementoAcimaFaixas explicitamente 0/desativad
   assert.strictEqual(r.adicionalPagamentoFee, 0);   // REF-DELIVERY-FEE-05 Onda 4: exclusivo com maquininha
   assert.strictEqual(r.status, 'fora_de_alcance');
 });
-check('resumo: PIX dentro da faixa -> taxa de entrega, sem maquininha nem adicional de pagamento', () => {
+check('resumo: PIX dentro da faixa -> taxa de entrega + maquininha (Onda 5: PIX na maquininha física, como cartão), SEM adicional', () => {
   const r = montarResumoFinanceiro({ subtotal: 43.50, retirada: false, distanciaKm: 4.2, config: CONFIG_PADRAO, paymentMethod: 'pix' });
   assert.strictEqual(r.deliveryFee, 12.00);
-  assert.strictEqual(r.maquininhaFee, 0);
+  assert.strictEqual(r.maquininhaFee, 2.00);
   assert.strictEqual(r.adicionalPagamentoFee, 0);
-  assert.strictEqual(r.total, 55.50);
+  assert.strictEqual(r.total, 57.50);
   assert.strictEqual(r.status, 'ok');
   assert.strictEqual(r.faixa.valor, 12.00);
   assert.strictEqual(r.faixaExtrapolada, false);
+});
+check('resumo: PIX com maquininha desligada no config -> cai no fallback do adicional de pagamento (igual débito/crédito)', () => {
+  const cfg = { ...CONFIG_PADRAO, maquininha: { ativo: false, valor: 2.00 } };
+  const r = montarResumoFinanceiro({ subtotal: 43.50, retirada: false, distanciaKm: 4.2, config: cfg, paymentMethod: 'pix' });
+  assert.strictEqual(r.maquininhaFee, 0);
+  assert.strictEqual(r.adicionalPagamentoFee, 2.00);
+  assert.strictEqual(r.total, 57.50);
 });
 check('resumo: dinheiro dentro da faixa -> taxa de entrega + adicional de pagamento, SEM maquininha', () => {
   const r = montarResumoFinanceiro({ subtotal: 30, retirada: false, distanciaKm: 5.7, config: CONFIG_PADRAO, paymentMethod: 'dinheiro' });
@@ -289,9 +299,9 @@ check('resumo: pureza — não muta os objetos de entrada', () => {
   assert.strictEqual(JSON.stringify(config), antes);
 });
 check('resumo: subtotal ausente/inválido cai em 0 (nunca NaN)', () => {
-  const r = montarResumoFinanceiro({ subtotal: undefined, retirada: false, distanciaKm: 2, config: CONFIG_PADRAO, paymentMethod: 'pix' });
+  const r = montarResumoFinanceiro({ subtotal: undefined, retirada: false, distanciaKm: 2, config: CONFIG_PADRAO, paymentMethod: 'dinheiro' });
   assert.strictEqual(r.subtotal, 0);
-  assert.strictEqual(r.total, 10.00);
+  assert.strictEqual(r.total, 12.00);   // 10.00 (faixa) + 2.00 (adicional, dinheiro nao usa maquininha)
 });
 
 /* ── (E) deliveryFeeConfigForm ───────────────────────────────────────────────────────────────── */

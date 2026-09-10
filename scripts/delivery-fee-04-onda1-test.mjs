@@ -165,13 +165,15 @@ async function main() {
         item(), STORE, 10.00, 2.00);
     });
 
-    // ── Caso 4 — maquininha LIGADA + pagamento SEM cartao (pix) -> maquininha_fee=0 mesmo forjado. ──
+    // ── Caso 4 — maquininha LIGADA + PIX (na maquininha fisica) -> maquininha_fee=2.00 autoritativo,
+    // fee forjado (999) e' rejeitado igual aos casos de cartao. REF-DELIVERY-FEE-05 · Onda 5
+    // (2026-09-10): PIX fisico passou a se comportar EXATAMENTE como debito/credito. ──────────────
     await withTx(async () => {
       await comoLoja(STORE);
-      await assertDivergeEntaoConfirma('Caso 4 — pagamento PIX (sem maquininha) + fees forjados (0/999)',
+      await assertDivergeEntaoConfirma('Caso 4 — pagamento PIX (na maquininha) + fees forjados (0/999)',
         { name: 'C4', phone: telefone() },
         { payment_method: 'pix', address: 'Rua Perto, 1', endereco_id: END_PERTO, delivery_fee: 0, maquininha_fee: 999 },
-        item(), STORE, 10.00, 0);
+        item(), STORE, 10.00, 2.00);
     });
 
     // ── Caso 5 — entrega, endereco PERTO (faixa 1), delivery_fee forjado pra 0 -> autoritativo 10.00. ──

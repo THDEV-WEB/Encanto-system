@@ -335,7 +335,7 @@ function BlocoFaixas({ onSalvo }) {
       </Bloco>
 
       <Bloco icone="💳" titulo="Retorno da maquininha"
-        descricao="Acréscimo cobrado quando o motoboy precisa levar a maquininha física (Débito/Crédito). Dinheiro e PIX nunca acionam esse acréscimo.">
+        descricao="Acréscimo cobrado quando o motoboy precisa levar a maquininha física (Débito, Crédito ou PIX pago na maquininha na hora da entrega). Dinheiro nunca aciona esse acréscimo.">
         <ToggleRow titulo="Cobrar retorno da maquininha" ativo={maqAtivo} onChange={(v) => { setMaqAtivo(v); setMsg(null); }} />
         <div className="form-group" style={{ marginTop: 14, maxWidth: 200 }}>
           <label className="form-label">Valor (R$)</label>
@@ -345,10 +345,11 @@ function BlocoFaixas({ onSalvo }) {
         </div>
       </Bloco>
 
-      {/* REF-DELIVERY-FEE-05 · Onda 2: componente SEPARADO da maquininha (coexistem) — dinheiro E
-          cartão pagam este, mas só em entrega (retirada nunca aparece aqui, mesma regra de sempre). */}
+      {/* REF-DELIVERY-FEE-05 · Onda 2/5: componente SEPARADO da maquininha, mas mutuamente exclusivo
+          com ela (Onda 4) — só cobra quando a maquininha não já cobrou este pedido. Só em entrega
+          (retirada nunca aparece aqui, mesma regra de sempre). */}
       <Bloco icone="💰" titulo="Adicional de pagamento na entrega"
-        descricao="Acréscimo cobrado em pedidos de ENTREGA pagos em Dinheiro, Débito ou Crédito. PIX nunca aciona esse acréscimo. Não se aplica à retirada.">
+        descricao="Acréscimo cobrado em pedidos de ENTREGA pagos em Dinheiro, Débito, Crédito ou PIX na maquininha — só quando a maquininha (acima) não já cobrou para o mesmo pedido. Não se aplica à retirada.">
         <ToggleRow titulo="Cobrar adicional de pagamento" ativo={adicAtivo} onChange={(v) => { setAdicAtivo(v); setMsg(null); }} />
         <div className="form-group" style={{ marginTop: 14, maxWidth: 200 }}>
           <label className="form-label">Valor (R$)</label>

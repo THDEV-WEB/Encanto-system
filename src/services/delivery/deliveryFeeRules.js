@@ -48,12 +48,21 @@
    PADRAO (Math.round, nao sempre-pra-baixo), entao nao introduz vies sistematico a favor de ninguem. */
 
 /* Formas de pagamento que exigem o motoboy levar a maquininha fisica (a central de motoboys so cobra o
-   retorno nesses casos — dinheiro e troco em especie, PIX e QR code, nenhum dos dois usa o aparelho). */
-export const MAQUININHA_METODOS = ['cartao_debito', 'cartao_credito'];
+   retorno nesses casos — dinheiro e troco em especie nunca usa o aparelho).
+   REF-DELIVERY-FEE-05 · Onda 5 (dono, 2026-09-10): a loja passou a oferecer PIX ANTECIPADO (via
+   Mercado Pago, opcao "Pagar agora" do checkout — REF-PAGAMENTO-01) — o icone de PIX aqui passa a
+   representar EXCLUSIVAMENTE o cliente que prefere pagar via chave Pix na maquininha fisica do
+   motoboy no momento da entrega (preferencia/desconfianca propria em nao pagar antecipado). Esse
+   Pix fisico usa o MESMO aparelho que debito/credito, entao passa a custar o mesmo retorno de
+   maquininha — tratado de forma IDENTICA a cartao_debito/cartao_credito daqui em diante. */
+export const MAQUININHA_METODOS = ['cartao_debito', 'cartao_credito', 'pix'];
 
-/* Formas de pagamento que acionam o adicional de pagamento na entrega — o OPOSTO do recorte da
-   maquininha (aqui dinheiro entra, PIX fica de fora). */
-export const ADICIONAL_PAGAMENTO_METODOS = ['dinheiro', 'cartao_debito', 'cartao_credito'];
+/* Formas de pagamento que acionam o adicional de pagamento na entrega quando a maquininha NAO ja
+   cobriu o pedido (mutuamente exclusivos, ver calcularAdicionalPagamentoFee/Onda 4) — todo metodo
+   pago fisicamente na entrega, exceto retirada. Desde a Onda 5, e' exatamente MAQUININHA_METODOS
+   (cartao_debito/cartao_credito/pix) + dinheiro (unico que nunca aciona a maquininha, so' o
+   adicional). */
+export const ADICIONAL_PAGAMENTO_METODOS = ['dinheiro', 'cartao_debito', 'cartao_credito', 'pix'];
 
 /* Arredonda para 1 casa decimal (100m) — ver politica de precisao no cabecalho do arquivo. Unica porta de
    entrada de qualquer distancia antes de comparar contra faixas, aqui e em resolverTaxaPorDistancia. */
@@ -115,7 +124,9 @@ export function calcularMaquininhaFee(paymentMethod, maquininhaConfig) {
 }
 
 /* Adicional de pagamento na entrega — depende da forma de pagamento + do toggle do Admin, IGUAL a
-   calcularMaquininhaFee em forma, mas com o recorte de metodos invertido (PIX de fora, dinheiro dentro).
+   calcularMaquininhaFee em forma. Desde a Onda 5 (REF-DELIVERY-FEE-05), o recorte de metodos e'
+   MAQUININHA_METODOS + dinheiro (nao mais o oposto) — o que decide se ESTE pedido cobra o adicional
+   em vez da maquininha e' a mutua exclusividade abaixo (maquininhaFee=0), nao o metodo em si.
    `retirada` (gate de modalidade) e' decidido pelo CHAMADOR (montarResumoFinanceiro), nunca aqui — esta
    funcao so responde "essa forma de pagamento paga o adicional, supondo que ha entrega fisica?".
    config ausente -> {ativo:true, valor:2.00} (nao {} vazio) — "ja nasce ligado", ver cabecalho do
