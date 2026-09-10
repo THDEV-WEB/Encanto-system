@@ -10,7 +10,7 @@
    os 4 campos são interdependentes: os 3 de baixo só fazem sentido com "habilitada" ligado). */
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import QRCode from 'qrcode';
-import { listarMesas, criarMesa, setMesaStatus, consultarContaMesa, trocarMesaSessao, juntarMesaSessao, fecharContaMesa, obterUrlStorefront } from '../../services/mesa/mesasFisicas.js';
+import { listarMesas, criarMesa, setMesaStatus, consultarContaMesa, trocarMesaSessao, juntarMesaSessao, fecharContaMesa, obterUrlStorefront, dividirContaMesa, registrarPagamentoAlocacao } from '../../services/mesa/mesasFisicas.js';
 import { useMesaConfig } from '../../hooks/useMesaConfig.js';
 import { definirMesaConfig } from '../../services/mesa/mesaConfig.js';
 import { fmt } from '../../utils/format.js';
@@ -121,6 +121,135 @@ const PAGAMENTOS = [
   { id: 'cartao_debito', label: 'Débito' }, { id: 'cartao_credito', label: 'Crédito' },
 ];
 
+/* REF-MESA-02 · Onda 17: divisao de conta -- admin_dividir_conta_mesa/admin_registrar_pagamento_alocacao
+   ja existiam desde REF-PAGAMENTO-01 · Onda 1 (testados), so sem consumidor de UI ate agora. Propoe N
+   fatias (valor+metodo) que precisam somar EXATAMENTE o total (o servidor recusa qualquer soma
+   diferente -- nunca confia em arredondamento do client); cada fatia e paga individualmente;
+   admin_fechar_conta_mesa ja sabe sozinho bloquear o fechamento ate todas ficarem pagas. */
+function DivisaoConta({ conta, onAtualizar }) {
+  const [dividindo, setDividindo] = useState(false);
+  const [qtdFatias, setQtdFatias] = useState(2);
+  const [fatias, setFatias] = useState([]);
+  const [enviandoDivisao, setEnviandoDivisao] = useState(false);
+  const [erroDividir, setErroDividir] = useState('');
+  const [pagandoId, setPagandoId] = useState(null);
+  const [metodoPagar, setMetodoPagar] = useState({});
+  const [erroPagar, setErroPagar] = useState('');
+
+  const total = Number(conta.total || 0);
+  const alocacoes = conta.alocacoes || [];
+  const temDivisao = alocacoes.length > 0;
+
+  // Distribui os centavos que nao dividem exato pelas primeiras fatias -- soma sempre bate com o
+  // total em centavos, nunca deixa 1 centavo perdido/sobrando por arredondamento de ponto flutuante.
+  const gerarFatiasIguais = (n) => {
+    const centavosTotal = Math.round(total * 100);
+    const base = Math.floor(centavosTotal / n);
+    const resto = centavosTotal - base * n;
+    setFatias(Array.from({ length: n }, (_, i) => ({ valor: ((base + (i < resto ? 1 : 0)) / 100).toFixed(2), metodo: 'dinheiro' })));
+  };
+
+  const iniciarDivisao = () => { setDividindo(true); setErroDividir(''); gerarFatiasIguais(qtdFatias); };
+  const mudarQtd = (n) => { const v = Math.max(2, Math.min(20, n || 2)); setQtdFatias(v); gerarFatiasIguais(v); };
+  const mudarFatia = (idx, campo, valor) => setFatias((list) => list.map((f, i) => (i === idx ? { ...f, [campo]: valor } : f)));
+
+  const somaFatias = fatias.reduce((s, f) => s + (Number(f.valor) || 0), 0);
+  const somaBate = Math.round(somaFatias * 100) === Math.round(total * 100);
+
+  const confirmarDivisao = async () => {
+    if (!somaBate || enviandoDivisao) return;
+    setEnviandoDivisao(true); setErroDividir('');
+    const r = await dividirContaMesa(conta.sessao_id, fatias.map((f) => ({ valor: Number(f.valor), metodo: f.metodo })));
+    setEnviandoDivisao(false);
+    if (!r.ok) { setErroDividir(r.error === 'sessao ja tem divisao de conta criada' ? 'Essa conta já foi dividida.' : 'Não foi possível dividir a conta.'); return; }
+    setDividindo(false);
+    await onAtualizar();
+  };
+
+  const pagarFatia = async (alocacaoId) => {
+    setPagandoId(alocacaoId); setErroPagar('');
+    const r = await registrarPagamentoAlocacao(alocacaoId, metodoPagar[alocacaoId] || 'dinheiro');
+    setPagandoId(null);
+    if (!r.ok) { setErroPagar('Não foi possível registrar o pagamento.'); return; }
+    await onAtualizar();
+  };
+
+  if (!temDivisao && !dividindo) {
+    if (total <= 0) return null;
+    return (
+      <div style={{ borderTop: '1px solid var(--gray-100)', marginTop: 14, paddingTop: 14 }}>
+        <button className="btn-sm" onClick={iniciarDivisao} data-testid="conta-mesa-dividir-btn">🔀 Dividir conta</button>
+      </div>
+    );
+  }
+
+  if (dividindo && !temDivisao) {
+    return (
+      <div style={{ borderTop: '1px solid var(--gray-100)', marginTop: 14, paddingTop: 14 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 8 }}>🔀 Dividir conta</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+          <span style={{ fontSize: 12.5 }}>Dividir em</span>
+          <input type="number" min="2" max="20" className="form-input" style={{ width: 60 }} value={qtdFatias}
+            onChange={(e) => mudarQtd(Number(e.target.value))} data-testid="conta-mesa-dividir-qtd" />
+          <span style={{ fontSize: 12.5 }}>partes iguais</span>
+        </div>
+        {fatias.map((f, idx) => (
+          <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+            <span style={{ fontSize: 12.5, width: 56 }}>Parte {idx + 1}</span>
+            <input type="number" step="0.01" min="0.01" className="form-input" style={{ width: 90 }} value={f.valor}
+              onChange={(e) => mudarFatia(idx, 'valor', e.target.value)} data-testid={`conta-mesa-dividir-valor-${idx}`} />
+            <select className="form-input" style={{ flex: 1 }} value={f.metodo}
+              onChange={(e) => mudarFatia(idx, 'metodo', e.target.value)} data-testid={`conta-mesa-dividir-metodo-${idx}`}>
+              {PAGAMENTOS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+            </select>
+          </div>
+        ))}
+        <div style={{ fontSize: 12.5, fontWeight: 700, marginTop: 6, color: somaBate ? '#15803D' : '#DC2626' }} data-testid="conta-mesa-dividir-soma">
+          Soma: {fmt(somaFatias)} / Total: {fmt(total)}
+        </div>
+        {erroDividir && <p style={{ fontSize: 12.5, color: '#DC2626', marginTop: 6, fontWeight: 600 }}>{erroDividir}</p>}
+        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+          <button className="btn-sm" onClick={() => setDividindo(false)}>Cancelar</button>
+          <button className="btn-primary" disabled={!somaBate || enviandoDivisao} onClick={confirmarDivisao} data-testid="conta-mesa-dividir-confirmar-btn">
+            {enviandoDivisao ? 'Dividindo…' : 'Confirmar divisão'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const pendentes = alocacoes.filter((a) => a.status !== 'pago').length;
+  return (
+    <div style={{ borderTop: '1px solid var(--gray-100)', marginTop: 14, paddingTop: 14 }}>
+      <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 8 }}>🔀 Conta dividida em {alocacoes.length} partes</div>
+      {alocacoes.map((a) => (
+        <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }} data-testid={`conta-mesa-alocacao-${a.id}`}>
+          <span style={{ fontSize: 12.5, flex: '1 1 90px' }}>{fmt(Number(a.valor))}</span>
+          {a.status === 'pago' ? (
+            <span style={{ fontSize: 11.5, fontWeight: 700, color: '#15803D' }}>✅ Pago ({PAGAMENTOS.find((p) => p.id === a.metodo)?.label || a.metodo})</span>
+          ) : (
+            <>
+              <select className="form-input" style={{ width: 112 }} value={metodoPagar[a.id] || a.metodo || 'dinheiro'}
+                onChange={(e) => setMetodoPagar((m) => ({ ...m, [a.id]: e.target.value }))} data-testid={`conta-mesa-alocacao-metodo-${a.id}`}>
+                {PAGAMENTOS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+              </select>
+              <button className="btn-sm" disabled={pagandoId === a.id} onClick={() => pagarFatia(a.id)} data-testid={`conta-mesa-alocacao-pagar-${a.id}`}>
+                {pagandoId === a.id ? '…' : 'Marcar como pago'}
+              </button>
+            </>
+          )}
+        </div>
+      ))}
+      {erroPagar && <p style={{ fontSize: 12.5, color: '#DC2626', marginTop: 6, fontWeight: 600 }}>{erroPagar}</p>}
+      {pendentes > 0 && (
+        <p style={{ fontSize: 11.5, color: '#B45309', fontWeight: 600, marginTop: 6 }} data-testid="conta-mesa-dividir-pendentes">
+          ⚠️ Faltam {pendentes} parte{pendentes > 1 ? 's' : ''} pagar antes de fechar a conta.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function AdminMesas() {
   const [mesas, setMesas] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -146,6 +275,11 @@ export function AdminMesas() {
   const [qrLoading, setQrLoading] = useState(false);
   const [qrErro, setQrErro] = useState('');
   const [urlLojaCache, setUrlLojaCache] = useState(null); // evita rechamar a RPC a cada mesa aberta
+
+  // REF-MESA-02 · Onda 17: quando a conta foi dividida, o "Fechar conta" abaixo troca o seletor de
+  // metodo (que nao faz mais sentido -- cada fatia ja tem o proprio) por um aviso ate todas pagarem.
+  const contaDividida = (conta?.alocacoes || []).length > 0;
+  const contaTodasFatiasPagas = contaDividida && conta.alocacoes.every((a) => a.status === 'pago');
 
   const recarregar = useCallback(async () => {
     setLoading(true);
@@ -394,6 +528,13 @@ export function AdminMesas() {
                     Total: {fmt(Number(conta.total))}
                   </div>
 
+                  <DivisaoConta conta={conta} onAtualizar={async () => {
+                    setContaLoading(true);
+                    const novaConta = await consultarContaMesa(contaAberta);
+                    setContaLoading(false);
+                    setConta(novaConta);
+                  }} />
+
                   <div style={{ borderTop: '1px solid var(--gray-100)', marginTop: 14, paddingTop: 14 }}>
                     <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 8 }}>🔀 Trocar de mesa</div>
                     <div style={{ display: 'flex', gap: 8 }}>
@@ -438,23 +579,34 @@ export function AdminMesas() {
 
                   <div style={{ borderTop: '1px solid var(--gray-100)', marginTop: 14, paddingTop: 14 }}>
                     <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 8 }}>✅ Fechar conta</div>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      {PAGAMENTOS.map((o) => (
-                        <button
-                          key={o.id} type="button"
-                          onClick={() => setPagamentoFechar(o.id)}
-                          data-testid={`conta-mesa-pagamento-${o.id}`}
-                          style={{
-                            padding: '6px 12px', borderRadius: 8, fontSize: 12.5, fontWeight: 700, border: 'none', cursor: 'pointer',
-                            background: pagamentoFechar === o.id ? '#A62786' : '#F1EADF',
-                            color: pagamentoFechar === o.id ? '#fff' : '#6B5D50',
-                          }}
-                        >
-                          {o.label}
-                        </button>
-                      ))}
-                    </div>
-                    <button className="btn-primary" style={{ marginTop: 10, width: '100%' }} disabled={fechando} onClick={onFecharConta} data-testid="conta-mesa-fechar-btn">
+                    {contaDividida ? (
+                      // Metodo por fatia ja foi definido na divisao (admin_registrar_pagamento_alocacao) --
+                      // aqui so falta confirmar o fechamento; o servidor ja bloqueia sozinho se sobrar
+                      // fatia pendente (admin_fechar_conta_mesa), este disabled e so conveniencia de UI.
+                      !contaTodasFatiasPagas && (
+                        <p style={{ fontSize: 12.5, color: '#B45309', fontWeight: 600, marginBottom: 10 }}>
+                          Pague todas as partes acima antes de fechar a conta.
+                        </p>
+                      )
+                    ) : (
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        {PAGAMENTOS.map((o) => (
+                          <button
+                            key={o.id} type="button"
+                            onClick={() => setPagamentoFechar(o.id)}
+                            data-testid={`conta-mesa-pagamento-${o.id}`}
+                            style={{
+                              padding: '6px 12px', borderRadius: 8, fontSize: 12.5, fontWeight: 700, border: 'none', cursor: 'pointer',
+                              background: pagamentoFechar === o.id ? '#A62786' : '#F1EADF',
+                              color: pagamentoFechar === o.id ? '#fff' : '#6B5D50',
+                            }}
+                          >
+                            {o.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <button className="btn-primary" style={{ marginTop: 10, width: '100%' }} disabled={fechando || (contaDividida && !contaTodasFatiasPagas)} onClick={onFecharConta} data-testid="conta-mesa-fechar-btn">
                       {fechando ? 'Fechando…' : `Fechar conta — ${fmt(Number(conta.total))}`}
                     </button>
                     {erroFechar && <p style={{ fontSize: 12.5, color: '#DC2626', marginTop: 6, fontWeight: 600 }}>{erroFechar}</p>}

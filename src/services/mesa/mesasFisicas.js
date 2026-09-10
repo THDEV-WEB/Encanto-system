@@ -63,6 +63,25 @@ export async function fecharContaMesa(mesaSessionId, paymentMethod) {
   return data;
 }
 
+/* REF-MESA-02 · Onda 17 (RPC ja existia desde REF-PAGAMENTO-01 · Onda 1, sem consumidor de UI ate
+   agora): propoe N fatias (valor+metodo) pra dividir a conta -- servidor valida que a soma bate
+   EXATAMENTE com o total real (nunca confia em arredondamento do cliente). alocacoes: [{valor, metodo}]. */
+export async function dividirContaMesa(mesaSessionId, alocacoes) {
+  if (!db) return { ok: false, error: 'offline' };
+  const { data, error } = await db.rpc('admin_dividir_conta_mesa', { p_mesa_session_id: mesaSessionId, p_alocacoes: alocacoes, ...buildStoreRpcParam() });
+  if (error) return { ok: false, error: error.message };
+  return data;
+}
+
+/* REF-MESA-02 · Onda 17: marca 1 fatia da divisao como paga. admin_fechar_conta_mesa so aceita
+   fechar a sessao quando TODAS as fatias estiverem 'pago'. */
+export async function registrarPagamentoAlocacao(alocacaoId, metodo) {
+  if (!db) return { ok: false, error: 'offline' };
+  const { data, error } = await db.rpc('admin_registrar_pagamento_alocacao', { p_alocacao_id: alocacaoId, p_metodo: metodo, ...buildStoreRpcParam() });
+  if (error) return { ok: false, error: error.message };
+  return data;
+}
+
 /* REF-MESA-02 · Onda 15: URL publica da propria loja, resolvida no servidor (Admin nao tem acesso
    a stores.slug/dominio por outro caminho) -- usada junto com mesas[].qr_token pra montar o link
    do QR (?mesa_token=<uuid>, mesmo parametro que useMesaFromQuery.js le desde a Onda 5). */
