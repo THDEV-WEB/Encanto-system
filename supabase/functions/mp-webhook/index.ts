@@ -79,6 +79,13 @@ export async function validarAssinatura(dataId: string, xRequestId: string, xSig
 // Mesmo vocabulario/mapeamento de supabase/functions/mp-criar-cobranca/index.ts (Onda 3) --
 // MIRRORADO de proposito (mesmo precedente de route-distance/routeCache.js), nao compartilhado via
 // import: sao 2 Edge Functions independentes, cada uma implanta isolada.
+// REF-PAYMENT-SEC-02 · Onda 2 (achado HIGH-02): refunded/charged_back/in_mediation nunca eram
+// mapeados -- caiam no default 'pendente', que _transicao_payment_status_valida recusava vindo de
+// 'aprovado' (nao e' uma transicao valida) -- o webhook de estorno real era descartado em silencio
+// (a Edge Function ainda respondia 200 pro Mercado Pago, que entao nunca reenviava). in_mediation e'
+// o estado intermediario de contestacao (disputa aberta, ainda sem resultado); refunded/charged_back
+// sao a reversao efetiva do dinheiro -- ambos ja eram transicoes VALIDAS desde 'aprovado'/
+// 'em_contestacao' (_transicao_payment_status_valida nao mudou, so o mapeamento estava quebrado).
 function mapearStatusMp(status: string): string {
   switch (status) {
     case "approved": return "aprovado";
@@ -88,6 +95,10 @@ function mapearStatusMp(status: string): string {
     case "in_process":
     case "authorized":
       return "pendente";
+    case "in_mediation": return "em_contestacao";
+    case "refunded":
+    case "charged_back":
+      return "estornado";
     default:
       return "pendente";
   }

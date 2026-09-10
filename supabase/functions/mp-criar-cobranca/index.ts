@@ -68,9 +68,12 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 // Vocabulario da API do Mercado Pago -> vocabulario interno (_transicao_payment_status_valida,
 // Onda 2). 'in_mediation'/'refunded'/'charged_back' nao deveriam aparecer numa resposta de CRIACAO
-// (sao estados pos-aprovacao, alcancados depois via webhook) — mapeados pra 'pendente' por seguranca
-// (nunca aprova nem rejeita por engano a partir de um valor inesperado), o valor CRU do MP sempre vai
-// integro em raw_payload independente do mapeamento.
+// (sao estados pos-aprovacao, alcancados depois via webhook) -- mas REF-PAYMENT-SEC-02 · Onda 2
+// (achado HIGH-02) mapeia mesmo assim, MIRRORADO com mp-webhook/index.ts (mesmo precedente de
+// sempre manter as 2 funcoes identicas): se por algum motivo a API de criacao um dia devolver um
+// desses valores, mapear pra 'estornado'/'em_contestacao' e' honesto (reflete o que realmente
+// aconteceu) e nao "aprova/rejeita por engano" -- a preocupacao original deste comentario nunca
+// se aplicou a esses 2 valores. O valor CRU do MP sempre vai integro em raw_payload de qualquer forma.
 function mapearStatusMp(status: string): string {
   switch (status) {
     case "approved": return "aprovado";
@@ -80,6 +83,10 @@ function mapearStatusMp(status: string): string {
     case "in_process":
     case "authorized":
       return "pendente";
+    case "in_mediation": return "em_contestacao";
+    case "refunded":
+    case "charged_back":
+      return "estornado";
     default:
       return "pendente";
   }
