@@ -77,10 +77,24 @@ export function PagamentoOnlinePage({ orderId, msg, onSuccess, onVoltar }) {
   useEffect(() => {
     if (fase !== 'coletando' || !paymentIntentId || !amount || !pagamentoConfig.public_key) return;
     let vivo = true;
+    let pronto = false;
+    /* BUG REAL encontrado ao vivo (Onda 7, achado colateral): mp.bricks().create(...) RESOLVE a
+       Promise mesmo quando o Brick falha ao montar de verdade (ex.: script de terceiro bloqueado por
+       CSP -- caso real, corrigido em vercel.json) -- nunca rejeita nesse cenário, e onError nem
+       sempre dispara. Sem isto, a tela ficava travada em "coletando" pra sempre, sem nenhum aviso ao
+       cliente. Timeout de segurança: se onReady não disparar em tempo hábil, assume falha e mostra a
+       tela de erro já existente (nunca deixa o cliente parado numa tela em branco). */
+    const timeoutMontagem = setTimeout(() => {
+      if (vivo && !pronto) {
+        console.error('[ENCANTO] Payment Brick não ficou pronto a tempo (onReady nunca disparou).');
+        setErro('Não foi possível carregar o pagamento online. Tente novamente ou escolha outra forma de pagamento.');
+        setFase('erro');
+      }
+    }, 10000);
     carregarMercadoPagoSdk(() => {
       if (!vivo) return;
       const mp = obterInstanciaMercadoPago(pagamentoConfig.public_key);
-      if (!mp) { setErro('Não foi possível carregar o pagamento online.'); setFase('erro'); return; }
+      if (!mp) { clearTimeout(timeoutMontagem); setErro('Não foi possível carregar o pagamento online.'); setFase('erro'); return; }
       mp.bricks().create('payment', BRICK_CONTAINER_ID, {
         initialization: { amount },
         customization: {
@@ -96,7 +110,7 @@ export function PagamentoOnlinePage({ orderId, msg, onSuccess, onVoltar }) {
           },
         },
         callbacks: {
-          onReady: () => {},
+          onReady: () => { pronto = true; clearTimeout(timeoutMontagem); },
           onSubmit: ({ selectedPaymentMethod, formData }) => new Promise((resolve, reject) => {
             criarCobranca({
               paymentIntentId,
@@ -117,10 +131,18 @@ export function PagamentoOnlinePage({ orderId, msg, onSuccess, onVoltar }) {
           }),
           onError: (e) => { console.error('[ENCANTO] Payment Brick erro:', e); },
         },
-      }).then(controller => { if (vivo) brickControllerRef.current = controller; else controller?.unmount?.(); });
-    }, () => { setErro('Não foi possível carregar o pagamento online.'); setFase('erro'); });
+      }).then(controller => { if (vivo) brickControllerRef.current = controller; else controller?.unmount?.(); })
+        .catch(err => {
+          if (!vivo) return;
+          console.error('[ENCANTO] Payment Brick falhou ao montar:', err);
+          clearTimeout(timeoutMontagem);
+          setErro('Não foi possível carregar o pagamento online. Tente novamente ou escolha outra forma de pagamento.');
+          setFase('erro');
+        });
+    }, () => { clearTimeout(timeoutMontagem); setErro('Não foi possível carregar o pagamento online.'); setFase('erro'); });
     return () => {
       vivo = false;
+      clearTimeout(timeoutMontagem);
       brickControllerRef.current?.unmount?.();
       brickControllerRef.current = null;
     };

@@ -9,7 +9,40 @@ EM NAVEGADOR REAL com o dono. Split/OAuth/produção seguem fora do escopo até 
 autorizada pelo dono. Hard constraints seguem valendo: nunca produção, nunca push sem autorização
 explícita do gate, 1 commit por onda com `git add` explícito, nunca tocar arquivo de outra sessão.
 
-## Achado colateral (fora do escopo desta REF) — bug real de sessão em create_order
+## Achado colateral #2 — CSP bloqueava o Payment Brick em produção (tela branca)
+
+Testando a Onda 7 em produção, dono relatou tela branca ("Pagamento online / Escolha Pix ou cartão")
+que nunca saía do lugar, mesmo depois de escolher método nenhum. Diagnosticado SEM depender do
+navegador do dono — construí um repro com Chromium real (Playwright, já instalado no projeto p/ E2E)
+que reproduz o mesmo `mp.bricks().create(...)` que `PagamentoOnlinePage.jsx` faz.
+
+**Causa raiz confirmada empiricamente**: `vercel.json` liberava `*.mlstatic.com` em `img-src`/
+`connect-src`, mas **nunca em `script-src`**. O Payment Brick carrega peças de JS (`components/
+payment.js` e outros chunks) de `http2.mlstatic.com` — CSP bloqueava esse script em produção (onde o
+CSP É de fato aplicado; `vite dev` NUNCA aplica CSP, por isso isso nunca apareceu nas Ondas 5/6,
+exatamente o risco que o checkpoint já registrava desde a Onda 5: "CSP... não testável localmente").
+**Achado extra do mesmo tipo**: `api.mercadolibre.com` (telemetria do Brick) também faltava em
+`connect-src`.
+
+**Comportamento traiçoeiro confirmado**: com o script bloqueado, `mp.bricks().create(...)` **RESOLVE**
+a Promise (nunca rejeita) com um controller quebrado — nem `.catch()` nem `onError` disparam. A tela
+ficava presa em "coletando" pra sempre, sem nenhum erro visível.
+
+**Fix duplo**:
+1. `vercel.json`: `mlstatic.com` adicionado a `script-src`; `api.mercadolibre.com` adicionado a
+   `connect-src`.
+2. `PagamentoOnlinePage.jsx`: timeout de segurança (10s) — se `onReady` não disparar a tempo, assume
+   falha e mostra a tela de erro já existente (nunca mais uma tela branca eterna, seja qual for a
+   causa futura). `.catch()` também adicionado em `mp.bricks().create(...)` como defesa adicional
+   (não teria pego ESTE bug específico, já que a Promise resolve — mas cobre outras falhas reais).
+
+**Fecha um gap estrutural**: criado `scripts/pagamento-01-onda7-csp-brick-test.mjs`, um teste de
+regressão PERMANENTE que sobe Chromium real (Playwright) com o CSP **lido direto de vercel.json**
+(fonte única, nunca duplica a string) e confirma que o Brick monta de verdade, sem nenhuma violação de
+CSP envolvendo mercadopago/mlstatic/mercadolibre — fecha de vez o "CSP não testável localmente" que
+vinha sendo aceito como risco desde a Onda 5. 4/4 verde.
+
+## Achado colateral #1 (fora do escopo desta REF) — bug real de sessão em create_order
 
 Testando a Onda 7 em produção pela primeira vez, o dono achou `delivery_fee=R$0` inesperado num
 pedido de entrega. Investigação (ver histórico do chat) revelou um bug REAL, PRÉ-EXISTENTE, **não
@@ -128,12 +161,12 @@ capability revertida ao padrão desligado (mesma convenção de `mesa_habilitada
 específicas. **Lista vazia (`[]`) é a forma correta de desabilitar** — documentação oficial do MP
 mostrava `'none'` como válido pra todos, não bate com o comportamento real observado.
 
-## CSP (vercel.json) — best-effort, não testável localmente
+## CSP (vercel.json) — CORRIGIDO e agora testável localmente (achado colateral #2)
 
-Liberado `sdk.mercadopago.com` (script), `*.mercadopago.com`/`*.mlstatic.com` (connect/img/frame) —
-baseado no que o Brick de fato carregou durante os testes reais. CSP só é aplicado pelo Vercel em
-produção/preview (dev local não aplica) — pode precisar de ajuste fino quando a REF chegar no gate de
-deploy real.
+Estava incompleto: `mlstatic.com` faltava em `script-src` (script real do Brick), causando tela branca
+em produção — ver "Achado colateral #2" acima para a história completa. Corrigido (`script-src` +
+`connect-src`) e agora coberto por `scripts/pagamento-01-onda7-csp-brick-test.mjs` (Chromium real via
+Playwright, CSP lido direto de vercel.json) — deixa de ser "best-effort, não testável localmente".
 
 ## Secret REAL do webhook (Onda 4) — CONFIGURADO e VALIDADO
 
