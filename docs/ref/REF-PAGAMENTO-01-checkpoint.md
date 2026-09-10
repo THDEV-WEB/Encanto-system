@@ -139,10 +139,18 @@ c3ba5db fix(pagamento-01): unidade do timestamp na assinatura do webhook (segund
 14db132 feat(pagamento-01): Onda 3 -- criacao de cobranca real (E2E, sandbox Mercado Pago)
 ```
 **PUSHED em 2026-09-09** (`3592718..eb6954b`, fast-forward, sem divergência com `origin/main`) — dono
-autorizou explicitamente. Deploy automático na Vercel disparado pelo push; capability
-`pagamento_online_habilitada` segue desligada por padrão em toda loja, e as Edge Functions
-`mp-criar-cobranca`/`mp-webhook` só existem hoje no projeto Supabase de E2E — produção real segue
-bloqueada por um gate totalmente separado (credenciais + deploy das Edge Functions em produção).
+autorizou explicitamente. Deploy automático na Vercel disparado pelo push.
+
+**Migrations aplicadas em PRODUÇÃO em 2026-09-10** (Ondas 1 a 7, nesta ordem, dono autorizou
+explicitamente após achado ao vivo: o Admin tentou salvar na aba Pagamento em produção e recebeu
+`Could not find the function public.set_pagamento_config(...) in the schema cache` — nenhuma migration
+desta REF tinha sido aplicada em produção até então, só no projeto E2E). Confirmado por introspecção
+antes/depois: banco de produção estava 100% limpo desta REF antes (nenhuma tabela/função), as 7
+migrations aplicaram sem erro, e a capability `get_pagamento_config` continua `habilitada:false,
+public_key:null` para as 2 lojas reais (`encanto`, `aquariosbar`) depois — nada mudou no comportamento
+real de nenhuma loja, só a aba Pagamento do Admin passou a salvar de verdade. As Edge Functions
+`mp-criar-cobranca`/`mp-webhook` continuam só no projeto E2E — cobrança real em produção segue
+bloqueada por um gate totalmente separado (Access Token de produção + deploy dessas Edge Functions).
 
 ## Testes executados e resultados (acumulado)
 - Onda 1: 20/20. Onda 2: 29/29. Onda 3 A+B: 19/19. Onda 5 config/status: 7/7. Onda 6 payment_method: 7/7.
