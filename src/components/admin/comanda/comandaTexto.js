@@ -67,6 +67,7 @@ function comandaTextoInterna(v, t) {
   if (t.mostrarEntrega) linhas.push(`Entrega: ${t.entregaFmt}`);
   if (t.mostrarMaquininha) linhas.push(`Retorno maquininha: ${t.maquininhaFmt}`);
   if (t.mostrarAdicionalPagamento) linhas.push(`Retorno do dinheiro ao estabelecimento: ${t.adicionalPagamentoFmt}`);
+  if (t.mostrarDescontoFidelidade) linhas.push(`Desconto fidelidade: -${t.descontoFidelidadeFmt}`);
   if (t.mostrarAjuste) linhas.push(`${t.deltaLabel}: ${t.delta < 0 ? '-' : ''}${t.deltaFmt}`);
   linhas.push(`*TOTAL: ${t.totalFmt || ''}*`);
 
@@ -129,7 +130,9 @@ function comandaTextoCliente(v, t) {
   if (t.mostrarEntrega) linhas.push(`Entrega: ${t.entregaFmt}`);
   if (t.mostrarMaquininha) linhas.push(`Retorno da maquininha: ${t.maquininhaFmt}`);
   if (t.mostrarAdicionalPagamento) linhas.push(`Retorno do dinheiro ao estabelecimento: ${t.adicionalPagamentoFmt}`);
-  /* Ajuste residual (delta não explicado por item/entrega/maquininha/adicional) — só desconto, quando aplicável. */
+  /* REF-LOYALTY-02 · Onda 4: linha explicita (nao mais "adivinhada" do ajuste generico abaixo). */
+  if (t.mostrarDescontoFidelidade) linhas.push(`Desconto fidelidade: -${t.descontoFidelidadeFmt}`);
+  /* Ajuste residual (delta não explicado por item/entrega/maquininha/adicional/fidelidade) — só desconto, quando aplicável. */
   if (t.mostrarAjuste && t.delta < 0) linhas.push(`Desconto: ${t.deltaFmt}`);
   linhas.push(`*TOTAL: ${t.totalFmt || ''}*`);
   linhas.push(v.pagamento?.troco ? `Troco para: ${v.pagamento.troco}` : 'Troco: Não precisa');

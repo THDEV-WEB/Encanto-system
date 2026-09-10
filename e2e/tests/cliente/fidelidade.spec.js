@@ -23,12 +23,16 @@
    indisponibilidade temporária, sem sugerir perda de progresso. Testes C e D abaixo, reescritos. */
 import { test, expect } from '@playwright/test';
 import { StorePage } from '../../pages/StorePage.js';
+import { ProductModalPage } from '../../pages/ProductModal.page.js';
+import { CartSidebarPage } from '../../pages/CartSidebar.page.js';
+import { CheckoutPagePO } from '../../pages/CheckoutPage.page.js';
 import { contextClienteFixture } from '../../support/authSession.js';
 import { garantirClienteFixtureVinculado } from '../../support/fixture-customer.js';
 import { criarPedidoFixture } from '../../support/fixture-order.js';
 import { limparPedidosDoFixture } from '../../support/cleanup.js';
 import { supabaseAdmin, supabaseAnon } from '../../support/supabaseAdmin.js';
 import { CLIENTE_FIXTURE } from '../../support/fixture-accounts.js';
+import { PROD_MARMITA_P as PRODUTO_FIXTURE_ID } from '../../support/fixture-catalog.js';
 
 test.describe('Fidelidade (cliente autenticado)', { tag: '@writes' }, () => {
   test.describe.configure({ mode: 'serial' }); // muta o ciclo de selos do fixture entre os 2 testes
@@ -54,7 +58,12 @@ test.describe('Fidelidade (cliente autenticado)', { tag: '@writes' }, () => {
     await context.close();
   });
 
-  test('resgatar a recompensa disponível reinicia o ciclo', async ({ browser, baseURL }) => {
+  /* REF-LOYALTY-02 · Onda 4: o resgate deixou de ser uma acao autonoma no modal (botao "Usar desconto
+     agora" desconectado de pedido, retirado) -- agora e' aplicado AUTOMATICAMENTE pelo backend dentro
+     de create_order, no proprio checkout (decisao de negocio aprovada). Este teste passou a dirigir um
+     checkout REAL (produto no carrinho -> finalizar) em vez de clicar num botao que nao existe mais;
+     prova pela LINHA (backend, order.desconto_fidelidade + loyalty_accounts), nao so' pela UI. */
+  test('recompensa disponível é aplicada automaticamente no próximo pedido e reinicia o ciclo', async ({ browser, baseURL }) => {
     const context = await contextClienteFixture(browser, baseURL);
     test.skip(!context, 'ambiente de E2E não configurado (.env.e2e)');
 
@@ -66,16 +75,39 @@ test.describe('Fidelidade (cliente autenticado)', { tag: '@writes' }, () => {
 
     const page = await context.newPage();
     const storePage = new StorePage(page);
+    const productModal = new ProductModalPage(page);
+    const cartSidebar = new CartSidebarPage(page);
+    const checkoutPage = new CheckoutPagePO(page);
     await storePage.goto();
 
-    // REF-LOYALTY-AUDIT-01 (achado do dono): o "% de desconto" era hardcoded ("50%") em 3 lugares,
-    // ignorando o valor REAL configurado pela loja -- corrigido pra usar config.discount (dinamico,
-    // como o resto da tela ja fazia). Leitura real, nao valor assumido.
+    // Modal informativo (sem botão de resgate autônomo): confirma o estado real e a mensagem nova.
     await page.getByText(`Você ganhou ${config.discount}% de desconto! Clique para resgatar.`).click();
     await expect(page.getByRole('heading', { name: 'Parabéns!' })).toBeVisible();
-
-    await page.getByRole('button', { name: /Usar desconto agora/ }).click();
+    await expect(page.getByText(/será aplicado automaticamente/)).toBeVisible();
+    await page.getByRole('button', { name: /Fazer meu pedido/ }).click();
     await expect(page.getByRole('heading', { name: 'Parabéns!' })).toBeHidden();
+
+    // Checkout real: o banner de aplicação automática aparece ANTES de finalizar (transparência).
+    await storePage.selecionarRetirada();
+    await storePage.openProduct(PRODUTO_FIXTURE_ID);
+    await productModal.adicionar();
+    await storePage.openCart();
+    await cartSidebar.goToCheckout();
+    await expect(page.getByText(new RegExp(`Sua recompensa de fidelidade \\(${config.discount}% de desconto\\) será aplicada`))).toBeVisible();
+    await expect(page.getByText(new RegExp(`🎁 Desconto fidelidade \\(${config.discount}%\\)`))).toBeVisible();
+
+    await expect(checkoutPage.submitButton).toBeEnabled({ timeout: 15_000 });
+    await checkoutPage.finalizar();
+    await expect(page.getByRole('heading', { name: /sucesso/i })).toBeVisible();
+
+    // Prova real (backend): pedido criado com desconto vinculado, ciclo reiniciado.
+    const { data: pedidos } = await admin.from('orders').select('id,desconto_fidelidade,customer_id').order('created_at', { ascending: false }).limit(1);
+    expect(pedidos?.[0]?.customer_id).toBe(cliente.id);
+    expect(Number(pedidos?.[0]?.desconto_fidelidade)).toBeGreaterThan(0);
+
+    const { data: eventoResgate } = await admin.from('loyalty_events').select('order_id,discount_pct,discount_amount').eq('customer_id', cliente.id).eq('tipo', 'redeemed').order('created_at', { ascending: false }).limit(1).single();
+    expect(eventoResgate.order_id).toBe(pedidos[0].id);
+    expect(eventoResgate.discount_pct).toBe(config.discount);
 
     const { data: contaAtualizada } = await admin.from('loyalty_accounts').select('stamps,rewards_redeemed').eq('customer_id', cliente.id).single();
     expect(contaAtualizada.stamps).toBe(0);

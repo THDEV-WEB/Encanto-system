@@ -574,16 +574,53 @@ Só entra em vigor **após aprovação explícita** e com as decisões do §19 r
   usado em toda REF anterior deste projeto (auditoria → migration → teste estrutural e comportamental
   incluindo concorrência → validação contra produção real, só leitura, antes de aplicar → aplicação →
   commit → documentação).
-- **Onda 3 (proposta, depende da decisão #5)** — fechar a lacuna de pagamento recusado/estornado
-  (§14): estender o gatilho de reversão para reagir a `payment_status`, não só `status='cancelado'`.
-- **Onda 4 (opcional)** — matriz de testes do §17 completa, incluindo os cenários de concorrência e
-  manipulação de frontend.
+- **Onda 3 — FECHADA por outro caminho, não implementada nesta REF.** O achado do §14 (selo
+  sobrevive a pagamento recusado/estornado) foi resolvido pela **REF-PAYMENT-SEC-02** (sessão
+  paralela, commits `80ca72c` Onda 1/HIGH-01 e `5d00c83` Onda 2/HIGH-02), com um mecanismo
+  **diferente e mais direto** do que o proposto aqui: em vez de conceder o selo na criação e
+  reverter depois (`estender o gatilho de reversão`), `create_order()` passou a **adiar** a
+  concessão do selo para pedidos online (`payment_method` que nasce `status='aguardando_pagamento'`)
+  até o webhook confirmar `aprovado` — nunca concede errado, então não precisa reverter. O branch
+  `estornado`/`em_contestacao` (chargeback pós-aprovação, que nem tinha tratamento antes) ganhou
+  reversão usando a mesma mecânica de soma+decremento+evento `'revoked'` já usada por
+  `loyalty_void_on_cancel`. Confirmado por leitura de código + testes próprios da REF-PAYMENT-SEC-02
+  (12/12 e 8/8) + reconfirmação independente desta sessão (minhas suítes `loyalty-02-onda1`/`onda2`
+  continuam 14/14 e 12/12 depois do merge). Decisão do dono (2026-09-10): tratar como fechada, não
+  duplicar com uma 2ª implementação.
+- **Onda 4 — EM ANDAMENTO.** Matriz de testes do §17 + frontend/UX: integrar
+  `usar_recompensa_fidelidade` ao checkout de verdade (hoje só existe no backend, Onda 2), remover o
+  texto "informe ao atendente" (não é mais verdade) e o botão de resgate autônomo desconectado de
+  pedido, mostrar o desconto no resumo/comanda.
 
 ---
 
-## Gate final
+## Execução (atualizado durante a implementação)
+
+- **Onda 1 — CONCLUÍDA.** `orders.desconto_fidelidade`, `loyalty_events.discount_pct`/
+  `discount_amount`, `redeem_reward()` com 2 parâmetros novos opcionais. Commit local `88a19f1`.
+  14/14 testes (`scripts/loyalty-02-onda1-test.mjs`, E2E `bgzcrovskjbktdxkhemd`) + regressão
+  completa (golden/guard/E2E Playwright) verdes. Achado do próprio teste, corrigido antes de
+  qualquer produção: `CREATE OR REPLACE` com parâmetro novo cria um 2º overload em vez de
+  substituir — corrigido com `DROP FUNCTION` explícito + regrant.
+- **Onda 2 — CONCLUÍDA.** `create_order()` ganha o campo opcional `usar_recompensa_fidelidade`
+  dentro do mesmo `p_order` (sem mudar assinatura); nova função interna `_redeem_loyalty_for_order`
+  (mesmo padrão de `_resolve_item_pricing`/`_resolve_delivery_fee`); `redeem_reward()` refatorada
+  pra delegar a ela. Commit local `f2528c6`. 12/12 testes (`scripts/loyalty-02-onda2-test.mjs`,
+  incluindo prova real de concorrência com 2 conexões pg) + regressão (14/14 Onda 1, E2E fidelidade
+  10/10, checkout/mesa/taxa-entrega 12/13 — 1 falha pré-existente não relacionada).
+- **Onda 3 — fechada via REF-PAYMENT-SEC-02** (ver acima), não implementada nesta REF.
+- Nenhuma migration foi aplicada em produção em nenhuma das ondas — só no projeto E2E
+  (`bgzcrovskjbktdxkhemd`), sempre com alvo confirmado antes de qualquer mutação.
+- **Coordenação entre sessões:** durante a Onda 2, uma sessão paralela (`projetos-58`) trabalhando
+  na REF-PAYMENT-SEC-01/02 no mesmo repositório local identificou e resolveu independentemente o
+  mesmo achado do §14. As duas sessões se coordenaram (mensagens diretas) antes de qualquer migration
+  de produção ser cogitada; o dono decidiu a divisão de escopo. `git diff` confirmou os arquivos desta
+  REF byte-a-byte idênticos antes/depois do merge (`ceb79e1`) que consolidou as duas frentes em
+  `origin/main`.
+
+## Gate final (Onda 0)
 
 Auditoria concluída. Nenhuma alteração foi feita em código, migration, RPC, RLS, configuração ou dado
-real. Nenhum commit, nenhum push, nenhuma consulta ao banco de produção foi realizada nesta sessão.
-Aguardando avaliação e decisão explícita do dono sobre as pendências do §19 antes de qualquer
-implementação.
+real nesta onda. Nenhum commit, nenhum push, nenhuma consulta ao banco de produção foi realizada
+nesta sessão. As ondas de implementação subsequentes (1-4) estão documentadas na seção "Execução"
+acima.

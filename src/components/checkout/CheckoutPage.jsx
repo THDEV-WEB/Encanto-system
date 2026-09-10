@@ -15,6 +15,7 @@ import { newRequestId } from '../../utils/ids.js';
 import { buildOrderArgs, buildOrderConfirmationMessage, buildCheckoutView, buildDivergenciaView, buildPrecoDivergenteView } from '../../utils/orderPayload.js';
 import { DS } from '../../services/DataService.js';
 import { LOYALTY_EVENT } from '../../services/loyalty/index.js';   // REF-LOYALTY-01: avisa a loja p/ re-buscar o estado oficial
+import { useLoyalty } from '../../hooks/useLoyalty.js';   // REF-LOYALTY-02 · Onda 4: aplicacao automatica da recompensa no checkout
 import { STORE_INFO } from '../../constants/storeInfo.js';
 import { useAddress, AddressSummary, addressRepository, geocoding } from '../../address/index.js';   // REF-CHECKOUT-ADDRESS-01: FONTE UNICA do endereco
 import { montarResumoFinanceiro } from '../../services/delivery/deliveryFeeRules.js';   // REF-DELIVERY-FEE-01: fonte unica da regra de negocio
@@ -37,6 +38,14 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
      Guest (nao logado) segue 100% editavel: guest checkout intocado. */
   const { isLogged, customer, status } = useAuth();
   const companyInfo = useCompanyInfo();
+  /* REF-LOYALTY-02 · Onda 4: recompensa disponivel aplica AUTOMATICAMENTE no proximo pedido (sem
+     checkbox -- e' o comportamento aprovado: "servidor detecta recompensa -> calcula desconto ->
+     pedido criado com desconto", nenhuma decisao do cliente no meio). So' cliente LOGADO (guest nao
+     tem como o servidor resolver auth.uid() -> customer, mesma limitacao que get_my_loyalty/
+     redeem_reward ja tinham desde sempre). O servidor SEMPRE recalcula elegibilidade/percentual do
+     zero (create_order nunca confia neste booleano pra aplicar nada, so' pra decidir SE tenta). */
+  const loyalty = useLoyalty();
+  const loyaltyReward = isLogged && loyalty.estado.enabled && loyalty.estado.rewardAvailable;
   const pagamentoConfig = usePagamentoConfig();   // REF-PAGAMENTO-01 · Onda 5: {habilitada, public_key}
   /* REF-PAGAMENTO-01 · Onda 5: quando setado, SUBSTITUI o formulario pela tela de Pix (QR/espera) --
      o pedido ja foi criado (status 'aguardando_pagamento') nesse ponto, so falta o pagamento em si.
@@ -142,6 +151,12 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
      novo. { deliveryFee, maquininhaFee, adicionalPagamentoFee } = valores AUTORITATIVOS devolvidos
      por DS.savePedido (REF-DELIVERY-FEE-05 · Onda 2: terceiro componente incluído na mesma mecânica). */
   const [divergencia, setDivergencia] = useState(null);
+  /* REF-LOYALTY-02 · Onda 4: quando o servidor recusa a recompensa (elegibilidade mudou entre a
+     tela carregar e o clique -- ex.: 2 abas, ou o admin ajustou o saldo manualmente), NAO existe
+     "valor autoritativo" pra reapresentar como na divergencia de entrega -- so' reenviar SEM a
+     recompensa. Mesmo espirito fail-closed: nunca insiste silenciosamente, sempre exige um novo
+     clique explicito do cliente. */
+  const [recompensaNegada, setRecompensaNegada] = useState(false);
   /* BUG REAL encontrado ao vivo (2026-09-10): se o cliente troca forma de pagamento (ou endereço, ou
      entrega/retirada) DEPOIS que uma divergência já foi sinalizada, a divergência antiga ficava presa
      -- o retry misturava o payment_method NOVO com maquininha_fee/adicional_pagamento_fee calculados
@@ -150,6 +165,7 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
      Qualquer input que de fato entra no cálculo do servidor (_resolve_delivery_fee) invalida a
      divergência pendente -- força reapresentar o resumo do zero, nunca reusa expectativa velha. */
   useEffect(() => { setDivergencia(null); }, [form.pagamento, semEntregaFisica, endereco]);
+  useEffect(() => { setRecompensaNegada(false); }, [loyaltyReward]);   // nova recompensa elegivel -> nova chance
   const submittingRef = useRef(false);   // trava reentrância (duplo clique / envio simultâneo)
   const requestIdRef  = useRef(null);    // idempotency key (estável por tentativa de checkout)
   const upd = (k,v) => setForm(f=>({...f,[k]:v}));
@@ -227,10 +243,15 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
        a loja so deve ser notificada/comecar a preparar DEPOIS da confirmacao real do pagamento, ver
        PagamentoOnlinePage.jsx). */
     const pagamentoOnline = form.pagamento === 'online';
+    /* REF-LOYALTY-02 · Onda 4: so' pede a recompensa se ainda elegivel NESTA tentativa (recompensaNegada
+       vira true so' depois que o servidor ja recusou uma vez -- proximo clique reenvia sem ela, nunca
+       insiste as cegas). O servidor recalcula tudo do zero de qualquer forma (ver create_order). */
+    const usarRecompensaFidelidade = loyaltyReward && !recompensaNegada;
     const extraPedido = {
       ...(mesa ? { tipoPedido: 'mesa', mesaIdentificador: mesaIdentificador.trim(), origemPedido,
           ...(origemPedido === 'qr_mesa' && mesaQrToken ? { mesaQrToken } : {}) } : {}),
       ...(pagamentoOnline ? { status: 'aguardando_pagamento' } : {}),
+      ...(usarRecompensaFidelidade ? { usarRecompensaFidelidade: true } : {}),
     };
     const { customer: customerPedido, order, items } = buildOrderArgs(cart, form, enderecoEntrega, requestIdRef.current, enderecoId, resumoEnvio, extraPedido);
     /* GATE (fonte única de verdade): a persistência bem-sucedida é o evento que autoriza TODAS as ações
@@ -248,6 +269,18 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
         maquininhaFeeAntigo: resumo.maquininhaFee, maquininhaFeeNovo: resultado.maquininhaFee,
         adicionalPagamentoFeeAntigo: resumo.adicionalPagamentoFee, adicionalPagamentoFeeNovo: resultado.adicionalPagamentoFee,
       });
+      return;
+    }
+    if (resultado.recompensaIndisponivel) {
+      /* REF-LOYALTY-02 · Onda 4: fail-closed -- o servidor recusou aplicar a recompensa (elegibilidade
+         mudou entre a tela carregar e o clique). NAO cria pedido nenhum. Marca recompensaNegada pra
+         o PROXIMO clique reenviar sem ela (mesmo requestId, idempotente) -- nunca cobra o cliente a
+         mais silenciosamente nem trava o checkout. */
+      setLoading(false);
+      submittingRef.current = false;
+      setRecompensaNegada(true);
+      setErr('Sua recompensa de fidelidade não está mais disponível. Toque em Finalizar novamente para concluir sem ela.');
+      registrarBreadcrumb('checkout: recompensa de fidelidade recusada pelo servidor', { itens: cart.items.length });
       return;
     }
     if (!resultado.orderId) {
@@ -277,7 +310,15 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
        mostrar rua/numero/complemento/bairro/referencia sem re-derivar de string livre.
        REF-GOLIVE-01: deliveryEta (prop, vem de StoreApp -> useDeliveryEta, mesma fonte da DeliveryBar/
        SuccessPage) elimina o "35 a 45 min" fixo que a mensagem de confirmacao tinha antes. */
-    const msg = buildOrderConfirmationMessage(customerPedido, order, items, orderId, {
+    /* REF-LOYALTY-02 · Onda 4: `order.total` aqui e' o valor DECLARADO pelo client (resumoEnvio, sem
+       desconto de fidelidade nenhum -- buildOrderArgs nunca calcula isso). O valor AUTORITATIVO
+       (se a recompensa foi de fato aplicada) so' existe na resposta do servidor
+       (resultado.descontoFidelidade) -- corrige aqui antes de montar a mensagem, mesmo espirito de
+       nunca deixar a comanda mostrar um numero que o cliente nao vai realmente pagar. */
+    const orderParaMensagem = resultado.descontoFidelidade > 0
+      ? { ...order, total: Math.round((order.total - resultado.descontoFidelidade) * 100) / 100, desconto_fidelidade: resultado.descontoFidelidade }
+      : order;
+    const msg = buildOrderConfirmationMessage(customerPedido, orderParaMensagem, items, orderId, {
       companyInfo, troco: form.troco, enderecoEstruturado: semEntregaFisica ? null : endereco,
       deliveryEtaMin: deliveryEta,
     });
@@ -292,7 +333,10 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
     if (pagamentoOnline) { setPagamentoOnlinePendente({ orderId, msg }); return; }
     onSuccess(msg);
   };
-  const view = buildCheckoutView(cart, resumo);   // Onda 5.2: resumo consome o view-model do order-domain (não recalcula preço)
+  /* REF-LOYALTY-02 · Onda 4: estimativa de exibição -- recompensaNegada (fail-closed apos recusa do
+     servidor) tambem escurece a linha aqui, pra tela nunca prometer um desconto que o proximo clique
+     ja nao vai mais pedir. */
+  const view = buildCheckoutView(cart, resumo, { available: loyaltyReward && !recompensaNegada, discountPct: loyalty.estado.discount });   // Onda 5.2: resumo consome o view-model do order-domain (não recalcula preço)
   /* REF-DELIVERY-FEE-01: só quebra em Subtotal/Entrega/Maquininha quando há alguma parcela a somar —
      retirada e "sem taxa" continuam com o resumo simples (itens + Total), zero mudança visual pra eles. */
   const mostrarDetalhamento = !!(view.entregaFmt || view.maquininhaFmt || view.adicionalPagamentoFmt);
@@ -366,8 +410,30 @@ export function CheckoutPage({ cart, onBack, onSuccess, deliveryMode, deliveryEt
         {view.adicionalPagamentoFmt && (
           <div className="summary-item"><span>Retorno do dinheiro ao estabelecimento</span><span>{view.adicionalPagamentoFmt}</span></div>
         )}
+        {view.descontoFidelidadeFmt && (
+          <div className="summary-item" style={{color:'#15803D',fontWeight:700}}>
+            <span>🎁 Desconto fidelidade ({view.loyaltyDiscountPct}%)</span><span>-{view.descontoFidelidadeFmt}</span>
+          </div>
+        )}
         <div className="summary-total"><span>Total</span><span>{view.total}</span></div>
       </div>
+      {/* REF-LOYALTY-02 · Onda 4: aplicacao automatica -- so' informa, nao pede nenhuma decisao do
+          cliente (nao ha checkbox: a recompensa e' usada sempre que disponivel, mesmo comportamento
+          aprovado). recompensaNegada cobre o caso raro em que o servidor ja recusou nesta mesma
+          tentativa (ex.: 2 abas) -- some o aviso pra nao prometer de novo o que acabou de falhar. */}
+      {loyaltyReward && !recompensaNegada && (
+        <div style={{
+          display:'flex',gap:10,alignItems:'flex-start',
+          background:'#F0FDF4',border:'1px solid #BBF7D0',borderRadius:12,
+          padding:'12px 14px',marginBottom:12,
+        }}>
+          <span style={{fontSize:18,lineHeight:1.2,flexShrink:0}}>🎁</span>
+          <div style={{fontSize:13,color:'#166534'}}>
+            Sua recompensa de fidelidade ({loyalty.estado.discount}% de desconto) será aplicada
+            automaticamente neste pedido.
+          </div>
+        </div>
+      )}
       <div className="form-group">
         <label className="form-label" htmlFor="checkout-nome-input">Nome completo *</label>
         <input id="checkout-nome-input" className="form-input" data-testid="checkout-nome" placeholder="Seu nome" value={form.nome} onChange={e=>upd('nome',e.target.value)}/>

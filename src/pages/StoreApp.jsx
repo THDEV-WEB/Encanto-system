@@ -110,10 +110,11 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
   const [menuAberto, setMenuAberto] = useState(false);
   /* ── Programa de Fidelidade (REF-LOYALTY-01) ── fonte unica: Supabase (get_my_loyalty), por CLIENTE.
      O visitante nao-logado ve zeros (fidelidade nao pertence ao navegador). O cliente logado ve o
-     PROPRIO saldo, sincronizado entre dispositivos. localStorage e so cache (dentro do hook). */
-  const { estado: loyalty, temCadastro, resgatar: resgatarFidelidade } = useLoyalty();
-  const [resgatando,  setResgatando]  = useState(false);
-  const [resgateErro, setResgateErro] = useState('');
+     PROPRIO saldo, sincronizado entre dispositivos. localStorage e so cache (dentro do hook).
+     REF-LOYALTY-02 · Onda 4: resgate deixou de ser uma acao autonoma aqui (nao ha mais botao "usar
+     desconto agora" desconectado de pedido) -- a recompensa e' aplicada automaticamente pelo backend
+     dentro de create_order (ver CheckoutPage.jsx), este modal so' informa o estado. */
+  const { estado: loyalty, temCadastro } = useLoyalty();
   const loyaltyConfig  = { required: loyalty.required, discount: loyalty.discount };
   const loyaltyEnabled = loyalty.enabled;                              // programa ligado?
   const loyaltyCount   = loyalty.stamps;
@@ -637,34 +638,23 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
                       Você ganhou {loyaltyConfig.discount}% de desconto no próximo pedido!
                     </p>
                     <p style={{fontSize:13,color:'#166534',lineHeight:1.5}}>
-                      Informe ao atendente no momento da finalização do pedido.
-                      O resgate somente poderá ser feito pelo próprio participante.
+                      {/* REF-LOYALTY-02 · Onda 4: nao promete mais "informe ao atendente" -- o backend
+                          aplica o desconto sozinho, dentro do proprio pedido (create_order), no
+                          momento de finalizar a compra. */}
+                      O desconto será aplicado automaticamente no seu próximo pedido — não precisa
+                      pedir nada, é só finalizar a compra normalmente.
                     </p>
                   </div>
                   <button
-                    disabled={resgatando}
-                    onClick={async ()=>{
-                      /* REF-LOYALTY-01: resgate no BACKEND (redeem_reward, atomico). Consome a recompensa
-                         e reinicia o ciclo no Supabase — nunca no navegador. */
-                      if (resgatando) return;
-                      setResgatando(true); setResgateErro('');
-                      const r = await resgatarFidelidade();
-                      setResgatando(false);
-                      if (r.ok) { setShowLoyalty(false); }
-                      else setResgateErro(r.error === 'offline'
-                        ? 'Sem conexão — tente novamente.'
-                        : 'Não foi possível resgatar agora. Tente novamente.');
-                    }}
+                    onClick={()=>setShowLoyalty(false)}
                     style={{
                       padding:'13px 32px',borderRadius:12,border:'none',
                       background:'linear-gradient(135deg,#16A34A,#15803D)',
-                      color:'#fff',fontWeight:700,fontSize:15,cursor:resgatando?'default':'pointer',
-                      opacity:resgatando?0.7:1,
+                      color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer',
                       fontFamily:'var(--font-body)',boxShadow:'0 4px 16px rgba(22,163,74,.3)',
                     }}>
-                    {resgatando ? 'Resgatando…' : '✅ Usar desconto agora'}
+                    🛍️ Fazer meu pedido
                   </button>
-                  {resgateErro && <p style={{fontSize:13,color:'#DC2626',marginTop:12,fontWeight:600}}>{resgateErro}</p>}
                 </div>
               ) : (
                 <>
@@ -754,7 +744,8 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
               {[
                 `Peça ${loyaltyConfig.required} vezes e ganhe ${loyaltyConfig.discount}% de desconto no próximo pedido.`,
                 'O pedido só contabiliza após ser aprovado ou finalizado pela loja.',
-                'O valor do frete não é contabilizado — somente os products.',
+                'O valor do frete não é contabilizado — somente os produtos.',
+                'O desconto é aplicado automaticamente no pedido — não precisa informar nada à loja.',
                 'Após o resgate, a pontuação é zerada e o acúmulo reinicia.',
                 'As recompensas não são cumulativas — apenas 1 por ciclo.',
                 'A mecânica do programa pode ser alterada a qualquer momento pela loja.',

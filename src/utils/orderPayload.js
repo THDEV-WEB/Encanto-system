@@ -61,7 +61,13 @@ export function buildOrderArgs(cart, form, endereco, requestId, enderecoId, resu
                   ...(extra.origemPedido ? { origem_pedido: extra.origemPedido } : {}),
                   /* REF-MESA-02 · Onda 5: prova de posse do QR -- quando presente, create_order()
                      IGNORA mesa_identificador do payload e resolve a mesa a partir deste token. */
-                  ...(extra.mesaQrToken ? { mesa_qr_token: extra.mesaQrToken } : {}) };
+                  ...(extra.mesaQrToken ? { mesa_qr_token: extra.mesaQrToken } : {}),
+                  /* REF-LOYALTY-02 · Onda 4: mesmo espirito ADVISORY-de-intencao dos demais campos de
+                     extra -- so' diz que o cliente QUER usar a recompensa; create_order() recalcula
+                     elegibilidade/percentual/valor do zero no servidor (nunca confia neste booleano
+                     pra aplicar desconto nenhum, so' pra decidir SE tenta). Ausente preserva 100% o
+                     comportamento anterior (nenhum pedido usa recompensa por padrao). */
+                  ...(extra.usarRecompensaFidelidade ? { usar_recompensa_fidelidade: true } : {}) };
   const items = cart.items.map(i => {
     const pu = precoUnitario(i);
     return {
@@ -123,6 +129,9 @@ export function buildOrderConfirmationMessage(customer, order, items, orderId, o
     delivery_fee: order.delivery_fee,
     maquininha_fee: order.maquininha_fee,
     adicional_pagamento_fee: order.adicional_pagamento_fee,
+    /* REF-LOYALTY-02 · Onda 4: valor AUTORITATIVO devolvido por create_order (nunca calculado aqui) --
+       ausente/0 preserva 100% o comportamento anterior (pedido sem recompensa usada). */
+    desconto_fidelidade: order.desconto_fidelidade || 0,
   };
   const vm = buildComanda(orderSnapshot, {
     companyInfo: opts.companyInfo,
@@ -141,16 +150,32 @@ export function buildOrderConfirmationMessage(customer, order, items, orderId, o
    `total` passa a refletir o TOTAL do resumo (subtotal + taxa + maquininha) — o valor real cobrado do
    cliente. entregaFmt/maquininhaFmt ficam `null` quando a parcela é zero (o componente decide se omite a
    linha) — nunca uma string "R$ 0,00" enganosa. */
-export function buildCheckoutView(cart, resumo) {
+/* REF-LOYALTY-02 · Onda 4: `loyalty` (opcional, {available, discountPct}) é uma ESTIMATIVA client-side
+   pra transparência antes de finalizar — nunca a fonte de verdade (create_order recalcula tudo do
+   zero no servidor, ver checkout.submit). Incide SÓ sobre o subtotal de produtos (decisão de negócio
+   #2: nunca sobre entrega/maquininha/adicional), mesmo princípio de sempre. Ausente/`available:false`
+   preserva 100% o comportamento anterior. */
+export function buildCheckoutView(cart, resumo, loyalty) {
   const itens = cart.items.map(i => ({ key: i._key, nome: i.nome, qty: i.qty, valor: fmt(precoLinha(i)) }));
-  if (!resumo) return { itens, total: fmt(cart.total) };
+  const temRecompensa = !!(loyalty && loyalty.available && loyalty.discountPct > 0);
+  const descontoEstimado = temRecompensa ? Math.round(cart.total * loyalty.discountPct / 100 * 100) / 100 : 0;
+  if (!resumo) {
+    return {
+      itens,
+      total: fmt(cart.total - descontoEstimado),
+      descontoFidelidadeFmt: temRecompensa ? fmt(descontoEstimado) : null,
+      loyaltyDiscountPct: temRecompensa ? loyalty.discountPct : null,
+    };
+  }
   return {
     itens,
     subtotal: fmt(resumo.subtotal),
     entregaFmt: resumo.deliveryFee > 0 ? fmt(resumo.deliveryFee) : null,
     maquininhaFmt: resumo.maquininhaFee > 0 ? fmt(resumo.maquininhaFee) : null,
     adicionalPagamentoFmt: resumo.adicionalPagamentoFee > 0 ? fmt(resumo.adicionalPagamentoFee) : null,
-    total: fmt(resumo.total),
+    descontoFidelidadeFmt: temRecompensa ? fmt(descontoEstimado) : null,
+    loyaltyDiscountPct: temRecompensa ? loyalty.discountPct : null,
+    total: fmt(resumo.total - descontoEstimado),
   };
 }
 

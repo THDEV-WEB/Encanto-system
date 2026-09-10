@@ -192,7 +192,12 @@ export function buildComanda(order, opts = {}) {
   const entrega = Number(o?.delivery_fee) || 0;
   const maquininha = Number(o?.maquininha_fee) || 0;
   const adicionalPagamento = Number(o?.adicional_pagamento_fee) || 0;
-  const delta = Math.round((total - subtotal - entrega - maquininha - adicionalPagamento) * 100) / 100;   // residuo AINDA nao explicado por item/entrega/maquininha/adicional
+  /* REF-LOYALTY-02 · Onda 4: 4o campo EXPLICITO (0 por default de coluna em pedidos anteriores a esta
+     onda, mesma logica de entrega/maquininha/adicionalPagamento). orders.total ja vem liquido do
+     desconto desde a Onda 2 (total = subtotal - desconto_fidelidade + taxas) -- soma de volta no
+     residuo abaixo pra nao contar 2x (uma vez aqui, outra no "ajuste" generico). */
+  const descontoFidelidade = Number(o?.desconto_fidelidade) || 0;
+  const delta = Math.round((total - subtotal - entrega - maquininha - adicionalPagamento + descontoFidelidade) * 100) / 100;   // residuo AINDA nao explicado por item/entrega/maquininha/adicional/fidelidade
 
   const totalPedidosCliente = Number.isFinite(opts.totalPedidosCliente) ? opts.totalPedidosCliente : null;
 
@@ -252,6 +257,9 @@ export function buildComanda(order, opts = {}) {
       adicionalPagamento,
       adicionalPagamentoFmt: fmt(adicionalPagamento),
       mostrarAdicionalPagamento: adicionalPagamento >= 0.01,
+      descontoFidelidade,
+      descontoFidelidadeFmt: fmt(descontoFidelidade),
+      mostrarDescontoFidelidade: descontoFidelidade >= 0.01,
       delta,
       deltaFmt: fmt(Math.abs(delta)),
       deltaLabel: delta > 0 ? 'Taxa de entrega / ajuste' : 'Desconto',
