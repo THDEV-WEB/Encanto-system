@@ -1,0 +1,312 @@
+-- ============================================================================
+-- REF-LOYALTY-02 · Onda 2 — ROLLBACK
+-- ----------------------------------------------------------------------------
+-- Reverte migrations/REF-LOYALTY-02-onda2-integracao-pedido.sql: restaura create_order()
+-- byte-a-byte como em REF-MESA-02-onda6-abertura-implicita.sql, restaura redeem_reward() como
+-- em REF-LOYALTY-02-onda1-fundacao.sql (sem delegar a _redeem_loyalty_for_order), e remove a
+-- funcao interna nova. Nenhuma das 2 assinaturas publicas muda -- CREATE OR REPLACE simples,
+-- sem DROP.
+-- ============================================================================
+
+BEGIN;
+
+CREATE OR REPLACE FUNCTION public.create_order(p_customer jsonb, p_order jsonb, p_items jsonb, p_request_id uuid DEFAULT NULL::uuid, p_store_id uuid DEFAULT default_store_id())
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'public'
+AS $function$
+declare
+  v_customer_id uuid; v_order_id uuid;
+  v_name   text := nullif(btrim(p_customer->>'name'), '');
+  v_phone  text := public.normalize_phone(p_customer->>'phone');
+  v_total  numeric;
+  v_pay    text := nullif(btrim(p_order->>'payment_method'), '');
+  v_addr   text := nullif(btrim(p_order->>'address'), '');
+  v_status text := coalesce(nullif(btrim(p_order->>'status'), ''), 'recebido');
+  v_obs    text := nullif(btrim(p_order->>'observacoes'), '');
+  v_delivery_fee    numeric;
+  v_maquininha_fee  numeric;
+  v_adicional_pagamento_fee numeric;
+  v_retirada        boolean := coalesce((nullif(btrim(p_order->>'retirada'), ''))::boolean, false);
+  v_tipo_pedido     text := coalesce(nullif(btrim(p_order->>'tipo_pedido'), ''), case when v_retirada then 'retirada' else 'entrega' end);
+  v_origem_pedido   text := coalesce(nullif(btrim(p_order->>'origem_pedido'), ''), 'storefront');
+  v_mesa_identificador text := nullif(btrim(p_order->>'mesa_identificador'), '');
+  v_mesa_qr_token   uuid;
+  v_mesa_token_store uuid;
+  v_mesa_session_id uuid;
+  v_mesa_cfg        jsonb;
+  v_endereco_id     uuid := nullif(btrim(p_order->>'endereco_id'), '')::uuid;
+  v_fee_calc        jsonb;
+  v_elem   jsonb; v_err text; v_state text;
+  v_t0     timestamptz := clock_timestamp(); v_dur numeric;
+  v_log    jsonb := jsonb_build_object(
+              'n_items', case when jsonb_typeof(p_items)='array' then jsonb_array_length(p_items) else null end,
+              'total', p_order->>'total', 'has_request_id', (p_request_id is not null),
+              'tipo_pedido', v_tipo_pedido, 'origem_pedido', v_origem_pedido);
+  v_tenant       uuid := nullif(auth.jwt()->>'tenant_id', '')::uuid;
+  v_store_id     uuid;
+  v_items_resolved jsonb := '[]'::jsonb;
+  v_pid            uuid;
+  v_calc           jsonb;
+  v_item_price     numeric;
+begin
+  if p_request_id is not null then
+    select id into v_order_id from public.orders where request_id = p_request_id;
+    if v_order_id is not null then return jsonb_build_object('ok', true, 'order_id', v_order_id, 'idempotent', true); end if;
+  end if;
+
+  if not public._rate_limit_hit('create_order', 60, interval '10 minutes') then
+    return jsonb_build_object('ok', false, 'error', 'muitas tentativas, aguarde um momento');
+  end if;
+
+  if v_tenant is not null then
+    if v_tenant <> p_store_id then
+      return jsonb_build_object('ok', false, 'error', 'loja invalida');
+    end if;
+    v_store_id := p_store_id;
+  else
+    v_store_id := public.resolve_store_from_origin();
+    if v_store_id is null then
+      return jsonb_build_object('ok', false, 'error', 'loja nao identificada');
+    end if;
+  end if;
+
+  if v_tipo_pedido = 'mesa' then
+    v_mesa_cfg := public.get_mesa_config(v_store_id);
+    if not coalesce((v_mesa_cfg->>'habilitada')::boolean, false) then
+      return jsonb_build_object('ok', false, 'error', 'modalidade indisponivel para esta loja');
+    end if;
+    if v_origem_pedido = 'qr_mesa' then
+      if not coalesce((v_mesa_cfg->>'canal_qr')::boolean, false) then
+        return jsonb_build_object('ok', false, 'error', 'canal indisponivel para esta loja');
+      end if;
+      v_mesa_qr_token := nullif(btrim(p_order->>'mesa_qr_token'), '')::uuid;
+      if v_mesa_qr_token is null then
+        return jsonb_build_object('ok', false, 'error', 'canal indisponivel para esta loja');
+      end if;
+      select m.store_id, m.identificador into v_mesa_token_store, v_mesa_identificador
+        from public.mesas m where m.qr_token = v_mesa_qr_token;
+      if v_mesa_token_store is null or v_mesa_token_store <> v_store_id then
+        return jsonb_build_object('ok', false, 'error', 'canal indisponivel para esta loja');
+      end if;
+    end if;
+    if v_origem_pedido = 'admin_garcom' then
+      if not coalesce((v_mesa_cfg->>'canal_admin')::boolean, false) then
+        return jsonb_build_object('ok', false, 'error', 'canal indisponivel para esta loja');
+      end if;
+      if not public.is_admin_of(v_store_id) then
+        return jsonb_build_object('ok', false, 'error', 'sem permissao');
+      end if;
+    end if;
+  elsif v_origem_pedido in ('qr_mesa', 'admin_garcom') then
+    return jsonb_build_object('ok', false, 'error', 'canal indisponivel para esta loja');
+  end if;
+
+  begin
+    if p_customer is null or jsonb_typeof(p_customer) <> 'object' then raise exception 'p_customer ausente/invalido'; end if;
+    if v_name  is null then raise exception 'name do cliente e obrigatorio'; end if;
+    if v_phone is null then raise exception 'telefone do cliente e obrigatorio'; end if;
+    if p_order is null or jsonb_typeof(p_order) <> 'object' then raise exception 'p_order ausente/invalido'; end if;
+    if v_pay  is null then raise exception 'payment_method e obrigatorio'; end if;
+
+    if v_tipo_pedido not in ('entrega', 'retirada', 'mesa') then
+      raise exception 'tipo_pedido invalido';
+    end if;
+    if v_origem_pedido not in ('storefront', 'qr_mesa', 'admin_garcom') then
+      raise exception 'origem_pedido invalido';
+    end if;
+    if v_tipo_pedido = 'mesa' then
+      if v_mesa_identificador is null then raise exception 'identificacao da mesa e obrigatoria'; end if;
+      if v_addr is null then v_addr := 'Mesa ' || v_mesa_identificador; end if;
+    elsif v_mesa_identificador is not null then
+      raise exception 'mesa_identificador so e valido para tipo_pedido mesa';
+    end if;
+
+    if v_addr is null then raise exception 'address e obrigatorio'; end if;
+
+    if v_endereco_id is not null then
+      if auth.uid() is not null then
+        if not exists (
+          select 1 from public.addresses a
+          where a.id = v_endereco_id and a.store_id = v_store_id
+            and (a.customer_id is null or a.customer_id in (select c.id from public.customers c where c.auth_user_id = auth.uid()))
+        ) then
+          v_endereco_id := null;
+        end if;
+      else
+        if not exists (
+          select 1 from public.addresses a where a.id = v_endereco_id and a.store_id = v_store_id and a.customer_id is null
+        ) then
+          v_endereco_id := null;
+        end if;
+      end if;
+    end if;
+
+    v_fee_calc := public._resolve_delivery_fee(v_store_id, (v_tipo_pedido <> 'entrega'), v_pay, v_endereco_id);
+    v_delivery_fee := (v_fee_calc->>'delivery_fee')::numeric;
+    v_maquininha_fee := (v_fee_calc->>'maquininha_fee')::numeric;
+    v_adicional_pagamento_fee := (v_fee_calc->>'adicional_pagamento_fee')::numeric;
+
+    if (p_order ? 'delivery_fee' and round(coalesce((p_order->>'delivery_fee')::numeric,0)*100) <> round(v_delivery_fee*100))
+       or (p_order ? 'maquininha_fee' and round(coalesce((p_order->>'maquininha_fee')::numeric,0)*100) <> round(v_maquininha_fee*100))
+       or (p_order ? 'adicional_pagamento_fee' and round(coalesce((p_order->>'adicional_pagamento_fee')::numeric,0)*100) <> round(v_adicional_pagamento_fee*100))
+    then
+      return jsonb_build_object('ok', false, 'error', 'valor da entrega foi atualizado, confirme novamente',
+        'divergencia_valor', true, 'delivery_fee', v_delivery_fee, 'maquininha_fee', v_maquininha_fee,
+        'adicional_pagamento_fee', v_adicional_pagamento_fee);
+    end if;
+
+    if v_tipo_pedido = 'mesa' and coalesce((v_mesa_cfg->>'sessao_habilitada')::boolean, false)
+       and v_origem_pedido in ('qr_mesa', 'admin_garcom') then
+      v_mesa_session_id := public._get_or_open_mesa_session(
+        v_store_id, v_mesa_identificador, v_origem_pedido,
+        case when v_origem_pedido = 'admin_garcom' then auth.uid() else null end
+      );
+    end if;
+
+    if p_items is null or jsonb_typeof(p_items) <> 'array' then raise exception 'p_items deve ser um array'; end if;
+    if jsonb_array_length(p_items) = 0 then raise exception 'p_items nao pode ser vazio'; end if;
+    for v_elem in select value from jsonb_array_elements(p_items) loop
+      if nullif(btrim(v_elem->>'nome_produto'), '') is null then raise exception 'item sem nome_produto'; end if;
+      if nullif(btrim(v_elem->>'quantity'), '') is null or (v_elem->>'quantity')::numeric <= 0 then
+        raise exception 'item "%" com quantity invalida', v_elem->>'nome_produto'; end if;
+
+      v_pid := nullif(btrim(v_elem->>'product_id'), '')::uuid;
+      if v_pid is null then
+        raise exception 'item "%" sem produto valido', v_elem->>'nome_produto';
+      end if;
+
+      v_calc := public._resolve_item_pricing(v_store_id, v_pid, nullif(btrim(v_elem->>'tamanho_label'), ''),
+                                              coalesce(v_elem->'adicionais', '[]'::jsonb));
+      v_item_price := (v_calc->>'preco_unitario')::numeric;
+      v_items_resolved := v_items_resolved || jsonb_build_array(jsonb_build_object(
+        'product_id', v_pid, 'nome_produto', v_elem->>'nome_produto',
+        'quantity', (v_elem->>'quantity')::int, 'price', v_item_price, 'preco_unitario', v_item_price,
+        'adicionais', v_calc->'adicionais', 'observacoes', nullif(btrim(v_elem->>'observacoes'), '')
+      ));
+    end loop;
+
+    select coalesce(sum((item->>'preco_unitario')::numeric * (item->>'quantity')::numeric), 0)
+      into v_total
+      from jsonb_array_elements(v_items_resolved) as t(item);
+    v_total := v_total + v_delivery_fee + v_maquininha_fee + v_adicional_pagamento_fee;
+    if v_total <= 0 then raise exception 'total deve ser > 0 (recebido %)', v_total; end if;
+
+    insert into public.customers (name, phone, store_id) values (v_name, v_phone, v_store_id)
+      on conflict (store_id, phone) do update
+        set name = case
+          when public.customers.auth_user_id is null or public.customers.auth_user_id = auth.uid()
+            then excluded.name
+          else public.customers.name
+        end
+      returning id into v_customer_id;
+    insert into public.orders (customer_id, total, status, payment_method, address, observacoes, request_id, endereco_id, delivery_fee, maquininha_fee, adicional_pagamento_fee, store_id, tipo_pedido, origem_pedido, mesa_identificador, mesa_session_id)
+      values (v_customer_id, v_total, v_status, v_pay, v_addr, v_obs, p_request_id,
+              v_endereco_id, v_delivery_fee, v_maquininha_fee, v_adicional_pagamento_fee, v_store_id,
+              v_tipo_pedido, v_origem_pedido, v_mesa_identificador, v_mesa_session_id) returning id into v_order_id;
+    insert into public.order_items (order_id, product_id, nome_produto, quantity, price, preco_unitario, adicionais, observacoes, store_id)
+      select v_order_id, (item->>'product_id')::uuid, item->>'nome_produto',
+             (item->>'quantity')::int, (item->>'price')::numeric, (item->>'preco_unitario')::numeric,
+             coalesce(item->'adicionais','[]'::jsonb), item->>'observacoes', v_store_id
+      from jsonb_array_elements(v_items_resolved) as t(item);
+
+    begin
+      perform public.loyalty_grant(v_customer_id, v_order_id);
+    exception when others then
+      null;
+    end;
+
+    return jsonb_build_object('ok', true, 'order_id', v_order_id, 'mesa_session_id', v_mesa_session_id);
+  exception
+    when unique_violation then
+      if p_request_id is not null then
+        select id into v_order_id from public.orders where request_id = p_request_id;
+        if v_order_id is not null then return jsonb_build_object('ok', true, 'order_id', v_order_id, 'idempotent', true); end if;
+      end if;
+      v_err := sqlerrm; v_state := sqlstate; v_dur := extract(epoch from clock_timestamp()-v_t0)*1000;
+      begin insert into public.application_logs(module,operation,entity,entity_id,request_id,rpc,version,duration_ms,level,message,payload,sqlstate,context,origin)
+        values('orders','create_order','order',null,p_request_id,'create_order','mesa-02-onda6-abertura-implicita',v_dur,'error',v_err,v_log,v_state,'unique_violation',current_user);
+      exception when others then null; end;
+      return jsonb_build_object('ok', false, 'error', v_err, 'sqlstate', v_state);
+    when others then
+      v_err := sqlerrm; v_state := sqlstate; v_dur := extract(epoch from clock_timestamp()-v_t0)*1000;
+      begin insert into public.application_logs(module,operation,entity,entity_id,request_id,rpc,version,duration_ms,level,message,payload,sqlstate,context,origin)
+        values('orders','create_order','order',null,p_request_id,'create_order','mesa-02-onda6-abertura-implicita',v_dur,'error',v_err,v_log,v_state,'create_order',current_user);
+      exception when others then null; end;
+      return jsonb_build_object('ok', false, 'error', v_err, 'sqlstate', v_state);
+  end;
+end;$function$;
+
+CREATE OR REPLACE FUNCTION public.redeem_reward(
+  p_customer_id uuid DEFAULT NULL::uuid,
+  p_store_id uuid DEFAULT public.default_store_id(),
+  p_order_id uuid DEFAULT NULL::uuid,
+  p_subtotal_itens numeric DEFAULT NULL::numeric
+)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'public'
+AS $function$
+declare
+  v_uid      uuid := auth.uid();
+  v_cid      uuid := p_customer_id;
+  v_required int;
+  v_discount int;
+  v_enabled  boolean;
+  v_store    uuid;
+  v_admin    boolean := false;
+  v_stamps   int;
+  v_discount_amount numeric;
+begin
+  if v_cid is not null then
+    select store_id into v_store from public.customers where id = v_cid;
+    if v_store is not null then v_admin := public.is_admin_of(v_store); end if;
+  end if;
+
+  if v_admin then
+    null;
+  else
+    v_store := p_store_id;
+    v_enabled := coalesce((select valor from public.store_settings where store_id = v_store and chave = 'loyalty_enabled'), 'false') <> 'false';
+    if not v_enabled then return jsonb_build_object('ok', false, 'error', 'programa desativado'); end if;
+    if v_uid is null then return jsonb_build_object('ok', false, 'error', 'nao autenticado'); end if;
+    select id, store_id into v_cid, v_store from public.customers where auth_user_id = v_uid and store_id = p_store_id limit 1;
+    if v_cid is null then return jsonb_build_object('ok', false, 'error', 'cliente sem cadastro'); end if;
+    if p_customer_id is not null and p_customer_id <> v_cid then
+      return jsonb_build_object('ok', false, 'error', 'sem permissao');
+    end if;
+  end if;
+
+  v_required := coalesce((select valor from public.store_settings where store_id = v_store and chave = 'loyalty_required'), '10')::int;
+  v_discount := coalesce((select valor from public.store_settings where store_id = v_store and chave = 'loyalty_discount'), '50')::int;
+
+  select stamps into v_stamps from public.loyalty_accounts where customer_id = v_cid for update;
+  if v_stamps is null or v_stamps < v_required then
+    return jsonb_build_object('ok', false, 'error', 'recompensa indisponivel',
+                              'stamps', coalesce(v_stamps,0), 'required', v_required);
+  end if;
+
+  v_discount_amount := case when p_subtotal_itens is not null
+                             then round(p_subtotal_itens * v_discount / 100.0, 2)
+                             else null end;
+
+  update public.loyalty_accounts
+     set stamps = stamps - v_required, rewards_redeemed = rewards_redeemed + 1, updated_at = now()
+   where customer_id = v_cid returning stamps into v_stamps;
+  insert into public.loyalty_events (customer_id, order_id, tipo, delta, stamps_after, origem, note, store_id, discount_pct, discount_amount)
+    values (v_cid, p_order_id, 'redeemed', -v_required, v_stamps, case when v_admin then 'admin' else 'redeem' end,
+            'recompensa ' || v_discount || '%', v_store, v_discount, v_discount_amount);
+
+  return jsonb_build_object('ok', true, 'stamps', v_stamps, 'required', v_required, 'discount', v_discount,
+                            'discount_amount', v_discount_amount,
+                            'rewards_redeemed', (select rewards_redeemed from public.loyalty_accounts where customer_id = v_cid));
+end;
+$function$;
+
+DROP FUNCTION IF EXISTS public._redeem_loyalty_for_order(uuid, uuid, uuid, numeric, text);
+
+NOTIFY pgrst, 'reload schema';
+
+COMMIT;
