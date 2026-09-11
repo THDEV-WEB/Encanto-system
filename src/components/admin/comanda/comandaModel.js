@@ -14,7 +14,7 @@
    Importa so utils/format (folha pura). Contrato de retorno estavel (buildComanda -> objeto sempre
    preenchido; campos ausentes viram null/[] — nunca undefined), para comandaHtml/testes nao precisarem
    de guardas defensivas. */
-import { fmt, fmtDataHoraLoja } from '../../../utils/format.js';
+import { fmt, fmtDataHoraLoja, telefoneExibivel } from '../../../utils/format.js';
 import { textoTempoEntrega } from '../../../services/delivery/deliveryEtaFormat.js';
 
 /* Rotulo de exibicao por GRUPO de adicional (a taxonomia crua vive em utils/addons.js; aqui e so copy).
@@ -229,7 +229,7 @@ export function buildComanda(order, opts = {}) {
     itens,
     cliente: {
       nome: (o?.customers?.name && String(o.customers.name).trim()) || '—',
-      telefone: (o?.customers?.phone && String(o.customers.phone).trim()) || '—',
+      telefone: telefoneExibivel(o?.customers?.phone) || '—',
       totalPedidos: totalPedidosCliente,
     },
     /* REF-COMANDA-ENDERECO-01: estruturado (opts.enderecoEstruturado) vence quando existe — texto

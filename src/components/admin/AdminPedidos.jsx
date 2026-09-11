@@ -22,7 +22,7 @@ import { useState } from 'react';
 import { useOrdersPagina } from '../../hooks/useOrdersPagina.js';
 import { useOrdersStats } from '../../hooks/useOrdersStats.js';
 import { DS } from '../../services/DataService.js';
-import { fmt, fmtDataHoraLoja } from '../../utils/format.js';
+import { fmt, fmtDataHoraLoja, telefoneExibivel } from '../../utils/format.js';
 import { Spinner } from '../ui/Spinner.jsx';
 import { statusInfo, fluxoDoTipo, proximoStatus } from '../pedidos/pedidoStatus.js';
 import { ComandaModal } from './comanda/ComandaModal.jsx';
@@ -89,7 +89,7 @@ function OrderCard({ order, onChanged, onComanda }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginTop: 8, flexWrap: 'wrap' }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: 14 }}>{order.customers?.name || '—'}</div>
-          <div style={{ fontSize: 12, color: 'var(--gray-500,#6B5D50)' }}>{order.customers?.phone || ''}</div>
+          <div style={{ fontSize: 12, color: 'var(--gray-500,#6B5D50)' }}>{telefoneExibivel(order.customers?.phone)}</div>
           {order.address && <div style={{ fontSize: 12, color: 'var(--gray-500,#6B5D50)' }}>{String(order.address).slice(0, 48)}</div>}
         </div>
         <div style={{ textAlign: 'right' }}>

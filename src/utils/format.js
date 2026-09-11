@@ -1,4 +1,10 @@
 export const fmt = v => 'R$\u00a0' + Number(v||0).toFixed(2).replace('.',',');
+/* REF-MESA-02 \u00b7 Onda 19: pedido de mesa lan\u00e7ado pelo gar\u00e7om (canal admin_garcom) pode ficar sem
+   telefone do cliente (virou opcional -- ver create_order) -- nesse caso o servidor grava um
+   placeholder \u00fanico por pedido (prefixo 'sem-telefone-'), nunca um n\u00famero de verdade
+   (normalize_phone() s\u00f3 produz d\u00edgitos). Esconde esse placeholder de qualquer tela que mostra
+   telefone pro humano -- nunca deve aparecer como se fosse um contato real. */
+export const telefoneExibivel = phone => (phone && !String(phone).startsWith('sem-telefone-')) ? String(phone).trim() : '';
 /* REF-BOOT-01 Onda 2 — data/hora de eventos do PEDIDO no fuso da LOJA (America/Sao_Paulo).
    Correcao ISOLADA da tela de acompanhamento: orders/order_events.created_at sao `timestamp without time
    zone` gravados por now() sob sessao UTC -> guardam HORA UTC, mas chegam ao browser SEM offset e o

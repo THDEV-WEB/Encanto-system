@@ -11,6 +11,7 @@ import { test, expect } from '../../fixtures/index.js';
 import { ADMIN_FIXTURE } from '../../support/fixture-accounts.js';
 import { definirMesaConfig, desligarMesaConfig } from '../../support/mesaMode.js';
 import { limparDadosDeTeste } from '../../support/cleanup.js';
+import { supabaseAdmin } from '../../support/supabaseAdmin.js';
 
 test.describe('Novo pedido de mesa (Admin/garçom)', { tag: '@writes' }, () => {
   test.afterEach(async () => {
@@ -58,6 +59,58 @@ test.describe('Novo pedido de mesa (Admin/garçom)', { tag: '@writes' }, () => {
     await expect(adminPedidosPage.comandaDialog).toBeVisible();
     await expect(adminPedidosPage.comandaFrame.getByText('MESA', { exact: true })).toBeVisible();
     await adminPedidosPage.fecharComanda();
+  });
+
+  // REF-MESA-02 · Onda 19: nome/telefone viraram opcionais SÓ neste canal (garçom) -- decisão do
+  // dono, pedir telefone de quem só está sentado numa mesa física soa estranho. Sem os 2 campos, o
+  // pedido ainda é criado (número da mesa continua sendo a identificação real), com nome "Mesa X" e
+  // sem nenhum telefone falso aparecendo em lugar nenhum da UI (comanda mostra "—"). O nome resultante
+  // ("Mesa <numero>") NUNCA começa com o prefixo E2E_TEST_ (limparDadosDeTeste só varre esse prefixo),
+  // então esta limpeza é MANUAL/explícita, por customer_id -- nunca deixa lixo pra próxima execução.
+  test('cria pedido de mesa mesmo sem nome/telefone do cliente -- vira "Mesa X", sem telefone falso na comanda', async ({ adminLoginPage, adminPanel, adminPedidosPage, page }) => {
+    const config = await definirMesaConfig({ habilitada: true, canalAdmin: true });
+    test.skip(config.skipped, 'ambiente de E2E não configurado (.env.e2e)');
+
+    const numeroMesa = `E2E${Date.now() % 100000}`;
+    const nomeEsperado = `Mesa ${numeroMesa}`;
+
+    await adminLoginPage.goto();
+    await adminLoginPage.login(ADMIN_FIXTURE.email, ADMIN_FIXTURE.senha);
+    await adminPanel.abrirAba('pedidos');
+
+    await adminPedidosPage.abrirNovoPedidoMesa();
+    await adminPedidosPage.mesaNumeroInput.fill(numeroMesa);
+    // nome/telefone ficam em branco de propósito -- é isso que o teste prova.
+    await adminPedidosPage.buscaProdutoInput.fill('Agua de Coco');
+    await adminPedidosPage.produtoAdicionarButton('Agua de Coco').click();
+    await adminPedidosPage.novoPedidoDialog.getByRole('button', { name: 'Adicionar ao pedido' }).click();
+    await adminPedidosPage.mesaCriarButton.click();
+    await expect(adminPedidosPage.novoPedidoDialog).toBeHidden();
+
+    try {
+      // "Mesa <numero>" aparece mais de uma vez no card (badge + nome do cliente, que virou o nome
+      // da mesa já que nenhum nome foi informado) -- .first() basta pra confirmar presença.
+      const card = page.locator('[data-testid^="pedido-card-"]').filter({ hasText: nomeEsperado });
+      await expect(card.getByText(nomeEsperado).first()).toBeVisible();
+
+      await card.getByRole('button', { name: /Comanda/ }).click();
+      await expect(adminPedidosPage.comandaDialog).toBeVisible();
+      await expect(adminPedidosPage.comandaFrame.getByText('sem-telefone-')).toHaveCount(0);
+      await adminPedidosPage.fecharComanda();
+    } finally {
+      const admin = supabaseAdmin();
+      if (admin) {
+        const { data: clientes } = await admin.from('customers').select('id').eq('name', nomeEsperado);
+        const customerIds = (clientes || []).map((c) => c.id);
+        if (customerIds.length) {
+          const { data: pedidos } = await admin.from('orders').select('id').in('customer_id', customerIds);
+          const orderIds = (pedidos || []).map((o) => o.id);
+          if (orderIds.length) await admin.from('order_items').delete().in('order_id', orderIds);
+          if (orderIds.length) await admin.from('orders').delete().in('id', orderIds);
+          await admin.from('customers').delete().in('id', customerIds);
+        }
+      }
+    }
   });
 
   test('botão NÃO aparece quando mesa_canal_admin=false (default seguro)', async ({ adminLoginPage, adminPanel, adminPedidosPage }) => {

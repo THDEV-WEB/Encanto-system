@@ -14,7 +14,15 @@
    Preço/total mostrados aqui continuam só ESTIMATIVA — o servidor sempre recalcula de verdade
    (_resolve_item_pricing, create_order).
 
-   Chrome do modal em estilo inline, mesmo padrão de comanda/ComandaModal.jsx (não depende do index.css). */
+   Chrome do modal em estilo inline, mesmo padrão de comanda/ComandaModal.jsx (não depende do index.css).
+
+   REF-MESA-02 · Onda 19: nome/telefone do cliente viram OPCIONAIS aqui (decisão do dono, 2026-09-11)
+   -- pedir telefone de quem só está sentado numa mesa física soa estranho pro garçom (diferente do
+   autoatendimento via QR, onde o próprio cliente digita pra si mesmo -- checkout do cliente continua
+   exigindo os dois, sem mudança). A identificação primária da comanda continua sendo o NÚMERO DA MESA
+   (sempre obrigatório). Sem nome/telefone informado, o servidor (create_order) preenche um nome
+   descritivo ("Mesa X") e um telefone-placeholder único por pedido -- nunca reaproveita/mistura com
+   outro cliente (ver migration da Onda 19). */
 import { useEffect, useState } from 'react';
 import { DS } from '../../services/DataService.js';
 import { newRequestId } from '../../utils/ids.js';
@@ -115,7 +123,6 @@ export function NovoPedidoMesaModal({ onClose, onCriado }) {
   const submit = async () => {
     setErro('');
     if (!mesaIdentificador.trim()) { setErro('Informe o número da mesa.'); return; }
-    if (!nome.trim() || !telefone.trim()) { setErro('Preencha nome e telefone do cliente.'); return; }
     if (itens.length === 0) { setErro('Adicione ao menos um item.'); return; }
     setEnviando(true);
     const customer = { name: nome.trim(), phone: telefone.trim() };
@@ -155,11 +162,12 @@ export function NovoPedidoMesaModal({ onClose, onCriado }) {
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
             <div className="form-group" style={{ flex: 1 }}>
-              <label className="form-label" htmlFor="admin-mesa-nome">Nome do cliente *</label>
-              <input id="admin-mesa-nome" className="form-input" value={nome} onChange={e => setNome(e.target.value)} />
+              <label className="form-label" htmlFor="admin-mesa-nome">Nome do cliente (opcional)</label>
+              <input id="admin-mesa-nome" className="form-input" placeholder="Ex.: fica como &quot;Mesa 07&quot; se deixar em branco"
+                value={nome} onChange={e => setNome(e.target.value)} />
             </div>
             <div className="form-group" style={{ flex: 1 }}>
-              <label className="form-label" htmlFor="admin-mesa-telefone">Telefone *</label>
+              <label className="form-label" htmlFor="admin-mesa-telefone">Telefone (opcional)</label>
               <input id="admin-mesa-telefone" className="form-input" placeholder="(38) 99999-9999"
                 value={telefone} onChange={e => setTelefone(e.target.value)} />
             </div>

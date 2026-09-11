@@ -5,7 +5,7 @@
    total coubesse nessas 100 linhas; a partir daí ficava silenciosamente errado (capado). Os agregados
    agora são calculados no banco, sobre a tabela inteira, sem esse teto. */
 import { useOrdersStats } from '../../hooks/useOrdersStats.js';
-import { fmt, fmtDataHoraLoja } from '../../utils/format.js';
+import { fmt, fmtDataHoraLoja, telefoneExibivel } from '../../utils/format.js';
 
 export function AdminDashboard() {
   /* N=10 (achado REF-REGRESSION-01 · P4, justificando o número antes mágico): este card é um
@@ -82,7 +82,7 @@ export function AdminDashboard() {
                <tr key={o.id}>
                  <td>
                    <div style={{fontWeight:600}}>{o.customers?.name || '—'}</div>
-                   <div style={{fontSize:11,color:'var(--gray-500)'}}>{o.customers?.phone || ''}</div>
+                   <div style={{fontSize:11,color:'var(--gray-500)'}}>{telefoneExibivel(o.customers?.phone)}</div>
                  </td>
                  <td style={{fontWeight:700}}>{fmt(o.total)}</td>
                  <td><span className={`badge ${statusMap[o.status]?.cls||'badge-gray'}`}>
