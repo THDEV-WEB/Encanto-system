@@ -45,6 +45,7 @@ const ProductModal = lazy(() => import('../components/ProductModal/index.jsx').t
 const CartSidebar   = lazy(() => import('../components/CartSidebar.jsx').then(m => ({ default: m.CartSidebar })));
 const CheckoutPage  = lazy(() => import('../components/checkout/CheckoutPage.jsx').then(m => ({ default: m.CheckoutPage })));
 const SuccessPage   = lazy(() => import('../components/checkout/SuccessPage.jsx').then(m => ({ default: m.SuccessPage })));
+const MinhaContaMesaModal = lazy(() => import('../components/MinhaContaMesaModal.jsx').then(m => ({ default: m.MinhaContaMesaModal })));
 
 // REF-CAP-01 · Onda 4: forwardRef repassado até StoreAppContent — único consumidor é o botão físico
 // "voltar" do Android (hooks/useCapacitorBackButton.js via App.jsx), que precisa fechar o que estiver
@@ -99,6 +100,7 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
      confia SOMENTE nele para o canal qr_mesa (mesa_identificador do payload e ignorado nesse canal). */
   const [mesaQrToken, setMesaQrToken] = useState(null);
   useMesaFromQuery(mesaConfig, setDeliveryMode, setMesaIdentificador, setOrigemPedido, setMesaQrToken);
+  const [contaMesaAberta, setContaMesaAberta] = useState(false); // REF-MESA-02 · Onda 18
   /* REF-CHECKOUT-ADDRESS-01: FONTE UNICA do endereco (contexto). O header apenas EXIBE o rotulo e abre
      o modal (abrirEndereco); a edicao/persistencia e do provider. Sem estado paralelo de endereco. */
   const { endereco: enderecoObj, temEndereco, abrirModal: abrirEndereco, limpar: limparEndereco,
@@ -429,7 +431,16 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
         deliveryEta={deliveryEta}
         mesaHabilitada={mesaConfig.habilitada}
         mesaIdentificador={mesaIdentificador}
+        mesaQrToken={mesaQrToken}
+        onVerContaMesa={() => setContaMesaAberta(true)}
       />
+      {/* REF-MESA-02 · Onda 18: conta da mesa (so leitura, sem pagamento pelo cliente) -- so' monta o
+          componente quando de fato aberto, evita chamada de rede a toa em toda navegacao. */}
+      {contaMesaAberta && (
+        <Suspense fallback={null}>
+          <MinhaContaMesaModal qrToken={mesaQrToken} onClose={() => setContaMesaAberta(false)} />
+        </Suspense>
+      )}
 
       {/* ── Progresso de fidelidade mini (abaixo da barra de entrega) — so p/ cliente logado c/ programa ativo ── */}
       {temCadastro && loyaltyEnabled && loyaltyCount>0 && !loyaltyReward && (

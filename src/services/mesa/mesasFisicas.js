@@ -101,3 +101,14 @@ export async function resolverMesaPorToken(qrToken) {
   if (error) return { ok: false, error: error.message };
   return data;
 }
+
+/* REF-MESA-02 · Onda 18: cliente ve (SO LEITURA -- decisao explicita do dono, sem pagamento/divisao
+   pelo cliente) os pedidos+total acumulados da propria mesa. Mesmo padrao de seguranca/publica de
+   resolverMesaPorToken acima -- SO pelo qr_token opaco, nunca por mesa_identificador (evita reabrir o
+   mesmo achado de enumeracao que a Onda 5 ja fechou). */
+export async function consultarMinhaContaMesa(qrToken) {
+  if (!db || !qrToken) return { ok: false, error: 'offline' };
+  const { data, error } = await db.rpc('consultar_minha_conta_mesa', { p_qr_token: qrToken });
+  if (error) return { ok: false, error: error.message };
+  return data;
+}

@@ -17,11 +17,14 @@
    loja, via useMesaConfig em StoreApp) e true — lojas sem a capacidade nunca veem a opcao. Isso e so
    UX (a barreira de seguranca de verdade vive dentro de create_order, ver migration da Onda 1); um
    client adulterado poderia tentar enviar deliveryMode='mesa' mesmo sem essa opcao aparecer aqui, mas
-   o servidor rejeita de qualquer forma. */
-export function DeliveryBar({ deliveryMode, setDeliveryMode, endereco, temEndereco, onEditar, onLimpar, retiradaLabel, deliveryEta, mesaHabilitada, mesaIdentificador }) {
+   o servidor rejeita de qualquer forma.
+
+   REF-MESA-02 · Onda 18: "Ver conta" só aparece com mesaQrToken presente (cliente chegou pelo QR de
+   verdade) -- digitar o número da mesa manualmente nunca dá acesso à conta (mesma barreira de
+   segurança de consultar_minha_conta_mesa, que só resolve pelo token opaco). */
+export function DeliveryBar({ deliveryMode, setDeliveryMode, endereco, temEndereco, onEditar, onLimpar, retiradaLabel, deliveryEta, mesaHabilitada, mesaIdentificador, mesaQrToken, onVerContaMesa }) {
   const entrega = deliveryMode === 'entrega';
   const retirada = deliveryMode === 'retirada';
-  const mesa = deliveryMode === 'mesa';
   return (
     <div className="delivery-bar">
       <div className="delivery-mode-select">
@@ -65,6 +68,10 @@ export function DeliveryBar({ deliveryMode, setDeliveryMode, endereco, temEndere
             )
           ) : retirada ? (
             <span className="delivery-addr-store">{retiradaLabel}</span>
+          ) : mesaQrToken ? (
+            <button type="button" className="delivery-addr-link" onClick={onVerContaMesa} data-testid="ver-conta-mesa-link">
+              🧾 Ver conta da mesa
+            </button>
           ) : (
             <span className="delivery-addr-store">Atendimento presencial</span>
           )}
