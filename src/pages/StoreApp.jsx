@@ -26,6 +26,7 @@ import { useScrollToProduct } from '../hooks/useScrollToProduct.js';     // REF-
 import { useDeliveryEta } from '../hooks/useDeliveryEta.js';             // REF-DELIVERY-01: tempo de entrega (config unica Supabase)
 import { useMesaConfig } from '../hooks/useMesaConfig.js';               // REF-MESA-01 · Onda 2: capacidade de Mesa por loja (fonte unica Supabase)
 import { useMesaFromQuery } from '../hooks/useMesaFromQuery.js';         // REF-MESA-01 · Onda 3: aplica ?mesa= da URL (canal QR)
+import { consultarMinhaContaMesa } from '../services/mesa/mesasFisicas.js'; // REF-MESA-02 · Onda 18 (ajuste): só pra decidir se o link "Ver conta" aparece
 import { useBrowserBackClose } from '../hooks/useBrowserBackClose.js';   // REF-UX-BACKBUTTON-01: "voltar" do navegador fecha overlay em vez de sair do site
 import { useCompanyInfo } from '../hooks/useCompanyInfo.js';             // REF-COMPANY-01: dados institucionais (config unica Supabase)
 import { AddressProvider, useAddress } from '../address/index.js'; // REF-CHECKOUT-ADDRESS-01: fonte unica do endereco (provider)
@@ -101,6 +102,19 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
   const [mesaQrToken, setMesaQrToken] = useState(null);
   useMesaFromQuery(mesaConfig, setDeliveryMode, setMesaIdentificador, setOrigemPedido, setMesaQrToken);
   const [contaMesaAberta, setContaMesaAberta] = useState(false); // REF-MESA-02 · Onda 18
+  /* REF-MESA-02 · Onda 18 (ajuste, 2026-09-11): o link "Ver conta da mesa" só aparece quando já existe
+     pedido na sessão -- sem isso, o cliente que acabou de chegar veria um link "morto" (só mostraria o
+     estado vazio). Checa uma vez quando o token resolve (chegada pelo QR) e liga na hora quando o
+     PRÓPRIO cliente confirma um pedido de mesa (onSuccess do checkout, abaixo) -- sem esperar refetch. */
+  const [contaMesaDisponivel, setContaMesaDisponivel] = useState(false);
+  useEffect(() => {
+    if (!mesaQrToken) return;
+    let cancelado = false;
+    consultarMinhaContaMesa(mesaQrToken).then(r => {
+      if (!cancelado && r.ok && r.aberta) setContaMesaDisponivel(true);
+    });
+    return () => { cancelado = true; };
+  }, [mesaQrToken]);
   /* REF-CHECKOUT-ADDRESS-01: FONTE UNICA do endereco (contexto). O header apenas EXIBE o rotulo e abre
      o modal (abrirEndereco); a edicao/persistencia e do provider. Sem estado paralelo de endereco. */
   const { endereco: enderecoObj, temEndereco, abrirModal: abrirEndereco, limpar: limparEndereco,
@@ -276,7 +290,7 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
     fecharTopo,
   }), [camadasAbertas, fecharTopo]);
 
-  if (page==='checkout') return <Suspense fallback={<Spinner/>}><CheckoutPage cart={cart} deliveryMode={deliveryMode} deliveryEta={deliveryEta} produtosVivos={rawProds} mesaIdentificador={mesaIdentificador} setMesaIdentificador={setMesaIdentificador} origemPedido={origemPedido} mesaQrToken={mesaQrToken} onBack={()=>setPage('home')} onSuccess={msg=>{setWaMsg(msg);setPage('success');}}/></Suspense>;
+  if (page==='checkout') return <Suspense fallback={<Spinner/>}><CheckoutPage cart={cart} deliveryMode={deliveryMode} deliveryEta={deliveryEta} produtosVivos={rawProds} mesaIdentificador={mesaIdentificador} setMesaIdentificador={setMesaIdentificador} origemPedido={origemPedido} mesaQrToken={mesaQrToken} onBack={()=>setPage('home')} onSuccess={msg=>{if(deliveryMode==='mesa')setContaMesaDisponivel(true);setWaMsg(msg);setPage('success');}}/></Suspense>;
   if (page==='success')  return <Suspense fallback={<Spinner/>}><SuccessPage  msg={waMsg} cart={cart} onBack={()=>setPage('home')} deliveryEta={deliveryEta} deliveryMode={deliveryMode} mesaIdentificador={mesaIdentificador} whatsapp={companyInfo.whatsapp} horario={horario}/></Suspense>;
 
   return (
@@ -432,6 +446,7 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
         mesaHabilitada={mesaConfig.habilitada}
         mesaIdentificador={mesaIdentificador}
         mesaQrToken={mesaQrToken}
+        mesaContaDisponivel={contaMesaDisponivel}
         onVerContaMesa={() => setContaMesaAberta(true)}
       />
       {/* REF-MESA-02 · Onda 18: conta da mesa (so leitura, sem pagamento pelo cliente) -- so' monta o

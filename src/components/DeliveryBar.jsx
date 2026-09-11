@@ -21,8 +21,11 @@
 
    REF-MESA-02 · Onda 18: "Ver conta" só aparece com mesaQrToken presente (cliente chegou pelo QR de
    verdade) -- digitar o número da mesa manualmente nunca dá acesso à conta (mesma barreira de
-   segurança de consultar_minha_conta_mesa, que só resolve pelo token opaco). */
-export function DeliveryBar({ deliveryMode, setDeliveryMode, endereco, temEndereco, onEditar, onLimpar, retiradaLabel, deliveryEta, mesaHabilitada, mesaIdentificador, mesaQrToken, onVerContaMesa }) {
+   segurança de consultar_minha_conta_mesa, que só resolve pelo token opaco). Onda 18 (ajuste): além do
+   token, também exige mesaContaDisponivel (StoreApp só liga isso quando a sessão já tem pedido) --
+   antes do primeiro pedido, mesa com QR se comporta como qualquer mesa sem token (texto estático), pra
+   não oferecer um link que só mostraria "nenhum pedido ainda". */
+export function DeliveryBar({ deliveryMode, setDeliveryMode, endereco, temEndereco, onEditar, onLimpar, retiradaLabel, deliveryEta, mesaHabilitada, mesaIdentificador, mesaQrToken, mesaContaDisponivel, onVerContaMesa }) {
   const entrega = deliveryMode === 'entrega';
   const retirada = deliveryMode === 'retirada';
   return (
@@ -68,7 +71,7 @@ export function DeliveryBar({ deliveryMode, setDeliveryMode, endereco, temEndere
             )
           ) : retirada ? (
             <span className="delivery-addr-store">{retiradaLabel}</span>
-          ) : mesaQrToken ? (
+          ) : mesaQrToken && mesaContaDisponivel ? (
             <button type="button" className="delivery-addr-link" onClick={onVerContaMesa} data-testid="ver-conta-mesa-link">
               🧾 Ver conta da mesa
             </button>
