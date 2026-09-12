@@ -629,13 +629,36 @@ Só entra em vigor **após aprovação explícita** e com as decisões do §19 r
   REF-PAYMENT-SEC-02 em andamento em paralelo — avisada antes de aplicar). Commit local `4442541`.
   7/7 testes novos (`scripts/loyalty-02-onda5-test.mjs`) + regressão completa (onda1 14/14, onda2
   12/12, `test:domain`, 26/26 E2E incluindo a trilha de cancelar/reabrir pedido).
-  **Residual conhecido, não fechado:** pagamento `'recusado'` nunca reenviado deixa `orders.status`
-  preso em `'aguardando_pagamento'` pra sempre (o `payment_intent` fica terminal em `'recusado'`,
-  fora do alcance do cron de expiração de 15min) — o trigger só reage a uma mudança real de
-  `status`, que nunca acontece nesse caso específico. Fecharia isso exigiria tocar o webhook de
-  pagamento, propriedade de outra REF — registrado, não resolvido aqui.
-- Nenhuma migration foi aplicada em produção em nenhuma das ondas — só no projeto E2E
-  (`bgzcrovskjbktdxkhemd`), sempre com alvo confirmado antes de qualquer mutação.
+  **Residual que ERA conhecido nesta onda, fechado depois por outra frente:** pagamento
+  `'recusado'` nunca reenviado deixava `orders.status` preso em `'aguardando_pagamento'` pra sempre
+  (o `payment_intent` ficava terminal em `'recusado'`, fora do alcance do cron de expiração de
+  15min). Esse achado foi comunicado à REF-PAYMENT-SEC-02 (sessão paralela), que fechou com sua
+  própria Onda 6 (estende o mesmo cron `_expirar_payment_intents_pendentes` pra também cancelar
+  pedidos com o `payment_intent` mais recente `'recusado'` há +15min) — e a Onda 5 desta REF garante
+  que, quando esse cron cancela o pedido, o resgate consumido é restaurado. Ver "Coordenação entre
+  sessões" abaixo.
+- **Onda 6 — CONCLUÍDA (fecha a decisão pendente que a própria Onda 5 tinha deixado em aberto).**
+  Reabrir um pedido cancelado que já tivesse tido seu resgate restaurado pela Onda 5 não re-debitava
+  nada — o pedido reaberto continuava com o desconto no total *e* o cliente com os selos de volta na
+  conta, duplo benefício às custas da loja. Reabrir é ação normal do Admin (mesmo fluxo do teste
+  "cancelar e reabrir devolve o pedido ao início da trilha"), não caso hipotético. Fix aditivo,
+  espelha exatamente o bloco de selo GANHO no mesmo branch de reabertura: se existir um evento
+  `cancel_trigger_resgate` para o pedido e ainda não houver reversão, re-debita `stamps`/soma
+  `rewards_redeemed`, idempotente via `origem='cancel_trigger_resgate_revert'`. **Fail-closed:** se o
+  cliente já tiver gasto os selos restaurados em outro resgate nesse meio-tempo (saldo insuficiente),
+  não debita automaticamente — só grava um evento de auditoria
+  (`cancel_trigger_resgate_revert_pendente`) pra revisão manual, em vez de arriscar saldo negativo.
+  Commit local `92b47d1`. 7/7 testes novos (`scripts/loyalty-02-onda6-test.mjs`, incluindo o caso
+  fail-closed) + regressão completa (onda1 14/14, onda2 12/12, onda5 7/7 — `B4` do onda5-test.mjs
+  atualizado para refletir que reabrir agora re-debita de propósito — 13/13 Playwright fidelidade/
+  admin-fidelidade/admin-pedidos-status, `test:domain`, lint sem novos erros, typecheck e build
+  verdes).
+- **Estado real em produção (confirmado por leitura direta do banco `hvbcdxsagkjtfjwvnslo` em
+  2026-09-12, não hipótese):** as Ondas 1, 2, 4 e 5 desta REF **já estão aplicadas em produção e já
+  foram enviadas a `origin/main`** — descoberto durante esta sessão, não fruto de uma decisão
+  registrada aqui sobre quando/quem aplicou. Zero uso real até essa data (0 pedidos com
+  `desconto_fidelidade > 0`, 0 eventos `redeemed`). A Onda 6 (acima) ainda é só commit local,
+  aguardando autorização antes de ir a produção, como as demais ondas foram tratadas nesta REF.
 - **Coordenação entre sessões:** durante a Onda 2, uma sessão paralela (`projetos-58`) trabalhando
   na REF-PAYMENT-SEC-01/02 no mesmo repositório local identificou e resolveu independentemente o
   mesmo achado do §14 (Onda 3). As duas sessões se coordenaram (mensagens diretas) antes de qualquer
@@ -643,11 +666,13 @@ Só entra em vigor **após aprovação explícita** e com as decisões do §19 r
   arquivos desta REF byte-a-byte idênticos antes/depois do merge (`ceb79e1`) que consolidou as duas
   frentes em `origin/main`. Na Onda 5, o achado da interação Onda2×HIGH-01 foi comunicado à outra
   sessão antes da implementação (mesmo protocolo), com escopo explicitamente limitado a
-  `loyalty_void_on_cancel` para não colidir com o trabalho dela em `create_order`/webhook.
+  `loyalty_void_on_cancel` para não colidir com o trabalho dela em `create_order`/webhook — a mesma
+  sessão fechou o residual do pagamento recusado com sua própria Onda 6, creditando o achado a esta
+  REF. Na Onda 6 desta REF, o mesmo protocolo de aviso prévio foi repetido antes de qualquer edição.
 
 ## Gate final (Onda 0)
 
 Auditoria concluída. Nenhuma alteração foi feita em código, migration, RPC, RLS, configuração ou dado
 real nesta onda. Nenhum commit, nenhum push, nenhuma consulta ao banco de produção foi realizada
-nesta sessão. As ondas de implementação subsequentes (1-5) estão documentadas na seção "Execução"
+nesta sessão. As ondas de implementação subsequentes (1-6) estão documentadas na seção "Execução"
 acima.
