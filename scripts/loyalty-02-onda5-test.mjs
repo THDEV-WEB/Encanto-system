@@ -146,13 +146,19 @@ try {
   });
 
   // ── B4: idempotencia — mesmo pedido cancela, reabre, cancela de novo -> NAO restaura 2x ──
-  await check('B4', 'IDEMPOTENCIA: mesmo pedido resgatado reabre e cancela de novo -> NAO restaura 2x', async () => {
+  // NOTA (pos-Onda6): reabrir agora re-debita de proposito (fecha a decisao pendente que esta
+  // migration tinha deixado em aberto -- ver REF-LOYALTY-02-onda6-redebita-resgate-reaberto.sql).
+  // Entao o "reabre" abaixo legitimamente leva stamps de volta a 0 (rewards_redeemed volta a 1)
+  // ANTES do "cancela de novo" -- o que esta B4 prova agora e' que o cancelamento seguinte NAO
+  // dispara uma SEGUNDA restauracao (continua existindo so' 1 evento 'cancel_trigger_resgate',
+  // mesmo depois do ciclo completo cancelar->reabrir->cancelar).
+  await check('B4', 'IDEMPOTENCIA: mesmo pedido resgatado reabre (Onda6 re-debita) e cancela de novo -> Onda5 NAO restaura 2x', async () => {
     // orderResgateId ja esta cancelado (de B3) com stamps=5 (ja restaurado uma vez)
     await client.query(`UPDATE public.orders SET status='recebido' WHERE id=$1`, [orderResgateId]);
     await client.query(`UPDATE public.orders SET status='cancelado' WHERE id=$1`, [orderResgateId]);
     const acc = await client.query(`SELECT stamps, rewards_redeemed FROM public.loyalty_accounts WHERE customer_id=$1`, [customerId]);
     const evCount = await client.query(`SELECT count(*)::int AS n FROM public.loyalty_events WHERE order_id=$1 AND origem='cancel_trigger_resgate'`, [orderResgateId]);
-    const ok = acc.rows[0].stamps === 5 && evCount.rows[0].n === 1; // continua 5 (nao virou 10), so' 1 evento de restauracao
+    const ok = acc.rows[0].stamps === 0 && acc.rows[0].rewards_redeemed === 1 && evCount.rows[0].n === 1; // Onda6 re-debitou no reabrir; Onda5 nao restaurou 2x no cancelar seguinte
     return { ok, detail: JSON.stringify({ acc: acc.rows[0], eventosRestauracao: evCount.rows[0].n }) };
   });
 
