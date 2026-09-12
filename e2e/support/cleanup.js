@@ -19,13 +19,21 @@ import { CLIENTE_FIXTURE } from './fixture-accounts.js';
 export const PREFIXO_TESTE = 'E2E_TEST_';
 
 /** Apaga pedidos/itens/timeline/fidelidade dos customerIds informados. Ordem respeita FKs (filhos
-    antes dos pais); cada passo é tolerante a tabela ausente/0 linhas. NUNCA apaga `customers`. */
+    antes dos pais); cada passo é tolerante a tabela ausente/0 linhas. NUNCA apaga `customers`.
+
+    Achado (2026-09-12): faltava apagar `payment_intents` antes de `orders` -- pedido com
+    payment_intent fazia o DELETE de `orders` inteiro falhar (payment_intents_order_id_fkey),
+    silenciosamente (só um console.warn, nunca lançava) -- NENHUM pedido daquele lote saía,
+    acumulando indefinidamente a cada execução que tocasse o cliente fixture (achado real: 25
+    pedidos acumulados desde 2026-09-10, o suficiente pra derrubar os testes de Dashboard que
+    assumem "0 pedidos" no estado vazio). */
 async function apagarPedidosEFidelidade(client, customerIds) {
   if (customerIds.length === 0) return;
   const { data: pedidos } = await client.from('orders').select('id').in('customer_id', customerIds);
   const orderIds = (pedidos || []).map((o) => o.id);
 
   const tentativas = [
+    orderIds.length && client.from('payment_intents').delete().in('order_id', orderIds),
     orderIds.length && client.from('order_items').delete().in('order_id', orderIds),
     orderIds.length && client.from('order_events').delete().in('order_id', orderIds),
     client.from('loyalty_events').delete().in('customer_id', customerIds),
