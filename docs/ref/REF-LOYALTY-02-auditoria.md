@@ -653,12 +653,16 @@ Só entra em vigor **após aprovação explícita** e com as decisões do §19 r
   atualizado para refletir que reabrir agora re-debita de propósito — 13/13 Playwright fidelidade/
   admin-fidelidade/admin-pedidos-status, `test:domain`, lint sem novos erros, typecheck e build
   verdes).
-- **Estado real em produção (confirmado por leitura direta do banco `hvbcdxsagkjtfjwvnslo` em
-  2026-09-12, não hipótese):** as Ondas 1, 2, 4 e 5 desta REF **já estão aplicadas em produção e já
-  foram enviadas a `origin/main`** — descoberto durante esta sessão, não fruto de uma decisão
-  registrada aqui sobre quando/quem aplicou. Zero uso real até essa data (0 pedidos com
-  `desconto_fidelidade > 0`, 0 eventos `redeemed`). A Onda 6 (acima) ainda é só commit local,
-  aguardando autorização antes de ir a produção, como as demais ondas foram tratadas nesta REF.
+- **Estado real em produção (confirmado por leitura direta do banco `hvbcdxsagkjtfjwvnslo`):** as
+  Ondas 1, 2 e 4 já estavam aplicadas em produção e enviadas a `origin/main` antes de descobrirmos
+  isso nesta sessão (2026-09-12), sem registro de quando/quem aplicou. A Onda 5 também já estava. A
+  **Onda 6 foi aplicada em produção em 2026-09-12, autorizada explicitamente pelo dono** ("já pode
+  aplicar"), depois de confirmar o alvo real (`hvbcdxsagkjtfjwvnslo`) e o estado anterior (tinha
+  Onda 5, não tinha Onda 6) por leitura direta antes e depois da aplicação. Push isolado (só os
+  arquivos desta Onda, sem nada de outra frente) via cherry-pick pra `origin/main`, commit
+  `06a83fe`/`f36e483` (hashes diferentes do commit local `92b47d1`/`1392e95`, mesmo conteúdo).
+  Todas as 6 ondas desta REF estão hoje ao vivo em produção. Zero uso real até essa data (0 pedidos
+  com `desconto_fidelidade > 0`, 0 eventos `redeemed`).
 - **Coordenação entre sessões:** durante a Onda 2, uma sessão paralela (`projetos-58`) trabalhando
   na REF-PAYMENT-SEC-01/02 no mesmo repositório local identificou e resolveu independentemente o
   mesmo achado do §14 (Onda 3). As duas sessões se coordenaram (mensagens diretas) antes de qualquer
