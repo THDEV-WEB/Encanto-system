@@ -11,14 +11,16 @@
 import { useState } from 'react';
 import { PlatformDashboard } from './PlatformDashboard.jsx';
 import { PlatformTenants } from './PlatformTenants.jsx';
+import { PlatformFaturamento } from './PlatformFaturamento.jsx'; // REF-BILLING-01 · Onda 3
 
 export function PlatformConsole({ onAbrirAdmin, onLogout }) {
   const [tab, setTab] = useState('dashboard');
   const tabs = [
     { id: 'dashboard', icon: '📊', label: 'Dashboard' },
     { id: 'lojas', icon: '🏪', label: 'Lojas' },
+    { id: 'faturamento', icon: '💳', label: 'Faturamento' },
   ];
-  const titles = { dashboard: 'Dashboard da Plataforma', lojas: 'Lojas' };
+  const titles = { dashboard: 'Dashboard da Plataforma', lojas: 'Lojas', faturamento: 'Faturamento' };
 
   return (
     <div className="admin-layout">
@@ -46,6 +48,7 @@ export function PlatformConsole({ onAbrirAdmin, onLogout }) {
         <div className="admin-body">
           {tab === 'dashboard' && <PlatformDashboard onIrParaLojas={() => setTab('lojas')} />}
           {tab === 'lojas' && <PlatformTenants onAbrirAdmin={onAbrirAdmin} />}
+          {tab === 'faturamento' && <PlatformFaturamento />}
         </div>
       </div>
     </div>

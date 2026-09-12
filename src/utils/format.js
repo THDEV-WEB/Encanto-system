@@ -45,6 +45,15 @@ export const dataLojaYMD = v => {
     return `${sp.getUTCFullYear()}-${p(sp.getUTCMonth() + 1)}-${p(sp.getUTCDate())}`;
   }
 };
+/* REF-BILLING-01 · Onda 3 — data de CALENDARIO pura (proximo_vencimento/trial_ate, coluna `date` do
+   Postgres, sem hora nem fuso) -- deliberadamente NAO usa fmtDataHoraLoja: aquele formatador trata a
+   string como um INSTANTE UTC e converte pro fuso America/Sao_Paulo, o que desloca a data em -3h e
+   mostraria o dia ANTERIOR ao gravado. Um `date` puro nao e um instante, e' um dia de calendario --
+   so reformata o texto (YYYY-MM-DD -> DD/MM/YYYY), nunca cria um Date()/aplica timezone. */
+export const fmtDataCalendario = v => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || ''));
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : '-';
+};
 /* Preço de partida — usado no card principal de produtos com múltiplos tamanhos
    (Monte seu Copo, Batidinhas e qualquer produto futuro que siga o mesmo padrão
    de `tamanhos`). Calcula o menor preço entre os tamanhos em vez de assumir que

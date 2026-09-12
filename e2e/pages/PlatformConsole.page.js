@@ -3,7 +3,7 @@
    VALION SISTEMAS, onde um super admin pousa apos o login (ver AdminApp.jsx/AdminAuthedShell). Distinto
    de AdminPanel.page.js (Admin de UMA loja): testids com prefixo "platform-" (nao "admin-"), nunca se
    sobrepoe. */
-const TABS = ['dashboard', 'lojas'];
+const TABS = ['dashboard', 'lojas', 'faturamento'];
 
 export class PlatformConsolePage {
   constructor(page) { this.page = page; }
@@ -50,5 +50,28 @@ export class PlatformConsolePage {
   async reativarLoja(slug) {
     this.page.once('dialog', (d) => d.accept());
     await this.page.getByTestId(`plataforma-ativar-${slug}`).click();
+  }
+
+  // --- Faturamento (REF-BILLING-01 · Onda 3) ---
+  linhaFaturamento(slug) { return this.page.locator(`[data-testid="plataforma-faturamento-linha-${slug}"]`); }
+  statusFaturamento(slug) { return this.page.locator(`[data-testid="plataforma-faturamento-status-${slug}"]`); }
+  async abrirDetalheFaturamento(slug) { await this.page.getByTestId(`plataforma-faturamento-ver-detalhe-${slug}`).click(); }
+
+  async salvarDiaVencimento(slug, dia) {
+    await this.page.getByTestId(`plataforma-faturamento-dia-input-${slug}`).fill(String(dia));
+    await this.page.getByTestId(`plataforma-faturamento-dia-salvar-${slug}`).click();
+  }
+
+  async salvarContatoFinanceiro(slug, { nome, email, whatsapp }) {
+    if (nome != null) await this.page.getByTestId(`plataforma-faturamento-contato-nome-${slug}`).fill(nome);
+    if (email != null) await this.page.getByTestId(`plataforma-faturamento-contato-email-${slug}`).fill(email);
+    if (whatsapp != null) await this.page.getByTestId(`plataforma-faturamento-contato-whatsapp-${slug}`).fill(whatsapp);
+    await this.page.getByTestId(`plataforma-faturamento-contato-salvar-${slug}`).click();
+  }
+
+  async marcarPago(slug, dataISO) {
+    await this.page.getByTestId(`plataforma-faturamento-marcar-data-${slug}`).fill(dataISO);
+    this.page.once('dialog', (d) => d.accept());
+    await this.page.getByTestId(`plataforma-faturamento-marcar-btn-${slug}`).click();
   }
 }

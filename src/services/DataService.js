@@ -418,6 +418,36 @@ export const DS = {
     }), { throwOnError: true });
     return r.data;
   },
+  /* REF-BILLING-01 · Onda 1/3: visao/acoes de billing no Platform Console. Escrita (configurar
+     vencimento/contato, marcar pago) e SEMPRE exclusiva do Platform Admin -- get_billing_status e
+     platform_list_billing tambem aceitam o admin da PROPRIA loja (so leitura), reaproveitados sem
+     mudanca pela Onda 4 (Admin da loja) quando ela for autorizada. */
+  async platformListBilling() {
+    const r = await this.run(d=>d.rpc('platform_list_billing'), { throwOnError: true });
+    return r.data ?? [];
+  },
+  async getBillingStatus(storeId) {
+    const r = await this.run(d=>d.rpc('get_billing_status', { p_store_id: storeId }), { throwOnError: true });
+    return r.data;
+  },
+  async platformConfigurarDiaVencimento(storeId, dia) {
+    const r = await this.run(d=>d.rpc('platform_configurar_dia_vencimento', {
+      p_store_id: storeId, p_dia: dia,
+    }), { throwOnError: true });
+    return r.data;
+  },
+  async platformConfigurarContatoFinanceiro(storeId, nome, email, whatsapp) {
+    const r = await this.run(d=>d.rpc('platform_configurar_contato_financeiro', {
+      p_store_id: storeId, p_nome: nome || null, p_email: email || null, p_whatsapp: whatsapp || null,
+    }), { throwOnError: true });
+    return r.data;
+  },
+  async platformMarcarMensalidadePaga(storeId, proximoVencimento) {
+    const r = await this.run(d=>d.rpc('platform_marcar_mensalidade_paga', {
+      p_store_id: storeId, p_proximo_vencimento: proximoVencimento,
+    }), { throwOnError: true });
+    return r.data;
+  },
   /* REF-STORE-ONBOARD-01 · Onda 3 (P1): clona categories/products/adicionais/product_collections de uma
      loja de origem pra uma loja de destino com catalogo VAZIO (semeadura, nunca merge). Produtos nascem
      com disponivel=false -- o dono revisa/ativa cada um antes de aparecer pro cliente final. */
