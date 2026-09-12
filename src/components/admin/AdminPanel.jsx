@@ -17,10 +17,13 @@ import { AdminPagamento } from './AdminPagamento.jsx';       // REF-PAGAMENTO-01
 import { AdminFidelidade } from './AdminFidelidade.jsx';
 import { AdminHealth } from './AdminHealth.jsx';
 import { AdminMinhaConta } from './AdminMinhaConta.jsx'; // REF-CUSTOMER-01 · Parte 3
+import { AdminFaturamento } from './AdminFaturamento.jsx'; // REF-BILLING-01 · Onda 4: consulta so-leitura
+import { AdminBillingBanner } from './AdminBillingBanner.jsx'; // REF-BILLING-01 · Onda 4: aviso discreto, toda aba
+import { AdminBillingBloqueado } from './AdminBillingBloqueado.jsx'; // REF-BILLING-01 · Onda 4: mensagem no lugar do painel
 
 export function AdminPanel({ admin, onExit, onLogout, onVoltarPlataforma }) {
   const companyInfo = useCompanyInfo();
-  const { stores, activeStoreId, isSuperAdmin, switchStore } = useAdminStore();
+  const { stores, activeStoreId, isSuperAdmin, switchStore, billingStatus } = useAdminStore();
   const [tab, setTab] = useState('dashboard');
   const tabs = [
     {id:'dashboard', icon:'📊', label:'Dashboard'},
@@ -34,11 +37,15 @@ export function AdminPanel({ admin, onExit, onLogout, onVoltarPlataforma }) {
     {id:'taxaentrega',icon:'🚚', label:'Taxa de Entrega'},
     {id:'empresa',   icon:'🏢', label:'Empresa'},
     {id:'pagamento', icon:'💳', label:'Pagamento'},
+    {id:'faturamento',icon:'🧾', label:'Faturamento'},
     {id:'fidelidade',icon:'🎁', label:'Fidelidade'},
     {id:'saude',     icon:'🩺', label:'Saúde'},
     {id:'minhaconta',icon:'👤', label:'Minha Conta'},
   ];
-  const titles = {dashboard:'Dashboard',relatorios:'Relatórios',pedidos:'Pedidos',mesas:'Mesas',products:'Produtos',categorias:'Categorias',adicionais:'Adicionais',status:'Status da Loja',taxaentrega:'Taxa de Entrega',empresa:'Dados da Empresa',pagamento:'Pagamento',fidelidade:'Fidelidade',saude:'Saúde do Sistema',minhaconta:'Minha Conta'};
+  const titles = {dashboard:'Dashboard',relatorios:'Relatórios',pedidos:'Pedidos',mesas:'Mesas',products:'Produtos',categorias:'Categorias',adicionais:'Adicionais',status:'Status da Loja',taxaentrega:'Taxa de Entrega',empresa:'Dados da Empresa',pagamento:'Pagamento',faturamento:'Faturamento',fidelidade:'Fidelidade',saude:'Saúde do Sistema',minhaconta:'Minha Conta'};
+  // REF-BILLING-01 · Onda 4: bloqueio NUNCA afeta o super admin (is_admin_of jamais o bloqueia, Onda 1 --
+  // sem essa excecao ninguem conseguiria abrir a loja pra desbloquear/confirmar pagamento).
+  const bloqueadoPorFaturamento = billingStatus?.status === 'bloqueada' && !isSuperAdmin;
   return (
     <div className="admin-layout">
       <div className="admin-sidebar">
@@ -116,6 +123,8 @@ export function AdminPanel({ admin, onExit, onLogout, onVoltarPlataforma }) {
             todo hook das abas ja refaz o fetch inicial no mount, entao a troca de loja atualiza os
             dados automaticamente sem precisar mudar nenhum hook existente. */}
         <div className="admin-body" key={activeStoreId}>
+          <AdminBillingBanner/>
+          {bloqueadoPorFaturamento ? <AdminBillingBloqueado/> : <>
           {tab==='dashboard'  && <AdminDashboard/>}
           {tab==='relatorios' && <AdminRelatorios/>}
           {tab==='pedidos'    && <AdminPedidos/>}
@@ -127,9 +136,11 @@ export function AdminPanel({ admin, onExit, onLogout, onVoltarPlataforma }) {
           {tab==='taxaentrega'&& <AdminTaxaEntrega/>}
           {tab==='empresa'    && <AdminEmpresa/>}
           {tab==='pagamento'  && <AdminPagamento/>}
+          {tab==='faturamento'&& <AdminFaturamento/>}
           {tab==='fidelidade' && <AdminFidelidade/>}
           {tab==='saude'      && <AdminHealth/>}
           {tab==='minhaconta' && <AdminMinhaConta admin={admin}/>}
+          </>}
         </div>
       </div>
     </div>

@@ -6,7 +6,7 @@
    chamavam o MESMO handler `onExit` — testar um cobria o outro. A Onda 2 separou os dois: "Ver loja"
    agora só troca de tela (sessão do Supabase permanece válida); "Sair" chama db.auth.signOut() de
    verdade. A sidebar "Sair" ganhou `data-testid="admin-logout"` (era um <div> sem role nenhum). */
-const TABS = ['dashboard', 'relatorios', 'pedidos', 'mesas', 'products', 'categorias', 'adicionais', 'status', 'taxaentrega', 'empresa', 'pagamento', 'fidelidade', 'saude', 'minhaconta'];
+const TABS = ['dashboard', 'relatorios', 'pedidos', 'mesas', 'products', 'categorias', 'adicionais', 'status', 'taxaentrega', 'empresa', 'pagamento', 'faturamento', 'fidelidade', 'saude', 'minhaconta'];
 
 export class AdminPanelPage {
   constructor(page) { this.page = page; }
@@ -23,8 +23,11 @@ export class AdminPanelPage {
   // REF-SAAS-02 · Onda 1: so existe quando isSuperAdmin (AdminPanel recebe onVoltarPlataforma) -- volta
   // pro Platform Console (ver PlatformConsole.page.js) sem deslogar.
   get voltarPlataformaButton() { return this.page.locator('[data-testid="admin-voltar-plataforma"]'); }
+  get storeSelector() { return this.page.locator('[data-testid="admin-store-selector"]'); }
 
   async verLoja() { await this.verLojaButton.click(); }
   async logout()  { await this.logoutButton.click(); }
   async voltarPlataforma() { await this.voltarPlataformaButton.click(); }
+  // REF-BILLING-01 · Onda 4: so aparece quando o admin logado tem >1 loja vinculada.
+  async trocarLoja(storeId) { await this.storeSelector.selectOption(storeId); }
 }

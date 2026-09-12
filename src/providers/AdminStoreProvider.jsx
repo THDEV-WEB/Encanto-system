@@ -21,6 +21,11 @@ export function AdminStoreProvider({ children }) {
   const [activeStoreId, setActiveStoreIdState] = useState(null);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState(null);
+  // REF-BILLING-01 · Onda 4: status de assinatura da loja ATIVA -- so-leitura, mesmo RPC ja usado pelo
+  // Platform Console (Onda 3), reaproveitado sem mudanca (o proprio admin da loja tem permissao de
+  // leitura nela desde a Onda 1). null = ainda desconhecido/loja sem contexto/falha de rede -- NUNCA
+  // interpretado como "bloqueado" por omissao (so status==='bloqueada' explicito bloqueia algo na UI).
+  const [billingStatus, setBillingStatus] = useState(null);
 
   const buscarLojas = useCallback(async (manterAtiva) => {
     const { data, error } = await db.rpc('list_my_stores');
@@ -42,6 +47,18 @@ export function AdminStoreProvider({ children }) {
     return () => { vivo = false; };
   }, [buscarLojas]);
 
+  /* Refaz sozinho a cada troca de loja ativa (switchStore muda activeStoreId, que dispara este
+     efeito) -- mesmo ciclo de vida do resto do contexto operacional. Falha de rede vira null (nunca
+     assume bloqueado por causa de um erro transitorio -- ver comentario do state acima). */
+  useEffect(() => {
+    let vivo = true;
+    if (!activeStoreId) { setBillingStatus(null); return; }
+    db.rpc('get_billing_status', { p_store_id: activeStoreId }).then(({ data, error }) => {
+      if (vivo) setBillingStatus(error ? null : data);
+    });
+    return () => { vivo = false; };
+  }, [activeStoreId]);
+
   /* REF-SAAS-01 · Onda 8: usado pela aba "Plataforma" (Super Admin) apos provision_store/
      link_store_admin -- a lista de lojas precisa refletir a loja recem-criada sem exigir F5.
      Mantem a loja ativa atual (nunca troca de contexto sozinho so porque a lista mudou). */
@@ -59,8 +76,8 @@ export function AdminStoreProvider({ children }) {
   const isSuperAdmin = stores.some(s => s.is_super_admin);
 
   const value = useMemo(() => ({
-    stores, activeStoreId, isSuperAdmin, switchStore, loading, erro, reloadStores,
-  }), [stores, activeStoreId, isSuperAdmin, switchStore, loading, erro, reloadStores]);
+    stores, activeStoreId, isSuperAdmin, switchStore, loading, erro, reloadStores, billingStatus,
+  }), [stores, activeStoreId, isSuperAdmin, switchStore, loading, erro, reloadStores, billingStatus]);
 
   if (loading) return null; // AdminApp ja mostra o shell/spinner de login; evita flash de conteudo sem loja resolvida
 
