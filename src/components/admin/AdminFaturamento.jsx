@@ -4,8 +4,12 @@
    continuam EXCLUSIVAS do Platform Admin (aba Faturamento do Platform Console, Onda 3). Reaproveita o
    billingStatus já carregado por AdminStoreProvider (mesmo get_billing_status da Onda 1/3, sem chamada
    de rede própria aqui) -- inclui 'historico' desde a Onda 3, extensão aditiva. */
+import { useEffect, useState } from 'react';
 import { useAdminStore } from '../../hooks/useAdminStore.js';
+import { DS } from '../../services/DataService.js';
 import { fmt, fmtDataCalendario, fmtDataHoraLoja } from '../../utils/format.js';
+
+const ROTULOS_TIPO_CHAVE = { cpf: 'CPF', cnpj: 'CNPJ', email: 'E-mail', telefone: 'Telefone', aleatoria: 'Chave aleatória' };
 
 const CORES_STATUS = {
   em_dia:         { fg: '#15803D', bg: '#F0FDF4', ponto: '🟢', texto: 'Em dia' },
@@ -27,11 +31,16 @@ const ROTULOS_EVENTO = {
 
 export function AdminFaturamento() {
   const { billingStatus } = useAdminStore();
+  // REF-BILLING-01 · Onda 5: dados de pagamento da VALION -- platforma inteira, nao por loja, entao
+  // nao vive no AdminStoreProvider (que e so contexto DA LOJA ativa) -- busca propria, uma vez.
+  const [dadosPagamento, setDadosPagamento] = useState(null);
+  useEffect(() => { DS.getPlatformBillingConfig().then(setDadosPagamento).catch(() => {}); }, []);
 
   if (!billingStatus) return <p style={{ fontSize: 13, color: 'var(--gray-400)' }}>Carregando…</p>;
 
   const status = CORES_STATUS[billingStatus.status] || CORES_STATUS.sem_assinatura;
   const historico = billingStatus.historico || [];
+  const precisaPagar = billingStatus.status === 'carencia' || billingStatus.status === 'bloqueada';
 
   return (
     <div>
@@ -50,6 +59,21 @@ export function AdminFaturamento() {
           </p>
         </div>
       </div>
+
+      {dadosPagamento?.configurado && (
+        <div className="admin-card" style={{ marginBottom: 20, border: precisaPagar ? '1.5px solid #FCA5A5' : undefined }}>
+          <div className="admin-card-header"><h3>💰 Como pagar</h3></div>
+          <div style={{ padding: 20 }}>
+            <p style={{ fontSize: 13.5, color: 'var(--gray-600)', lineHeight: 2 }}>
+              Chave Pix ({ROTULOS_TIPO_CHAVE[dadosPagamento.tipo_chave_pix] || dadosPagamento.tipo_chave_pix}): <strong>{dadosPagamento.chave_pix}</strong><br/>
+              Beneficiário: {dadosPagamento.nome_beneficiario}
+            </p>
+            <p style={{ fontSize: 12, color: 'var(--gray-400)', marginTop: 4 }}>
+              Pague por fora do sistema e aguarde a confirmação da VALION -- o status acima atualiza assim que confirmado.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="admin-card">
         <div className="admin-card-header"><h3>🧾 Histórico</h3></div>

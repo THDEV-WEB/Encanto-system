@@ -448,6 +448,19 @@ export const DS = {
     }), { throwOnError: true });
     return r.data;
   },
+  /* REF-BILLING-01 · Onda 5: dados de pagamento/Pix da VALION -- singleton de plataforma (nao por
+     loja). Leitura libera pra QUALQUER admin (is_admin_anywhere -- e info que a VALION quer que toda
+     loja veja), escrita exclusiva do Platform Admin. */
+  async getPlatformBillingConfig() {
+    const r = await this.run(d=>d.rpc('get_platform_billing_config'), { throwOnError: true });
+    return r.data;
+  },
+  async platformConfigurarDadosPagamento(chavePix, tipoChavePix, nomeBeneficiario) {
+    const r = await this.run(d=>d.rpc('platform_configurar_dados_pagamento', {
+      p_chave_pix: chavePix || null, p_tipo_chave_pix: tipoChavePix || null, p_nome_beneficiario: nomeBeneficiario || null,
+    }), { throwOnError: true });
+    return r.data;
+  },
   /* REF-STORE-ONBOARD-01 · Onda 3 (P1): clona categories/products/adicionais/product_collections de uma
      loja de origem pra uma loja de destino com catalogo VAZIO (semeadura, nunca merge). Produtos nascem
      com disponivel=false -- o dono revisa/ativa cada um antes de aparecer pro cliente final. */

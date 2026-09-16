@@ -248,6 +248,76 @@ function LinhaFaturamento({ loja, aberta, onAlternarDetalhe, onMudou }) {
   );
 }
 
+const TIPOS_CHAVE_PIX = [
+  { value: 'cpf', label: 'CPF' }, { value: 'cnpj', label: 'CNPJ' },
+  { value: 'email', label: 'E-mail' }, { value: 'telefone', label: 'Telefone' }, { value: 'aleatoria', label: 'Chave aleatória' },
+];
+
+/* REF-BILLING-01 · Onda 5: dados de pagamento/Pix da VALION -- singleton de PLATAFORMA (nunca por
+   loja), visivel na aba Faturamento do Admin de qualquer loja (AdminFaturamento.jsx, so-leitura). */
+function DadosPagamentoValion() {
+  const [dados, setDados] = useState(null);
+  const [chave, setChave] = useState('');
+  const [tipo, setTipo] = useState('');
+  const [nome, setNome] = useState('');
+  const [salvando, setSalvando] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  const carregar = useCallback(() => {
+    DS.getPlatformBillingConfig().then((d) => {
+      setDados(d);
+      setChave(d.chave_pix || ''); setTipo(d.tipo_chave_pix || ''); setNome(d.nome_beneficiario || '');
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => { carregar(); }, [carregar]);
+
+  const salvar = async () => {
+    if (salvando) return;
+    setSalvando(true); setMsg(null);
+    try {
+      await DS.platformConfigurarDadosPagamento(chave.trim(), tipo || null, nome.trim());
+      setMsg({ tipo: 'ok', texto: 'Dados de pagamento salvos.' });
+      carregar();
+    } catch (e) {
+      setMsg({ tipo: 'erro', texto: e?.message || 'Não foi possível salvar.' });
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  if (!dados) return null;
+
+  return (
+    <Bloco icone="💰" titulo="Dados de pagamento (Pix da VALION)" descricao="Exibidos pro admin de cada loja na aba Faturamento -- é pra onde a mensalidade deve ser paga (por fora, cobrança assistida).">
+      <div className="form-row" style={{ marginBottom: 16 }}>
+        <div className="form-group">
+          <label className="form-label">Chave Pix</label>
+          <input className="form-input" data-testid="plataforma-pix-chave" value={chave}
+            onChange={(e) => { setChave(e.target.value); setMsg(null); }} placeholder="chave pix da VALION" />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Tipo da chave</label>
+          <select className="form-input" data-testid="plataforma-pix-tipo" value={tipo}
+            onChange={(e) => { setTipo(e.target.value); setMsg(null); }}>
+            <option value="">Selecione…</option>
+            {TIPOS_CHAVE_PIX.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </select>
+        </div>
+      </div>
+      <div className="form-group" style={{ marginBottom: 16 }}>
+        <label className="form-label">Nome do beneficiário</label>
+        <input className="form-input" data-testid="plataforma-pix-nome" value={nome}
+          onChange={(e) => { setNome(e.target.value); setMsg(null); }} placeholder="VALION Sistemas Ltda" />
+      </div>
+      <button className="btn-secondary" onClick={salvar} disabled={salvando} data-testid="plataforma-pix-salvar">
+        {salvando ? 'Salvando…' : 'Salvar dados de pagamento'}
+      </button>
+      {msg && <p style={{ fontSize: 12.5, marginTop: 8, fontWeight: 600, color: msg.tipo === 'ok' ? '#16A34A' : '#DC2626' }}>{msg.texto}</p>}
+    </Bloco>
+  );
+}
+
 export function PlatformFaturamento() {
   const [lojas, setLojas] = useState(null);
   const [erro, setErro] = useState(null);
@@ -262,6 +332,8 @@ export function PlatformFaturamento() {
   if (erro) return <p style={{ fontSize: 13, color: 'var(--red)' }}>{erro}</p>;
 
   return (
+    <div>
+      <DadosPagamentoValion/>
     <Bloco icone="💳" titulo={`Faturamento (${lojas?.length ?? '…'})`} descricao="Mensalidade das lojas na plataforma -- cobrança assistida: o sistema controla valor/vencimento/status, o recebimento em si continua manual (Pix por fora).">
       {lojas && lojas.length === 0 && <p style={{ fontSize: 13, color: 'var(--gray-400)' }}>Nenhuma loja encontrada.</p>}
       {lojas?.map((loja) => (
@@ -273,6 +345,7 @@ export function PlatformFaturamento() {
           onMudou={carregar}
         />
       ))}
-    </Bloco>
+      </Bloco>
+    </div>
   );
 }

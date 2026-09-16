@@ -42,6 +42,9 @@ test.describe('Faturamento (Platform Console)', { tag: '@writes' }, () => {
     const admin = supabaseAdmin();
     await limparLojaDeTeste(admin);
     if (adminUserId) await admin.from('super_admins').delete().eq('user_id', adminUserId);
+    // platform_billing_config e' singleton DE PLATAFORMA (nao por loja) -- devolve ao estado "nao
+    // configurado" pra nao deixar dado de teste como se fosse a config real da VALION.
+    await admin.from('platform_billing_config').delete().eq('id', 1);
   });
 
   test('lista mostra sem_assinatura, configura vencimento/contato, marca pago e reflete no histórico', async ({ adminLoginPage, platformConsole, page }) => {
@@ -93,5 +96,36 @@ test.describe('Faturamento (Platform Console)', { tag: '@writes' }, () => {
     await adminLoginPage.login(ADMIN_FIXTURE.email, ADMIN_FIXTURE.senha);
     await expect(adminPanel.tab('dashboard')).toBeVisible();
     await expect(page.getByTestId('platform-console-titulo')).toHaveCount(0);
+  });
+
+  // REF-BILLING-01 · Onda 5: dados de pagamento/Pix da VALION -- singleton de PLATAFORMA (nao por
+  // loja), configurado no Platform Console, exibido so-leitura no Admin de QUALQUER loja.
+  test('super admin configura o Pix da VALION -- persiste, e aparece na aba Faturamento do Admin de uma loja', async ({ adminLoginPage, platformConsole, adminPanel, page }) => {
+    const admin = supabaseAdmin();
+    await admin.from('super_admins').upsert({ user_id: adminUserId }, { onConflict: 'user_id' });
+
+    await adminLoginPage.goto();
+    await adminLoginPage.login(ADMIN_FIXTURE.email, ADMIN_FIXTURE.senha);
+    await platformConsole.abrirAba('faturamento');
+
+    await page.getByTestId('plataforma-pix-chave').fill('financeiro@valion.com.br');
+    await page.getByTestId('plataforma-pix-tipo').selectOption('email');
+    await page.getByTestId('plataforma-pix-nome').fill('VALION Sistemas Ltda');
+    await page.getByTestId('plataforma-pix-salvar').click();
+    await expect(page.getByText('Dados de pagamento salvos.')).toBeVisible();
+
+    // Reload prova persistencia real (nao so estado otimista da tela).
+    await page.reload();
+    await adminLoginPage.entrarReaproveitandoSessao();
+    await platformConsole.abrirAba('faturamento');
+    await expect(page.getByTestId('plataforma-pix-chave')).toHaveValue('financeiro@valion.com.br');
+
+    // Muda de contexto pro Admin desta loja (super admin nao precisa de vinculo explicito em `admins`)
+    // e confirma que a aba Faturamento do Admin da loja mostra os MESMOS dados, so-leitura.
+    await platformConsole.abrirAba('lojas');
+    await platformConsole.abrirAdminDaLoja(SLUG);
+    await adminPanel.abrirAba('faturamento');
+    await expect(page.getByText('financeiro@valion.com.br')).toBeVisible();
+    await expect(page.getByText('VALION Sistemas Ltda')).toBeVisible();
   });
 });
