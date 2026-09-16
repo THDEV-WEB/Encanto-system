@@ -9,10 +9,12 @@
 -- enquanto; UI de admin fica pra fase futura)" — era um placeholder deliberado, nunca apertado
 -- depois. Confirmado por leitura de código: nenhum caminho do app (src/ nem supabase/functions/)
 -- escreve nessa tabela — a curadoria real sempre foi via SQL editor (bypassa RLS, superuser), então
--- a policy nunca teve uso legítimo. Tabela não tem store_id (é referência de plataforma, não por
--- loja) — troca pra is_admin_anywhere() (admin de QUALQUER loja OU super admin), a mesma função já
--- usada pro Platform Console (REF-SAAS-01 Onda 8). Se a intenção for restringir só a super admin da
--- VALION, é so' trocar por is_super_admin() depois -- registrado como escolha, não como certeza.
+-- a policy nunca teve uso legítimo. Tabela não tem store_id (é referência de plataforma, compartilhada
+-- entre TODAS as lojas, não pertence a nenhuma) — troca pra is_super_admin() (só o time VALION), não
+-- is_admin_anywhere(): admin de uma loja não tem motivo legítimo pra editar/apagar dado compartilhado
+-- de outras lojas que não são a dele. Decisão explícita do dono (2026-09-16); afrouxar depois (se um
+-- dia existir feature de curadoria por admin de loja) é mudança simples e segura -- o oposto (começar
+-- aberto demais) foi exatamente a causa do achado original.
 --
 -- ACHADO 2 — stores, store_settings, rate_limit_hits, delivery_route_cache, delivery_route_requests
 -- e settings tinham GRANT SELECT/INSERT/UPDATE/DELETE liberado pra anon E authenticated, mas como
@@ -41,8 +43,8 @@ BEGIN;
 DROP POLICY IF EXISTS "Escrita admin gazetteer" ON public.address_gazetteer;
 CREATE POLICY "Escrita admin gazetteer" ON public.address_gazetteer
   FOR ALL TO authenticated
-  USING (public.is_admin_anywhere())
-  WITH CHECK (public.is_admin_anywhere());
+  USING (public.is_super_admin())
+  WITH CHECK (public.is_super_admin());
 
 -- ACHADO 2: revoga o grant orfao (RLS sem policy ja bloqueava tudo; isto so' remove a superficie
 -- que sobraria destravada se algum dia uma policy for adicionada sem cuidado).

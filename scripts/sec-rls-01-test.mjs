@@ -5,7 +5,7 @@
 // NOTA: address_gazetteer nao existe no projeto E2E (unaccent/pg_trgm nao instaladas la -- drift
 // real entre E2E e producao, o mesmo tipo de achado da auditoria). Pra nao expandir escopo instalando
 // extensoes so' pra este teste, a Camada B usa uma tabela de rascunho com a MESMA forma de policy
-// (USING/WITH CHECK is_admin_anywhere()) pra provar o mecanismo -- nao a tabela real. A Camada C
+// (USING/WITH CHECK is_super_admin()) pra provar o mecanismo -- nao a tabela real. A Camada C
 // (GRANT orfao) testa as 6 tabelas REAIS, que existem no E2E.
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -79,10 +79,18 @@ try {
 
   out('=== CAMADA B — mecanismo da policy do gazetteer (tabela de rascunho, ver nota do cabecalho) ===');
   await client.query(`INSERT INTO public.stores (id, slug, nome, dominio, status) VALUES ('${STORE_ID}', 'loja-secrls01', 'Loja SEC-RLS-01 (fake)', NULL, 'ativo')`);
-  const admin = await client.query(`INSERT INTO auth.users (id, email) VALUES (gen_random_uuid(), 'secrls01-admin@teste.local') ON CONFLICT DO NOTHING RETURNING id`);
-  let adminUserId = admin.rows[0]?.id;
-  if (!adminUserId) { const r = await client.query(`SELECT id FROM auth.users WHERE email='secrls01-admin@teste.local'`); adminUserId = r.rows[0].id; }
-  await client.query(`INSERT INTO public.admins (user_id, store_id) VALUES ($1, '${STORE_ID}') ON CONFLICT DO NOTHING`, [adminUserId]);
+  // 3 personas: sem nenhum papel, admin de UMA loja (nao deveria bastar -- dado e' de plataforma,
+  // compartilhado entre todas as lojas), e super admin VALION (unico que deveria poder escrever).
+  const lojaAdmin = await client.query(`INSERT INTO auth.users (id, email) VALUES (gen_random_uuid(), 'secrls01-lojaadmin@teste.local') ON CONFLICT DO NOTHING RETURNING id`);
+  let lojaAdminId = lojaAdmin.rows[0]?.id;
+  if (!lojaAdminId) { const r = await client.query(`SELECT id FROM auth.users WHERE email='secrls01-lojaadmin@teste.local'`); lojaAdminId = r.rows[0].id; }
+  await client.query(`INSERT INTO public.admins (user_id, store_id) VALUES ($1, '${STORE_ID}') ON CONFLICT DO NOTHING`, [lojaAdminId]);
+
+  const superAdmin = await client.query(`INSERT INTO auth.users (id, email) VALUES (gen_random_uuid(), 'secrls01-superadmin@teste.local') ON CONFLICT DO NOTHING RETURNING id`);
+  let superAdminId = superAdmin.rows[0]?.id;
+  if (!superAdminId) { const r = await client.query(`SELECT id FROM auth.users WHERE email='secrls01-superadmin@teste.local'`); superAdminId = r.rows[0].id; }
+  await client.query(`INSERT INTO public.super_admins (user_id) VALUES ($1) ON CONFLICT DO NOTHING`, [superAdminId]);
+
   const naoAdmin = await client.query(`INSERT INTO auth.users (id, email) VALUES (gen_random_uuid(), 'secrls01-naoadmin@teste.local') ON CONFLICT DO NOTHING RETURNING id`);
   let naoAdminId = naoAdmin.rows[0]?.id;
   if (!naoAdminId) { const r = await client.query(`SELECT id FROM auth.users WHERE email='secrls01-naoadmin@teste.local'`); naoAdminId = r.rows[0].id; }
@@ -101,11 +109,11 @@ try {
     return { ok: r.rows.length === 1, detail: 'bug reproduzido: usuario NAO-admin conseguiu inserir -> ' + JSON.stringify(r.rows) };
   });
 
-  // Policy do fix criada FORA de qualquer check() individual -- B2 espera uma excecao de proposito,
-  // e nao pode derrubar (via ROLLBACK TO SAVEPOINT) a policy que B3 tambem precisa.
-  await client.query(`CREATE POLICY "rascunho depois (fix)" ON public._sec_rls_01_gazetteer_rascunho FOR ALL TO authenticated USING (public.is_admin_anywhere()) WITH CHECK (public.is_admin_anywhere())`);
+  // Policy do fix criada FORA de qualquer check() individual -- B2/B3 esperam excecao de proposito,
+  // e nao podem derrubar (via ROLLBACK TO SAVEPOINT) a policy que os checks seguintes tambem precisam.
+  await client.query(`CREATE POLICY "rascunho depois (fix)" ON public._sec_rls_01_gazetteer_rascunho FOR ALL TO authenticated USING (public.is_super_admin()) WITH CHECK (public.is_super_admin())`);
 
-  await check('B2', 'DEPOIS do fix: usuario NAO-admin NAO consegue mais escrever (RLS rejeita o INSERT)', async () => {
+  await check('B2', 'DEPOIS do fix: usuario sem NENHUM papel NAO consegue escrever (RLS rejeita o INSERT)', async () => {
     await setRole('authenticated', naoAdminId, STORE_ID);
     let bloqueado = false, msg = '';
     await client.query('SAVEPOINT sp_b2_insert');
@@ -121,9 +129,25 @@ try {
     return { ok: bloqueado, detail: bloqueado ? 'bloqueado como esperado: ' + msg : 'NAO bloqueou (inesperado)' };
   });
 
-  await check('B3', 'DEPOIS do fix: usuario ADMIN (de qualquer loja) continua conseguindo escrever', async () => {
-    await setRole('authenticated', adminUserId, STORE_ID);
-    const r = await client.query(`INSERT INTO public._sec_rls_01_gazetteer_rascunho (nome) VALUES ('admin pode') RETURNING id`);
+  await check('B3', 'DEPOIS do fix: admin de UMA loja tambem NAO consegue escrever (dado e\' de plataforma, nao da loja dele)', async () => {
+    await setRole('authenticated', lojaAdminId, STORE_ID);
+    let bloqueado = false, msg = '';
+    await client.query('SAVEPOINT sp_b3_insert');
+    try {
+      await client.query(`INSERT INTO public._sec_rls_01_gazetteer_rascunho (nome) VALUES ('admin de loja nao deveria inserir')`);
+    } catch (e) {
+      bloqueado = /row-level security/i.test(e.message);
+      msg = e.message;
+    } finally {
+      await client.query('ROLLBACK TO SAVEPOINT sp_b3_insert');
+    }
+    await resetRole();
+    return { ok: bloqueado, detail: bloqueado ? 'bloqueado como esperado (admin de loja nao e\' super admin): ' + msg : 'NAO bloqueou (inesperado)' };
+  });
+
+  await check('B4', 'DEPOIS do fix: SUPER ADMIN (VALION) continua conseguindo escrever', async () => {
+    await setRole('authenticated', superAdminId, null);
+    const r = await client.query(`INSERT INTO public._sec_rls_01_gazetteer_rascunho (nome) VALUES ('super admin pode') RETURNING id`);
     await resetRole();
     return { ok: r.rows.length === 1, detail: JSON.stringify(r.rows) };
   });
