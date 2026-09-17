@@ -22,7 +22,7 @@ export function AdminProducts() {
   const KEEP = '__KEEP__'; // sentinel: não alterar image_url no banco
   const ef = {nome:'',descricao:'',preco:'',preco_promo:'',categoria_id:'',
     imagem_url: KEEP, // ao criar, começar vazio
-    disponivel:true,destaque:false,adicionais_gratis:0,badge:'',tamanhos:[],
+    disponivel:true,destaque:false,promocoes:false,adicionais_gratis:0,badge:'',tamanhos:[],
     /* REF-ADMIN-CATALOG-01: categorias EXTRAS (multi-categoria) + ordem de exibicao */
     categoria_extras:[], ordem:999,
     /* REF-ADMIN-ADDONS-02: grupos de adicionais disponiveis p/ o produto (vazio = sem adicionais) */
@@ -33,6 +33,10 @@ export function AdminProducts() {
      StoreApp: nome.includes('destaque')). Featurar um produto = coloca-lo na categoria Destaques (via
      categoria_ids) -> ele aparece na vitrine SEM duplicar a linha. Fonte unica = as categorias do produto. */
   const destaquesId = cats.find(c => (c.nome||'').toLowerCase().includes('destaque'))?.id || null;
+  /* REF-PROMO-01: mesmo padrão de "Destaques" — vitrine "Promoções" resolvida por NOME (StoreApp:
+     nome.includes('promoções')). Marcar um produto = coloca-lo na categoria Promoções (via
+     categoria_ids) -> aparece na vitrine SEM duplicar a linha, independente de Destaques. */
+  const promocoesId = cats.find(c => (c.nome||'').toLowerCase().includes('promoções'))?.id || null;
   const toggleExtra = (id) => setForm(f => ({ ...f,
     categoria_extras: (f.categoria_extras||[]).includes(id)
       ? (f.categoria_extras||[]).filter(x => x !== id)
@@ -102,11 +106,12 @@ export function AdminProducts() {
       imagem_url:       p.imagem_url || KEEP,
       disponivel:       p.disponivel,
       destaque:         !!p.destaque || (destaquesId ? ids.includes(destaquesId) : false),
+      promocoes:        promocoesId ? ids.includes(promocoesId) : false,
       adicionais_gratis: p.adicionais_gratis || 0,
       badge:            p.badge || '',
       // PRICE-DOMAIN-01: carrega o array de tamanhos (copia profunda 1 nivel p/ nao mutar o produto)
       tamanhos:         Array.isArray(p.tamanhos) ? p.tamanhos.map(t=>({...t})) : [],
-      categoria_extras: ids.filter(id => id !== primary && id !== destaquesId),
+      categoria_extras: ids.filter(id => id !== primary && id !== destaquesId && id !== promocoesId),
       ordem:            (p.ordem ?? 999),
       /* REF-ADMIN-ADDONS-02: pre-marca os grupos EFETIVOS de hoje (grupos_ad OU fallback da categoria).
          Copia (spread) p/ nunca mutar o array do produto nem a constante CAT_ADDON_GROUP. Ao salvar,
@@ -119,7 +124,10 @@ export function AdminProducts() {
 
   /* Abrir modal de criação */
   const openNew = () => {
-    setForm({ ...ef, imagem_url: '', categoria_id: cats[0]?.id || '', tamanhos: [], categoria_extras: [], ordem: 999, grupos_ad: [] });
+    /* Destaques/Promoções são vitrines (nunca categoria principal) -- não pré-selecionar nenhuma das
+       duas so' por estarem primeiro em `ordem` (Promoções nasce com ordem=0, à frente de tudo). */
+    const primeiraCatNormal = cats.find(c => c.id !== destaquesId && c.id !== promocoesId)?.id || '';
+    setForm({ ...ef, imagem_url: '', categoria_id: primeiraCatNormal, tamanhos: [], categoria_extras: [], ordem: 999, grupos_ad: [] });
     setSaveErr('');
     setModal('new');
   };
@@ -152,13 +160,32 @@ export function AdminProducts() {
         const preco = Number(t.preco);
         if (!label)       { setSaveErr('Cada tamanho precisa de um nome/volume.'); return; }
         if (!(preco > 0)) { setSaveErr(`Preço inválido no tamanho "${label}".`); return; }
-        norm.push({ ...t, label, preco, adicionais_gratis: Number(t.adicionais_gratis) || 0 }); // preserva id/chaves existentes
+        // REF-PROMO-01: preço promocional POR TAMANHO — opcional; quando preenchido, precisa ser
+        // > 0 e < preço cheio DESSE tamanho (mesma regra estrita replicada em
+        // _resolve_item_pricing/format.js:precoTamanhoEfetivo).
+        let precoPromo = null;
+        if (t.preco_promo !== '' && t.preco_promo !== null && t.preco_promo !== undefined) {
+          const pp = Number(t.preco_promo);
+          if (!(pp > 0) || !(pp < preco)) {
+            setSaveErr(`Preço promocional inválido no tamanho "${label}" (precisa ser maior que 0 e menor que ${fmt(preco)}).`);
+            return;
+          }
+          precoPromo = pp;
+        }
+        norm.push({ ...t, label, preco, adicionais_gratis: Number(t.adicionais_gratis) || 0, preco_promo: precoPromo }); // preserva id/chaves existentes
       }
       const labels = norm.map(t => t.label.toLowerCase());
       if (new Set(labels).size !== labels.length) { setSaveErr('Há tamanhos com o mesmo nome/volume.'); return; }
       tamanhosNorm = norm;
     } else if (!form.preco) {
       setSaveErr('Preço é obrigatório.'); return;
+    } else if (form.preco_promo !== '' && form.preco_promo !== null && form.preco_promo !== undefined) {
+      const pp = Number(form.preco_promo);
+      const pn = Number(form.preco);
+      if (!(pp > 0) || !(pp < pn)) {
+        setSaveErr(`Preço promocional inválido (precisa ser maior que 0 e menor que o preço normal ${fmt(pn)}).`);
+        return;
+      }
     }
 
     setSaving(true); setSaveErr('');
@@ -177,12 +204,19 @@ export function AdminProducts() {
         catIds = catIds.filter(id => id !== destaquesId);
         if (form.destaque) catIds.push(destaquesId);
       }
+      /* REF-PROMO-01: mesmo mecanismo, vitrine independente — o toggle "🔥 Promoções" é a única via de
+         entrada/saída da categoria Promoções. Um produto pode estar em Destaques E Promoções ao mesmo
+         tempo (vitrines ortogonais). */
+      if (promocoesId) {
+        catIds = catIds.filter(id => id !== promocoesId);
+        if (form.promocoes) catIds.push(promocoesId);
+      }
       catIds = [...new Set(catIds.filter(Boolean))];
       const isDestaque = destaquesId ? catIds.includes(destaquesId) : !!form.destaque;
-      /* Destaques e VITRINE, nunca categoria PRINCIPAL: garante um primary real (jamais c8). */
-      const primaryId = (form.categoria_id && form.categoria_id !== destaquesId)
+      /* Destaques/Promoções são VITRINES, nunca categoria PRINCIPAL: garante um primary real. */
+      const primaryId = (form.categoria_id && form.categoria_id !== destaquesId && form.categoria_id !== promocoesId)
         ? form.categoria_id
-        : (catIds.find(id => id !== destaquesId) || null);
+        : (catIds.find(id => id !== destaquesId && id !== promocoesId) || null);
 
       const data = {
         nome:             form.nome,
@@ -295,6 +329,9 @@ export function AdminProducts() {
                       </span>
                     )}
                     {p.destaque && <span title="Na vitrine Destaques" style={{marginLeft:4}}>⭐</span>}
+                    {promocoesId && getProdCatIds(p).includes(promocoesId) && (
+                      <span title="Na vitrine Promoções" style={{marginLeft:4}}>🔥</span>
+                    )}
                   </td>
                   <td>
                     <div style={{fontWeight:700,color:'var(--amarelo)'}}>{fmt(precoVitrine(p))}</div>
@@ -380,6 +417,11 @@ export function AdminProducts() {
                       value={t.preco ?? ''} onChange={e=>updTamanho(i,{preco:e.target.value})}/>
                   </div>
                   <div style={{flex:'1 1 90px'}}>
+                    <label className="form-label" style={{fontSize:11}}>Preço promo</label>
+                    <input data-testid={`prod-tamanho-preco-promo-${i}`} className="form-input" type="number" step="0.01" placeholder="opcional"
+                      value={t.preco_promo ?? ''} onChange={e=>updTamanho(i,{preco_promo:e.target.value})}/>
+                  </div>
+                  <div style={{flex:'1 1 90px'}}>
                     <label className="form-label" style={{fontSize:11}}>Adic. grátis</label>
                     <input data-testid={`prod-tamanho-adicionais-${i}`} className="form-input" type="number" min="0"
                       value={t.adicionais_gratis ?? 0} onChange={e=>updTamanho(i,{adicionais_gratis:e.target.value})}/>
@@ -406,8 +448,8 @@ export function AdminProducts() {
               <select data-testid="prod-form-categoria" className="form-select" value={form.categoria_id}
                 onChange={e=>setForm(f=>({...f,categoria_id:e.target.value}))}>
                 <option value="">Selecione...</option>
-                {/* Destaques e vitrine (controlada pelo toggle), nunca categoria principal */}
-                {cats.filter(c=>c.id!==destaquesId).map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}
+                {/* Destaques/Promoções são vitrines (controladas pelos toggles), nunca categoria principal */}
+                {cats.filter(c=>c.id!==destaquesId && c.id!==promocoesId).map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}
               </select>
             </div>
 
@@ -421,7 +463,7 @@ export function AdminProducts() {
                 </span>
               </label>
               <div data-testid="prod-form-categorias-extra" style={{display:'flex',flexWrap:'wrap',gap:8}}>
-                {cats.filter(c=>c.id!==form.categoria_id && c.id!==destaquesId).map(c=>{
+                {cats.filter(c=>c.id!==form.categoria_id && c.id!==destaquesId && c.id!==promocoesId).map(c=>{
                   const on = (form.categoria_extras||[]).includes(c.id);
                   return (
                     <button type="button" key={c.id} onClick={()=>toggleExtra(c.id)} style={{
@@ -433,7 +475,7 @@ export function AdminProducts() {
                     }}>{on?'✓ ':''}{c.nome}</button>
                   );
                 })}
-                {cats.filter(c=>c.id!==form.categoria_id && c.id!==destaquesId).length===0 && (
+                {cats.filter(c=>c.id!==form.categoria_id && c.id!==destaquesId && c.id!==promocoesId).length===0 && (
                   <span style={{fontSize:12,color:'var(--gray-400)'}}>Nenhuma outra categoria disponível.</span>
                 )}
               </div>
@@ -534,6 +576,17 @@ export function AdminProducts() {
                 </label>
                 ⭐ Destaque (vitrine)
               </label>
+              {promocoesId && (
+                <label style={{display:'flex',alignItems:'center',gap:8,fontSize:14,cursor:'pointer'}}
+                  title="Coloca o produto na vitrine Promoções da loja (sem duplicar a linha)">
+                  <label className="toggle-switch">
+                    <input data-testid="prod-form-promocoes" type="checkbox" checked={form.promocoes}
+                      onChange={e=>setForm(f=>({...f,promocoes:e.target.checked}))}/>
+                    <span className="toggle-slider"/>
+                  </label>
+                  🔥 Promoções (vitrine)
+                </label>
+              )}
             </div>
 
             {saveErr && (
