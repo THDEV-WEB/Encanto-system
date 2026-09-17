@@ -11,6 +11,7 @@
    FOLHA pura (zero imports): apenas operacoes de string. */
 export function catSection(cat) {
   const nome = (cat?.nome || '').toLowerCase();
+  if (nome.includes('promoções'))  return 'sec-promocoes';
   if (nome.includes('destaque'))  return 'sec-destaques';
   if (nome.includes('combo'))     return 'sec-combos';
   if (nome.includes('fitness'))   return 'sec-fitness';

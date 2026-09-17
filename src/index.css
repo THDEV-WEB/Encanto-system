@@ -1032,6 +1032,8 @@ img{display:block;max-width:100%}
 .modal-title{font-family:var(--font-head);font-size:20px;font-weight:700;margin-bottom:6px;letter-spacing:0;line-height:1.3}
 .modal-desc{font-size:14px;color:var(--gray-500);line-height:1.55;margin-bottom:18px;font-weight:400;white-space:pre-line}
 .modal-price{font-family:var(--font-head);font-size:19px;font-weight:700;color:var(--grape);margin-bottom:20px;letter-spacing:0}
+/* REF-PROMO-01: preço cheio riscado ao lado do preço promocional (topo do modal + botões de tamanho) */
+.modal-price .old-price{font-size:14px;font-weight:400;color:var(--gray-400);text-decoration:line-through;margin-right:8px}
 .modal-section{margin-bottom:20px}
 .modal-section-title{font-size:14px;font-weight:700;margin-bottom:12px;color:var(--gray-700);letter-spacing:0}
 .additional-item{

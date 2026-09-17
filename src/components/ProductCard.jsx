@@ -5,7 +5,7 @@
    Consumidor de domínio (utils/pricing) → allowlist D1 do test:deps. BADGE_MAP movido junto (privado). */
 import React from 'react';
 import { emPromocao, precoVitrine } from '../utils/pricing.js';
-import { fmt, precoApartir } from '../utils/format.js';
+import { fmt, precoApartir, tamanhoEmPromocao, tamanhoMaisBarato, precoTamanho } from '../utils/format.js';
 import { catEmoji, isHttpUrl } from '../utils/catalog.js';
 
 /* Mapa badge → estilo */
@@ -17,9 +17,13 @@ const BADGE_MAP = {
 };
 
 export const ProductCard = React.memo(function ProductCard({ prod, catNome, onOpen }) {
-  const promo = emPromocao(prod);
-  const badge = prod.badge ? BADGE_MAP[prod.badge] : null;
   const temTamanhos = Array.isArray(prod.tamanhos) && prod.tamanhos.length>0;
+  /* REF-PROMO-01: produto com tamanhos entra em promoção quando o tamanho MAIS BARATO (o mesmo que
+     "A partir de" já exibe) tem preco_promo ativo — mesmo critério de "A partir de" (precoApartir),
+     só que aqui decide também o selo/riscado do card. */
+  const tamanhoBarato = temTamanhos ? tamanhoMaisBarato(prod) : null;
+  const promo = temTamanhos ? (tamanhoBarato && tamanhoEmPromocao(tamanhoBarato)) : emPromocao(prod);
+  const badge = prod.badge ? BADGE_MAP[prod.badge] : null;
   // Valida URL: aceita apenas http/https, nunca base64 ou string vazia
   const hasValidImg = isHttpUrl(prod.imagem_url);
   return (
@@ -60,6 +64,7 @@ export const ProductCard = React.memo(function ProductCard({ prod, catNome, onOp
             {temTamanhos ? (
               <>
                 <span className="price-from-label">A partir de</span>
+                {promo && <span className="old-price">{fmt(precoTamanho(tamanhoBarato))}</span>}
                 {fmt(precoApartir(prod))}
               </>
             ) : (

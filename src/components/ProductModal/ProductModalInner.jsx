@@ -2,7 +2,7 @@
    Conteudo do modal de produto (tamanhos, adicionais, upsell, quantidade). Stateful, apresentacional.
    Consumidor de dominio (utils/addons) -> allowlist D1 do test:deps. */
 import React, { useState } from 'react';
-import { fmt, precoTamanho } from '../../utils/format.js';
+import { fmt, precoTamanho, precoTamanhoEfetivo, tamanhoEmPromocao } from '../../utils/format.js';
 import { ADICIONAL_SIMPLES_PRECO, agruparPorGrupo, cotaGratis, ehAdicionalGratis, resolverPrecoAdicionais, GRUPOS } from '../../utils/addons.js';
 import { catEmoji } from '../../utils/catalog.js';
 import { GRUPO_INFO } from '../../utils/addonGroupLabels.js';
@@ -42,7 +42,8 @@ export function ProductModalInner({ prod, catNome, adicionais, onClose, onAdd, o
   };
 
   const adTot = selComPreco.reduce((a,ad)=>a+Number(ad.preco),0);
-  const basePreco = temTamanhos ? (precoTamanho(tamanho||prod.tamanhos[0]) || Number(prod.preco)) : Number(prod.preco_promo||prod.preco);
+  const tamanhoSel = temTamanhos ? (tamanho||prod.tamanhos[0]) : null;
+  const basePreco = temTamanhos ? (precoTamanhoEfetivo(tamanhoSel) || Number(prod.preco)) : Number(prod.preco_promo||prod.preco);
   const unit  = basePreco + adTot;
 
   /* Upsell de bebida: usa flag do produto ou fallback por nome */
@@ -77,7 +78,15 @@ export function ProductModalInner({ prod, catNome, adicionais, onClose, onAdd, o
         <div className="modal-body">
           <div className="modal-title">{prod.nome}</div>
           {prod.descricao && <div className="modal-desc">{prod.descricao}</div>}
-          <div className="modal-price">{fmt(temTamanhos ? precoTamanho(tamanho||prod.tamanhos[0]) : (prod.preco_promo||prod.preco))}</div>
+          <div className="modal-price">
+            {temTamanhos && tamanhoEmPromocao(tamanhoSel) && (
+              <span className="old-price">{fmt(precoTamanho(tamanhoSel))}</span>
+            )}
+            {!temTamanhos && prod.preco_promo && Number(prod.preco_promo) < Number(prod.preco) && (
+              <span className="old-price">{fmt(prod.preco)}</span>
+            )}
+            {fmt(temTamanhos ? precoTamanhoEfetivo(tamanhoSel) : (prod.preco_promo||prod.preco))}
+          </div>
 
           {/* Composição fixa (ex.: Batidinhas) — só renderiza se houver dado no produto */}
           {Array.isArray(prod.composicao) && prod.composicao.length > 0 && (
@@ -108,7 +117,12 @@ export function ProductModalInner({ prod, catNome, adicionais, onClose, onAdd, o
                       fontSize:13,fontWeight:700,fontFamily:'var(--font-body)',
                       transition:'all .15s',
                     }}>
-                    {t.label} • {fmt(precoTamanho(t))}
+                    {t.label} • {tamanhoEmPromocao(t)
+                      ? <>
+                          <span style={{textDecoration:'line-through',opacity:.65,marginRight:4}}>{fmt(precoTamanho(t))}</span>
+                          {fmt(precoTamanhoEfetivo(t))}
+                        </>
+                      : fmt(precoTamanho(t))}
                   </button>
                 ))}
               </div>
@@ -289,8 +303,14 @@ export function ProductModalInner({ prod, catNome, adicionais, onClose, onAdd, o
               if (temTamanhos) {
                 const tSel = tamanho || prod.tamanhos[0];
                 obsCompleto = `[Tamanho: ${tSel.label}]${obs?' — '+obs:''}`;
-                /* Preço do item refletindo o tamanho escolhido */
-                prodParaCarrinho = {...prod, preco: precoTamanho(tSel), preco_promo: null};
+                /* Preço do item refletindo o tamanho escolhido. REF-PROMO-01: preco fica sempre o preço
+                   CHEIO do tamanho (nunca muda — é o que orderPayload.js usa para reidentificar o
+                   tamanho escolhido, casando por igualdade com tamanhos[].preco); preco_promo só deixa
+                   de ser null quando o tamanho escolhido realmente está em promoção — precoBaseItem
+                   (pricing.js, `preco_promo || preco`) resolve sozinho o preço exibido/cobrado no
+                   carrinho a partir daqui, sem precisar de nenhuma mudança no domínio financeiro. */
+                prodParaCarrinho = {...prod, preco: precoTamanho(tSel),
+                  preco_promo: tamanhoEmPromocao(tSel) ? precoTamanhoEfetivo(tSel) : null};
               }
 
               onAdd(prodParaCarrinho,qty,selComPreco,obsCompleto);

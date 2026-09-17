@@ -544,7 +544,12 @@ const StoreAppContent = forwardRef(function StoreAppContent(_props, ref) {
             let sectionStyle = {paddingTop:20,scrollMarginTop:20};
             let displayProds = catProds;
 
-            if (nome.includes('destaque')) {
+            if (nome.includes('promoções')) {
+              title = '🔥 Promoções';
+              bannerStyle = {margin:'0 16px 12px',cursor:'default',
+                background:'linear-gradient(120deg,#C2410C 0%,#EA580C 100%)',
+                boxShadow:'0 4px 12px rgba(194,65,12,.25)'};
+            } else if (nome.includes('destaque')) {
               title = 'Destaques';
               sectionStyle = {paddingTop:12,scrollMarginTop:16};
               bannerStyle = {margin:'0 16px 12px',cursor:'default',
