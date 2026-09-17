@@ -60,7 +60,26 @@ export const fmtDataCalendario = v => {
    o campo `preco` top-level já está sincronizado, evitando duplicação de regra. */
 // preço de um tamanho, tolerante a legado (preco | price)
 export const precoTamanho = t => Number(t?.preco ?? t?.price) || 0;
+/* REF-PROMO-01: preço promocional POR TAMANHO (chave opcional `preco_promo` em cada elemento do
+   array — aditiva, tamanho sem a chave nunca muda de comportamento). Diferente do `||` frouxo e
+   congelado de pricing.js/precoBaseItem (contrato antigo, travado por golden test) — aqui é código
+   NOVO, sem contrato prévio a preservar, então valida de forma estrita (`>0 e < preço cheio do
+   próprio tamanho`) desde o primeiro dia. Mesma fórmula, espelhada byte-a-byte, dentro de
+   _resolve_item_pricing() (servidor) — garante que o preço EXIBIDO seja sempre o preço COBRADO,
+   mesmo diante de dado corrompido/malicioso (preço promo seria "verdadeiro" pelo `||` do JS mas
+   nunca vence no servidor). */
+export const precoTamanhoEfetivo = t => {
+  const cheio = precoTamanho(t);
+  const promo = Number(t?.preco_promo);
+  return (promo > 0 && promo < cheio) ? promo : cheio;
+};
+export const tamanhoEmPromocao = t => precoTamanhoEfetivo(t) < precoTamanho(t);
+/* Tamanho mais barato pelo preço EFETIVO (promo-aware) — usado pelo card/modal para decidir qual
+   par (preço cheio, preço promo) exibir quando o produto tem múltiplas opções. */
+export const tamanhoMaisBarato = prod => (Array.isArray(prod?.tamanhos) && prod.tamanhos.length>0)
+  ? prod.tamanhos.reduce((min,t)=> precoTamanhoEfetivo(t) < precoTamanhoEfetivo(min) ? t : min, prod.tamanhos[0])
+  : null;
 export const precoApartir = prod => (Array.isArray(prod?.tamanhos) && prod.tamanhos.length>0)
-  ? Math.min(...prod.tamanhos.map(precoTamanho))
+  ? Math.min(...prod.tamanhos.map(precoTamanhoEfetivo))
   : Number(prod?.preco_promo || prod?.preco || 0);
 export const norm = s => (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();

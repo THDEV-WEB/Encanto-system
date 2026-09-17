@@ -12,7 +12,7 @@
    troca o espelho pelo import real mantendo GOLDEN_PAYLOAD idêntico); buildOrderConfirmationMessage é
    coberta por tests/checkout.golden.mjs (§C) + tests/comanda.golden.mjs (view-model/texto). */
 import { precoUnitario, precoLinha, precoBaseItem } from './pricing.js';
-import { fmt, precoTamanho } from './format.js';
+import { fmt, precoTamanho, precoTamanhoEfetivo } from './format.js';
 import { isUuid } from './ids.js';
 /* REF-CHECKOUT-02: reaproveita a MESMA camada de domínio da comanda (Admin) para montar a mensagem
    de confirmação do cliente — única fonte de verdade, ver buildOrderConfirmationMessage abaixo.
@@ -233,7 +233,10 @@ export function buildPrecoDivergenteView(cart, produtosVivos) {
       const label = item.tamanhos.find(t => precoTamanho(t) === Number(item.preco))?.label;
       const tamanhoVivo = label && Array.isArray(vivo.tamanhos) ? vivo.tamanhos.find(t => t.label === label) : null;
       if (!tamanhoVivo) continue;
-      precoAtual = precoTamanho(tamanhoVivo);
+      /* REF-PROMO-01: preço-aware — sem isso, um tamanho com preco_promo ativo dispararia um falso
+         positivo aqui (preço "congelado" no carrinho já é o promo, precoTamanho(tamanhoVivo) sempre
+         devolve o preço cheio) mesmo o preço cobrado no checkout permanecendo idêntico. */
+      precoAtual = precoTamanhoEfetivo(tamanhoVivo);
     } else {
       precoAtual = Number(vivo.preco_promo || vivo.preco);
     }
