@@ -40,7 +40,9 @@ check('(2) Destaque ligado a categoria Destaques (destaquesId) e sincronizado', 
   assert.ok(/catIds\s*=\s*catIds\.filter\(id\s*=>\s*id\s*!==\s*destaquesId\)/.test(admin), 'toggle e a UNICA via de c8 (remove antes de re-adicionar) -> desmarcar sempre tira da vitrine');
   assert.ok(/if\s*\(\s*form\.destaque\s*\)\s*catIds\.push\(destaquesId\)/.test(admin), 'destaque marcado -> entra em categoria_ids');
   assert.ok(/destaque:\s*isDestaque/.test(admin), 'destaque persistido = pertencer a Destaques (sincronia)');
-  assert.ok(/cats\.filter\(c=>c\.id!==destaquesId\)/.test(admin), 'Destaques nunca e categoria PRINCIPAL (fora do dropdown)');
+  // REF-PROMO-01: mesmo filtro, agora tambem exclui promocoesId (2a vitrine, mesmo padrao) -- tolera
+  // a condicao extra sem enfraquecer a garantia original (Destaques sempre excluido do dropdown).
+  assert.ok(/cats\.filter\(c=>c\.id!==destaquesId(?:\s*&&\s*c\.id!==promocoesId)?\)/.test(admin), 'Destaques nunca e categoria PRINCIPAL (fora do dropdown)');
 });
 
 /* (3) Ordem controlavel */
